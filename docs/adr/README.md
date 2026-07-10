@@ -2,11 +2,43 @@
 
 This directory contains Architecture Decision Records for go-dnp3.
 
+## Position in the Layer Hierarchy
+
+```
+Layer 1: Protocol Knowledge (docs/protocol/)  ← Higher Authority
+Layer 2: Architecture (docs/architecture/)      ← ADRs document decisions
+Layer 3: ADRs (THIS DIRECTORY)                  ← Documents WHY
+Layer 4: Project (docs/project/)                  ← Governance
+```
+
+ADRs document decisions made during architecture and implementation. They explain the **why** behind choices.
+
 ## What is an ADR?
 
-An Architecture Decision Record (ADR) is a document that captures an 
-important architectural decision made along with its context and 
-consequences.
+An Architecture Decision Record (ADR) is a document that captures an important architectural decision made along with its context and consequences.
+
+## Purpose
+
+ADRs serve multiple purposes:
+
+1. **Traceability**: Links decisions to architecture and protocol
+2. **Context**: Provides reasoning for future maintainers
+3. **History**: Records how understanding evolved
+4. **Governance**: Ensures decisions are reviewed
+
+## Relationship to Other Layers
+
+```
+Protocol Knowledge (Layer 1)        ← Highest Authority
+        ↓
+Architecture (Layer 2)             ← ADRs document decisions
+        ↓
+This ADR Layer (Layer 3)           ← Documents WHY decisions were made
+        ↓
+Implementation (Code)               ← Must follow ADRs
+```
+
+**Rule**: ADRs must not contradict architecture. Architecture must not contradict protocol knowledge.
 
 ## Why ADRs?
 
@@ -44,6 +76,9 @@ Write an ADR when making:
 
 ## Consequences
 [What becomes easier or more difficult because of this change?]
+
+## Traceability
+[References to Protocol Knowledge and Architecture documents]
 ```
 
 ## ADR Lifecycle
@@ -75,22 +110,38 @@ ADR-003-concurrency-model.md
 ...
 ```
 
+## Traceability Requirements
+
+Every ADR must reference:
+
+1. **Architecture documents**: Which architecture document(s) does this affect?
+2. **Protocol knowledge**: Does this relate to any protocol behavior?
+
+```markdown
+## Traceability
+
+- Architecture: [Link to docs/architecture/*]
+- Protocol: [Link to docs/protocol/*] (if applicable)
+```
+
 ## Processing New ADRs
 
 ### Creating an ADR
 
 1. Create a new file in this directory
 2. Follow the ADR format
-3. Set status to "Proposed"
-4. Submit for review
+3. Include traceability references
+4. Set status to "Proposed"
+5. Submit for review
 
 ### Review Process
 
 1. Open a pull request with the ADR
 2. Team reviews and discusses
-3. Address feedback
-4. Merge when approved
-5. Update status to "Accepted"
+3. Verify traceability
+4. Address feedback
+5. Merge when approved
+6. Update status to "Accepted"
 
 ### Updating ADRs
 
@@ -110,6 +161,8 @@ To update an accepted ADR:
 
 - [Documenting Architecture Decisions - Reginald Braithwaite](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
 - [ADRs on ThoughtWorks Tech Radar](https://www.thoughtworks.com/radar/techniques/lightweight-architecture-decision-records)
+- [Chain of Authority](../project/CHAIN_OF_AUTHORITY.md)
+- [Repository Structure](../project/REPOSITORY_STRUCTURE.md)
 
 ## Contributing
 
