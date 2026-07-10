@@ -160,6 +160,61 @@ For each dimension, include:
 - [Recommendation 2]
 ```
 
+### Verification Practices Dimension Template (Special)
+
+For the Verification Practices dimension specifically, additional fields are REQUIRED:
+
+```
+## Verification Practices
+
+**Score: X/10**
+
+### Verification Evidence Classification
+
+For each verification category audited, complete the verification state table:
+
+| Verification Category | Assets Exist | Execution Evidence | Status | Risk Level |
+|---------------------|--------------|-------------------|--------|------------|
+| [Category 1]         | Yes/No       | Yes/No            | [State] | [Level]    |
+| [Category 2]         | Yes/No       | Yes/No            | [State] | [Level]    |
+
+**Verification States:** Verified | Verified with Failures | Not Verified | Not Assessed
+**Risk Levels:** Low | Medium | High | Maximum
+
+### Test Assets vs. Execution Evidence
+
+Document which evidence types were found:
+
+| Evidence Type | Found? | Classification |
+|--------------|--------|----------------|
+| Verification plans | Yes/No | Test Asset |
+| Test cases | Yes/No | Test Asset |
+| Test documentation | Yes/No | Test Asset |
+| Test execution records | Yes/No | **Execution Evidence** |
+| Test results | Yes/No | **Execution Evidence** |
+| CI/CD build logs | Yes/No | **Execution Evidence** |
+
+### Critical Principle
+
+> **The presence of test assets (test cases, test plans, test documentation) alone does NOT constitute verification evidence.**
+
+[If verification is based on test assets only, document why execution evidence was not available and note this limitation explicitly in the report.]
+
+### Risk Assessment
+
+Based on verification evidence classification:
+
+- **Low Risk**: Tests executed with passing results documented
+- **Medium Risk**: Tests executed with failures documented, or partial execution
+- **High Risk**: Test assets exist but no execution evidence (Not Verified)
+- **Maximum Risk**: No verification artifacts (Not Assessed)
+
+### Recommendations for This Dimension
+
+- [Recommendation 1]
+- [Recommendation 2]
+```
+
 ---
 
 ## Foundation Audit Dimensions
@@ -461,6 +516,7 @@ Before submitting an audit report, verify:
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2026-07-10 | KDSE | Added Verification Practices dimension template (KDSE-DEFECT-001) |
 | 1.0 | 2026-07-10 | KDSE | Initial template |
 
 ---

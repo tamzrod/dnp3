@@ -270,6 +270,34 @@ The standards by which verification is evaluated. Verification criteria include 
 
 The individual or role responsible for ensuring verification activities are properly planned, executed, and documented.
 
+### Verification State
+
+The classification of verification evidence status. KDSE defines four verification states: Verified, Verified with Failures, Not Verified, and Not Assessed. The verification state determines scoring caps and risk levels.
+
+### Test Asset
+
+An artifact related to testing that defines, plans, or documents tests but does not prove tests were executed. Test assets include verification plans, test cases, and test documentation. Test assets are NOT verification evidence.
+
+### Test Execution Evidence
+
+Records that prove tests were actually executed. Test execution evidence includes test results, execution logs, CI/CD build logs, and non-conformance reports. Test execution evidence is REQUIRED for verification claims.
+
+### Verified
+
+A verification state indicating that tests were executed and passing results were documented. Verified status requires both test execution records and test results showing passing outcomes.
+
+### Verified with Failures
+
+A verification state indicating that tests were executed but failures were documented. Verified with Failures status requires both test execution records and test results showing failures.
+
+### Not Verified
+
+A verification state indicating that test assets exist (test plans, test cases, test documentation) but no execution evidence exists (no test results, no execution logs). Not Verified status caps scoring at 4/10 and indicates HIGH risk.
+
+### Not Assessed
+
+A verification state indicating that no verification artifacts exist. Not Assessed status caps scoring at 2/10 and indicates MAXIMUM risk.
+
 ## W
 
 ### Working Memory
@@ -277,3 +305,11 @@ The individual or role responsible for ensuring verification activities are prop
 The temporary state used during reasoning and derivation.
 
 Working memory in KDSE refers to intermediate artifacts and reasoning processes used during derivation. Working memory is distinct from persistent artifacts.
+
+---
+
+## Version
+
+- **Document Version**: 1.1
+- **Effective Date**: 2026-07-10
+- **Change Note**: Added verification evidence terminology (Verification State, Test Asset, Test Execution Evidence, Verified, Verified with Failures, Not Verified, Not Assessed) to address KDSE-DEFECT-001

@@ -444,11 +444,78 @@ Nice-to-have improvements:
 - Cross-reference additions
 - Glossary expansion
 
+## Verification Evidence Requirements
+
+### Purpose
+
+KDSE distinguishes between test assets (plans, cases, documentation) and verification evidence (execution records, results). This section defines requirements for verification evidence in Foundation Audits.
+
+### Verification Evidence States
+
+During a Foundation Audit, the auditor must classify verification practices into one of four states:
+
+| State | Definition | Score Impact |
+|-------|------------|--------------|
+| **Verified** | Tests executed with passing results | Full scoring range (0-10) |
+| **Verified with Failures** | Tests executed with documented failures | Reduced scoring range (0-7) |
+| **Not Verified** | Test assets exist but no execution evidence | Maximum score capped at 4/10 |
+| **Not Assessed** | No verification artifacts | Maximum score capped at 2/10 |
+
+### Critical Principle
+
+> **The presence of test assets (test cases, test plans, test documentation) alone does NOT constitute verification evidence.**
+
+This principle is enforced through:
+1. **Evidence Classification**: Clear separation of test assets from execution evidence
+2. **Score Caps**: Test assets-only verification is capped at 4/10
+3. **Reporting Requirements**: Explicit status reporting for each verification category
+4. **Risk Assessment**: Uncertainty reflected in risk levels
+
+### Evidence Requirements for Verification Scoring
+
+| Evidence Type | Required for Scoring? | Notes |
+|--------------|---------------------|-------|
+| Verification plans | No | Test Asset - planning only |
+| Test cases | No | Test Asset - definition only |
+| Test documentation | No | Test Asset - documentation only |
+| Test execution records | **YES** | Execution Evidence - proves tests ran |
+| Test results | **YES** | Execution Evidence - proves outcomes |
+| CI/CD build logs | **YES** (can substitute) | Execution Evidence |
+
+### Foundation Audit Verification Requirements
+
+When auditing KDSE itself for verification practices:
+
+1. **Check for verification artifacts**: Look for verification plans, test cases, test results
+2. **Distinguish asset from evidence**: Separate test documentation from execution records
+3. **Report explicit status**: State "Verified", "Not Verified", or "Not Assessed"
+4. **Apply score caps**: Do not score above 4/10 if only test assets are present
+5. **Document limitations**: Note if verification evidence was unavailable for review
+
+### Verification Evidence Classification in Practice
+
+**Example - Correct Classification:**
+
+| Verification Category | Assets Exist | Execution Evidence | Status | Score Cap |
+|---------------------|--------------|-------------------|--------|-----------|
+| Unit Tests | Yes | Yes (CI logs + results) | Verified | 10/10 |
+| Integration Tests | Yes | No | Not Verified | 4/10 |
+| System Tests | No | No | Not Assessed | 2/10 |
+
+**Example - Incorrect Classification (Before Fix):**
+
+| Verification Category | Assets Exist | Execution Evidence | Status | Score Cap |
+|---------------------|--------------|-------------------|--------|-----------|
+| Unit Tests | Yes | No | PASS (incorrect) | 10/10 (incorrect) |
+
+The incorrect example would violate KDSE's evidence-based principle by reporting "PASS" without execution evidence.
+
 ## Version
 
-- **Document Version**: 1.0
+- **Document Version**: 1.1
 - **Effective Date**: 2026-07-10
-- **Standard Version**: KDSE Audit Standard 1.0
+- **Standard Version**: KDSE Audit Standard 1.1
+- **Change Note**: Added verification evidence classification requirements (KDSE-DEFECT-001)
 
 ---
 

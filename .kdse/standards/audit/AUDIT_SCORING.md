@@ -364,3 +364,96 @@ A scoring approach where scores are assigned based on direct observation of arti
 ### Score Aggregation
 
 The method used to combine dimension scores into an overall score. Common methods include simple average, weighted average, minimum, and critical path.
+
+## Verification Evidence Classification
+
+### Purpose
+
+KDSE requires explicit classification of verification evidence to prevent the common error of equating test assets with verification evidence. This section defines how verification evidence must be classified during audits.
+
+### The Test Assets Fallacy
+
+**INCORRECT ASSUMPTION:**
+> Test assets exist → Verification PASS
+
+**CORRECT PRINCIPLE:**
+> Verification requires evidence of execution, not merely evidence of test creation.
+
+### Verification Evidence States
+
+Every audit MUST classify verification status into one of four states:
+
+| State | Definition | Required Evidence |
+|-------|------------|-------------------|
+| **Verified** | Tests were executed and passed | Execution records + Results showing pass |
+| **Verified with Failures** | Tests were executed with documented failures | Execution records + Results showing failures |
+| **Not Verified** | Test assets exist but tests were not executed | Test plans/cases/documents only |
+| **Not Assessed** | No verification artifacts exist | Absence of verification artifacts |
+
+### Evidence Type Classification
+
+| Evidence Type | Classification | Constitutes Verification Evidence? |
+|--------------|----------------|-----------------------------------|
+| Verification plans | Test Asset | **NO** |
+| Test cases | Test Asset | **NO** |
+| Test documentation | Test Asset | **NO** |
+| Test execution records | Execution Evidence | **YES - REQUIRED** |
+| Test results | Execution Evidence | **YES - REQUIRED** |
+| CI/CD build logs | Execution Evidence | **YES - Can substitute** |
+| Non-conformance reports | Execution Evidence | **YES - If failures exist** |
+
+### Scoring Implications for Verification
+
+| Verification State | Maximum Score | Risk Level | Required Report Status |
+|-------------------|---------------|------------|------------------------|
+| Verified | 10/10 | Low | "Verified" |
+| Verified with Failures | 7/10 | Medium | "Verified with Failures" |
+| Not Verified | 4/10 | High | "Not Verified" |
+| Not Assessed | 2/10 | Maximum | "Not Assessed" |
+
+### Score Cap Rationale
+
+**Test Assets Only (Not Verified):**
+- Maximum score: 4/10
+- Rationale: Having test cases without execution proves nothing about implementation correctness. The gap between "having tests" and "running tests" represents maximum uncertainty about actual verification status.
+
+**No Verification Artifacts (Not Assessed):**
+- Maximum score: 2/10
+- Rationale: Absence of any verification artifacts indicates verification was never planned or implemented.
+
+### Evidence Documentation Requirements
+
+For each verification artifact category audited, document:
+
+1. **Assets Exist**: Yes/No
+2. **Execution Evidence**: Yes/No
+3. **Verification State**: Verified / Not Verified / Not Assessed
+4. **Risk Level**: Low / Medium / High / Maximum
+
+### Risk Assessment Principles
+
+1. **Never assume correctness without evidence**: Absence of execution evidence SHALL NOT be interpreted as verification success.
+
+2. **Report uncertainty explicitly**: When verification status is unknown, report "Not Verified" or "Not Assessed."
+
+3. **Reflect uncertainty in risk levels**: Higher uncertainty = higher risk level.
+
+4. **Require execution evidence for verification claims**: Test plans, test cases, and test documentation are planning/definition artifacts, not verification evidence.
+
+### Common Errors to Avoid
+
+| Error | Why It's Wrong | Correct Approach |
+|-------|----------------|------------------|
+| Equating test cases with verification | Test cases can exist but never run | Require execution records |
+| Assuming passing tests without results | Tests could have failed silently | Require test results |
+| Reporting PASS without evidence | Violates evidence-based principle | Report actual state with evidence |
+| Scoring high for test assets only | No verification occurred | Cap at 4/10, report "Not Verified" |
+
+---
+
+## Version
+
+- **Document Version**: 1.1
+- **Effective Date**: 2026-07-10
+- **Standard Version**: KDSE Audit Standard 1.1
+- **Change Note**: Added Verification Evidence Classification section to address KDSE-DEFECT-001

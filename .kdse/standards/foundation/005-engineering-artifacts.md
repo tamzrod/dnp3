@@ -301,6 +301,23 @@ Verification as a knowledge domain includes:
 - Inspection findings
 - Audit reports
 
+**Verification Evidence Classification:**
+
+KDSE explicitly distinguishes between test assets and verification evidence:
+
+| Category | Examples | Constitutes Verification Evidence? |
+|----------|---------|----------------------------------|
+| **Test Assets** | Verification plans, test cases, test documentation | **NO** - These define or document tests |
+| **Execution Evidence** | Test results, execution logs, CI/CD build logs | **YES** - These prove tests were run |
+
+**Critical Principle:** The presence of test assets alone does NOT constitute verification. Verification requires evidence that tests were actually executed and produced results.
+
+**Verification States:**
+- **Verified**: Tests executed with documented passing results
+- **Verified with Failures**: Tests executed with documented failures
+- **Not Verified**: Test assets exist but no execution evidence
+- **Not Assessed**: No verification artifacts found
+
 **Verification Traceability:**
 - Every verification activity traces to authorization
 - Verification criteria trace to knowledge artifacts
@@ -458,3 +475,11 @@ Transfer requires:
 - Multiple co-stewards allowed
 - Community-based stewardship transfer
 - Merit-based stewardship elevation
+
+---
+
+## Version
+
+- **Document Version**: 1.1
+- **Effective Date**: 2026-07-10
+- **Change Note**: Added Verification Evidence Classification section to clarify test assets vs. execution evidence (KDSE-DEFECT-001)

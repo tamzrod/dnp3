@@ -161,6 +161,19 @@ Before detailed audit, discover the repository structure:
 - Non-conformances identified and tracked
 - Verification authority established
 
+**Verification Evidence Classification:**
+
+KDSE distinguishes between four verification states. Auditors MUST classify verification status into one of these categories:
+
+| State | Description | Evidence Required |
+|-------|-------------|------------------|
+| **Verified** | Tests executed and passed | Test execution records + Test results showing pass |
+| **Verified with Failures** | Tests executed with documented failures | Test execution records + Test results showing failures |
+| **Not Verified** | Test assets exist but no execution evidence | Test plans/cases only, NO execution records |
+| **Not Assessed** | No verification artifacts found | Absence of any verification artifacts |
+
+**Critical Principle:** The presence of test assets (test cases, test plans, test documentation) alone does NOT constitute verification evidence. Verification requires **execution evidence** - records that prove tests were actually run.
+
 **Scoring Criteria:**
 
 | Score | Criteria |
@@ -172,10 +185,52 @@ Before detailed audit, discover the repository structure:
 | 8-10 | Exemplary verification implementation |
 
 **Evidence Required:**
-- Verification plans
-- Test documentation
-- Knowledge-traceability evidence
-- Non-conformance records
+
+Auditors MUST document the verification state for each artifact category:
+
+| Evidence Type | Classification | Required for Verification? |
+|--------------|----------------|---------------------------|
+| Verification plans | Test Asset | No (planning only) |
+| Test cases | Test Asset | No (definition only) |
+| Test documentation | Test Asset | No (documentation only) |
+| Test execution records | Execution Evidence | **YES - REQUIRED** |
+| Test results | Execution Evidence | **YES - REQUIRED** |
+| Non-conformance reports | Execution Evidence | **YES - REQUIRED (if failures exist)** |
+
+**Evidence Classification Requirements:**
+
+1. **Test Assets Present Only** (No Execution Evidence):
+   - Score capped at 4/10
+   - Report as "Not Verified"
+   - Risk Assessment: HIGH uncertainty
+
+2. **Execution Evidence Available** (Test Results + Records):
+   - Score based on comprehensive criteria (4-10)
+   - Report actual verification state (Verified, Verified with Failures)
+   - Risk Assessment: Based on actual results
+
+3. **No Verification Artifacts**:
+   - Score 0/10
+   - Report as "Not Assessed"
+   - Risk Assessment: MAXIMUM uncertainty
+
+**Reporting Requirements:**
+
+Each verification artifact category MUST be reported with explicit status:
+
+```
+| Verification Category | Assets Exist | Execution Evidence | Status | Risk Level |
+|---------------------|--------------|-------------------|--------|------------|
+| [Category Name]      | Yes/No       | Yes/No            | Verified / Not Verified / Not Assessed | Low/Medium/High |
+```
+
+**Risk Assessment Guidance:**
+
+- **Low Risk**: Verified with documented execution and passing results
+- **Medium Risk**: Verified with failures, or Not Verified with partial execution
+- **High Risk**: Not Verified (test assets exist but no execution), Not Assessed
+
+Reports SHALL explicitly identify "Not Verified" when test assets exist but execution evidence is unavailable. Risk assessments SHALL reflect uncertainty instead of assuming correctness.
 
 ### 5. Traceability
 
@@ -518,9 +573,10 @@ This audit must remain repository-independent:
 
 ## Version
 
-- **Document Version**: 1.0
+- **Document Version**: 1.1
 - **Effective Date**: 2026-07-10
-- **Standard Version**: KDSE Audit Standard 1.0
+- **Standard Version**: KDSE Audit Standard 1.1
+- **Change Note**: Added verification evidence classification requirements to address KDSE-DEFECT-001
 
 ---
 
