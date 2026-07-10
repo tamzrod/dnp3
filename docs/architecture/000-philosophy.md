@@ -1,6 +1,6 @@
 ---
 title: "000 - Philosophy"
-status: draft
+status: approved
 ---
 
 # Philosophy

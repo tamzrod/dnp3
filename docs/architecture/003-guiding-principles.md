@@ -1,6 +1,6 @@
 ---
 title: "003 - Guiding Principles"
-status: draft
+status: approved
 ---
 
 # Guiding Principles

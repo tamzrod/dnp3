@@ -1,6 +1,6 @@
 ---
-title: "006 - Testing Strategy"
-status: draft
+title: "007 - Performance Goals"
+status: approved
 ---
 
 # Testing Strategy

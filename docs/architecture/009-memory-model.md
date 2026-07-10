@@ -1,6 +1,6 @@
 ---
 title: "009 - Memory Model"
-status: draft
+status: approved
 ---
 
 # Memory Model

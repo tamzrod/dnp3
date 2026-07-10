@@ -155,7 +155,11 @@ To update an accepted ADR:
 
 | Number | Title | Status |
 |--------|-------|--------|
-| - | (No ADRs yet) | - |
+| ADR-001 | Package Structure | Accepted |
+| ADR-002 | Error Handling Strategy | Accepted |
+| ADR-003 | Concurrency Model | Accepted |
+| ADR-004 | Memory Model | Accepted |
+| ADR-005 | Testing Strategy | Accepted |
 
 ## References
 

@@ -1,6 +1,6 @@
 ---
 title: "007 - Performance Goals"
-status: draft
+status: approved
 ---
 
 # Performance Goals

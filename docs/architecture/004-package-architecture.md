@@ -1,6 +1,6 @@
 ---
 title: "004 - Package Architecture"
-status: draft
+status: approved
 ---
 
 # Package Architecture

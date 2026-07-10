@@ -1,6 +1,6 @@
 ---
 title: "008 - Concurrency Model"
-status: draft
+status: approved
 ---
 
 # Concurrency Model

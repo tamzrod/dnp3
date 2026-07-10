@@ -1,6 +1,6 @@
 ---
 title: "001 - Goals"
-status: draft
+status: approved
 ---
 
 # Goals

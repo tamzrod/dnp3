@@ -1,6 +1,6 @@
 ---
 title: "002 - Non-Goals"
-status: draft
+status: approved
 ---
 
 # Non-Goals

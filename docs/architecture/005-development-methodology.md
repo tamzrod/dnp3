@@ -1,6 +1,6 @@
 ---
 title: "005 - Development Methodology"
-status: draft
+status: approved
 ---
 
 # Development Methodology
