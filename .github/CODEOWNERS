@@ -1,0 +1,19 @@
+# CODEOWNERS for go-dnp3
+
+# Default owners for everything
+* @openhands
+
+# Architecture documents
+/docs/architecture/* @openhands
+
+# ADR documents
+/docs/adr/* @openhands
+
+# Research documents
+/docs/research/* @openhands
+
+# CI/CD configuration
+/.github/workflows/* @openhands
+
+# Documentation
+*.md @openhands
