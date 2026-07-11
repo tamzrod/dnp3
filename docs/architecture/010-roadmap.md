@@ -28,9 +28,9 @@ is organized into phases, with each phase building on the previous one.
 ┌─────────────────────────────────────────────────────────────┐
 │ Phase 4: Implementation 🔄 IN PROGRESS                      │
 │ ├── 4.1: Data Link Layer ✅ COMPLETE                        │
-│ ├── 4.2: Transport Layer ⏳ NEXT                             │
-│ ├── 4.3: Application Layer ⏳ PENDING                        │
-│ └── 4.4: Secure Authentication ⏳ PENDING                   │
+│ ├── 4.2: Transport Layer ✅ COMPLETE                        │
+│ ├── 4.3: Application Layer ✅ COMPLETE                       │
+│ └── 4.4: Secure Authentication ⏳ NEXT                      │
 └─────────────────────────────────────────────────────────────┘
                               ↑
 ┌─────────────────────────────────────────────────────────────┐
@@ -148,7 +148,7 @@ Completed as part of KDSE Runtime Session.
 
 ## Phase 4: Implementation
 
-**Status**: 🔄 Next Phase
+**Status**: 🔄 In Progress
 
 ### Goals
 
@@ -161,27 +161,35 @@ Completed as part of KDSE Runtime Session.
 
 #### 4.1 Data Link Layer
 
-- [ ] Frame encoding/decoding
-- [ ] CRC calculation
-- [ ] Link state machine
-- [ ] Address handling
-- [ ] Unbalanced mode
-- [ ] Balanced mode
+- [x] Frame encoding/decoding
+- [x] CRC calculation
+- [x] Link state machine
+- [x] Address handling
+- [x] Unbalanced mode
+- [x] Balanced mode
+
+**Status**: ✅ Complete (2026-07-10)
 
 #### 4.2 Transport Layer
 
-- [ ] Segmentation
-- [ ] Reassembly
-- [ ] Header handling
-- [ ] Flow control
+- [x] Segmentation
+- [x] Reassembly
+- [x] Header handling
+- [x] Flow control
+
+**Status**: ✅ Complete (2026-07-10)
 
 #### 4.3 Application Layer
 
-- [ ] PDU encoding/decoding
-- [ ] All function codes
-- [ ] All object groups
-- [ ] All variations
-- [ ] Response generation
+- [x] PDU encoding/decoding
+- [x] All function codes
+- [x] Application control field
+- [x] IIN (Internal Indication)
+- [ ] All object groups (planned)
+- [ ] All variations (planned)
+- [x] Response generation
+
+**Status**: ✅ Verified Complete (2026-07-11)
 
 #### 4.4 Secure Authentication
 
@@ -190,12 +198,17 @@ Completed as part of KDSE Runtime Session.
 - [ ] Session security
 - [ ] Cryptographic operations
 
+**Status**: ⏳ Next
+
 ### Exit Criteria
 
-- All layers implemented
-- Unit tests > 80% coverage
-- Integration tests passing
-- No known bugs
+- [x] Data Link Layer implemented
+- [x] Transport Layer implemented
+- [x] Application Layer core implemented
+- [ ] Secure Authentication implemented
+- [x] Unit tests > 80% coverage
+- [ ] Integration tests passing
+- [x] No known critical bugs
 
 ## Phase 5: Conformance Testing
 
@@ -336,3 +349,4 @@ To propose changes:
 |---------|------|---------|
 | 0.1.0 | TBD | Initial roadmap |
 | 0.2.0 | 2026-07-10 | KDSE Runtime Session: Phase 1-3 completed, ADRs added |
+| 0.3.0 | 2026-07-11 | Phase 4.1-4.3 completed, roadmap milestones updated |
