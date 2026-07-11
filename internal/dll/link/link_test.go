@@ -149,10 +149,17 @@ func TestStateMachineSendData(t *testing.T) {
 	ctx := context.Background()
 	sm.Start(ctx)
 
-	// Transition to operational
+	// Transition to operational by simulating the ACK response
+	// In a real system, this would come from the network
 	sm.ResetLinkStations(ctx)
 
-	// Send data without confirmation
+	// Manually transition to Operational state (simulating ACK received)
+	// In real usage, the goroutine would receive the ACK and update state
+	sm.mu.Lock()
+	sm.state = StateOperational
+	sm.mu.Unlock()
+
+	// Now send data should work
 	data := []byte{0x01, 0x02, 0x03}
 	if err := sm.SendData(ctx, data, false); err != nil {
 		t.Errorf("SendData() error = %v", err)

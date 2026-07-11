@@ -140,7 +140,8 @@ func (c *Control) FromByte(b byte) {
 	c.FCB = (b & 0x20) != 0
 	c.FCV = (b & 0x04) != 0
 	c.DFC = (b & 0x02) != 0
-	c.FuncCode = (b >> 3) & 0x0F
+	// Function code is in bits 5-3 (3 bits, values 0-7)
+	c.FuncCode = (b >> 3) & 0x07
 }
 
 // IsResetLinkStations returns true if this is a Reset Link Stations frame.
@@ -249,7 +250,9 @@ func Decode(data []byte) (*Frame, error) {
 	}
 
 	// Calculate expected total frame size
-	numCRCGroups := 1 + 1 + 1 + (int(length)-3+1)/2 // Header fields + data pairs
+	// CRCs cover pairs of bytes: 1 for Length+Ctrl, 1 for Dest, 1 for Src, and data pairs
+	dataLen := int(length) - 1 - 2 - 2 // Length - Control - Dest - Src
+	numCRCGroups := 3 + (dataLen+1)/2   // 3 header pairs + data pairs
 	expectedSize := 2 + 1 + int(length) + (numCRCGroups * 2)
 
 	if len(data) < expectedSize {
@@ -270,7 +273,6 @@ func Decode(data []byte) (*Frame, error) {
 	offset += 2
 
 	// Read data
-	dataLen := int(length) - 1 - 2 - 2 // Length - Control - Dest - Src
 	var frameData []byte
 	if dataLen > 0 {
 		frameData = make([]byte, dataLen)
@@ -279,36 +281,52 @@ func Decode(data []byte) (*Frame, error) {
 	}
 
 	// Validate CRCs
-	// CRC 1: Length + Control
-	if !crc.ValidateCRC([]byte{length, data[3]}, offset) {
-		return nil, fmt.Errorf("CRC validation failed at offset %d", offset)
+	// CRCs are stored LSB-first at the end of the frame.
+	// Calculate the starting offset for CRCs.
+	// Frame structure: sync(2) + length(1) + control(1) + dest(2) + src(2) + data + crcs
+	// CRC count = 3 (for header) + ceil(dataLen/2) (for data pairs)
+	numCRCs := 3
+	if dataLen > 0 {
+		numCRCs += (dataLen + 1) / 2
 	}
-	offset += 2
+	crcStart := len(data) - (numCRCs * 2)
 
-	// CRC 2: Destination
-	if !crc.ValidateCRC(data[4:6], offset) {
-		return nil, fmt.Errorf("CRC validation failed at offset %d", offset)
+	// CRC 1: Length + Control (bytes 2-3)
+	crcOffset := crcStart
+	if err := validateCRCForRange(data, 2, 4, crcOffset); err != nil {
+		return nil, fmt.Errorf("CRC validation failed for Length+Control: %v", err)
 	}
-	offset += 2
+	crcOffset += 2
 
-	// CRC 3: Source
-	if !crc.ValidateCRC(data[6:8], offset) {
-		return nil, fmt.Errorf("CRC validation failed at offset %d", offset)
+	// CRC 2: Destination (bytes 4-5)
+	if err := validateCRCForRange(data, 4, 6, crcOffset); err != nil {
+		return nil, fmt.Errorf("CRC validation failed for Destination: %v", err)
 	}
-	offset += 2
+	crcOffset += 2
 
-	// CRC for data
+	// CRC 3: Source (bytes 6-7)
+	if err := validateCRCForRange(data, 6, 8, crcOffset); err != nil {
+		return nil, fmt.Errorf("CRC validation failed for Source: %v", err)
+	}
+	crcOffset += 2
+
+	// CRC for data (pairs of bytes)
 	for i := 0; i < len(frameData); i += 2 {
-		crcLen := 2
-		if i+1 >= len(frameData) {
-			crcLen = 1
+		dataEnd := i + 2
+		var pair [2]byte
+		pair[0] = frameData[i]
+		if dataEnd < len(frameData) {
+			pair[1] = frameData[i+1]
+		} else {
+			// Pad with 0x00 to make a complete pair, matching Encode behavior
+			pair[1] = 0x00
 		}
-		crcData := make([]byte, crcLen)
-		copy(crcData, frameData[i:i+crcLen])
-		if !crc.ValidateCRC(crcData, offset) {
-			return nil, fmt.Errorf("data CRC validation failed at offset %d", offset)
+		calculatedCRC := crc.CRC16(pair[:])
+		storedCRC := uint16(data[crcOffset]) | (uint16(data[crcOffset+1]) << 8)
+		if calculatedCRC != storedCRC {
+			return nil, fmt.Errorf("CRC validation failed for Data at offset %d", crcOffset)
 		}
-		offset += 2
+		crcOffset += 2
 	}
 
 	return &Frame{
@@ -328,9 +346,22 @@ func appendCRC16(buf []byte, b1, b2 byte) []byte {
 	return buf
 }
 
+// validateCRCForRange validates the CRC for a range of bytes in the frame.
+func validateCRCForRange(data []byte, start, end, crcOffset int) error {
+	calculatedCRC := crc.CRC16(data[start:end])
+	storedCRC := uint16(data[crcOffset]) | (uint16(data[crcOffset+1]) << 8)
+	if calculatedCRC != storedCRC {
+		return fmt.Errorf("expected 0x%04X, got 0x%04X", storedCRC, calculatedCRC)
+	}
+	return nil
+}
+
 // IsBroadcast returns true if the frame destination is broadcast.
+// Per IEEE 1815-2012 Section 5.3, only 0xFFFF is the broadcast address.
+// 0xFFFA (All-stations reset) is a special broadcast function but
+// is NOT the general broadcast address.
 func (f *Frame) IsBroadcast() bool {
-	return f.DestAddr == AddrBroadcast || f.DestAddr == AddrAllReset
+	return f.DestAddr == AddrBroadcast
 }
 
 // String returns a human-readable representation of the frame.

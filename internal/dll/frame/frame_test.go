@@ -209,10 +209,13 @@ func TestIsBroadcast(t *testing.T) {
 		addr uint16
 		want bool
 	}{
+		// 0xFFFF is the broadcast address per IEEE 1815-2012 Section 5.3
 		{AddrBroadcast, true},
-		{AddrAllReset, true},
+		// 0xFFFA (All-stations reset) is a special function address,
+		// NOT the general broadcast address
+		{AddrAllReset, false},
 		{0x0001, false},
-		{0xFFFA, false}, // All reset is broadcast, but let's verify
+		{0xFFFD, false}, // Primary channel address
 	}
 
 	for _, tt := range tests {

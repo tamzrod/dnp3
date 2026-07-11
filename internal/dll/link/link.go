@@ -244,7 +244,9 @@ func (sm *StateMachine) SendData(ctx context.Context, data []byte, confirm bool)
 
 // sendFrame encodes and sends a frame.
 func (sm *StateMachine) sendFrame(ctx context.Context, f *frame.Frame) error {
-	data, err := frame.Encode(f)
+	// In a real implementation, this would encode and send the frame
+	// For now, we just validate that encoding works
+	_, err := frame.Encode(f)
 	if err != nil {
 		sm.errors.Add(1)
 		sm.lastError = err
