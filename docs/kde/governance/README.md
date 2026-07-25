@@ -1,8 +1,8 @@
 # KDE Governance Documentation
 
 **Domain**: KDE Methodology
-**Version**: 1.1.0
-**Date**: 2026-07-24
+**Version**: 1.2.0
+**Date**: 2026-07-25
 
 ---
 
@@ -18,10 +18,51 @@ This directory contains the human-readable versions of KDE governance policies. 
 | **Consistency** | Policies applied uniformly across the project |
 | **Evidence** | Policy decisions trace to evidence |
 
+## Governance Authority Hierarchy
+
+KDE implements a formal Governance Authority Hierarchy (per KDE-INV-002):
+
+```
+Tier 1: GOVERNANCE AUTHORITY (External)
+    - Defines KDE methodology
+    - Creates Runtime Framework
+    ↓
+
+Tier 2: RUNTIME AUTHORITY (KDE Runtime Instance)
+    - Executes governance
+    - Authorizes agents
+    ↓
+
+Tier 3: EXECUTION AUTHORITY (Agents, Humans)
+    - Performs work under Runtime
+    - Produces artifacts
+    (with APPROVAL AUTHORITY for governance oversight)
+```
+
+### Authority Types
+
+| Authority | Definition | Role |
+|-----------|------------|------|
+| **Governance Authority** | External entity defining methodology | Creates Runtime Framework |
+| **Runtime Authority** | KDE Runtime instance | Executes governance |
+| **Execution Authority** | Agents and humans | Performs work |
+| **Approval Authority** | Humans | Provides oversight |
+
+### Decision Authority Matrix
+
+| Decision Type | Authority | Approval Required |
+|--------------|-----------|-------------------|
+| Governance policies | Governance Authority | Yes |
+| Runtime configuration | Runtime Instance | No |
+| Investigation execution | Execution Agent | No |
+| Investigation conclusions | Execution Agent | Recommended |
+| Governance-affecting decisions | Execution Agent | Yes (Human) |
+
 ## Policy Categories
 
 | Category | Description |
 |----------|-------------|
+| **Hierarchy Policies** | Authority relationships and roles |
 | **Investigation Policies** | Rules for conducting investigations |
 | **Decision Policies** | Rules for decision making |
 | **Validation Policies** | Rules for validation |
@@ -31,6 +72,8 @@ This directory contains the human-readable versions of KDE governance policies. 
 
 | Policy ID | Name | Location |
 |-----------|------|----------|
+| GOV-HIERARCHY-001 | Governance Authority Hierarchy | [GOVERNANCE-HIERARCHY.md](../../.kde/governance/GOVERNANCE-HIERARCHY.md) |
+| GOV-AUTHORITY-001 | Authority Definitions | [AUTHORITY-DEFINITIONS.md](../../.kde/governance/AUTHORITY-DEFINITIONS.md) |
 | GOV-NAMING-001 | Laboratory Artifact Naming Conventions | [NAMING-CONVENTIONS.md](../../.kde/governance/NAMING-CONVENTIONS.md) |
 | GOV-AUTH-001 | Authorization Requirements | (Future) |
 | GOV-EVIDENCE-001 | Evidence Preservation Standards | (Future) |
@@ -83,8 +126,18 @@ Investigation → Experiment → Decision → Human Review → IMP → Implement
 
 | File | Description |
 |------|-------------|
+| [GOVERNANCE-HIERARCHY.md](../../.kde/governance/GOVERNANCE-HIERARCHY.md) | Authority hierarchy policy |
+| [AUTHORITY-DEFINITIONS.md](../../.kde/governance/AUTHORITY-DEFINITIONS.md) | Authority type definitions |
 | [NAMING-CONVENTIONS.md](../../.kde/governance/NAMING-CONVENTIONS.md) | Artifact naming rules |
 
 ---
 
+## References
+
+- [KDE-INV-001: Investigation Artifact Authority Model](../../laboratory/investigations/KDE-INV-001/README.md)
+- [KDE-INV-002: Governance Authority Hierarchy](../../laboratory/investigations/KDE-INV-002/README.md)
+
+---
+
 *For DNP3 Library - KDE Governance*
+*Version 1.2.0 - Added Governance Authority Hierarchy per KDE-INV-002*

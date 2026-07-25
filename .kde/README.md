@@ -1,6 +1,6 @@
 # Knowledge Discovery Engine (KDE) Runtime
 
-**Version**: 1.0.0  
+**Version**: 1.1.0  
 **Bootstrap Date**: 2026-07-25  
 **Status**: Initialized  
 **Project**: DNP3 Library
@@ -10,6 +10,21 @@
 ## Overview
 
 This is the Knowledge Discovery Engine Runtime for the DNP3 Library project. It provides the framework for evidence-based engineering decisions through systematic investigation and analysis.
+
+## Governance Authority
+
+The KDE Runtime operates under the **Governance Authority Hierarchy** (per KDE-INV-002):
+
+```
+Tier 1: Governance Authority (External)
+    ↓ defines
+Tier 2: Runtime Authority (This Runtime)
+    ↓ authorizes
+Tier 3: Execution Authority (Agents/Humans)
+    (with Approval Authority for oversight)
+```
+
+See [`.kde/governance/GOVERNANCE-HIERARCHY.md`](governance/GOVERNANCE-HIERARCHY.md) for details.
 
 ## Directory Structure
 
