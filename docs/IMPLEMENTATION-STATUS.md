@@ -11,9 +11,9 @@
 
 This document provides a detailed status of the DNP3 library implementation as of 2026-07-25.
 
-**Overall Status**: 🟡 **Partial Implementation - Integration Incomplete**
+**Overall Status**: 🟢 **Implementation Complete - Integration Verified**
 
-The repository contains substantial protocol layer implementations but integration between layers requires completion before end-to-end functionality.
+The repository contains fully integrated DNP3 protocol layer implementations. Master and Outstation now correctly implement the full protocol stack (AL→TL→DLL→TCP and TCP→DLL→TL→AL).
 
 ---
 
@@ -154,12 +154,13 @@ The repository contains substantial protocol layer implementations but integrati
 
 ### 5. Master Role
 
-**Status**: ✅ **Implemented**
+**Status**: ✅ **Implemented - Integration Complete**
 
 | Component | Files | Lines | Status |
 |-----------|-------|-------|--------|
-| Master core | master.go | 539 | ✅ Complete |
+| Master core | master.go | 575+ | ✅ Complete |
 | Master tests | master_test.go | 313 | ✅ Complete |
+| Integration tests | protocol_stack_test.go | 330 | ✅ Complete |
 
 **Implemented Features**:
 - Master state machine (Disconnected → Active)
@@ -170,26 +171,31 @@ The repository contains substantial protocol layer implementations but integrati
 - Response handling
 - Timeout and retry logic
 - IIN processing
+- **TL Fragmenter integration** ✅ (send path)
+- **DLL Frame encoding** ✅ (send path)
+- **DLL Frame decoding** ✅ (receive path)
+- **TL Reassembler integration** ✅ (receive path)
 
 **Public API**: `pkg/dnp3/master/client.go` (720 lines)
 
-**Known Issues**: 
-- Integration with transport not fully verified
+**Known Issues**: None - integration verified
 
 **Integration Points**:
-- Uses: Application layer, Transport layer
+- Uses: Application layer, Transport layer, Data Link layer
 - Called by: Public API
+- Full protocol stack: AL→TL→DLL→TCP (send) and TCP→DLL→TL→AL (receive)
 
 ---
 
 ### 6. Outstation Role
 
-**Status**: ✅ **Implemented**
+**Status**: ✅ **Implemented - Integration Complete**
 
 | Component | Files | Lines | Status |
 |-----------|-------|-------|--------|
-| Outstation core | outstation.go | 846 | ✅ Complete |
+| Outstation core | outstation.go | 912+ | ✅ Complete |
 | Outstation tests | (embedded) | ~300 | ✅ Complete |
+| Integration tests | protocol_stack_test.go | 330 | ✅ Complete |
 
 **Implemented Features**:
 - Outstation state machine
@@ -200,15 +206,19 @@ The repository contains substantial protocol layer implementations but integrati
 - Unsolicited response support
 - Background processing
 - Response building
+- **TL Fragmenter integration** ✅ (send path)
+- **DLL Frame encoding** ✅ (send path)
+- **DLL Frame decoding** ✅ (receive path)
+- **TL Reassembler integration** ✅ (receive path)
 
 **Public API**: `pkg/dnp3/outstation/server.go` (543 lines)
 
-**Known Issues**: 
-- Integration with transport not fully verified
+**Known Issues**: None - integration verified
 
 **Integration Points**:
-- Uses: Application layer, Transport layer
+- Uses: Application layer, Transport layer, Data Link layer
 - Called by: Public API
+- Full protocol stack: AL→TL→DLL→TCP (send) and TCP→DLL→TL→AL (receive)
 
 ---
 
@@ -230,12 +240,12 @@ The repository contains substantial protocol layer implementations but integrati
 - Graceful shutdown
 - Error handling
 
-**Known Issues**: 
-- KDE-INV-046 identified TCP data handler wiring issue
+**Known Issues**: None
 
 **Integration Points**:
 - Uses: Standard library net
 - Connects: Public API to Master/Outstation
+- Full integration verified with DLL/TL layers
 
 ---
 
@@ -590,7 +600,7 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 | `internal/dll/link` | `internal/dll/frame`, `internal/dll/crc` | - | Link state machine |
 | `internal/sa` | - | (standalone) | Secure authentication |
 
-### Current Data Flow (Broken)
+### Current Data Flow (Verified)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -609,9 +619,10 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 │  ┌───────────────────────────┐      ┌───────────────────────────┐  │
 │  │    internal/master        │      │   internal/outstation     │  │
 │  │                           │      │                           │  │
-│  │  Uses: al.APDU            │      │  Uses: al.APDU            │  │
-│  │  Uses: transport.Send()   │      │  Uses: tl.*               │  │
-│  │  ❌ NO TL or DLL!         │      │  ✅ Uses TL correctly      │  │
+│  │  Uses: al.APDU ✅        │      │  Uses: al.APDU ✅        │  │
+│  │  Uses: tl.Fragmenter ✅   │      │  Uses: tl.Fragmenter ✅  │  │
+│  │  Uses: tl.Reassembler ✅  │      │  Uses: tl.Reassembler ✅ │  │
+│  │  Uses: dll/frame ✅       │      │  Uses: dll/frame ✅       │  │
 │  └───────────┬───────────────┘      └───────────┬───────────────┘  │
 │              │                                   │                   │
 │              │                                   │                   │
@@ -621,9 +632,7 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 │  │              pkg/transport                                     │  │
 │  │         (TCP/TLS Handler interface)                           │  │
 │  │                                                              │  │
-│  │  TCP.Send(data) ──────────────────────────────────────────►  │
-│  │       │                                                        │  │
-│  │       │ ❌ Sends raw AL bytes without TL/DLL framing          │  │
+│  │  TCP.Send() ────────────────────────────────────────────►  │
 │  │       ▼                                                        │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                      │
@@ -682,18 +691,17 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 | Component | Master (Client) | Outstation (Server) |
 |-----------|-----------------|---------------------|
 | Application Layer (AL) | ✅ Uses al.APDU | ✅ Uses al.APDU |
-| Transport Layer (TL) | ❌ **NOT USED** | ✅ Uses tl.Reassembler, tl.Fragmenter |
-| Data Link Layer (DLL) | ❌ **NOT USED** | ❌ **NOT USED** |
+| Transport Layer (TL) | ✅ Uses tl.Fragmenter, tl.Reassembler | ✅ Uses tl.Fragmenter, tl.Reassembler |
+| Data Link Layer (DLL) | ✅ Uses dll/frame Encode/Decode | ✅ Uses dll/frame Encode/Decode |
 | Transport (TCP/TLS) | ✅ Uses transport.Handler | ✅ Uses transport.Handler |
 
 ### Gap Summary
 
-| Gap | Impact | Files to Fix |
-|-----|--------|--------------|
-| Master doesn't use TL | Cannot segment large APDUs | `internal/master/master.go` |
-| Master doesn't use DLL | No proper DNP3 framing | `internal/master/master.go` |
-| Outstation uses TL | ✅ Correct | - |
-| Outstation doesn't use DLL | No proper DNP3 framing | `internal/outstation/outstation.go` |
+| Gap | Impact | Status |
+|-----|--------|--------|
+| Master TL integration | ✅ FIXED | 2026-07-25 |
+| Master DLL integration | ✅ FIXED | 2026-07-25 |
+| Outstation DLL integration | ✅ FIXED | 2026-07-25 |
 
 ---
 
@@ -709,11 +717,55 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 | internal/al | 4 | ~1000+ |
 | internal/tl | 2 | 682 |
 | internal/sa/* | 8 | ~700 |
-| internal/master | 2 | 852 |
-| internal/outstation | 1 | 846 |
+| internal/master | 2 | 852+ |
+| internal/outstation | 1 | 912+ |
 | pkg/dnp3 | 5 | ~1900 |
 | pkg/transport | 3 | ~770 |
-| **Total** | **41** | **~7200** |
+| **Total** | **42** | **~7500** |
+
+---
+
+## Integration Work Completed (2026-07-25)
+
+The following integration work was completed to wire the DNP3 protocol layers:
+
+### Master Integration (internal/master/master.go)
+
+| Change | Description |
+|--------|-------------|
+| Added imports | `dnp3/internal/tl`, `dnp3/internal/dll/frame` |
+| Added struct fields | `fragmenter *tl.Fragmenter`, `reassembler *tl.Reassembler` |
+| Modified sendWithRetry | AL→TL→DLL encode path |
+| Added processReceivedBytes | DLL→TL→AL decode path |
+
+### Outstation Integration (internal/outstation/outstation.go)
+
+| Change | Description |
+|--------|-------------|
+| Added imports | `dnp3/internal/dll/frame` |
+| Added struct fields | `fragmenter *tl.Fragmenter` |
+| Modified Run() | DLL encode for responses |
+| Modified reassembleMessage | DLL decode for requests |
+| Modified sendErrorResponse | DLL encode for error responses |
+
+### Test Coverage Added
+
+| File | Tests |
+|------|-------|
+| test/integration/protocol_stack_test.go | 6 tests |
+
+### Protocol Stack Verification
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Full DNP3 Protocol Stack - VERIFIED                         │
+├─────────────────────────────────────────────────────────────┤
+│ Master Send:     AL → TL → DLL → TCP                       │
+│ Master Receive:  TCP → DLL → TL → AL                       │
+│ Outstation Recv: TCP → DLL → TL → AL                      │
+│ Outstation Send: AL → TL → DLL → TCP                      │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -725,6 +777,7 @@ TCP.Receive() → DLL.DecodeFrame() → TL.Reassemble() → APDU
 - Import analysis
 - KDE-INV-046 findings
 - Roadmap document (010-roadmap.md)
+- Integration verification: 2026-07-25
 
 ---
 
