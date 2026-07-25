@@ -1,7 +1,7 @@
 # KDE Governance: Laboratory Artifact Naming Conventions
 
 **Document ID**: GOV-NAMING-001
-**Version**: 2.0.0
+**Version**: 3.0.0
 **Date**: 2026-07-25
 **Status**: APPROVED
 **Authority**: KDE Governance
@@ -26,6 +26,10 @@ This policy establishes mandatory naming conventions for all laboratory artifact
 | Decision | `decisions/` | `TDR-` | `TDR-001.md` |
 | Implementation | `implementations/` | `PROJECT-IMP-` | `PROJECT-IMP-001/` |
 | Review | `reviews/` | `PROJECT-REV-` | `PROJECT-REV-001.md` |
+| Testing Asset | `testing/` | `TEST-` | `TEST-ASSET-001.md` |
+| Mock Device | `testing/mocks/` | `TEST-MOCK-` | `TEST-MOCK-MASTER-001/` |
+| Simulator | `testing/simulators/` | `TEST-SIM-` | `TEST-SIM-DNP3-001/` |
+| Test Fixture | `testing/fixtures/` | `TEST-FIX-` | `TEST-FIX-CERTS-001/` |
 
 ### Rule 2: Directory Placement
 
@@ -37,6 +41,10 @@ This policy establishes mandatory naming conventions for all laboratory artifact
 | `TDR-*` | `decisions/` |
 | `PROJECT-IMP-*` | `implementations/` |
 | `PROJECT-REV-*` | `reviews/` |
+| `TEST-*` | `testing/` |
+| `TEST-MOCK-*` | `testing/mocks/` |
+| `TEST-SIM-*` | `testing/simulators/` |
+| `TEST-FIX-*` | `testing/fixtures/` |
 
 ### Rule 3: ID Sequence
 
@@ -46,6 +54,10 @@ This policy establishes mandatory naming conventions for all laboratory artifact
 - **Decisions**: Sequential `TDR-001`, `TDR-002`, etc.
 - **Implementations**: Sequential `PROJECT-IMP-001`, `PROJECT-IMP-002`, etc.
 - **Reviews**: Sequential `PROJECT-REV-001`, `PROJECT-REV-002`, etc.
+- **Testing Assets**: Sequential `TEST-001`, `TEST-002`, etc.
+- **Mock Devices**: Sequential `TEST-MOCK-001`, `TEST-MOCK-002`, etc.
+- **Simulators**: Sequential `TEST-SIM-001`, `TEST-SIM-002`, etc.
+- **Test Fixtures**: Sequential `TEST-FIX-001`, `TEST-FIX-002`, etc.
 
 ---
 
@@ -81,6 +93,7 @@ Before creating any laboratory artifact:
 
 - GOV-AUTH-001: Authorization Requirements
 - GOV-EVIDENCE-001: Evidence Preservation Standards
+- TESTING-GOV-001: Testing Governance Rules (in laboratory/testing/governance/)
 
 ---
 

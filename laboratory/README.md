@@ -1,6 +1,6 @@
 # KDE Engineering Laboratory
 
-**Version**: 2.0.0  
+**Version**: 3.0.0  
 **Status**: Initialized  
 **Project**: DNP3 Library
 
@@ -17,25 +17,56 @@ laboratory/
 ├── decisions/           # Technology Decision Records (TDRs)
 ├── investigations/      # Investigation documents
 ├── experiments/         # Laboratory experiments
+├── testing/            # Testing capability (shared testing assets)
 ├── evidence/           # Evidence artifacts
 ├── implementations/    # Implementation specifications (IMPs)
 ├── planning/           # Planning documents
 └── reviews/            # Review documents
 ```
 
-## Laboratory Artifacts
+## Laboratory Capabilities
 
-This laboratory contains **ONLY** engineering artifacts:
+This laboratory contains **ONLY** engineering artifacts organized into capabilities:
 
-| Directory | Purpose | Status |
-|-----------|---------|--------|
-| `decisions/` | Technology Decision Records | ✅ Active |
-| `investigations/` | Investigation documents | ✅ Active |
-| `experiments/` | Laboratory experiments | ✅ Available |
-| `evidence/` | Evidence artifacts | ✅ Available |
-| `implementations/` | Implementation specifications | ✅ Available |
-| `planning/` | Planning documents | ✅ Available |
-| `reviews/` | Review documents | ✅ Available |
+| Capability | Directory | Purpose | Status |
+|-----------|-----------|---------|--------|
+| **Investigation** | `investigations/` | Systematic inquiry and analysis | ✅ Active |
+| **Experiment** | `experiments/` | Controlled hypothesis validation | ✅ Available |
+| **Testing** | `testing/` | Reusable testing infrastructure | ✅ Active |
+| **Decision** | `decisions/` | Technology Decision Records | ✅ Active |
+| **Evidence** | `evidence/` | Evidence artifacts | ✅ Available |
+| **Implementation** | `implementations/` | Implementation specifications | ✅ Available |
+| **Planning** | `planning/` | Planning documents | ✅ Available |
+| **Review** | `reviews/` | Review documents | ✅ Available |
+
+## Testing Capability
+
+The **Testing capability** provides shared testing infrastructure for all laboratory activities:
+
+### Purpose
+
+- Owns reusable testing assets (mocks, simulators, fixtures)
+- Provides test infrastructure to Investigations and Experiments
+- Maintains conformance test data and validation tools
+- Runs regression tests and reports results
+
+### Testing Assets
+
+| Category | Examples |
+|----------|----------|
+| Mock devices | In-memory Master, Outstation, Sensors |
+| Simulators | Protocol simulators, device emulators |
+| Test fixtures | Sample datasets, certificates |
+| Validation tools | Scripts, harnesses, utilities |
+| Conformance data | Protocol test vectors |
+
+### Testing Services
+
+1. **Asset Provision**: Provides mock devices, simulators to Investigations/Experiments
+2. **Test Execution**: Runs regression tests and reports results
+3. **Conformance Coordination**: Maintains conformance test data
+4. **Infrastructure Maintenance**: Maintains testing frameworks and tools
+5. **Promotion Review**: Reviews test assets for promotion to shared testing
 
 ## Separation of Concerns
 
@@ -54,14 +85,29 @@ The KDE Runtime (`/.kde/`) contains **ONLY**:
 
 ### Laboratory (laboratory/)
 
-The Laboratory contains **ALL** engineering artifacts:
-- Experiments
-- Investigations
-- Reviews
-- Decisions
-- Planning
-- Evidence
-- Implementations
+The Laboratory contains **ALL** engineering artifacts organized by capability:
+
+| Capability | Scope |
+|-----------|-------|
+| Investigation | Understanding and analysis |
+| Experiment | Hypothesis validation |
+| Testing | Reusable infrastructure and quality assurance |
+| Decision | Technology decisions |
+| Evidence | Evidence artifacts |
+| Implementation | Implementation specifications |
+| Planning | Planning documents |
+| Review | Review documents |
+
+### Testing Capability Ownership
+
+The Testing capability owns the following directories (conceptual ownership):
+
+| Directory | Testing Ownership | Current Status |
+|-----------|-------------------|---------------|
+| `test/` | Conceptual owner | Active |
+| `cmd/` | Conceptual owner | Planned |
+| `scripts/` | Conceptual owner | Empty |
+| `benchmarks/` | Conceptual owner | Active |
 
 ## Engineering Principles
 
@@ -82,10 +128,12 @@ All laboratory artifacts **MUST** follow the naming conventions:
 | Decision | `decisions/` | `TDR-` | `TDR-001.md` |
 | Review | `reviews/` | `PROJECT-REV-` | `PROJECT-REV-001/` |
 | Implementation | `implementations/` | `PROJECT-IMP-` | `PROJECT-IMP-001/` |
+| Testing Asset | `testing/` | `TEST-` | `TEST-ASSET-001.md` |
 
 **CRITICAL**: 
 - Investigations **MUST** use `INV-` prefix (not `EXP-`)
 - Experiments **MUST** use `EXP-` prefix
+- Testing assets **MUST** use `TEST-` prefix
 - Cross-prefixing (e.g., `investigations/PROJECT-EXP-XXX/`) is a **naming violation**
 
 See `.kde/governance/NAMING-CONVENTIONS.md` for full policy.
