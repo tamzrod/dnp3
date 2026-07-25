@@ -1,0 +1,36 @@
+# KDE Runtime Bootstrap Configuration
+version: "1.0.0"
+runtime:
+  name: "DNP3 Library KDE Runtime"
+  version: "1.0.0"
+  project: "DNP3 Library"
+  repository: "https://github.com/tamzrod/dnp3"
+  initialized: true
+  bootstrap_date: "2026-07-25"
+
+modules:
+  - engines
+  - experts
+  - knowledge
+  - governance
+  - seeds
+  - commands
+  - capabilities
+  - templates
+  - verification
+
+paths:
+  engines: "./engines"
+  experts: "./experts"
+  knowledge: "./knowledge"
+  governance: "./governance"
+  seeds: "./seeds"
+  commands: "./commands"
+  capabilities: "./capabilities"
+  templates: "./templates"
+  verification: "./verification"
+
+settings:
+  strict_mode: true
+  auto_verify: true
+  preserve_history: true

@@ -1,0 +1,24 @@
+{
+  "kde_version": "1.0.0",
+  "runtime_requirements": {
+    "minimum_python": "3.10",
+    "required_modules": [
+      "engines",
+      "experts",
+      "knowledge",
+      "governance",
+      "seeds"
+    ],
+    "optional_modules": [
+      "commands",
+      "capabilities",
+      "templates",
+      "verification"
+    ]
+  },
+  "system_checks": [
+    "filesystem_access",
+    "configuration_valid",
+    "paths_exist"
+  ]
+}

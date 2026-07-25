@@ -64,3 +64,12 @@ site/
 
 # Backups (auto-generated)
 .kdse/.backup/
+
+# KDE Bootstrap Archive (temporary during reset)
+kde_archive/
+
+# KDE Runtime - Configuration (keep example)
+/.kde/bootstrap/config.local.yaml
+
+# KDE Runtime - State (may be committed if desired)
+# .kde/runtime/state/
