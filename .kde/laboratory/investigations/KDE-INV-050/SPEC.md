@@ -125,7 +125,7 @@ mv laboratory/investigations/KDE-INV-ASSESSMENT laboratory/investigations/KDE-IN
 **Template**:
 ```yaml
 ---
-id: KDE-INV-001
+id: KDE-INV-050
 type: investigation
 title: "[Original Title]"
 status: completed
