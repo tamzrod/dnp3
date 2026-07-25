@@ -14,6 +14,8 @@ import (
 	"time"
 	
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 )
 
 // Master role constants
@@ -154,6 +156,8 @@ type Master struct {
 	mu        sync.RWMutex
 	transport TransportHandler
 	onError   ErrorHandler
+        fragmenter  *tl.Fragmenter   // Transport layer fragmenter
+        reassembler *tl.Reassembler // Transport layer reassembler
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -175,6 +179,8 @@ func NewMaster(config *Config) *Master {
 		config:     config,
 		state:      StateDisconnected,
 		outstations: make(map[uint16]*Outstation),
+		fragmenter:   tl.NewFragmenter(),
+		reassembler: tl.NewReassembler(),
 	}
 }
 
@@ -366,11 +372,36 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 		
-		// Send request
+		// Send request with DNP3 protocol layers
 		data := req.Encode()
-		if err := m.transport.Send(data); err != nil {
-			lastErr = err
-			continue
+
+		// Transport layer fragmentation
+		fragments := m.fragmenter.Fragmentize(data)
+
+		for _, frag := range fragments {
+			// Transport layer encode
+			tlEncoded := tl.EncodeFragment(frag)
+
+			// Data link layer frame
+			dllFrame := &frame.Frame{
+				Control: frame.Control{
+					DIR:      true,                  // Master-to-Outstation
+					PRM:      true,                  // Primary station
+					FuncCode: frame.FuncConfirmedUserData,
+				},
+				DestAddr: outstationID,
+				SrcAddr:  m.config.MasterAddress,
+				Data:     tlEncoded,
+			}
+			dllEncoded, err := frame.Encode(dllFrame)
+			if err != nil {
+				return err
+			}
+
+			if err := m.transport.Send(dllEncoded); err != nil {
+				lastErr = err
+				continue
+			}
 		}
 		
 		// Wait for response
