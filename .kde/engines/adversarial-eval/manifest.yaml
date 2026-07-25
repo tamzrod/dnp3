@@ -1,0 +1,53 @@
+# Adversarial Evaluation Engine
+
+**Engine ID**: ADVERSARIAL-EVAL-001
+**Version**: 1.0.0
+**Date**: 2026-07-20
+**Status**: ACTIVE
+
+---
+
+## Overview
+
+This engine performs systematic adversarial evaluation of synthesized protocols from INV-003. It executes 10 phases of security testing to identify vulnerabilities.
+
+---
+
+## Capabilities
+
+- Specification review and consistency checking
+- Implementation compilation and execution
+- Static code analysis
+- Protocol state machine testing
+- Replay attack simulation
+- MITM attack simulation
+- Downgrade attack testing
+- Fuzz testing
+- Cryptographic property validation
+- Automated self-critique
+
+---
+
+## Execution
+
+```bash
+python3 -m adversarial_eval --protocol-dir=runs --output-dir=results
+python3 -m adversarial_eval --batch --protocols=RUN-001,RUN-002
+```
+
+---
+
+## Output
+
+Each evaluation produces:
+- Security report (per protocol)
+- Vulnerability database
+- Phase test results
+- Statistical summary
+
+---
+
+## Document Status
+
+**ACTIVE**: Engine ready for execution
+

@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-07-21T00:00:00Z",
+  "skills": [
+    {
+      "id": "skill-investigation-planning",
+      "name": "Investigation Planning",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Plans investigations following SOP-001 lifecycle",
+      "required_knowledge": ["KDE-ARCH-001", "KDE-ARCH-004"],
+      "required_sop": ["SOP-001", "SOP-002"],
+      "dependencies": [],
+      "input_types": ["new_investigation", "research_question"],
+      "output_types": ["investigation_plan", "deliverables"],
+      "triggers": ["new_investigation", "continuation"],
+      "context_contributions": {
+        "instructions": "Follow SOP-001 Investigation Lifecycle with 6 phases",
+        "workflow": ["Define research question", "Identify success criteria", "Plan phases", "Document deliverables"],
+        "constraints": ["One active engine", "SOP compliance required"],
+        "examples": ["INV-016 replication study", "INV-020 A/B validation"]
+      },
+      "source": "SOP-001, INV-016",
+      "validation_evidence": "INV-016, INV-021"
+    },
+    {
+      "id": "skill-experiment-design",
+      "name": "Experiment Design",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Designs experiments following SOP-002 lifecycle",
+      "required_knowledge": ["KDE-ARCH-001"],
+      "required_sop": ["SOP-002"],
+      "dependencies": ["skill-investigation-planning"],
+      "input_types": ["hypothesis", "variables"],
+      "output_types": ["experiment_design", "control_group", "treatment_group"],
+      "triggers": ["experiment", "hypothesis_testing", "validation"],
+      "context_contributions": {
+        "instructions": "Apply SOP-002 Experiment Lifecycle with hypothesis-driven approach",
+        "workflow": ["Define hypothesis", "Identify variables", "Design control", "Plan measurement"],
+        "constraints": ["Controlled variables", "Reproducible design"],
+        "examples": ["EXP-001 decision strategies", "EXP-002 evidence policies"]
+      },
+      "source": "SOP-002, EXP-001",
+      "validation_evidence": "EXP-001, EXP-002, INV-021"
+    },
+    {
+      "id": "skill-knowledge-retrieval",
+      "name": "Knowledge Retrieval",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Retrieves relevant knowledge using SOP-005 policy",
+      "required_knowledge": ["KDE-ARCH-008"],
+      "required_sop": ["SOP-005"],
+      "dependencies": [],
+      "input_types": ["investigation_id", "keywords", "domain"],
+      "output_types": ["knowledge_context", "retrieved_artifacts"],
+      "triggers": ["continuation", "similar_work", "complex_task"],
+      "context_contributions": {
+        "instructions": "Execute Knowledge-on-Demand retrieval using SOP-005 matrix",
+        "workflow": ["Evaluate SOP-005 context", "Retrieve knowledge", "Construct context"],
+        "constraints": ["SOP-005 compliance", "Log all retrievals"],
+        "examples": ["INV-019 runtime implementation"]
+      },
+      "source": "INV-019, SOP-005",
+      "validation_evidence": "INV-015, INV-017, INV-019, INV-020"
+    },
+    {
+      "id": "skill-evidence-collection",
+      "name": "Evidence Collection",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Collects evidence following SOP-004 standards",
+      "required_knowledge": [],
+      "required_sop": ["SOP-004"],
+      "dependencies": [],
+      "input_types": ["observation", "measurement"],
+      "output_types": ["evidence_record", "evidence_hierarchy"],
+      "triggers": ["evidence_needed", "conclusion_support"],
+      "context_contributions": {
+        "instructions": "Apply SOP-004 Evidence Standards with 5 evidence types",
+        "workflow": ["Collect observation", "Classify evidence type", "Document chain"],
+        "constraints": ["Observable evidence only", "Prohibited conclusions defined"],
+        "examples": ["INV-014 UI quality", "INV-016 comparative"]
+      },
+      "source": "SOP-004, INV-014",
+      "validation_evidence": "INV-014, INV-021"
+    },
+    {
+      "id": "skill-decision-attribution",
+      "name": "Decision Attribution",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Attributes decisions to origin with evidence",
+      "required_knowledge": [],
+      "required_sop": [],
+      "dependencies": ["skill-evidence-collection"],
+      "input_types": ["decision", "evidence"],
+      "output_types": ["attribution_record", "origin_classification"],
+      "triggers": ["major_decision", "conclusion_reached"],
+      "context_contributions": {
+        "instructions": "Record decision origin using DecisionOrigin enum",
+        "workflow": ["Identify decision", "Classify origin", "Document evidence"],
+        "constraints": ["Observable evidence required", "No speculation"],
+        "examples": ["Architecture decisions", "Methodology choices"]
+      },
+      "source": "INV-019, EXP-002",
+      "validation_evidence": "INV-019, INV-021"
+    },
+    {
+      "id": "skill-artifact-traceability",
+      "name": "Artifact Traceability",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Maintains bidirectional traceability between artifacts",
+      "required_knowledge": ["KDE-ARCH-005", "KDE-ARCH-006"],
+      "required_sop": [],
+      "dependencies": [],
+      "input_types": ["artifact_id", "relationship"],
+      "output_types": ["traceability_record", "dependency_graph"],
+      "triggers": ["artifact_creation", "relationship_change"],
+      "context_contributions": {
+        "instructions": "Apply KDE-ARCH-005 Traceability Model with bidirectional links",
+        "workflow": ["Identify artifact", "Determine relationships", "Create links"],
+        "constraints": ["Bidirectional", "Metadata required per KDE-ARCH-006"],
+        "examples": ["INV → EXP → Knowledge"]
+      },
+      "source": "KDE-ARCH-005, KDE-ARCH-006",
+      "validation_evidence": "INV-016, INV-021"
+    },
+    {
+      "id": "skill-governance-review",
+      "name": "Governance Review",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Facilitates governance approval following SOP-006",
+      "required_knowledge": [],
+      "required_sop": ["SOP-006", "SOP-007"],
+      "dependencies": [],
+      "input_types": ["recommendation", "evidence_package"],
+      "output_types": ["governance_submission", "approval_record"],
+      "triggers": ["knowledge_promotion", "recommendation_generated"],
+      "context_contributions": {
+        "instructions": "Prepare governance submission following SOP-006",
+        "workflow": ["Package evidence", "Generate recommendation", "Submit for approval"],
+        "constraints": ["Governance owns approval", "Document all decisions"],
+        "examples": ["INV-020 adoption recommendation"]
+      },
+      "source": "SOP-006, SOP-007",
+      "validation_evidence": "Governance, INV-021"
+    },
+    {
+      "id": "skill-frontend-design",
+      "name": "Frontend Design",
+      "version": "1.0.0",
+      "status": "promoted",
+      "description": "Produces production-grade frontend interfaces",
+      "required_knowledge": [],
+      "required_sop": [],
+      "dependencies": [],
+      "input_types": ["requirements", "context"],
+      "output_types": ["design_system", "component_library"],
+      "triggers": ["frontend_task", "ui_requirement", "visualization"],
+      "context_contributions": {
+        "instructions": "Apply frontend-design skill for distinctive, production-grade interfaces",
+        "workflow": ["Understand context", "Define aesthetic direction", "Implement with care"],
+        "constraints": ["Avoid generic AI aesthetics", "Professional quality"],
+        "examples": ["INV-013 SCADA UI", "Dashboard design"]
+      },
+      "source": "frontend-design skill",
+      "validation_evidence": "INV-014, INV-016"
+    }
+  ],
+  "statuses": {
+    "draft": "Working version, not ready for production",
+    "experimental": "Being tested, may change",
+    "validated": "Tested and proven",
+    "promoted": "Approved for production use",
+    "deprecated": "Should not be used for new work",
+    "archived": "No longer maintained"
+  }
+}

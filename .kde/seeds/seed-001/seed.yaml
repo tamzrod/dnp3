@@ -1,0 +1,93 @@
+# Seed Manifest: Seed-001
+
+**Seed ID**: SEED-001
+**Name**: KDE Foundation Seed
+**Version**: 1.0.0
+**Codename**: Genesis
+**Status**: FROZEN
+
+---
+
+## Identification
+
+| Field | Value |
+|-------|-------|
+| **Seed ID** | SEED-001 |
+| **Name** | KDE Foundation Seed |
+| **Version** | 1.0.0 |
+| **Codename** | Genesis |
+| **Status** | FROZEN |
+| **Created** | 2026-07-20 |
+| **Frozen** | 2026-07-20 |
+
+---
+
+## Description
+
+Seed-001 contains the immutable reasoning DNA of KDE. This seed established:
+- The 5 Core Principles of AI behavior
+- The Scientific Learning Loop architecture
+- The Evidence Model
+- The Knowledge Model
+- The Confidence Model
+- The Ambiguity Handling principles
+
+---
+
+## Compatible Engines
+
+| Engine ID | Version | Compatible | Notes |
+|-----------|---------|------------|-------|
+| KDE-ENGINE-001 | 0.1.0 | YES | Alpha (Historical) |
+| KDE-ENGINE-002 | 0.1.0 | YES | Beta (Active) |
+| KDE-ENGINE-003 | 0.1.0 | YES | Gamma (Experimental) |
+
+All current engines are compatible with Seed-001.
+
+---
+
+## Seed Contents
+
+| Directory | Contents |
+|-----------|----------|
+| principles/ | 5 Core Principles of AI behavior |
+| scientific-loop/ | Learning loop architecture |
+| evidence-model/ | Evidence definition and standards |
+| knowledge-model/ | Knowledge definition and standards |
+| confidence-model/ | Confidence assignment methodology |
+| ambiguity/ | Ambiguity handling principles |
+
+---
+
+## Immutability
+
+**Seed-001 is FROZEN and shall never be modified.**
+
+If KDE reasoning fundamentally changes, a new Seed (Seed-002) shall be created.
+
+---
+
+## Versioning
+
+Seeds use semantic versioning (MAJOR.MINOR.PATCH):
+
+| Component | Description |
+|-----------|-------------|
+| **MAJOR** | Fundamental reasoning changes |
+| **MINOR** | Additive reasoning elements |
+| **PATCH** | Clarifications |
+
+---
+
+## Provenance
+
+Seed-001 was created by migrating foundational artifacts from:
+- /governance/PRINCIPLES.md
+- /laboratory/scientific-loop.md
+- /knowledge/*.md
+- /research/*.md
+
+---
+
+**Status**: FROZEN
+**Modifiable**: NO

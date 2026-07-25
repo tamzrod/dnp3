@@ -1,0 +1,106 @@
+# Metadata Schema Definition
+
+**Version**: 1.0
+**Validator**: MetadataValidator v0.1.0
+**Reference**: LAB-035
+
+---
+
+## Required Fields
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| experiment_id | string | Unique experiment identifier (LAB-NNN) | LAB-031 |
+| title | string | Human-readable title | Multi-Engine Rubik's Cube Benchmark |
+| status | enum | Experiment status | COMPLETE |
+| created | timestamp | Creation timestamp (ISO8601) | 2026-07-22T12:00:00Z |
+
+---
+
+## Optional Fields
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| updated | timestamp | Last update timestamp | 2026-07-22T14:00:00Z |
+| engine | string | Engine used | KDE-ENGINE-002 |
+| seed | string | Seed used | SEED-001 |
+| category | string | Experiment category | Reasoning Benchmark |
+| tags | array | Experiment tags | [benchmark, rubiks, reasoning] |
+| notes | string | Additional notes | Additional context |
+
+---
+
+## Status Enum Values
+
+Valid values for the `status` field:
+
+- DRAFT
+- ACTIVE
+- COMPLETE
+- SUSPENDED
+- ARCHIVED
+
+---
+
+## Validation Rules
+
+### Rule 1: required_fields
+
+**Severity**: ERROR
+
+All required fields must be present.
+
+### Rule 2: field_types
+
+**Severity**: ERROR
+
+Field values must match expected types.
+
+### Rule 3: experiment_id_format
+
+**Severity**: ERROR
+
+Experiment ID must match pattern: `^LAB-\d{3}$`
+
+### Rule 4: timestamp_format
+
+**Severity**: ERROR
+
+Timestamp fields must be ISO8601 format.
+
+### Rule 5: status_enum
+
+**Severity**: ERROR
+
+Status must be one of the valid enum values.
+
+---
+
+## Example Valid Metadata
+
+```yaml
+experiment_id: LAB-031
+title: Multi-Engine Rubik's Cube Reasoning Benchmark
+status: COMPLETE
+created: 2026-07-22T12:00:00Z
+engine: KDE-ENGINE-002 (Beta)
+seed: SEED-001 (Genesis)
+category: Reasoning Benchmark
+```
+
+---
+
+## Example Invalid Metadata
+
+```yaml
+experiment_id: lab-31  # Invalid format
+title: Test
+status: FINISHED  # Invalid status
+created: 2026-07-22  # Missing time component
+# Missing required fields
+```
+
+---
+
+*Schema Version*: 1.0
+*Last Updated*: 2026-07-22

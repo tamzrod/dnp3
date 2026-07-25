@@ -1,0 +1,67 @@
+# Consensus Protocol Synthesis Engine
+
+**Engine ID**: CONSENSUS-SYNTH-001
+**Version**: 1.0.0
+**Date**: 2026-07-20
+**Status**: ACTIVE
+
+---
+
+## Overview
+
+This engine synthesizes distributed consensus protocols without teaching existing algorithms (Raft, Paxos, etc.). It only provides problem constraints and expects the engine to independently discover solutions.
+
+---
+
+## Seed Knowledge (Problem Constraints Only)
+
+- Distributed nodes
+- Crash failures
+- Leader election required
+- Network partitions
+- Majority agreement
+- Message loss
+- Clock uncertainty
+- Byzantine behavior (optional)
+
+No algorithm names, no implementation hints, no protocol descriptions.
+
+---
+
+## Capabilities
+
+- Generates novel consensus protocol architectures
+- Leader election mechanisms
+- Voting models
+- Log replication strategies
+- Recovery mechanisms
+- Membership changes
+- Failure detection
+- Simulation with randomized failures
+
+---
+
+## Execution
+
+```bash
+python3 -m consensus_synth --run-id=RUN-001 --seed=1 --output-dir=./runs
+python3 -m consensus_synth --batch=100
+```
+
+---
+
+## Output
+
+Each synthesis produces:
+- Protocol specification (Markdown)
+- Discovered features list
+- Simulation results (3, 5, 7, 9 nodes)
+- Results JSON
+- Summary report
+
+---
+
+## Document Status
+
+**ACTIVE**: Engine ready for execution
+

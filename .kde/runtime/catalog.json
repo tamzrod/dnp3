@@ -1,0 +1,156 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-07-21T00:00:00Z",
+  "artifacts": [
+    {
+      "id": "KDE-001",
+      "title": "Knowledge Definition",
+      "domain": "foundational",
+      "source": "RS-001",
+      "status": "validated",
+      "keywords": ["knowledge", "definition", "understanding", "actionable"],
+      "relationships": [],
+      "summary": "Engineering knowledge is actionable understanding that enables effective practice within constraints.",
+      "created": "2026-07-19"
+    },
+    {
+      "id": "KDE-002",
+      "title": "Evidence Definition",
+      "domain": "foundational",
+      "source": "RS-002",
+      "status": "validated",
+      "keywords": ["evidence", "observation", "verification", "proof"],
+      "relationships": ["KDE-001"],
+      "summary": "Evidence is observable, verifiable information used to support or refute claims.",
+      "created": "2026-07-19"
+    },
+    {
+      "id": "KDE-003",
+      "title": "Ambiguity Definition",
+      "domain": "foundational",
+      "source": "RS-003",
+      "status": "validated",
+      "keywords": ["ambiguity", "uncertainty", "clarity", "interpretation"],
+      "relationships": [],
+      "summary": "Ambiguity exists when language or concepts permit multiple valid interpretations.",
+      "created": "2026-07-19"
+    },
+    {
+      "id": "KDE-ARCH-001",
+      "title": "Hybrid Investigation-Experiment Model",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["investigation", "experiment", "hybrid", "model"],
+      "relationships": ["KDE-ARCH-004"],
+      "summary": "Architecture C combines investigation and experiment modes for optimal knowledge discovery.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-002",
+      "title": "Single Ownership Rule",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["ownership", "rule", "artifact", "responsibility"],
+      "relationships": [],
+      "summary": "Each artifact shall have exactly one owner responsible for its lifecycle.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-003",
+      "title": "Artifact Lifecycle",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["lifecycle", "states", "transitions", "artifact"],
+      "relationships": [],
+      "summary": "Artifacts move through defined states: draft, review, approved, archived.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-004",
+      "title": "Scientific Workflow",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["scientific", "method", "workflow", "hypothesis"],
+      "relationships": ["KDE-ARCH-001"],
+      "summary": "KDE applies the scientific method to knowledge discovery.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-005",
+      "title": "Traceability Model",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["traceability", "links", "bidirectional", "relationships"],
+      "relationships": [],
+      "summary": "Bidirectional links enable complete traceability between artifacts.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-006",
+      "title": "Metadata Standard",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["metadata", "standard", "fields", "format"],
+      "relationships": [],
+      "summary": "All artifacts require mandatory metadata fields for identification and tracking.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-007",
+      "title": "Timestamp Standard",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["timestamp", "iso-8601", "standard", "datetime"],
+      "relationships": [],
+      "summary": "All timestamps shall use ISO-8601 format with second precision.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-008",
+      "title": "Knowledge Promotion Rules",
+      "domain": "architecture",
+      "source": "RS",
+      "status": "established",
+      "keywords": ["promotion", "knowledge", "rules", "laboratory"],
+      "relationships": [],
+      "summary": "Evidence is promoted to knowledge through a defined governance process.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-009",
+      "title": "SCADA Architecture Patterns",
+      "domain": "scada",
+      "source": "INV-013",
+      "status": "candidate",
+      "keywords": ["scada", "architecture", "patterns", "microservices", "realtime"],
+      "relationships": ["KDE-ARCH-010"],
+      "summary": "13 architectural patterns for real-time SCADA platforms.",
+      "created": "2026-07-20"
+    },
+    {
+      "id": "KDE-ARCH-010",
+      "title": "SCADA Design Tradeoffs",
+      "domain": "scada",
+      "source": "INV-013",
+      "status": "candidate",
+      "keywords": ["scada", "tradeoffs", "design", "decisions"],
+      "relationships": ["KDE-ARCH-009"],
+      "summary": "8 design tradeoffs analyzed for SCADA platform architecture.",
+      "created": "2026-07-20"
+    }
+  ],
+  "domains": [
+    "foundational",
+    "architecture",
+    "scada",
+    "methodology",
+    "governance"
+  ]
+}
