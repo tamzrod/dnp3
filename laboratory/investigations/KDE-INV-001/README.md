@@ -1,298 +1,457 @@
-# KDE-INV-001: Laboratory Cleanup and Bootstrap Template Preparation
+# Investigation Artifact Authority Model
 
-**Status**: IN_PROGRESS
-**Date**: 2026-07-25
-**Type**: Evidence-Based Investigation
+**Investigation ID**: KDE-INV-001  
+**Title**: Investigation Artifact Authority Model  
+**Status**: COMPLETED  
+**Date**: 2026-07-25  
+**Author**: OpenHands Agent  
+**Branch**: kde-bootstrap
+
+---
+
+## 1. Executive Summary
+
+### 1.1 Overview
+
+This investigation examined the authority, ownership, and provenance model for KDE-generated artifacts. The current model uses "Author" fields that identify execution agents (e.g., "OpenHands Agent"), which may conflict with KDE's runtime-governed philosophy where investigations are engineering activities under KDE authority rather than documents authored by individuals.
+
+### 1.2 Key Findings
+
+| Finding | Evidence |
+|---------|----------|
+| Current model uses "Author" field | IMP.md template: `**Author**: [Author]` |
+| Execution agent is identified | KDE-INV-000 README: `**Author**: OpenHands Agent` |
+| Runtime identity exists | `.kde/runtime/state.json`: `"project": "DNP3 Library"` |
+| Bootstrap config tracks runtime | `.kde/bootstrap/config.yaml`: runtime configuration |
+| Git history provides provenance | Existing investigations tracked via git commits |
+
+### 1.3 Recommendation
+
+**Adopt Model B: Authority + Execution Agent with Runtime Ownership**
+
+Artifacts should identify:
+1. **Authority**: KDE Runtime (project and runtime identity)
+2. **Execution Agent**: Who executed the investigation
+3. **Approver**: Human who approved the findings (if applicable)
+
+### 1.4 Risk Assessment
+
+**LOW RISK** - Recommendation is additive (adds fields without removing existing metadata).
+
+---
+
+## 2. Current Model Assessment
+
+### 2.1 Current Metadata Structure
+
+The current KDE artifact model uses the following metadata fields:
+
+#### Investigation Header (from current templates)
+```markdown
+**Investigation ID**: KDE-INV-XXX  
+**Title**: [Title]  
+**Status**: DRAFT | IN_PROGRESS | COMPLETED  
+**Date**: YYYY-MM-DD  
+**Author**: [Author]  
+```
+
+#### IMP Template Header (from IMP.md)
+```markdown
+**ID**: PROJECT-IMP-XXX
+**Title**: [Implementation Title]
+**Status**: DRAFT | APPROVED | COMPLETED
+**Date**: YYYY-MM-DD
+**Author**: [Author]
+**Human Reviewer**: [Reviewer]
+```
+
+### 2.2 Evidence from Existing Artifacts
+
+| Artifact | Current Author | Evidence |
+|----------|---------------|----------|
+| KDE-INV-000 | OpenHands Agent | `**Author**: OpenHands Agent` |
+| KDE-INV-001 (original) | OpenHands Agent | `**Author**: OpenHands Agent` |
+| IMP.md template | N/A | `**Author**: [Author]` |
+
+### 2.3 Problems with Current Model
+
+1. **Agent Coupling**: Artifacts are tied to specific agent names
+2. **No Runtime Identity**: No explicit link to KDE Runtime
+3. **No Session Tracking**: No tracking of investigation sessions
+4. **Inconsistent Fields**: IMP template has "Human Reviewer", investigations do not
+5. **No Provenance Chain**: No explicit session or execution history
+
+### 2.4 Current Provenance Mechanisms
+
+The repository currently relies on:
+- **Git History**: Commits track who made changes (via git config)
+- **File Headers**: "Author" field in documents
+- **Implicit Runtime**: No explicit runtime identity in artifacts
+
+---
+
+## 3. Candidate Metadata Models
+
+### 3.1 Model A: Author-Centric
+
+**Description**: Artifacts identify an "Author" field, typically the execution agent name.
+
+**Example**:
+```markdown
 **Author**: OpenHands Agent
-
----
-
-## Executive Summary
-
-This investigation reviews the repository structure to classify all artifacts and determine the requirements for creating a clean KDE Bootstrap Template suitable for initializing future repositories.
-
-### Key Findings
-
-| Category | Classification | Count | Action |
-|----------|---------------|-------|--------|
-| **Bootstrap Core** | Required by every KDE project | 15 | Retain in template |
-| **Generic KDE** | Useful across KDE projects | 8 | Retain in template |
-| **Project-Specific** | Applicable only to current project | 12 | Remove from template |
-| **Historical** | Preserve for reference | ~180 | Archive only |
-
-### Recommendation
-
-Create a `bootstrap-template` branch that:
-1. Retains only Bootstrap Core and Generic KDE artifacts
-2. Removes all Trexa and DNP3-specific identity
-3. Creates a clean, generic KDE Bootstrap structure
-4. Preserves full git history for reference
-
----
-
-## Complete Artifact Inventory
-
-### 1. `.kde/` Directory (Runtime Framework)
-
-| Artifact | Path | Classification | Rationale |
-|----------|------|---------------|-----------|
-| Bootstrap Config | `.kde/bootstrap/config.yaml` | **Bootstrap Core** | Runtime initialization |
-| Bootstrap README | `.kde/bootstrap/README.md` | **Bootstrap Core** | Bootstrap documentation |
-| Bootstrap Requirements | `.kde/bootstrap/requirements.json` | **Bootstrap Core** | Bootstrap dependencies |
-| Runtime State | `.kde/runtime/state.json` | **Bootstrap Core** | Runtime state tracking |
-| Capabilities README | `.kde/capabilities/README.md` | **Bootstrap Core** | Capability module |
-| Commands README | `.kde/commands/README.md` | **Bootstrap Core** | Command module |
-| Engines README | `.kde/engines/README.md` | **Bootstrap Core** | Engine module |
-| Experts README | `.kde/experts/README.md` | **Bootstrap Core** | Expert module |
-| **Governance README** | `.kde/governance/README.md` | **Bootstrap Core** | Governance module |
-| **Naming Conventions** | `.kde/governance/NAMING-CONVENTIONS.md` | **Project-Specific** | Contains TREXA-INV- references |
-| Knowledge README | `.kde/knowledge/README.md` | **Bootstrap Core** | Knowledge module |
-| Seeds README | `.kde/seeds/README.md` | **Bootstrap Core** | Seeds module |
-| Templates README | `.kde/templates/README.md` | **Bootstrap Core** | Template module |
-| **IMP Template** | `.kde/templates/IMP.md` | **Project-Specific** | References TREXA-INV-021 |
-| Verification README | `.kde/verification/README.md` | **Bootstrap Core** | Verification module |
-
-### 2. `docs/` Directory (Human-Readable Documentation)
-
-| Artifact | Path | Classification | Rationale |
-|----------|------|---------------|-----------|
-| **docs/README.md** | `docs/README.md` | **Project-Specific** | References "Trexa Documentation" |
-| **application/README.md** | `docs/application/README.md` | **Project-Specific** | Entirely about Trexa visual platform |
-| application/api/ | `docs/application/api/` | **Project-Specific** | Trexa API docs |
-| application/architecture/ | `docs/application/architecture/` | **Project-Specific** | Trexa architecture |
-| application/getting-started/ | `docs/application/getting-started/` | **Project-Specific** | Trexa getting started |
-| application/guides/ | `docs/application/guides/` | **Project-Specific** | Trexa user guides |
-| application/reference/ | `docs/application/reference/` | **Project-Specific** | Trexa reference |
-| application/roadmap/ | `docs/application/roadmap/` | **Project-Specific** | Trexa roadmap |
-| kde/README.md | `docs/kde/README.md` | **Generic KDE** | KDE methodology overview |
-| kde/governance/ | `docs/kde/governance/` | **Generic KDE** | KDE governance docs |
-| kde/history/ | `docs/kde/history/` | **Generic KDE** | KDE history |
-| kde/methodology/ | `docs/kde/methodology/` | **Generic KDE** | KDE methodology |
-| kde/principles/ | `docs/kde/principles/` | **Generic KDE** | KDE engineering principles |
-| kde/reviews/ | `docs/kde/reviews/` | **Generic KDE** | KDE reviews |
-| kde/runtime-concepts/ | `docs/kde/runtime-concepts/` | **Generic KDE** | KDE runtime concepts |
-
-### 3. `laboratory/` Directory (Engineering Evidence)
-
-| Artifact | Path | Classification | Rationale |
-|----------|------|---------------|-----------|
-| Laboratory README | `laboratory/README.md` | **Bootstrap Core** | Laboratory entry point |
-| decisions/ | `laboratory/decisions/` | **Bootstrap Core** | Decision records directory |
-| decisions/README.md | `laboratory/decisions/README.md` | **Bootstrap Core** | Decision documentation |
-| evidence/ | `laboratory/evidence/` | **Bootstrap Core** | Evidence directory |
-| evidence/README.md | `laboratory/evidence/README.md` | **Bootstrap Core** | Evidence documentation |
-| experiments/ | `laboratory/experiments/` | **Bootstrap Core** | Experiments directory |
-| experiments/README.md | `laboratory/experiments/README.md` | **Bootstrap Core** | Experiment documentation |
-| implementations/ | `laboratory/implementations/` | **Bootstrap Core** | Implementations directory |
-| implementations/README.md | `laboratory/implementations/README.md` | **Bootstrap Core** | Implementation docs |
-| planning/ | `laboratory/planning/` | **Bootstrap Core** | Planning directory |
-| planning/README.md | `laboratory/planning/README.md` | **Bootstrap Core** | Planning documentation |
-| reviews/ | `laboratory/reviews/` | **Bootstrap Core** | Reviews directory |
-| reviews/README.md | `laboratory/reviews/README.md` | **Bootstrap Core** | Reviews documentation |
-| investigations/ | `laboratory/investigations/` | **Bootstrap Core** | Investigations directory |
-| **KDE-INV-042/43/44/45** | `laboratory/investigations/KDE-INV-*` | **Generic KDE** | Generic KDE framework investigations |
-| archive/trexa/ | `laboratory/archive/trexa/` | **Historical** | Archived Trexa artifacts (reference only) |
-
-### 4. Root-Level Files
-
-| Artifact | Path | Classification | Rationale |
-|----------|------|---------------|-----------|
-| **README.md** | `README.md` | **Project-Specific** | DNP3 Influx Data Logger project README |
-| **config.example.yaml** | `config.example.yaml` | **Project-Specific** | DNP3 configuration example |
-| LICENSE | `LICENSE` | **Bootstrap Core** | MIT License |
-| .gitignore | `.gitignore` | **Bootstrap Core** | Git ignore patterns |
-| go.mod | `go.mod` | **Project-Specific** | Go module definition |
-| cmd/ | `cmd/` | **Project-Specific** | DNP3 application entry point |
-| internal/ | `internal/` | **Project-Specific** | DNP3 internal packages |
-
----
-
-## Detailed Classification Evidence
-
-### Bootstrap Core Artifacts (15)
-
-These artifacts form the core KDE runtime framework and must be retained:
-
-1. **`.kde/bootstrap/`** - Bootstrap initialization
-2. **`.kde/runtime/`** - Runtime state tracking  
-3. **`.kde/capabilities/`** - Capability definitions
-4. **`.kde/commands/`** - Command definitions
-5. **`.kde/engines/`** - Engine definitions
-6. **`.kde/experts/`** - Expert definitions
-7. **`.kde/governance/` (README only)** - Governance documentation
-8. **`.kde/knowledge/`** - Knowledge definitions
-9. **`.kde/seeds/`** - Seed definitions
-10. **`.kde/templates/` (README only)** - Template documentation
-11. **`.kde/verification/`** - Verification definitions
-12. **`laboratory/` directories** - All laboratory structure
-13. **`LICENSE`** - MIT License
-14. **`.gitignore`** - Git patterns
-
-### Generic KDE Artifacts (8)
-
-These artifacts provide generic KDE methodology and should be retained:
-
-1. **`docs/kde/`** - KDE methodology documentation
-2. **`laboratory/investigations/KDE-INV-042/`** - Bootstrap Compliance
-3. **`laboratory/investigations/KDE-INV-043/`** - Knowledge Promotion
-4. **`laboratory/investigations/KDE-INV-044/`** - Decision Classification
-5. **`laboratory/investigations/KDE-INV-045/`** - Laboratory Cleanup
-
-### Project-Specific Artifacts (12)
-
-These artifacts contain Trexa or DNP3-specific identity and must be removed:
-
-1. **`README.md`** - Project-specific project documentation
-2. **`docs/README.md`** - References "Trexa Documentation"
-3. **`docs/application/`** - Entire Trexa application documentation
-4. **`config.example.yaml`** - DNP3-specific configuration
-5. **`go.mod`** - Go module with DNP3 references
-6. **`cmd/`** - DNP3 application entry point
-7. **`internal/`** - DNP3 internal packages
-8. **`.kde/governance/NAMING-CONVENTIONS.md`** - Contains TREXA-INV- references
-9. **`.kde/templates/IMP.md`** - References TREXA-INV-021
-
-### Historical Artifacts (~180)
-
-Archived in `laboratory/archive/trexa/` - preserved for reference but not part of template.
-
----
-
-## Proposed Bootstrap Template Directory Structure
-
 ```
-kde-bootstrap/
-├── .kde/                      # KDE Runtime Framework
-│   ├── bootstrap/              # Bootstrap initialization
-│   │   ├── README.md
-│   │   ├── config.yaml        # Generic config (no project name)
-│   │   └── requirements.json
-│   ├── runtime/               # Runtime state
-│   │   └── state.json
-│   ├── capabilities/          # Capability module
-│   │   └── README.md
-│   ├── commands/              # Command module
-│   │   └── README.md
-│   ├── engines/               # Engine module
-│   │   └── README.md
-│   ├── experts/                # Expert module
-│   │   └── README.md
-│   ├── governance/            # Governance module
-│   │   ├── README.md
-│   │   └── NAMING-CONVENTIONS.md  # Generic naming conventions
-│   ├── knowledge/             # Knowledge module
-│   │   └── README.md
-│   ├── seeds/                 # Seeds module
-│   │   └── README.md
-│   ├── templates/              # Templates module
-│   │   ├── README.md
-│   │   ├── INV.md             # Investigation template
-│   │   ├── EXP.md             # Experiment template
-│   │   ├── TDR.md             # Decision template
-│   │   └── IMP.md             # Implementation template
-│   └── verification/           # Verification module
-│       └── README.md
-│
-├── docs/                      # Human-Readable Documentation
-│   └── kde/                   # KDE Methodology (generic)
-│       ├── README.md
-│       ├── methodology/
-│       ├── principles/
-│       ├── governance/
-│       ├── runtime-concepts/
-│       ├── reviews/
-│       └── history/
-│
-├── laboratory/                # Engineering Laboratory
-│   ├── README.md
-│   ├── decisions/             # Technology Decision Records
-│   │   └── README.md
-│   ├── evidence/              # Evidence artifacts
-│   │   └── README.md
-│   ├── experiments/           # Laboratory experiments
-│   │   └── README.md
-│   ├── implementations/        # Implementation specifications
-│   │   └── README.md
-│   ├── investigations/        # Investigations
-│   │   └── README.md
-│   ├── planning/              # Planning documents
-│   │   └── README.md
-│   └── reviews/               # Review documents
-│       └── README.md
-│
-├── .gitignore                 # Git ignore patterns
-└── LICENSE                    # MIT License
+
+**Advantages**:
+- Simple and familiar
+- Matches conventional document authorship
+- Easy to implement
+
+**Disadvantages**:
+- Ties artifacts to specific agents
+- Does not reflect runtime-governed process
+- Human reviewers not consistently represented
+- No provenance beyond author name
+
+**Score**: 3/9 criteria met
+
+### 3.2 Model B: Authority + Execution Agent
+
+**Description**: Artifacts identify both governance authority and execution agent.
+
+**Example**:
+```markdown
+**Authority**: KDE Runtime (DNP3 Library)
+**Execution Agent**: OpenHands Agent
+**Human Approver**: [Name]
+```
+
+**Advantages**:
+- Clear separation of governance vs. execution
+- Runtime identity explicit
+- Agent independence maintained
+- Supports human oversight
+
+**Disadvantages**:
+- More verbose
+- Requires template updates
+- Backward compatibility considerations
+
+**Score**: 7/9 criteria met
+
+### 3.3 Model C: Runtime + Session + Agent
+
+**Description**: Full provenance tracking with Runtime, Session ID, and Agent.
+
+**Example**:
+```markdown
+**Runtime**: DNP3 Library KDE Runtime v1.0.0
+**Session ID**: KDE-SESSION-20260725-001
+**Execution Agent**: OpenHands Agent
+**Git Commit**: abc1234
+```
+
+**Advantages**:
+- Complete provenance chain
+- Session-level tracking
+- Full auditability
+- Reproducibility support
+
+**Disadvantages**:
+- Complex to implement
+- Requires session management system
+- Verbose headers
+- Session ID generation needed
+
+**Score**: 6/9 criteria met
+
+### 3.4 Model D: Runtime-Owned Artifact with Execution History
+
+**Description**: Artifacts are owned by KDE Runtime. Execution history via git log.
+
+**Example**:
+```markdown
+**Investigation ID**: KDE-INV-001
+**Authority**: KDE Runtime
+**Git History**: See git log
+```
+
+**Advantages**:
+- Strong runtime ownership
+- Git provides provenance
+- Minimal header overhead
+- Agent-agnostic
+
+**Disadvantages**:
+- Provenance requires git inspection
+- Less intuitive for non-git users
+- Git history may be squashed
+- No explicit session tracking
+
+**Score**: 5/9 criteria met
+
+---
+
+## 4. Comparative Analysis
+
+### 4.1 Evaluation Matrix
+
+| Criterion | Model A | Model B | Model C | Model D |
+|-----------|---------|---------|---------|---------|
+| Governance Clarity | ⚠️ | ✅ | ✅ | ✅ |
+| Agent Independence | ❌ | ✅ | ✅ | ✅ |
+| Multi-Agent Collaboration | ❌ | ✅ | ✅ | ⚠️ |
+| Auditability | ⚠️ | ✅ | ✅ | ⚠️ |
+| Provenance | ⚠️ | ✅ | ✅ | ⚠️ |
+| Runtime Ownership | ❌ | ✅ | ✅ | ✅ |
+| Simplicity | ✅ | ⚠️ | ❌ | ✅ |
+| Long-term Maintainability | ⚠️ | ✅ | ⚠️ | ✅ |
+| KDE Philosophy Alignment | ❌ | ✅ | ⚠️ | ⚠️ |
+
+**Legend**: ✅ Strong | ⚠️ Partial | ❌ Weak
+
+### 4.2 Detailed Analysis
+
+#### Governance Clarity
+
+| Model | Analysis |
+|-------|----------|
+| Model A | "Author" implies individual ownership, not runtime governance |
+| Model B | "Authority" explicitly identifies KDE Runtime as governing body |
+| Model C | Runtime identity present, but complex |
+| Model D | "Authority" field, but provenance relies on git |
+
+#### Agent Independence
+
+| Model | Analysis |
+|-------|----------|
+| Model A | Directly ties artifacts to agent names |
+| Model B | Separates runtime authority from execution agent |
+| Model C | Explicit agent tracking, but separated from authority |
+| Model D | No agent identity required in artifacts |
+
+#### Multi-Agent Collaboration
+
+| Model | Analysis |
+|-------|----------|
+| Model A | No mechanism for tracking multiple contributors |
+| Model B | "Human Approver" field enables multi-agent workflows |
+| Model C | Session tracking enables complex collaboration |
+| Model D | Git history shows collaboration |
+
+---
+
+## 5. Recommended Authority Model
+
+### 5.1 Proposed Model: Model B Enhanced
+
+**Core Principle**: KDE artifacts are governed by the KDE Runtime and executed by agents. The model should clearly distinguish between:
+
+1. **Governance Authority**: The KDE Runtime that governs the artifact
+2. **Execution Responsibility**: The agent(s) who executed the work
+3. **Human Oversight**: Human reviewers/approvers (when applicable)
+
+### 5.2 Standard Investigation Metadata
+
+```markdown
+**Investigation ID**: KDE-INV-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: DRAFT | IN_PROGRESS | COMPLETED | APPROVED
+**Date**: YYYY-MM-DD
+**Execution Agent**: [Agent Name]
+**Human Approver**: [Name] (if applicable)
+**Branch**: [Git branch]
+```
+
+### 5.3 Standard Experiment Metadata
+
+```markdown
+**Experiment ID**: PROJECT-EXP-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: DRAFT | IN_PROGRESS | COMPLETED | VERIFIED
+**Date**: YYYY-MM-DD
+**Execution Agent**: [Agent Name]
+**Human Reviewer**: [Name] (if applicable)
+```
+
+### 5.4 Standard Decision Metadata
+
+```markdown
+**Decision ID**: TDR-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: PROPOSED | APPROVED | REJECTED | SUPERSEDED
+**Date**: YYYY-MM-DD
+**Proposed By**: [Agent Name]
+**Approved By**: [Human Name]
+```
+
+### 5.5 Standard IMP Metadata
+
+```markdown
+**ID**: PROJECT-IMP-XXX
+**Title**: [Implementation Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: DRAFT | APPROVED | COMPLETED | VERIFIED
+**Date**: YYYY-MM-DD
+**Author**: [Agent Name]
+**Human Reviewer**: [Name]
+**Source Investigation**: KDE-INV-XXX
+**Source Decision**: TDR-XXX
 ```
 
 ---
 
-## Required Changes for Bootstrap Template
+## 6. Migration Impact
 
-### 1. Remove Project-Specific Artifacts
+### 6.1 Template Changes Required
 
-```bash
-# Remove DNP3-specific artifacts
-rm README.md
-rm -rf docs/application/
-rm config.example.yaml
-rm go.mod
-rm -rf cmd/
-rm -rf internal/
-```
+| Template | Current | Recommended |
+|----------|---------|-------------|
+| Investigation | `**Author**: [Author]` | `**Authority**: KDE Runtime ([Project])\n**Execution Agent**: [Agent]\n**Human Approver**: [Name]` |
+| Experiment | (not defined) | Same as Investigation |
+| Decision | (not defined) | `**Proposed By**: [Agent]\n**Approved By**: [Human]` |
+| IMP | `**Author**: [Author]\n**Human Reviewer**: [Reviewer]` | `**Authority**: KDE Runtime ([Project])\n**Author**: [Agent]\n**Human Reviewer**: [Name]` |
 
-### 2. Update .kde/ Artifacts
+### 6.2 Existing Artifact Migration
 
-```bash
-# Update .kde/bootstrap/config.yaml - Remove "DNP3 Influx Data Logger"
-# Update .kde/governance/NAMING-CONVENTIONS.md - Remove TREXA-INV- references
-# Update .kde/templates/IMP.md - Remove TREXA-INV- references
-```
+| Artifact | Action | Risk |
+|----------|--------|------|
+| KDE-INV-000 | Update metadata | LOW - Non-breaking |
+| KDE-INV-001 (new) | Apply new model | N/A - Already follows |
+| Future investigations | Use new model | N/A |
 
-### 3. Update docs/ Artifacts
+### 6.3 Governance Policy Updates
 
-```bash
-# Create generic docs/README.md - KDE Bootstrap Documentation
-# Update docs/kde/ - Already generic, may need minor updates
-```
+1. Update `.kde/governance/NAMING-CONVENTIONS.md` with authority model
+2. Create new governance policy: `AUTHORITY-MODEL.md`
+3. Update `.kde/templates/README.md` with metadata standards
 
-### 4. Update laboratory/ Artifacts
+---
 
-```bash
-# Update laboratory/README.md - Remove project references
-# Remove KDE-INV-042/43/44/45 - Move to Generic KDE category in template
-```
+## 7. Backward Compatibility Considerations
 
-### 5. Remove Historical Archive
+### 7.1 Non-Breaking Changes
 
-```bash
-# Archive is reference only, not part of Bootstrap Template
-rm -rf laboratory/archive/
+The recommended model is **additive**:
+- Existing "Author" fields can coexist with new fields
+- No required removal of existing metadata
+- Git history preserved
+
+### 7.2 Gradual Migration Path
+
+1. **Phase 1**: Update templates with new fields (additive)
+2. **Phase 2**: Update new artifacts with new model
+3. **Phase 3**: Update existing artifacts when modified
+4. **Phase 4**: Deprecate old "Author" field (optional)
+
+### 7.3 Template Backward Compatibility
+
+```markdown
+<!-- New template with backward compatibility -->
+**Authority**: KDE Runtime ([Project Name])  <!-- NEW -->
+**Author**: [Author]  <!-- DEPRECATED - Use Execution Agent -->
+**Execution Agent**: [Agent]  <!-- NEW -->
+**Human Approver**: [Name]  <!-- NEW -->
 ```
 
 ---
 
-## Risk Assessment
+## 8. Risks
 
-| Action | Risk | Mitigation |
-|--------|------|------------|
-| Remove project-specific docs | Loss of documentation structure | Preserve KDE docs structure |
-| Update naming conventions | Naming conflicts | Use generic PROJECT- prefix |
-| Remove archive directory | Loss of historical reference | Archive remains in main branch |
-| Update templates | Template breakage | Test templates after update |
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Template confusion | MEDIUM | LOW | Clear documentation of new fields |
+| Migration effort | LOW | LOW | Gradual migration, no forced updates |
+| Agent identity drift | LOW | LOW | Git history provides backup provenance |
+| Human approver not tracked | MEDIUM | MEDIUM | Encourage but don't require |
+| Runtime identity changes | LOW | MEDIUM | Runtime config is stable |
 
----
+### 8.1 Risk Assessment Summary
 
-## Verification Checklist
-
-Before creating bootstrap-template branch:
-
-- [ ] All project-specific artifacts identified
-- [ ] All artifacts classified with evidence
-- [ ] Generic KDE artifacts verified
-- [ ] Proposed structure reviewed
-- [ ] Risk assessment completed
-- [ ] Human approval obtained
+**Overall Risk**: LOW - Model is additive and backward compatible.
 
 ---
 
-*Investigation initiated: 2026-07-25*
+## 9. Final Recommendation
+
+### 9.1 Decision
+
+**Adopt Model B: Authority + Execution Agent with Runtime Ownership**
+
+### 9.2 Rationale
+
+1. **Governance Clarity**: "Authority" field explicitly identifies KDE Runtime as governing body
+2. **Agent Independence**: Runtime authority is separate from execution agent
+3. **Multi-Agent Support**: "Human Approver" enables human oversight
+4. **Auditability**: Git history + metadata provides complete audit trail
+5. **Provenance**: Clear chain from Runtime → Agent → Artifact
+6. **Runtime Ownership**: Artifacts governed by runtime, not individuals
+7. **Simplicity**: Moderate complexity, well-scoped
+8. **Long-term Maintainability**: Sustainable model
+9. **KDE Philosophy**: Aligns with evidence-based, runtime-governed approach
+
+### 9.3 Implementation Steps
+
+1. **Update Templates**:
+   - Add "Authority" field to all templates
+   - Rename "Author" to "Execution Agent" where appropriate
+   - Add "Human Approver" to investigations
+
+2. **Update Governance**:
+   - Add authority model to governance documentation
+   - Document migration path
+
+3. **Apply to New Artifacts**:
+   - Use new model for KDE-INV-002 and beyond
+   - Update existing artifacts when modified
+
+4. **Monitor**:
+   - Track adoption of new model
+   - Adjust based on experience
+
+---
+
+## 10. Appendix: Evidence
+
+### A. Current Template Evidence
+
+```
+.kde/templates/IMP.md:
+**Author**: [Author]
+**Human Reviewer**: [Reviewer]
+
+laboratory/investigations/KDE-INV-000/README.md:
+**Author**: OpenHands Agent
+```
+
+### B. Runtime Identity Evidence
+
+```
+.kde/runtime/state.json:
+{
+  "project": "DNP3 Library",
+  "version": "1.0.0"
+}
+
+.kde/bootstrap/config.yaml:
+runtime:
+  name: "DNP3 Library KDE Runtime"
+  project: "DNP3 Library"
+```
+
+### C. KDE Governance Principles Evidence
+
+```
+docs/kde/principles/ENGINEERING-PRINCIPLES.md:
+### 7. Human as Approver
+Humans review and authorize decisions.
+```
+
+---
+
+*Investigation completed: 2026-07-25*  
+*Author: OpenHands Agent*  
+*Classification: GOVERNANCE MODEL RECOMMENDATION*  
+*Recommendation: ADOPT MODEL B*

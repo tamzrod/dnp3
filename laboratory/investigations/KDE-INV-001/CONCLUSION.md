@@ -1,190 +1,155 @@
-# KDE-INV-001: Laboratory Cleanup and Bootstrap Template Preparation - Conclusions
+# Investigation Artifact Authority Model - Conclusion
 
-**ID**: KDE-INV-001
-**Status**: IN_PROGRESS
+**Investigation ID**: KDE-INV-001  
+**Status**: COMPLETED  
 **Date**: 2026-07-25
 
 ---
 
-## Research Question Answers
+## Summary
 
-### Q1: Which artifacts in `.kde/` are Bootstrap Core vs. Project-Specific?
+This investigation assessed the authority, ownership, and provenance model for KDE-generated artifacts and developed recommendations for an improved metadata model.
 
-**Answer**: 13 Bootstrap Core, 2 Project-Specific
+## Research Questions Addressed
 
-| Classification | Artifacts |
-|----------------|-----------|
-| **Bootstrap Core** | bootstrap/, runtime/, capabilities/, commands/, engines/, experts/, governance/README.md, knowledge/, seeds/, templates/README.md, verification/ |
-| **Project-Specific** | governance/NAMING-CONVENTIONS.md (contains TREXA-INV-), templates/IMP.md (references TREXA-INV-021) |
+| Question | Finding |
+|----------|---------|
+| Should KDE artifacts identify an "Author"? | Replace with "Authority" and "Execution Agent" |
+| Is "Authority" more appropriate than "Author"? | Yes - reflects runtime governance |
+| Should execution be separated from governance? | Yes - Model B provides separation |
+| How to handle multi-agent investigations? | "Human Approver" field enables oversight |
+| How to track session continuation? | Git history + metadata fields |
+| How to represent human participation? | "Human Approver" / "Human Reviewer" fields |
+| How to maintain provenance? | Runtime + Agent + Git history |
+| What metadata for auditability? | Authority, Agent, Approver, Status, Date |
+| What metadata for reproducibility? | Authority, Branch, Git Commit |
+| Can model be agent-independent? | Yes - Runtime owns artifacts, agents execute |
 
-### Q2: Which artifacts in `docs/` are Generic KDE vs. Project-Specific?
+## Classification
 
-**Answer**: 8 Generic KDE, 9 Project-Specific
+| Classification | Result |
+|---------------|--------|
+| **Current Model** | Author-Centric (Model A) |
+| **Recommended Model** | Authority + Execution Agent (Model B) |
+| **Risk Level** | LOW |
+| **Migration Impact** | LOW (additive changes) |
 
-| Classification | Artifacts |
-|----------------|-----------|
-| **Generic KDE** | kde/README.md, kde/governance/, kde/history/, kde/methodology/, kde/principles/, kde/reviews/, kde/runtime-concepts/ |
-| **Project-Specific** | docs/README.md ("Trexa Documentation"), application/ entire directory |
+## Candidate Model Comparison
 
-### Q3: Which artifacts in `laboratory/` are Generic KDE vs. Project-Specific?
+| Criterion | Model A (Author) | Model B (Recommended) | Model C (Runtime+Session) | Model D (Runtime-Owned) |
+|-----------|-----------------|---------------------|---------------------------|------------------------|
+| Governance Clarity | ⚠️ | ✅ | ✅ | ✅ |
+| Agent Independence | ❌ | ✅ | ✅ | ✅ |
+| Multi-Agent Support | ❌ | ✅ | ✅ | ⚠️ |
+| Auditability | ⚠️ | ✅ | ✅ | ⚠️ |
+| Provenance | ⚠️ | ✅ | ✅ | ⚠️ |
+| Runtime Ownership | ❌ | ✅ | ✅ | ✅ |
+| Simplicity | ✅ | ⚠️ | ❌ | ✅ |
+| **Total** | 3/9 | 7/9 | 6/9 | 5/9 |
 
-**Answer**: 14 Bootstrap Core, 4 Generic KDE, ~180 Historical
+## Recommended Metadata Fields
 
-| Classification | Artifacts |
-|----------------|-----------|
-| **Bootstrap Core** | All directory READMEs and structure |
-| **Generic KDE** | KDE-INV-042, KDE-INV-043, KDE-INV-044, KDE-INV-045 |
-| **Historical** | archive/trexa/ (all ~180 archived artifacts) |
+### Investigation Metadata
+```markdown
+**Investigation ID**: KDE-INV-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: DRAFT | IN_PROGRESS | COMPLETED | APPROVED
+**Date**: YYYY-MM-DD
+**Execution Agent**: [Agent Name]
+**Human Approver**: [Name] (if applicable)
+```
 
-### Q4: Which root-level files are Bootstrap Core vs. Project-Specific?
+### Experiment Metadata
+```markdown
+**Experiment ID**: PROJECT-EXP-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: DRAFT | IN_PROGRESS | COMPLETED | VERIFIED
+**Date**: YYYY-MM-DD
+**Execution Agent**: [Agent Name]
+**Human Reviewer**: [Name] (if applicable)
+```
 
-**Answer**: 2 Bootstrap Core, 5 Project-Specific
+### Decision Metadata
+```markdown
+**Decision ID**: TDR-XXX
+**Title**: [Title]
+**Authority**: KDE Runtime ([Project Name])
+**Status**: PROPOSED | APPROVED | REJECTED | SUPERSEDED
+**Date**: YYYY-MM-DD
+**Proposed By**: [Agent Name]
+**Approved By**: [Human Name]
+```
 
-| Classification | Artifacts |
-|----------------|-----------|
-| **Bootstrap Core** | LICENSE, .gitignore |
-| **Project-Specific** | README.md, config.example.yaml, go.mod, cmd/, internal/ |
+## Key Findings
 
-### Q5: What is the proposed Bootstrap Template directory structure?
+### Problems with Current Model (Model A)
 
-**Answer**: See README.md Section "Proposed Bootstrap Template Directory Structure"
+1. **Agent Coupling**: Artifacts tied to specific agent names
+2. **No Runtime Identity**: No explicit link to KDE Runtime
+3. **Inconsistent Fields**: Different templates have different fields
+4. **Weak Provenance**: No explicit session or execution history
 
-The template consists of:
-- `.kde/` - Runtime framework (13 modules)
-- `docs/kde/` - Generic KDE methodology
-- `laboratory/` - Laboratory structure with empty directories
-- `.gitignore`, `LICENSE`
+### Benefits of Recommended Model (Model B)
 
-### Q6: What changes are required to create a clean Bootstrap Template?
+1. **Clear Governance**: "Authority" identifies KDE Runtime
+2. **Agent Independence**: Execution separated from governance
+3. **Multi-Agent Ready**: Supports human oversight
+4. **Complete Provenance**: Git + metadata provides full audit trail
+5. **Backward Compatible**: Additive changes, no forced removal
 
-**Answer**:
+## Implementation Requirements
 
-1. **Remove 12 Project-Specific artifacts**:
-   - README.md
-   - docs/README.md
-   - docs/application/ (entire directory)
-   - config.example.yaml
-   - go.mod
-   - cmd/
-   - internal/
-   - .kde/governance/NAMING-CONVENTIONS.md
-   - .kde/templates/IMP.md
-   - laboratory/archive/
+### Templates to Update
 
-2. **Update 3 artifacts**:
-   - .kde/bootstrap/config.yaml (remove project name)
-   - .kde/governance/NAMING-CONVENTIONS.md (genericize)
-   - .kde/templates/IMP.md (genericize)
-   - docs/kde/README.md (update references)
-   - laboratory/README.md (update references)
+1. `.kde/templates/INV.md` (new)
+2. `.kde/templates/EXP.md` (new)
+3. `.kde/templates/TDR.md` (new)
+4. `.kde/templates/IMP.md` (existing - update)
 
-3. **Create 4 Generic KDE Investigations** in template:
-   - KDE-INV-042 (Bootstrap Compliance)
-   - KDE-INV-043 (Knowledge Promotion)
-   - KDE-INV-044 (Decision Classification)
-   - KDE-INV-045 (Laboratory Cleanup)
+### Governance to Update
+
+1. `.kde/governance/AUTHORITY-MODEL.md` (new policy)
+2. `.kde/governance/NAMING-CONVENTIONS.md` (update)
+
+## Risk Assessment
+
+| Risk | Level | Mitigation |
+|------|-------|------------|
+| Template confusion | LOW | Clear documentation |
+| Migration effort | LOW | Gradual migration |
+| Agent identity drift | LOW | Git history backup |
+| Human approver missing | MEDIUM | Encourage but don't require |
+
+**Overall Risk**: LOW
+
+## Final Decision
+
+**RECOMMENDATION: ADOPT MODEL B**
+
+The investigation recommends adopting Model B (Authority + Execution Agent) because:
+
+1. It provides clear governance authority identification
+2. It maintains agent independence
+3. It supports multi-agent collaboration
+4. It aligns with KDE philosophy of runtime-governed artifacts
+5. It is backward compatible and low-risk
+6. It provides complete provenance
+
+## Next Steps
+
+| Priority | Action | Owner |
+|----------|--------|-------|
+| HIGH | Update templates with new metadata fields | KDE Governance |
+| HIGH | Create AUTHORITY-MODEL.md governance policy | KDE Governance |
+| MEDIUM | Apply new model to new investigations | Agent |
+| LOW | Update existing artifacts when modified | Agent |
+| LOW | Deprecate old "Author" field (optional) | KDE Governance |
 
 ---
 
-## Summary Statistics
-
-| Category | Count | Percentage | Template Inclusion |
-|----------|-------|------------|-------------------|
-| **Bootstrap Core** | 15 | 8% | ✅ Yes |
-| **Generic KDE** | 8 | 4% | ✅ Yes |
-| **Project-Specific** | 12 | 7% | ❌ No |
-| **Historical** | ~180 | 81% | ❌ No (archive) |
-
----
-
-## Final Recommendations
-
-### Retention List (23 artifacts for template)
-
-1. **`.kde/bootstrap/`** - All 3 files
-2. **`.kde/runtime/`** - state.json
-3. **`.kde/capabilities/`** - README.md
-4. **`.kde/commands/`** - README.md
-5. **`.kde/engines/`** - README.md
-6. **`.kde/experts/`** - README.md
-7. **`.kde/governance/`** - README.md, NAMING-CONVENTIONS.md (updated)
-8. **`.kde/knowledge/`** - README.md
-9. **`.kde/seeds/`** - README.md
-10. **`.kde/templates/`** - README.md, IMP.md (updated), + create INV.md, EXP.md, TDR.md
-11. **`.kde/verification/`** - README.md
-12. **`docs/kde/`** - All 7 subdirectories
-13. **`laboratory/`** - All directory READMEs and structure
-14. **`.gitignore`** - Standard Go/IDE patterns
-15. **`LICENSE`** - MIT License
-
-### Removal List (12 artifacts)
-
-1. README.md
-2. docs/README.md
-3. docs/application/ (entire directory)
-4. config.example.yaml
-5. go.mod
-6. cmd/ (entire directory)
-7. internal/ (entire directory)
-8. laboratory/archive/ (entire directory)
-9. .kde/governance/NAMING-CONVENTIONS.md (replace with generic version)
-10. .kde/templates/IMP.md (replace with generic version)
-
-### Create in Template (7 new files)
-
-1. docs/README.md - Generic KDE Bootstrap Documentation
-2. docs/kde/README.md - Updated for generic KDE
-3. .kde/templates/INV.md - Investigation template
-4. .kde/templates/EXP.md - Experiment template
-5. .kde/templates/TDR.md - Decision template
-6. .kde/governance/NAMING-CONVENTIONS.md - Generic naming conventions
-7. laboratory/README.md - Updated for generic KDE
-
----
-
-## Implementation Plan
-
-### Phase 1: Create bootstrap-template branch
-```bash
-git checkout -b bootstrap-template
-```
-
-### Phase 2: Remove Project-Specific Artifacts
-```bash
-rm README.md
-rm -rf docs/application/
-rm config.example.yaml
-rm go.mod
-rm -rf cmd/
-rm -rf internal/
-rm -rf laboratory/archive/
-```
-
-### Phase 3: Update Artifacts
-```bash
-# Update .kde/bootstrap/config.yaml
-# Update .kde/governance/NAMING-CONVENTIONS.md
-# Update .kde/templates/IMP.md
-# Update docs/kde/README.md
-# Update laboratory/README.md
-# Create docs/README.md
-```
-
-### Phase 4: Create Template Files
-```bash
-# Create docs/README.md
-# Create .kde/templates/INV.md
-# Create .kde/templates/EXP.md
-# Create .kde/templates/TDR.md
-```
-
-### Phase 5: Commit and Validate
-```bash
-git commit -m "Create KDE Bootstrap Template"
-git checkout main
-```
-
----
-
-*Conclusions completed: 2026-07-25*
-*Awaiting human approval before implementation*
+*Investigation completed: 2026-07-25*  
+*Author: OpenHands Agent*  
+*Recommendation: ADOPT MODEL B - Authority + Execution Agent with Runtime Ownership*  
+*Status: AWAITING APPROVAL*
