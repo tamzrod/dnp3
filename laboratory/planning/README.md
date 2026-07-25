@@ -1,10 +1,16 @@
 # Laboratory Planning
 
-This directory contains planning documents for the project project.
+This directory contains planning documents for the DNP3 Library project.
 
 ## Purpose
 
 Planning documents outline project roadmaps, milestones, and task breakdowns.
+
+## Active Plans
+
+| Plan ID | Title | Status | Phase |
+|---------|-------|--------|-------|
+| DNP3-ENG-WORKBENCH-001 | DNP3 Engineering Workbench | PLANNED | MVP |
 
 ## Planning Types
 
