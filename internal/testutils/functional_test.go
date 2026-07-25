@@ -2,12 +2,12 @@ package testutils
 
 import (
 	"fmt"
+	"context"
 	"sync"
 	"testing"
 	"time"
 
 	"dnp3/internal/al"
-	"dnp3/internal/dll/frame"
 	"dnp3/internal/master"
 	"dnp3/internal/outstation"
 )
@@ -95,7 +95,7 @@ func (ts *TestSuite) Summary() {
 		}
 		fmt.Println()
 	}
-	fmt.Println("========================================\n")
+	fmt.Println("========================================")
 }
 
 // =============================================================================
@@ -108,12 +108,12 @@ func TestConnectionConnectDisconnect(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           1000,
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -133,6 +133,11 @@ func TestConnectionConnectDisconnect(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	if m.State() != master.StateConnected && m.State() != master.StateInitialized {
@@ -161,12 +166,12 @@ func TestConnectionReconnect(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           1000,
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -203,12 +208,12 @@ func TestMultipleReconnect(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           500,
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -244,12 +249,12 @@ func TestLinkStatus(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -266,6 +271,11 @@ func TestLinkStatus(t *testing.T) {
 		t.Fatalf("Connect failed: %v", err)
 	}
 
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
 	// Link status is typically tested implicitly through operations
 	// This test validates the link layer is functional
 	_ = o // Mark as used
@@ -277,12 +287,12 @@ func TestLinkReset(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -311,12 +321,12 @@ func TestReadBinaryInputs(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -334,8 +344,10 @@ func TestReadBinaryInputs(t *testing.T) {
 
 	// Start outstation run loop in background
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
@@ -343,6 +355,11 @@ func TestReadBinaryInputs(t *testing.T) {
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Read binary inputs
@@ -366,12 +383,12 @@ func TestReadAnalogInputs(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -387,14 +404,21 @@ func TestReadAnalogInputs(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Read analog inputs
@@ -412,12 +436,12 @@ func TestReadCounters(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -433,14 +457,21 @@ func TestReadCounters(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Read counters
@@ -462,12 +493,12 @@ func TestControlSelectOperate(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -483,14 +514,21 @@ func TestControlSelectOperate(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Select-then-operate
@@ -508,12 +546,12 @@ func TestControlDirectOperate(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -529,14 +567,21 @@ func TestControlDirectOperate(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Direct operate (no select)
@@ -555,7 +600,7 @@ func TestControlDirectOperate(t *testing.T) {
 // TestEventGeneration tests event generation and queueing.
 func TestEventGeneration(t *testing.T) {
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -590,7 +635,7 @@ func TestEventGeneration(t *testing.T) {
 func TestEventBufferOverflow(t *testing.T) {
 	// Very small buffer for testing
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   10,
@@ -621,12 +666,12 @@ func TestFreezeCounters(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -642,8 +687,10 @@ func TestFreezeCounters(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
@@ -652,8 +699,13 @@ func TestFreezeCounters(t *testing.T) {
 		t.Fatalf("Connect failed: %v", err)
 	}
 
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
 	// Freeze counters
-	_, err = o.HandleRequest(&al.APDU{
+	_, err = o.ProcessRequest(&al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncFreeze,
 	})
@@ -674,12 +726,12 @@ func TestConfirmationRequired(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -695,14 +747,21 @@ func TestConfirmationRequired(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Request with CON bit set
@@ -735,12 +794,12 @@ func TestTimeoutBehavior(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           500, // Short timeout
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -760,6 +819,11 @@ func TestTimeoutBehavior(t *testing.T) {
 		t.Fatalf("Connect failed: %v", err)
 	}
 
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
 	// Read should timeout since outstation is not running
 	err = m.ReadBinaryInputs(1024, 0, 5)
 	// We expect either timeout error or nil (may not fail on read)
@@ -771,7 +835,7 @@ func TestInvalidAPDU(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -800,12 +864,12 @@ func TestManyReads(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           1000,
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -821,14 +885,21 @@ func TestManyReads(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Many rapid reads
@@ -842,7 +913,7 @@ func TestManyReads(t *testing.T) {
 // TestManyEvents tests generating many events.
 func TestManyEvents(t *testing.T) {
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   10000, // Large buffer
@@ -944,8 +1015,6 @@ func CreateTestMaster(outstationAddr uint16) (*master.Master, *MasterTransport) 
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: outstationAddr,
-		Timeout:           2000,
 		MaxRetries:        2,
 	}
 
@@ -959,7 +1028,7 @@ func CreateTestOutstation(masterAddr uint16) (*outstation.Outstation, *Outstatio
 	_, _, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     masterAddr,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -978,12 +1047,12 @@ func SetupConnectedPair() (*master.Master, *outstation.Outstation, *MasterTransp
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -998,13 +1067,20 @@ func SetupConnectedPair() (*master.Master, *outstation.Outstation, *MasterTransp
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 
 	err := m.Connect()
 	if err != nil {
 		panic(fmt.Sprintf("Connect failed: %v", err))
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		panic(fmt.Sprintf("Initialize failed: %v", err))
 	}
 
 	cleanup := func() {
@@ -1025,12 +1101,12 @@ func TestWriteCROB(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1046,14 +1122,21 @@ func TestWriteCROB(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Write CROB
@@ -1079,12 +1162,12 @@ func TestWriteAnalogInt16(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1100,14 +1183,21 @@ func TestWriteAnalogInt16(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Write 16-bit signed analog output (Group 41, Variation 1)
@@ -1125,12 +1215,12 @@ func TestWriteAnalogInt32(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1146,14 +1236,21 @@ func TestWriteAnalogInt32(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Write 32-bit signed analog output (Group 42, Variation 5)
@@ -1171,12 +1268,12 @@ func TestWriteAnalogFloat(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1192,14 +1289,21 @@ func TestWriteAnalogFloat(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Write 32-bit float analog output (Group 43, Variation 9)
@@ -1217,12 +1321,12 @@ func TestWriteAnalogDouble(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           2000,
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1238,14 +1342,21 @@ func TestWriteAnalogDouble(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Write 64-bit double analog output (Group 44, Variation 13)
@@ -1267,7 +1378,7 @@ func TestConfirmationTimeout(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           500, // Short timeout for test
 		MaxRetries:        1,
 	}
@@ -1279,6 +1390,11 @@ func TestConfirmationTimeout(t *testing.T) {
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Create a request that requires confirmation
@@ -1300,12 +1416,12 @@ func TestConfirmationRetry(t *testing.T) {
 
 	masterConfig := &master.Config{
 		MasterAddress:     1,
-		OutstationAddress: 1024,
+		
 		Timeout:           500,
 		MaxRetries:        3,
 	}
 	outstationConfig := &outstation.Config{
-		OutstationAddress: 1024,
+		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
 		MaxEventBuffers:   1000,
@@ -1321,14 +1437,21 @@ func TestConfirmationRetry(t *testing.T) {
 	o.Start()
 
 	done := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		done <- o.Run()
+		done <- o.RunWithContext(ctx)
 	}()
 	defer o.Stop()
 
 	err := m.Connect()
 	if err != nil {
 		t.Fatalf("Connect failed: %v", err)
+	}
+
+	err = m.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Read binary inputs - should succeed
