@@ -23,8 +23,17 @@ var (
 
 // Handler defines the interface for sending and receiving data.
 type Handler interface {
+	// Connect establishes a connection (client mode)
+	Connect() error
+	// Accept waits for an incoming connection (server mode)
+	Accept() error
+	// Close closes the transport
+	Close() error
+	// Send sends data
 	Send(data []byte) error
+	// Receive receives data
 	Receive() ([]byte, error)
+	// SetTimeout sets the receive timeout in milliseconds
 	SetTimeout(ms int)
 }
 
