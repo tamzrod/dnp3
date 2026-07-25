@@ -458,28 +458,39 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 	// Reset reassembler for new response
 	m.reassembler.Reset()
 
+	var completeData []byte
+
 	// Parse all DLL frames in the received data
 	offset := 0
 	for offset < len(data) {
 		// Decode DLL frame
 		dllFrame, err := frame.Decode(data[offset:])
 		if err != nil {
-			// If we got partial data, return what we have
-			if m.reassembler.IsComplete() {
-				return m.reassembler.GetData(), nil
+			// If we got complete data, return it
+			if len(completeData) > 0 {
+				return completeData, nil
 			}
 			return nil, fmt.Errorf("DLL decode error at offset %d: %w", offset, err)
 		}
 
-		// Move past this frame (minimum frame size + data length)
-		headerSize := 10 // sync(2) + length(1) + control(1) + dest(2) + src(2) + CRC(2)
-		offset += headerSize + len(dllFrame.Data) + ((len(dllFrame.Data)+1)/2)*2
+		// Move past this frame
+		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes header
+		// Then data length + CRC (2 bytes per 16-bit word)
+		headerSize := 8
+		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
+		frameLen := headerSize + len(dllFrame.Data) + crcSize
+		offset += frameLen
 
-		// Skip non-user-data frames
-		if dllFrame.Control.FuncCode != frame.FuncUnconfirmedUserData &&
-			dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
-			dllFrame.Control.FuncCode != frame.FuncNegativeAck &&
-			dllFrame.Control.FuncCode != frame.FuncLinkStatus {
+		// Skip non-user-data frames (secondary station function codes)
+		// User data frames from outstation use FuncConfirmedUserDataR = 4 with PRM=0
+		if dllFrame.Control.PRM {
+			// Primary station frame - skip control frames
+			if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
+				continue
+			}
+		}
+		// For secondary station (PRM=0), only process user data frames
+		if !dllFrame.Control.PRM && dllFrame.Control.FuncCode != frame.FuncConfirmedUserDataR {
 			continue
 		}
 
@@ -489,21 +500,29 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue
 		}
 
-		// Parse TL header and add fragment to reassembler
-		tlFrag, err := tl.ParseFragment(tlData)
+		// Parse TL header using correct function name
+		tlFrag, err := tl.DecodeFragment(tlData)
 		if err != nil {
 			continue // Skip malformed fragments
 		}
 
-		m.reassembler.AddFragment(tlFrag)
+		// Push fragment to reassembler - returns complete message when FIN received
+		result, err := m.reassembler.Push(tlFrag)
+		if err != nil {
+			return nil, fmt.Errorf("reassembly error: %w", err)
+		}
+
+		if result != nil {
+			completeData = result
+		}
 	}
 
 	// Check if we have complete application data
-	if !m.reassembler.IsComplete() {
-		return nil, fmt.Errorf("incomplete response: %d fragments received", m.reassembler.FragmentCount())
+	if len(completeData) == 0 {
+		return nil, fmt.Errorf("no complete response received")
 	}
 
-	return m.reassembler.GetData(), nil
+	return completeData, nil
 }
 
 // buildRequest creates a request APDU.

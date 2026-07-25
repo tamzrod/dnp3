@@ -375,16 +375,20 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 		}
 
 		// Move past this DLL frame
-		headerSize := 10 // sync(2) + length(1) + control(1) + dest(2) + src(2)
+		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes
+		// Then data + CRC
+		headerSize := 8
 		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
 		offset += headerSize + len(dllFrame.Data) + crcSize
 
-		// Skip non-user-data frames or frames not directed to us
-		if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
-			dllFrame.Control.FuncCode != frame.FuncUnconfirmedUserData {
+		// Skip frames not directed to us
+		if dllFrame.DestAddr != o.config.OutstationAddress {
 			continue
 		}
-		if dllFrame.DestAddr != o.config.OutstationAddress {
+
+		// Skip non-user-data frames (primary station function codes)
+		// For Master→Outstation, only FuncConfirmedUserData (4) carries user data
+		if !dllFrame.Control.PRM || dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
 			continue
 		}
 

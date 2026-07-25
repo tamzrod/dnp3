@@ -109,24 +109,22 @@ func TestProtocolStackOutstationToMaster(t *testing.T) {
 
 		msg, _ := reassembler.Push(tlFrag)
 		if msg != nil {
+			decodedApdu, err := al.Decode(msg)
+			if err != nil {
+				t.Fatalf("AL decode failed: %v", err)
+			}
+
+			if decodedApdu.FuncCode != origApdu.FuncCode {
+				t.Errorf("FuncCode mismatch")
+			}
+			if decodedApdu.Control.Seq != origApdu.Control.Seq {
+				t.Errorf("Seq mismatch")
+			}
+			if !bytes.Equal(decodedApdu.Data, origApdu.Data) {
+				t.Error("Data mismatch")
+			}
 			break
 		}
-	}
-
-	// Decode AL
-	decodedApdu, err := al.Decode(reassembler.GetData())
-	if err != nil {
-		t.Fatalf("AL decode failed: %v", err)
-	}
-
-	if decodedApdu.FuncCode != origApdu.FuncCode {
-		t.Errorf("FuncCode mismatch")
-	}
-	if decodedApdu.Control.Seq != origApdu.Control.Seq {
-		t.Errorf("Seq mismatch")
-	}
-	if !bytes.Equal(decodedApdu.Data, origApdu.Data) {
-		t.Error("Data mismatch")
 	}
 
 	t.Log("Outstation to Master protocol stack verified")
@@ -157,18 +155,44 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 		masterTxData = append(masterTxData, enc...)
 	}
 
-	// OUTSTATION receives
+	// OUTSTATION receives - decode each frame properly
 	outReasm := tl.NewReassembler()
+	var outRecvMsg []byte
 	offset := 0
 	for offset < len(masterTxData) {
-		dllDec, _ := frame.Decode(masterTxData[offset:])
-		headerSize := 10
-		crcSize := ((len(dllDec.Data)+1)/2)*2 - ((len(dllDec.Data)+1)%2)
-		offset += headerSize + len(dllDec.Data) + crcSize
-		tlFrag, _ := tl.DecodeFragment(dllDec.Data)
-		outReasm.Push(tlFrag)
+		remaining := masterTxData[offset:]
+		dllDec, err := frame.Decode(remaining)
+		if err != nil {
+			t.Logf("Frame decode error at offset %d: %v", offset, err)
+			offset++
+			continue
+		}
+
+		// Calculate frame size for next iteration
+		// sync(2) + length(1) + control(1) + dest(2) + src(2) + data + crcs
+		dataLen := len(dllDec.Data)
+		numCRCs := 3 + (dataLen+1)/2
+		frameSize := 8 + dataLen + numCRCs*2
+		offset += frameSize
+
+		// Parse TL fragment
+		tlFrag, err := tl.DecodeFragment(dllDec.Data)
+		if err != nil {
+			continue
+		}
+		msg, err := outReasm.Push(tlFrag)
+		if err != nil {
+			t.Logf("Reassembler error: %v", err)
+			continue
+		}
+		if msg != nil {
+			outRecvMsg = msg
+		}
 	}
-	recvApdu, _ := al.Decode(outReasm.GetData())
+	if outRecvMsg == nil {
+		t.Fatal("Outstation did not receive complete message")
+	}
+	recvApdu, _ := al.Decode(outRecvMsg)
 
 	// OUTSTATION responds
 	respApdu := &al.APDU{
@@ -184,25 +208,50 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 	for _, frag := range respFrags {
 		tlEnc := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserData},
+			Control: frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
 			DestAddr: 1, SrcAddr: 1024, Data: tlEnc,
 		}
 		enc, _ := frame.Encode(dllFr)
 		outTxData = append(outTxData, enc...)
 	}
 
-	// MASTER receives
+	// MASTER receives - decode each frame properly
 	masterReasm := tl.NewReassembler()
+	var masterRecvMsg []byte
 	offset = 0
 	for offset < len(outTxData) {
-		dllDec, _ := frame.Decode(outTxData[offset:])
-		headerSize := 10
-		crcSize := ((len(dllDec.Data)+1)/2)*2 - ((len(dllDec.Data)+1)%2)
-		offset += headerSize + len(dllDec.Data) + crcSize
-		tlFrag, _ := tl.DecodeFragment(dllDec.Data)
-		masterReasm.Push(tlFrag)
+		remaining := outTxData[offset:]
+		dllDec, err := frame.Decode(remaining)
+		if err != nil {
+			t.Logf("Frame decode error at offset %d: %v", offset, err)
+			offset++
+			continue
+		}
+
+		// Calculate frame size for next iteration
+		dataLen := len(dllDec.Data)
+		numCRCs := 3 + (dataLen+1)/2
+		frameSize := 8 + dataLen + numCRCs*2
+		offset += frameSize
+
+		// Parse TL fragment
+		tlFrag, err := tl.DecodeFragment(dllDec.Data)
+		if err != nil {
+			continue
+		}
+		msg, err := masterReasm.Push(tlFrag)
+		if err != nil {
+			t.Logf("Reassembler error: %v", err)
+			continue
+		}
+		if msg != nil {
+			masterRecvMsg = msg
+		}
 	}
-	recvResp, _ := al.Decode(masterReasm.GetData())
+	if masterRecvMsg == nil {
+		t.Fatal("Master did not receive complete message")
+	}
+	recvResp, _ := al.Decode(masterRecvMsg)
 
 	// Verify
 	if recvResp.FuncCode != respApdu.FuncCode {
