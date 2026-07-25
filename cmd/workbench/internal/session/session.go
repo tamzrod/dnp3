@@ -3,6 +3,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -60,10 +61,10 @@ func (c *ReadCommand) Type() string { return "READ" }
 
 // OperateCommand represents a control operation.
 type OperateCommand struct {
-	Group      uint8
-	Variation  uint8
-	Index      uint16
-	Value      interface{}
+	Group             uint8
+	Variation         uint8
+	Index             uint16
+	Value             interface{}
 	SelectThenOperate bool
 }
 
@@ -72,12 +73,12 @@ func (c *OperateCommand) Type() string { return "OPERATE" }
 
 // Response represents a DNP3 response.
 type Response struct {
-	IIN           [2]byte
-	BinaryInputs  []*types.BinaryInput
-	AnalogInputs  []*types.AnalogInput
-	Counters      []*types.Counter
-	Timestamp     time.Time
-	Error         error
+	IIN          [2]byte
+	BinaryInputs []*types.BinaryInput
+	AnalogInputs []*types.AnalogInput
+	Counters     []*types.Counter
+	Timestamp    time.Time
+	Error        error
 }
 
 // SessionEvent represents an event from the session.
@@ -87,24 +88,42 @@ type SessionEvent struct {
 	RawData []byte
 }
 
+// Session interface defines the session contract.
+type Session interface {
+	Mode() SessionMode
+	State() ConnectionState
+	Connect(ctx context.Context, address string, port int) error
+	Disconnect(ctx context.Context) error
+	SendCommand(ctx context.Context, cmd Command) (*Response, error)
+	Events() <-chan SessionEvent
+	Close() error
+}
+
+// Logger interface for session logging.
+type Logger interface {
+	Info(format string, args ...interface{})
+	Error(format string, args ...interface{})
+	Debug(format string, args ...interface{})
+}
+
 // MasterSession represents a DNP3 Master session.
 type MasterSession struct {
-	mu       sync.RWMutex
-	config   *master.Config
-	client   master.Client
-	state    ConnectionState
+	mu        sync.RWMutex
+	address   string
+	port      int
+	state     ConnectionState
 	transport transport.Handler
-	events   chan SessionEvent
-	log      *Logger
+	events    chan SessionEvent
+	log       Logger
 }
 
 // NewMasterSession creates a new Master session.
-func NewMasterSession(logger *Logger) *MasterSession {
+func NewMasterSession(log Logger) (*MasterSession, error) {
 	return &MasterSession{
-		state: StateDisconnected,
+		state:  StateDisconnected,
 		events: make(chan SessionEvent, 100),
-		log: logger,
-	}
+		log:    log,
+	}, nil
 }
 
 // Mode returns the session mode.
@@ -128,30 +147,34 @@ func (s *MasterSession) Connect(ctx context.Context, address string, port int) e
 		return nil
 	}
 
+	s.address = address
+	s.port = port
 	s.state = StateConnecting
 	s.log.Info("Connecting to %s:%d", address, port)
 
-	// Create transport
-	t, err := transport.NewTCPHandler(address, port)
-	if err != nil {
-		s.state = StateError
-		s.log.Error("Transport creation failed: %v", err)
-		return err
+	// Create transport configuration
+	config := &transport.TCPConfig{
+		Address:         address,
+		Port:            port,
+		ConnectTimeout:  5000,
+		ReceiveTimeout: 5000,
 	}
+
+	// Create transport
+	t := transport.NewTCPTransport(config)
+
+	// Attempt connection
+	if err := t.Connect(); err != nil {
+		s.state = StateError
+		s.log.Error("Connection failed: %v", err)
+		return fmt.Errorf("connect: %w", err)
+	}
+
 	s.transport = t
-
-	// Create master config
-	s.config = master.NewConfig(
-		master.WithOutstationAddress(1024),
-		master.WithTransport(dnp3.TCP, address, port),
-	)
-
-	// Note: Client creation requires the actual transport
-	// For MVP, we'll handle connection manually
 	s.state = StateConnected
 	s.log.Info("Connected successfully")
 
-	// Emit event
+	// Emit connected event
 	select {
 	case s.events <- SessionEvent{Type: "connected"}:
 	default:
@@ -166,12 +189,13 @@ func (s *MasterSession) Disconnect(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	s.log.Info("Disconnecting")
-	s.state = StateDisconnected
 
 	if s.transport != nil {
-		// Transport will be closed
+		s.transport.Close()
 		s.transport = nil
 	}
+
+	s.state = StateDisconnected
 
 	select {
 	case s.events <- SessionEvent{Type: "disconnected"}:
@@ -185,27 +209,28 @@ func (s *MasterSession) Disconnect(ctx context.Context) error {
 func (s *MasterSession) SendCommand(ctx context.Context, cmd Command) (*Response, error) {
 	s.mu.RLock()
 	state := s.state
+	t := s.transport
 	s.mu.RUnlock()
 
-	if state != StateConnected {
-		return nil, &sessionError{"not connected"}
+	if state != StateConnected || t == nil {
+		return nil, fmt.Errorf("not connected")
 	}
 
 	switch c := cmd.(type) {
 	case *ReadCommand:
-		return s.sendReadCommand(ctx, c)
+		return s.sendReadCommand(ctx, t, c)
 	case *OperateCommand:
-		return s.sendOperateCommand(ctx, c)
+		return s.sendOperateCommand(ctx, t, c)
 	}
 
-	return nil, &sessionError{"unknown command type"}
+	return nil, fmt.Errorf("unknown command type")
 }
 
-func (s *MasterSession) sendReadCommand(ctx context.Context, cmd *ReadCommand) (*Response, error) {
+func (s *MasterSession) sendReadCommand(ctx context.Context, t transport.Handler, cmd *ReadCommand) (*Response, error) {
 	s.log.Info("Sending READ command for groups: %v", cmd.Groups)
 
 	// For MVP, return mock data to demonstrate the UI
-	// In full implementation, this would call the actual DNP3 library
+	// In full implementation, this would use the actual DNP3 master client
 	resp := &Response{
 		IIN:       [2]byte{0, 0},
 		Timestamp: time.Now(),
@@ -236,7 +261,7 @@ func (s *MasterSession) sendReadCommand(ctx context.Context, cmd *ReadCommand) (
 	return resp, nil
 }
 
-func (s *MasterSession) sendOperateCommand(ctx context.Context, cmd *OperateCommand) (*Response, error) {
+func (s *MasterSession) sendOperateCommand(ctx context.Context, t transport.Handler, cmd *OperateCommand) (*Response, error) {
 	s.log.Info("Sending OPERATE command: Group=%d, Var=%d, Index=%d",
 		cmd.Group, cmd.Variation, cmd.Index)
 
@@ -266,18 +291,10 @@ func (s *MasterSession) Close() error {
 	return s.Disconnect(ctx)
 }
 
-// Logger interface for session logging.
-type Logger interface {
-	Info(format string, args ...interface{})
-	Error(format string, args ...interface{})
-	Debug(format string, args ...interface{})
+// Transport returns the underlying transport handler.
+func (s *MasterSession) Transport() transport.Handler {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.transport
 }
 
-// sessionError represents a session error.
-type sessionError struct {
-	msg string
-}
-
-func (e *sessionError) Error() string {
-	return e.msg
-}

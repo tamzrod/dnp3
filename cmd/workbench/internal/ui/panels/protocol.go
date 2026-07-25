@@ -9,7 +9,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/tamzrod/dnp3/cmd/workbench/internal/session"
+	"dnp3/cmd/workbench/internal/session"
 )
 
 // ProtocolPanel displays decoded protocol information.

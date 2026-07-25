@@ -8,8 +8,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/theme"
+
+	"dnp3/cmd/workbench/internal/controller"
 	"dnp3/cmd/workbench/internal/ui"
-	"dnp3/cmd/workbench/internal/session"
 )
 
 func main() {
@@ -17,19 +18,27 @@ func main() {
 	a := app.New()
 	a.Settings().SetTheme(theme.DarkTheme())
 
-	// Create session manager
-	manager := session.NewManager()
+	// Create controller
+	ctrl := controller.New(nil)
 
-	// Create main window
-	window := ui.NewMainWindow(a, manager)
+	// Create main window with controller
+	window := ui.NewMainWindow(a, ctrl)
 
 	// Set window properties
 	window.Resize(fyne.NewSize(1200, 800))
 	window.SetTitle("DNP3 Engineering Workbench")
 	window.CenterOnScreen()
 
+	// Start controller
+	if err := ctrl.Start(); err != nil {
+		log.Printf("Failed to start controller: %v", err)
+	}
+
 	// Show and run
 	window.ShowAndRun()
+
+	// Cleanup
+	ctrl.Stop()
 }
 
 // init registers the application

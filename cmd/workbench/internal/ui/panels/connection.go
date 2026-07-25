@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
-	"dnp3/cmd/workbench/internal/session"
+	"dnp3/cmd/workbench/internal/controller"
 )
 
 // ConnectionPanel provides connection configuration and controls.
@@ -18,7 +18,7 @@ type ConnectionPanel struct {
 	portEntry    *widget.Entry
 	connectBtn   *widget.Button
 	disconnectBtn *widget.Button
-	manager      *session.Manager
+	ctrl         *controller.Controller
 	connected    bool
 
 	OnConnect    func(address string, port int)
@@ -26,9 +26,9 @@ type ConnectionPanel struct {
 }
 
 // NewConnectionPanel creates a new connection panel.
-func NewConnectionPanel(manager *session.Manager) *ConnectionPanel {
+func NewConnectionPanel(ctrl *controller.Controller) *ConnectionPanel {
 	p := &ConnectionPanel{
-		manager: manager,
+		ctrl: ctrl,
 	}
 
 	title := widget.NewLabel("CONNECTION")
