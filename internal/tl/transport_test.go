@@ -333,16 +333,17 @@ func TestDecodeFragmentInvalid(t *testing.T) {
 }
 
 func TestFragmentCount(t *testing.T) {
+	// MaxFragmentData is now 249 (was 291)
 	tests := []struct {
 		dataLen  int
 		expected int
 	}{
 		{0, 1},
 		{1, 1},
-		{291, 1},
-		{292, 2},
-		{582, 2},
-		{873, 3},
+		{249, 1},
+		{250, 2},
+		{498, 2},
+		{747, 3},
 	}
 
 	for _, tt := range tests {
@@ -354,14 +355,15 @@ func TestFragmentCount(t *testing.T) {
 }
 
 func TestIsMultiFragment(t *testing.T) {
+	// MaxFragmentData is now 249 (was 291)
 	tests := []struct {
 		dataLen  int
 		expected bool
 	}{
 		{0, false},
 		{1, false},
-		{291, false},
-		{292, true},
+		{249, false},
+		{250, true},
 		{1000, true},
 	}
 

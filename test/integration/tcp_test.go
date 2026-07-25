@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/master"
 	"dnp3/pkg/dnp3/outstation"
@@ -33,6 +35,68 @@ func getFreePort(t *testing.T) int {
 	defer l.Close()
 
 	return l.Addr().(*net.TCPAddr).Port
+}
+
+// buildMasterRequest encodes an APDU through the full DNP3 protocol stack
+// (AL -> TL -> DLL) for a master-to-outstation request
+func buildMasterRequest(apdu *al.APDU, destAddr, srcAddr uint16) ([]byte, error) {
+	// 1. Application Layer: Encode APDU
+	apduData := apdu.Encode()
+
+	// 2. Transport Layer: Fragment if needed
+	fragmenter := tl.NewFragmenter()
+	fragments := fragmenter.Fragmentize(apduData)
+
+	// 3. Data Link Layer: Frame each fragment
+	var result []byte
+	for _, frag := range fragments {
+		tlEncoded := tl.EncodeFragment(frag)
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      true, // Master-to-Outstation
+				PRM:      true, // Primary station
+				FuncCode: frame.FuncConfirmedUserData,
+			},
+			DestAddr: destAddr,
+			SrcAddr:  srcAddr,
+			Data:     tlEncoded,
+		}
+		dllEncoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			return nil, fmt.Errorf("DLL encode failed: %w", err)
+		}
+		result = append(result, dllEncoded...)
+	}
+
+	return result, nil
+}
+
+// decodeOutstationResponse extracts the APDU from a DLL-framed response
+func decodeOutstationResponse(data []byte) (*al.APDU, error) {
+	// Decode DLL frame
+	dllFrame, err := frame.Decode(data)
+	if err != nil {
+		return nil, fmt.Errorf("DLL decode failed: %w", err)
+	}
+
+	// Decode transport fragment
+	tlFrag, err := tl.DecodeFragment(dllFrame.Data)
+	if err != nil {
+		return nil, fmt.Errorf("TL decode failed: %w", err)
+	}
+
+	// Reassemble (for multi-fragment responses)
+	reassembler := tl.NewReassembler()
+	msg, err := reassembler.Push(tlFrag)
+	if err != nil {
+		return nil, fmt.Errorf("reassembly failed: %w", err)
+	}
+	if msg == nil {
+		return nil, fmt.Errorf("incomplete message")
+	}
+
+	// Decode APDU
+	return al.Decode(msg)
 }
 
 // TestTCPMasterOutstationRead tests READ request over TCP
@@ -407,7 +471,11 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 		Data:     []byte{1, 1, 0x07, 0x00}, // Group 1, Variation 1, all with prefix
 	}
 
-	encoded := readDI.Encode()
+	// Encode through full protocol stack (AL -> TL -> DLL)
+	encoded, err := buildMasterRequest(readDI, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build DI request failed: %v", err)
+	}
 	if err := masterTransport.Send(encoded); err != nil {
 		t.Fatalf("Send DI request failed: %v", err)
 	}
@@ -421,8 +489,14 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	}
 	t.Logf("✅ Received DI response: %d bytes", len(diResponse))
 
+	// Decode response through full protocol stack
+	resp, err := decodeOutstationResponse(diResponse)
+	if err != nil {
+		t.Fatalf("Decode DI response failed: %v", err)
+	}
+
 	// Parse DI response
-	diData := parseBinaryInputResponse(diResponse)
+	diData := parseBinaryInputResponse(resp.Data)
 	if len(diData) != 4 {
 		t.Errorf("Expected 4 binary inputs, got %d", len(diData))
 	}
@@ -443,7 +517,11 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 		Data:     []byte{30, 1, 0x07, 0x00}, // Group 30, Variation 1, all with prefix
 	}
 
-	encoded = readAI.Encode()
+	// Encode through full protocol stack (AL -> TL -> DLL)
+	encoded, err = buildMasterRequest(readAI, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build AI request failed: %v", err)
+	}
 	if err := masterTransport.Send(encoded); err != nil {
 		t.Fatalf("Send AI request failed: %v", err)
 	}
@@ -456,8 +534,14 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	}
 	t.Logf("✅ Received AI response: %d bytes", len(aiResponse))
 
+	// Decode response through full protocol stack
+	aiResp, err := decodeOutstationResponse(aiResponse)
+	if err != nil {
+		t.Fatalf("Decode AI response failed: %v", err)
+	}
+
 	// Parse AI response
-	aiData := parseAnalogInputResponse(aiResponse)
+	aiData := parseAnalogInputResponse(aiResp.Data)
 	if len(aiData) != 4 {
 		t.Errorf("Expected 4 analog inputs, got %d", len(aiData))
 	}
@@ -488,7 +572,11 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 		Data:     doCommand,
 	}
 
-	encoded = doRequest.Encode()
+	// Encode through full protocol stack (AL -> TL -> DLL)
+	encoded, err = buildMasterRequest(doRequest, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build DO request failed: %v", err)
+	}
 	if err := masterTransport.Send(encoded); err != nil {
 		t.Fatalf("Send DO request failed: %v", err)
 	}
@@ -501,13 +589,13 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	}
 	t.Logf("✅ Received DO response: %d bytes", len(doResponse))
 
-	// Verify response
-	resp, err := al.Decode(doResponse)
+	// Decode response through full protocol stack
+	doResp, err := decodeOutstationResponse(doResponse)
 	if err != nil {
 		t.Errorf("Decode DO response failed: %v", err)
 	}
-	if resp.FuncCode != al.FuncResponse {
-		t.Errorf("Expected FuncCode RESPONSE, got %d", resp.FuncCode)
+	if doResp.FuncCode != al.FuncResponse {
+		t.Errorf("Expected FuncCode RESPONSE, got %d", doResp.FuncCode)
 	}
 	t.Logf("✅ DO command acknowledged by Outstation")
 
@@ -533,7 +621,11 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 		Data:     aoCommand,
 	}
 
-	encoded = aoRequest.Encode()
+	// Encode through full protocol stack (AL -> TL -> DLL)
+	encoded, err = buildMasterRequest(aoRequest, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build AO request failed: %v", err)
+	}
 	if err := masterTransport.Send(encoded); err != nil {
 		t.Fatalf("Send AO request failed: %v", err)
 	}
@@ -546,13 +638,13 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	}
 	t.Logf("✅ Received AO response: %d bytes", len(aoResponse))
 
-	// Verify response
-	resp, err = al.Decode(aoResponse)
+	// Decode response through full protocol stack
+	aoResp, err := decodeOutstationResponse(aoResponse)
 	if err != nil {
 		t.Errorf("Decode AO response failed: %v", err)
 	}
-	if resp.FuncCode != al.FuncResponse {
-		t.Errorf("Expected FuncCode RESPONSE, got %d", resp.FuncCode)
+	if aoResp.FuncCode != al.FuncResponse {
+		t.Errorf("Expected FuncCode RESPONSE, got %d", aoResp.FuncCode)
 	}
 	t.Logf("✅ AO command acknowledged by Outstation")
 

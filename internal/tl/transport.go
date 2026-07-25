@@ -17,7 +17,11 @@ import (
 )
 
 // Maximum transport fragment size (Data Link payload - transport header)
-const MaxFragmentData = 292 - 1 // 291 bytes
+// Per IEEE 1815-2012, DLL length field is 1 byte (max 255)
+// Length = Control(1) + Dest(2) + Src(2) + Data
+// Max Data = 255 - 5 = 250 bytes
+// TL header = 1 byte, so TL data max = 250 - 1 = 249 bytes
+const MaxFragmentData = 250 - 1 // 249 bytes
 
 // Sequence number limits
 const (

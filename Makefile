@@ -1,8 +1,8 @@
 # Makefile for go-dnp3
-# Documentation and project management tasks only
+# Build, test, and project management tasks
 #
-# Note: This project is in the research and architecture phase.
-# No implementation code exists yet.
+# This project contains partial implementation with 41 Go source files.
+# Integration between layers is incomplete.
 
 .PHONY: help
 .DEFAULT_GOAL := help
@@ -45,17 +45,23 @@ links:
 format-docs:
 	@echo "${YELLOW}Note: Documentation formatting not yet configured${NC}"
 
-## test - Run tests (placeholder)
+## test - Run tests with coverage
 test:
-	@echo "${YELLOW}No tests available - project is in research phase${NC}"
+	@echo "Running tests..."
+	go test -v -race -coverprofile=coverage.out ./...
+	@echo ""
+	@echo "Coverage report:"
+	go tool cover -func=coverage.out
 
-## vet - Run go vet (placeholder)
+## vet - Run go vet for static analysis
 vet:
-	@echo "${YELLOW}No code to vet - project is in research phase${NC}"
+	@echo "Running go vet..."
+	go vet ./...
 
-## build - Build the project (placeholder)
+## build - Build all packages
 build:
-	@echo "${YELLOW}No code to build - project is in research phase${NC}"
+	@echo "Building..."
+	go build ./...
 
 ## clean - Clean build artifacts
 clean:

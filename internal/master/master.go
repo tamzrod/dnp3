@@ -14,6 +14,8 @@ import (
 	"time"
 	
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 )
 
 // Master role constants
@@ -154,6 +156,8 @@ type Master struct {
 	mu        sync.RWMutex
 	transport TransportHandler
 	onError   ErrorHandler
+        fragmenter  *tl.Fragmenter   // Transport layer fragmenter
+        reassembler *tl.Reassembler // Transport layer reassembler
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -175,6 +179,8 @@ func NewMaster(config *Config) *Master {
 		config:     config,
 		state:      StateDisconnected,
 		outstations: make(map[uint16]*Outstation),
+		fragmenter:   tl.NewFragmenter(),
+		reassembler: tl.NewReassembler(),
 	}
 }
 
@@ -366,11 +372,36 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 		
-		// Send request
+		// Send request with DNP3 protocol layers
 		data := req.Encode()
-		if err := m.transport.Send(data); err != nil {
-			lastErr = err
-			continue
+
+		// Transport layer fragmentation
+		fragments := m.fragmenter.Fragmentize(data)
+
+		for _, frag := range fragments {
+			// Transport layer encode
+			tlEncoded := tl.EncodeFragment(frag)
+
+			// Data link layer frame
+			dllFrame := &frame.Frame{
+				Control: frame.Control{
+					DIR:      true,                  // Master-to-Outstation
+					PRM:      true,                  // Primary station
+					FuncCode: frame.FuncConfirmedUserData,
+				},
+				DestAddr: outstationID,
+				SrcAddr:  m.config.MasterAddress,
+				Data:     tlEncoded,
+			}
+			dllEncoded, err := frame.Encode(dllFrame)
+			if err != nil {
+				return err
+			}
+
+			if err := m.transport.Send(dllEncoded); err != nil {
+				lastErr = err
+				continue
+			}
 		}
 		
 		// Wait for response
@@ -400,18 +431,98 @@ func (m *Master) waitForResponse() ([]byte, error) {
 
 // processResponse processes a received response.
 func (m *Master) processResponse(data []byte, outstationID uint16) error {
-	resp, err := al.DecodeResponse(data)
+	// Process through Data Link and Transport layers
+	appData, err := m.processReceivedBytes(data)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
-	
+
+	// Application layer decode
+	resp, err := al.DecodeResponse(appData)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+	}
+
 	// Update outstation IIN
 	o, ok := m.GetOutstation(outstationID)
 	if ok {
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
-	
+
 	return nil
+}
+
+// processReceivedBytes processes raw TCP data through DLL and TL layers.
+// Returns the reassembled application layer data.
+func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
+	// Reset reassembler for new response
+	m.reassembler.Reset()
+
+	var completeData []byte
+
+	// Parse all DLL frames in the received data
+	offset := 0
+	for offset < len(data) {
+		// Decode DLL frame
+		dllFrame, err := frame.Decode(data[offset:])
+		if err != nil {
+			// If we got complete data, return it
+			if len(completeData) > 0 {
+				return completeData, nil
+			}
+			return nil, fmt.Errorf("DLL decode error at offset %d: %w", offset, err)
+		}
+
+		// Move past this frame
+		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes header
+		// Then data length + CRC (2 bytes per 16-bit word)
+		headerSize := 8
+		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
+		frameLen := headerSize + len(dllFrame.Data) + crcSize
+		offset += frameLen
+
+		// Skip non-user-data frames (secondary station function codes)
+		// User data frames from outstation use FuncConfirmedUserDataR = 4 with PRM=0
+		if dllFrame.Control.PRM {
+			// Primary station frame - skip control frames
+			if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
+				continue
+			}
+		}
+		// For secondary station (PRM=0), only process user data frames
+		if !dllFrame.Control.PRM && dllFrame.Control.FuncCode != frame.FuncConfirmedUserDataR {
+			continue
+		}
+
+		// Extract TL fragment from frame data
+		tlData := dllFrame.Data
+		if len(tlData) == 0 {
+			continue
+		}
+
+		// Parse TL header using correct function name
+		tlFrag, err := tl.DecodeFragment(tlData)
+		if err != nil {
+			continue // Skip malformed fragments
+		}
+
+		// Push fragment to reassembler - returns complete message when FIN received
+		result, err := m.reassembler.Push(tlFrag)
+		if err != nil {
+			return nil, fmt.Errorf("reassembly error: %w", err)
+		}
+
+		if result != nil {
+			completeData = result
+		}
+	}
+
+	// Check if we have complete application data
+	if len(completeData) == 0 {
+		return nil, fmt.Errorf("no complete response received")
+	}
+
+	return completeData, nil
 }
 
 // buildRequest creates a request APDU.
