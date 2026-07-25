@@ -201,4 +201,4 @@ go test ./internal/master/... -v -cover
 
 ---
 
-*This package was implemented as part of Phase 4 of the go-dnp3 KDSE case study.*
+*This package was implemented as part of Phase 4 of the go-dnp3 project.*

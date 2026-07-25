@@ -4,46 +4,51 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-architecture%20complete%20%F0%9F%9F%97-green.svg)](#current-status)
-[![KDSE](https://img.shields.io/badge/KDSE-Case%20Study%20001-blue.svg)](.kdse/README.md)
+[![KDE](https://img.shields.io/badge/KDE-Governed-blue.svg)](.kde/README.md)
 
-> ✅ **Notice**: This project has completed architecture phases and is ready for implementation. See [KDSE Runtime Environment](#kdse-runtime-environment) below.
+> ✅ **Notice**: This project is governed by the KDE (Knowledge Discovery Engine) Runtime. See [KDE Runtime Environment](#kde-runtime-environment) below.
 
 ---
 
-## KDSE Runtime Environment
+## KDE Runtime Environment
 
-This repository is initialized with the **KDSE Runtime Environment** (`.kdse/`), making it the first official KDSE Case Study.
+This repository is initialized with the **KDE Runtime Environment** (`.kde/`), providing evidence-based engineering governance.
 
-### About .kdse/
+### About .kde/
 
-The `.kdse/` directory is the local engineering governance directory, similar to how `.git/` manages version control. It contains:
+The `.kde/` directory is the local engineering governance directory, similar to how `.git/` manages version control. It contains:
 
-- **standards/** - Pinned KDSE normative documents
-- **reports/** - Session reports and audits
-- **history/** - Execution history and audit trail
-- **runtime/** - Transient session state
-- **config.yaml** - Runtime configuration
-- **manifest.yaml** - Version manifest
+- **bootstrap/** - Runtime bootstrap and initialization
+- **runtime/** - Core runtime system
+- **engines/** - Investigation and decision engines
+- **experts/** - Domain expert knowledge bases
+- **knowledge/** - Engineering knowledge base
+- **governance/** - Governance policies
+- **seeds/** - Seed knowledge
+- **commands/** - System commands
+- **capabilities/** - System capabilities
+- **templates/** - Artifact templates
+- **verification/** - Verification system
 
 ### Quick Reference
 
 ```bash
-# Check KDSE status
-cat .kdse/manifest.yaml
+# Check KDE status
+cat .kde/runtime/state.json
 
-# View current reports
-ls .kdse/reports/sessions/
+# View bootstrap configuration
+cat .kde/bootstrap/config.yaml
 
-# Check configuration
-cat .kdse/config.yaml
+# View governance policies
+cat .kde/governance/NAMING-CONVENTIONS.md
 ```
 
-### KDSE Resources
+### KDE Resources
 
-- [KDSE Runtime Environment](.kdse/README.md)
-- [KDSE Audit Report](docs/project/KDSE_AUDIT_REPORT.md)
-- [Phase Completion Declaration](docs/project/PHASE_COMPLETION.md)
-- [KDSE Standard Repository](https://github.com/tamzrod/KDSE)
+- [KDE Runtime Environment](.kde/README.md)
+- [KDE Governance Documentation](docs/kde/README.md)
+- [Engineering Laboratory](laboratory/README.md)
+- [KDE Bootstrap Report](KDE-BOOTSTRAP-REPORT.md)
 
 ---
 

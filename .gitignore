@@ -48,23 +48,6 @@ site/
 *.bak
 *.orig
 
-# KDSE Runtime Environment
-# Commit core files (standards, reports, history, config)
-# Exclude transient state and cache
-
-# Runtime state (may be committed if desired)
-# .kdse/runtime/state/
-# .kdse/runtime/logs/
-
-# Temporary files
-.kdse/runtime/temp/
-
-# Cache (optional, regenerated from source)
-.kdse/cache/
-
-# Backups (auto-generated)
-.kdse/.backup/
-
 # KDE Bootstrap Archive (temporary during reset)
 kde_archive/
 

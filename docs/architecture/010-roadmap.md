@@ -106,7 +106,7 @@ Completed during initial repository development.
 
 ### Timeline
 
-Completed as part of KDSE Runtime Session.
+Completed as part of initial architecture development.
 
 ### Exit Criteria
 
@@ -130,14 +130,14 @@ Completed as part of KDSE Runtime Session.
 
 ### Deliverables
 
-- [x] Team review (KDSE Runtime Session)
+- [x] Team review completed
 - [x] Architecture approved by assessor
 - [x] ADRs created and accepted
 - [x] Sign-off from architecture authority
 
 ### Timeline
 
-Completed as part of KDSE Runtime Session.
+Completed as part of architecture review process.
 
 ### Exit Criteria
 
@@ -367,7 +367,7 @@ To propose changes:
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1.0 | TBD | Initial roadmap |
-| 0.2.0 | 2026-07-10 | KDSE Runtime Session: Phase 1-3 completed, ADRs added |
+| 0.2.0 | 2026-07-10 | Architecture phases 1-3 completed, ADRs added |
 | 0.3.0 | 2026-07-11 | Phase 4.1-4.3 completed, roadmap milestones updated |
 | 0.4.0 | 2026-07-11 | Phase 4.4 (Secure Authentication) completed, Phase 4 complete |
 | 0.5.0 | 2026-07-11 | Phase 5 (Conformance Testing) completed, 38 conformance tests |
