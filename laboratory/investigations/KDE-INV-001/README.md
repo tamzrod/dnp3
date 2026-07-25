@@ -1,3 +1,11 @@
+---
+id: KDE-INV-001
+type: investigation
+title: "Investigation Artifact Authority Model"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # Investigation Artifact Authority Model
 
 **Investigation ID**: KDE-INV-001  

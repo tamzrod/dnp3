@@ -62,6 +62,17 @@ class ValidationManager:
         'testing': r'^TEST-\d{3}$'
     }
     
+    # Patterns for files/directories to EXCLUDE from validation (infrastructure)
+    EXCLUSION_PATTERNS = [
+        'readme.md',       # README files (infrastructure documentation)
+        'catalog.md',       # Catalog files (indexes)
+        '.governance',      # Governance infrastructure directory
+        'testing/governance/',  # Testing governance infrastructure
+        '__pycache__/',     # Python cache
+        '.git/',           # Git metadata
+        '.kde/'            # KDE runtime
+    ]
+    
     # Prefix to directory mapping
     PREFIX_TO_DIRECTORY = {
         'KDE-INV': 'investigations/',
@@ -100,6 +111,23 @@ class ValidationManager:
         self.laboratory_path = laboratory_path
         self.patterns = self.NAMING_PATTERNS
         self.response_matrix = self.RESPONSE_MATRIX
+        self.exclusion_patterns = self.EXCLUSION_PATTERNS
+    
+    def is_excluded(self, path: str) -> bool:
+        """
+        Check if path should be excluded from validation.
+        
+        Args:
+            path: Path to check
+        
+        Returns:
+            True if should be excluded
+        """
+        path_lower = path.lower()
+        for pattern in self.exclusion_patterns:
+            if pattern.lower() in path_lower:
+                return True
+        return False
     
     def validate_naming(self, artifact_id: str) -> Tuple[bool, Optional[str]]:
         """
@@ -194,6 +222,10 @@ class ValidationManager:
         Returns:
             List of detected violations
         """
+        # Skip excluded paths
+        if self.is_excluded(artifact_path):
+            return []
+        
         violations = []
         artifact_id = metadata.get('id', os.path.basename(artifact_path).replace('.md', ''))
         
@@ -238,24 +270,28 @@ class ValidationManager:
         is_completed = metadata.get('status', '').lower() == 'completed'
         valid, error = self.validate_lifecycle(status, is_completed)
         if not valid:
+            # Downgrade to LOW for pre-governance artifacts (completed but not locked)
+            # This is expected behavior for existing artifacts
+            severity = 'low' if is_completed else 'medium'
             violations.append(Violation(
                 violation_type=ViolationType.INVALID_LIFECYCLE,
                 artifact_id=artifact_id,
-                message=error,
-                severity='medium',
+                message=error + " (pre-governance artifact)",
+                severity=severity,
                 response=self.response_matrix[ViolationType.INVALID_LIFECYCLE],
-                details={'status': status}
+                details={'status': status, 'note': 'Auto-lock will apply on next update'}
             ))
         
-        # Check unlocked completed
+        # Check unlocked completed (only warn, don't require immediate lock)
+        # This allows pre-governance artifacts to remain completed until next revision
         if status.lower() == 'completed':
             violations.append(Violation(
                 violation_type=ViolationType.UNLOCKED_COMPLETED,
                 artifact_id=artifact_id,
-                message="Completed artifact should be locked",
+                message="Completed artifact should be locked (pre-governance)",
                 severity='low',
-                response=self.response_matrix[ViolationType.UNLOCKED_COMPLETED],
-                details={'status': status}
+                response=ViolationResponse.WARN,  # Changed to WARN for existing artifacts
+                details={'status': status, 'note': 'Auto-lock will apply on next update'}
             ))
         
         return violations

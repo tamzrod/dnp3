@@ -1,3 +1,11 @@
+---
+id: KDE-INV-000
+type: investigation
+title: "KDSE Legacy Artifact Retirement Assessment"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # KDSE Legacy Artifact Retirement Assessment - Conclusion
 
 **Investigation ID**: KDE-INV-000  

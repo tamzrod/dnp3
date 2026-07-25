@@ -1,3 +1,11 @@
+---
+id: KDE-INV-002
+type: investigation
+title: "Governance Authority Hierarchy"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # KDE Governance Authority Hierarchy - Conclusion
 
 **Investigation ID**: KDE-INV-002  

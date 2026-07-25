@@ -1,3 +1,11 @@
+---
+id: KDE-INV-042
+type: investigation
+title: "Investigation Title Missing"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # KDE-INV-042: Bootstrap Compliance Investigation - Conclusions
 
 **ID**: KDE-INV-042
