@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
 	"dnp3/internal/tl"
 )
 
@@ -196,6 +197,7 @@ type Outstation struct {
 	appSeq     uint8         // Application sequence number
 	unsolicited bool         // Unsolicited responses enabled
 	iin        al.IIN        // Internal Indication
+	fragmenter  *tl.Fragmenter
 	reassembler *tl.Reassembler
 }
 
@@ -209,6 +211,7 @@ func NewOutstation(config *Config) *Outstation {
 		state:       StateDown,
 		data:        NewDefaultDataHandler(),
 		appSeq:      0,
+		fragmenter:   tl.NewFragmenter(),
 		reassembler: tl.NewReassembler(),
 	}
 }
@@ -320,11 +323,26 @@ func (o *Outstation) Run() error {
 			continue
 		}
 
-		// Send response
+		// Send response with DLL framing
 		if resp != nil {
 			respData := o.buildTransportFragments(resp)
 			for _, frag := range respData {
-				if err := transport.Send(frag); err != nil {
+				// Wrap in DLL frame
+				dllFrame := &frame.Frame{
+					Control: frame.Control{
+						DIR:      false, // Outstation-to-Master
+						PRM:      false, // Secondary station
+						FuncCode: frame.FuncConfirmedUserData,
+					},
+					DestAddr: o.config.MasterAddress,
+					SrcAddr:  o.config.OutstationAddress,
+					Data:     frag,
+				}
+				dllEncoded, err := frame.Encode(dllFrame)
+				if err != nil {
+					continue
+				}
+				if err := transport.Send(dllEncoded); err != nil {
 					continue
 				}
 			}
@@ -335,6 +353,7 @@ func (o *Outstation) Run() error {
 }
 
 // reassembleMessage reassembles transport fragments into a complete message.
+// It first decodes DLL frames, then extracts and reassembles TL fragments.
 func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 	o.reassembler.Reset()
 
@@ -348,23 +367,47 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 			break
 		}
 
-		frag, err := tl.DecodeFragment(remaining)
+		// Decode DLL frame first
+		dllFrame, err := frame.Decode(remaining)
 		if err != nil {
 			offset++
 			continue
 		}
 
+		// Move past this DLL frame
+		headerSize := 10 // sync(2) + length(1) + control(1) + dest(2) + src(2)
+		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
+		offset += headerSize + len(dllFrame.Data) + crcSize
+
+		// Skip non-user-data frames or frames not directed to us
+		if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
+			dllFrame.Control.FuncCode != frame.FuncUnconfirmedUserData {
+			continue
+		}
+		if dllFrame.DestAddr != o.config.OutstationAddress {
+			continue
+		}
+
+		// Extract TL data from DLL frame
+		tlData := dllFrame.Data
+		if len(tlData) < 1 {
+			continue
+		}
+
+		// Decode TL fragment
+		frag, err := tl.DecodeFragment(tlData)
+		if err != nil {
+			continue
+		}
+
 		msg, err := o.reassembler.Push(frag)
 		if err != nil {
-			offset++
 			continue
 		}
 
 		if msg != nil {
 			return msg, nil
 		}
-
-		offset += 1 + len(frag.Data)
 	}
 
 	return nil, nil
@@ -813,7 +856,7 @@ func (o *Outstation) handleRecordCurrentTime(req *al.APDU) (*al.APDU, error) {
 	return nil, nil
 }
 
-// sendErrorResponse sends an error response.
+// sendErrorResponse sends an error response with DLL framing.
 func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 	o.mu.RLock()
 	transport := o.transport
@@ -841,6 +884,21 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 
 	fragments := o.buildTransportFragments(resp)
 	for _, frag := range fragments {
-		_ = transport.Send(frag)
+		// Wrap in DLL frame
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      false,
+				PRM:      false,
+				FuncCode: frame.FuncConfirmedUserData,
+			},
+			DestAddr: o.config.MasterAddress,
+			SrcAddr:  o.config.OutstationAddress,
+			Data:     frag,
+		}
+		dllEncoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			continue
+		}
+		_ = transport.Send(dllEncoded)
 	}
 }
