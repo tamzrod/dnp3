@@ -1,3 +1,11 @@
+---
+id: KDE-INV-048
+type: investigation
+title: "KDE Assessment Investigation"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # KDE-INV-ASSESSMENT: Implementation Promotion Readiness Assessment
 
 **Investigation ID**: KDE-INV-ASSESSMENT

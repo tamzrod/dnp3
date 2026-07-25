@@ -1,0 +1,76 @@
+# KDE Runtime Skill Manifest
+# Generated: 2026-07-21
+# Source: INV-021 Skill Evolution Validation
+# Status: PROMOTED
+
+version: "1.0.0"
+runtime_version: "1.0.0"
+
+# Promoted Skills (INV-021 EXP-001)
+# Score >= 23/30 required for promotion
+
+skills:
+  - id: skill-investigation-planning
+    name: Investigation Planning
+    version: "1.0.0"
+    status: promoted
+    source: SOP-001, INV-016
+    order: 1
+
+  - id: skill-experiment-design
+    name: Experiment Design
+    version: "1.0.0"
+    status: promoted
+    source: SOP-002, EXP-001
+    order: 2
+
+  - id: skill-knowledge-retrieval
+    name: Knowledge Retrieval
+    version: "1.0.0"
+    status: promoted
+    source: INV-019, SOP-005
+    order: 3
+
+  - id: skill-evidence-collection
+    name: Evidence Collection
+    version: "1.0.0"
+    status: promoted
+    source: SOP-004, INV-014
+    order: 4
+
+  - id: skill-decision-attribution
+    name: Decision Attribution
+    version: "1.0.0"
+    status: promoted
+    source: INV-019, EXP-002
+    order: 5
+
+  - id: skill-artifact-traceability
+    name: Artifact Traceability
+    version: "1.0.0"
+    status: promoted
+    source: KDE-ARCH-005, KDE-ARCH-006
+    order: 6
+
+  - id: skill-governance-review
+    name: Governance Review
+    version: "1.0.0"
+    status: promoted
+    source: SOP-006, SOP-007
+    order: 7
+
+  - id: skill-frontend-design
+    name: Frontend Design
+    version: "1.0.0"
+    status: promoted
+    source: frontend-design skill, INV-014
+    order: 8
+
+# Installation metadata
+installation:
+  timestamp: "2026-07-21T00:00:00Z"
+  installer: kde-runtime
+  method: automatic
+
+# Skill count
+total_skills: 8

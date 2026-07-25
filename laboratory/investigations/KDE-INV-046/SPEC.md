@@ -1,3 +1,11 @@
+---
+id: KDE-INV-046
+type: investigation
+title: "Investigation Title Missing"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # KDE-INV-046: End-to-End DNP3 Communication Implementation
 
 **Investigation ID**: KDE-INV-046

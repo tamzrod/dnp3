@@ -1,3 +1,11 @@
+---
+id: DNP3-REV-001
+type: review
+title: "DNP3-INV-001 Human Review"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:13Z"
+---
 # DNP3-REV-001: Engineering Diagnosis Methodology Investigation - Artifact Evaluation
 
 **Review ID**: DNP3-REV-001

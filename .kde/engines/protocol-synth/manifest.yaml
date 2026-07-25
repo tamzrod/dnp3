@@ -1,0 +1,94 @@
+# Protocol Synthesis Engine
+
+**Engine ID**: PROTOCOL-SYNTH-001
+**Version**: 1.0.0
+**Date**: 2026-07-20
+**Status**: ACTIVE
+
+---
+
+## Overview
+
+This engine synthesizes novel secure communication protocol architectures using established cryptographic primitives. It studies existing protocols, generates novel designs, implements them, and performs security analysis.
+
+---
+
+## Capabilities
+
+- Protocol architecture generation
+- Cryptographic primitive composition
+- Python implementation generation
+- Functional testing
+- Security attack simulation
+- Self-criticism and invalidation
+
+---
+
+## Supported Protocols (for study)
+
+- TLS 1.3
+- QUIC
+- HPKE
+- Noise Protocol Framework
+- Signal Double Ratchet
+- SSH
+- WireGuard
+- DTLS
+
+---
+
+## Supported Cryptographic Primitives
+
+### Key Exchange
+- ECDH (P-256, P-384, P-521)
+- X25519
+- X448
+- Kyber (Post-Quantum)
+
+### Authentication
+- Ed25519
+- Ed448
+- RSA-PSS
+- Dilithium (Post-Quantum)
+
+### Encryption
+- AES-GCM
+- ChaCha20-Poly1305
+- AES-CCM
+
+### Hashing
+- SHA-256
+- SHA-384
+- SHA-512
+- BLAKE3
+
+### Key Derivation
+- HKDF
+- Argon2
+- Scrypt
+
+---
+
+## Execution
+
+```bash
+python3 -m protocol_synth --run-id=RUN-001 --output-dir=runs/
+```
+
+---
+
+## Output
+
+Each run produces:
+- Protocol specification (Markdown)
+- Implementation (Python source)
+- Compilation log
+- Test results
+- Security analysis
+
+---
+
+## Document Status
+
+**ACTIVE**: Engine ready for execution
+

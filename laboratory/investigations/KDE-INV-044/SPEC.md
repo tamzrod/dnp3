@@ -1,3 +1,11 @@
+---
+id: KDE-INV-044
+type: investigation
+title: "Investigation Title Missing"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # Investigation: KDE-INV-044
 
 **ID**: KDE-INV-044

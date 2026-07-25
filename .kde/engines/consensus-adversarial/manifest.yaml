@@ -1,0 +1,28 @@
+# Consensus Adversarial Evaluation Engine
+
+**Engine ID**: CONSENSUS-ADVERSARIAL-001
+**Version**: 1.0.0
+**Date**: 2026-07-20
+**Status**: ACTIVE
+
+---
+
+## Overview
+
+Evaluates consensus protocols for safety and liveness violations.
+
+## Attack Types
+
+- Split Brain
+- Dual Leaders
+- Log Divergence
+- Infinite Election
+- Deadlock
+- Livelock
+- Recovery Failure
+- State Corruption
+
+---
+
+**ACTIVE**: Ready for evaluation
+

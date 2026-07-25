@@ -1,3 +1,11 @@
+---
+id: DNP3-INV-001
+type: investigation
+title: "Engineering Diagnosis Methodology Investigation"
+status: completed
+authority: "KDE Runtime (DNP3 Library)"
+created: "2026-07-25T10:46:04Z"
+---
 # DNP3-INV-001: Engineering Diagnosis Methodology Investigation - Conclusions
 
 **Investigation ID**: DNP3-INV-001
