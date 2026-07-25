@@ -338,3 +338,40 @@ const MinAPDUHeaderLen = 2
 
 // MinResponseLen is the minimum response length (header + IIN).
 const MinResponseLen = 4
+
+// NewConfirm creates a new confirmation APDU.
+// In DNP3, a confirmation is a response with FuncCode=0 and no IIN.
+func NewConfirm(seq uint8) *APDU {
+	return &APDU{
+		Control: AppControl{
+			FIR: true,
+			FIN: true,
+			CON: false, // Confirm does not require further confirmation
+			UNS: false,
+			Seq: seq,
+		},
+		FuncCode: FuncResponse, // FuncCode 0 is used for both response and confirm
+		Data:     nil,          // No IIN for confirm
+	}
+}
+
+// NewConfirmWithIIN creates a confirmation with IIN (e.g., for solicited confirmation).
+func NewConfirmWithIIN(seq uint8, iin *IIN) *APDU {
+	data := make([]byte, 2)
+	if iin != nil {
+		bytes := iin.Bytes()
+		data[0] = bytes[0]
+		data[1] = bytes[1]
+	}
+	return &APDU{
+		Control: AppControl{
+			FIR: true,
+			FIN: true,
+			CON: false,
+			UNS: false,
+			Seq: seq,
+		},
+		FuncCode: FuncResponse,
+		Data:     data,
+	}
+}

@@ -47,11 +47,14 @@ func (s State) String() string {
 		"Active",
 		"Error",
 	}
+
 	if s >= 0 && int(s) < len(names) {
 		return names[s]
 	}
+
 	return "Unknown"
 }
+
 
 // PollType defines the type of poll.
 type PollType int
@@ -77,11 +80,14 @@ func (p PollType) String() string {
 		"Class 2",
 		"Class 3",
 	}
+
 	if p >= 0 && int(p) < len(names) {
 		return names[p]
 	}
+
 	return "Unknown"
 }
+
 
 // Outstation represents a connected outstation.
 type Outstation struct {
@@ -94,6 +100,7 @@ type Outstation struct {
 	mu          sync.RWMutex
 }
 
+
 // NewOutstation creates a new outstation entry.
 func NewOutstation(id uint16, label string) *Outstation {
 	return &Outstation{
@@ -104,7 +111,9 @@ func NewOutstation(id uint16, label string) *Outstation {
 		Unsolicited: false,
 		IIN:        [2]byte{0, 0},
 	}
+
 }
+
 
 // UpdateIIN updates the internal indication field.
 func (o *Outstation) UpdateIIN(iin [2]byte) {
@@ -114,12 +123,14 @@ func (o *Outstation) UpdateIIN(iin [2]byte) {
 	o.LastSeen = time.Now()
 }
 
+
 // HasFlag checks if an IIN flag is set.
 func (o *Outstation) HasFlag(bit byte) bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return (o.IIN[0]&bit) != 0 || (o.IIN[1]&bit) != 0
 }
+
 
 // Master errors
 var (
@@ -128,6 +139,7 @@ var (
 	ErrTimeout           = errors.New("operation timeout")
 	ErrMaxRetries       = errors.New("maximum retries exceeded")
 	ErrInvalidResponse   = errors.New("invalid response")
+	ErrConfirmTimeout    = errors.New("confirmation timeout")
 )
 
 // Config holds master configuration.
@@ -138,6 +150,7 @@ type Config struct {
 	RetryDelay   int      // Delay between retries in milliseconds
 }
 
+
 // DefaultConfig returns default master configuration.
 func DefaultConfig() *Config {
 	return &Config{
@@ -146,7 +159,9 @@ func DefaultConfig() *Config {
 		MaxRetries:   MaxRetries,
 		RetryDelay:   100,
 	}
+
 }
+
 
 // Master represents a DNP3 Master Station.
 type Master struct {
@@ -160,12 +175,14 @@ type Master struct {
         reassembler *tl.Reassembler // Transport layer reassembler
 }
 
+
 // TransportHandler defines the interface for sending/receiving data.
 type TransportHandler interface {
 	Send(data []byte) error
 	Receive() ([]byte, error)
 	SetTimeout(ms int)
 }
+
 
 // ErrorHandler defines the callback for error notifications.
 type ErrorHandler func(err error, context string)
@@ -175,6 +192,7 @@ func NewMaster(config *Config) *Master {
 	if config == nil {
 		config = DefaultConfig()
 	}
+
 	return &Master{
 		config:     config,
 		state:      StateDisconnected,
@@ -182,17 +200,21 @@ func NewMaster(config *Config) *Master {
 		fragmenter:   tl.NewFragmenter(),
 		reassembler: tl.NewReassembler(),
 	}
+
 }
+
 
 // SetTransport sets the transport handler.
 func (m *Master) SetTransport(t TransportHandler) {
 	m.transport = t
 }
 
+
 // SetErrorHandler sets the error handler callback.
 func (m *Master) SetErrorHandler(h ErrorHandler) {
 	m.onError = h
 }
+
 
 // State returns the current master state.
 func (m *Master) State() State {
@@ -201,12 +223,14 @@ func (m *Master) State() State {
 	return m.state
 }
 
+
 // SetState updates the master state.
 func (m *Master) SetState(state State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.state = state
 }
+
 
 // AddOutstation registers an outstation.
 func (m *Master) AddOutstation(id uint16, label string) *Outstation {
@@ -217,12 +241,14 @@ func (m *Master) AddOutstation(id uint16, label string) *Outstation {
 	return o
 }
 
+
 // RemoveOutstation removes an outstation.
 func (m *Master) RemoveOutstation(id uint16) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.outstations, id)
 }
+
 
 // GetOutstation retrieves an outstation by ID.
 func (m *Master) GetOutstation(id uint16) (*Outstation, bool) {
@@ -232,6 +258,7 @@ func (m *Master) GetOutstation(id uint16) (*Outstation, bool) {
 	return o, ok
 }
 
+
 // OutstationCount returns the number of registered outstations.
 func (m *Master) OutstationCount() int {
 	m.mu.RLock()
@@ -239,15 +266,18 @@ func (m *Master) OutstationCount() int {
 	return len(m.outstations)
 }
 
+
 // Connect establishes connection to outstations.
 func (m *Master) Connect() error {
 	if m.transport == nil {
 		return errors.New("transport not configured")
 	}
+
 	m.SetState(StateConnecting)
 	m.SetState(StateConnected)
 	return nil
 }
+
 
 // Disconnect closes connections.
 func (m *Master) Disconnect() error {
@@ -256,25 +286,30 @@ func (m *Master) Disconnect() error {
 	return nil
 }
 
+
 // Initialize performs master initialization sequence.
 func (m *Master) Initialize() error {
 	if m.State() != StateConnected {
 		return ErrNotConnected
 	}
+
 	m.SetState(StateInitialized)
 	return nil
 }
+
 
 // Enable unsolicits on an outstation.
 func (m *Master) EnableUnsolicited(outstationID uint16) error {
 	if m.State() < StateConnected {
 		return ErrNotConnected
 	}
+
 	
 	o, ok := m.GetOutstation(outstationID)
 	if !ok {
 		return ErrOutstationNotFound
 	}
+
 	
 	// Build ENABLE_UNSOLICITED request
 	req := buildRequest(0, al.FuncEnableUnsolicited, nil)
@@ -282,6 +317,7 @@ func (m *Master) EnableUnsolicited(outstationID uint16) error {
 	if err := m.sendWithRetry(req, outstationID); err != nil {
 		return err
 	}
+
 	
 	o.mu.Lock()
 	o.Unsolicited = true
@@ -290,21 +326,25 @@ func (m *Master) EnableUnsolicited(outstationID uint16) error {
 	return nil
 }
 
+
 // DisableUnsolicited disables unsolicited on an outstation.
 func (m *Master) DisableUnsolicited(outstationID uint16) error {
 	if m.State() < StateConnected {
 		return ErrNotConnected
 	}
+
 	
 	o, ok := m.GetOutstation(outstationID)
 	if !ok {
 		return ErrOutstationNotFound
 	}
+
 	
 	req := buildRequest(0, al.FuncDisableUnsolicited, nil)
 	if err := m.sendWithRetry(req, outstationID); err != nil {
 		return err
 	}
+
 	
 	o.mu.Lock()
 	o.Unsolicited = false
@@ -313,11 +353,13 @@ func (m *Master) DisableUnsolicited(outstationID uint16) error {
 	return nil
 }
 
+
 // Poll performs a data poll on an outstation.
 func (m *Master) Poll(outstationID uint16, pollType PollType) error {
 	if m.State() < StateInitialized {
 		return ErrNotConnected
 	}
+
 	
 	data := buildPollRequest(pollType)
 	req := buildRequest(0, al.FuncRead, data)
@@ -325,11 +367,13 @@ func (m *Master) Poll(outstationID uint16, pollType PollType) error {
 	return m.sendWithRetry(req, outstationID)
 }
 
+
 // Operate issues a control operation.
 func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) error {
 	if m.State() < StateInitialized {
 		return ErrNotConnected
 	}
+
 	
 	var req *al.APDU
 	
@@ -339,21 +383,25 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 		if err := m.sendWithRetry(selectReq, outstationID); err != nil {
 			return err
 		}
+
 		// OPERATE
 		req = m.buildControlRequest(al.FuncOperate, group, variation, index, value)
 	} else {
 		// DIRECT OPERATE
 		req = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
 	}
+
 	
 	return m.sendWithRetry(req, outstationID)
 }
+
 
 // TimeSync performs time synchronization with an outstation.
 func (m *Master) TimeSync(outstationID uint16) error {
 	if m.State() < StateInitialized {
 		return ErrNotConnected
 	}
+
 	
 	// Build time sync request with current time
 	now := time.Now()
@@ -363,6 +411,7 @@ func (m *Master) TimeSync(outstationID uint16) error {
 	return m.sendWithRetry(req, outstationID)
 }
 
+
 // sendWithRetry sends a request with retry logic.
 func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	var lastErr error
@@ -371,6 +420,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		if attempt > 0 {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
+
 		
 		// Send request with DNP3 protocol layers
 		data := req.Encode()
@@ -393,41 +443,102 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 				SrcAddr:  m.config.MasterAddress,
 				Data:     tlEncoded,
 			}
+
 			dllEncoded, err := frame.Encode(dllFrame)
 			if err != nil {
 				return err
 			}
 
+
 			if err := m.transport.Send(dllEncoded); err != nil {
 				lastErr = err
 				continue
 			}
+
 		}
-		
+		// If CON bit is set, wait for confirmation first
+		if req.Control.CON {
+			if err := m.waitForConfirmation(req.Control.Seq); err != nil {
+				lastErr = err
+				continue
+			}
+		}
+
 		// Wait for response
 		resp, err := m.waitForResponse()
 		if err != nil {
 			lastErr = err
 			continue
 		}
+
 		
 		// Process response
 		if err := m.processResponse(resp, outstationID); err != nil {
 			lastErr = err
 			continue
 		}
+
 		
 		return nil // Success
 	}
+
 	
 	return fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
+
+// waitForConfirmation waits for an application layer confirmation.
+func (m *Master) waitForConfirmation(expectedSeq uint8) error {
+	m.transport.SetTimeout(m.config.Timeout)
+	
+	for {
+		data, err := m.transport.Receive()
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrConfirmTimeout, err)
+		}
+
+		
+		// Process received bytes
+		appData, err := m.processReceivedBytes(data)
+		if err != nil {
+			continue
+		}
+
+		
+		// Decode APDU
+		apdu, err := al.Decode(appData)
+		if err != nil {
+			continue
+		}
+
+		
+		// Check if this is a confirmation
+		// A confirmation has FuncCode=0 and no IIN (empty data)
+		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) == 0 {
+			// Sequence should match (confirms the right request)
+			if apdu.Control.Seq == expectedSeq {
+				return nil
+			}
+
+		}
+
+		
+		// If we got a full response before confirmation, that's also acceptable
+		// In some implementations, the response IS the confirmation
+		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) >= 2 {
+			return nil
+		}
+
+	}
+
+}
+
 
 // waitForResponse waits for a response with timeout.
 func (m *Master) waitForResponse() ([]byte, error) {
 	m.transport.SetTimeout(m.config.Timeout)
 	return m.transport.Receive()
 }
+
 
 // processResponse processes a received response.
 func (m *Master) processResponse(data []byte, outstationID uint16) error {
@@ -437,11 +548,13 @@ func (m *Master) processResponse(data []byte, outstationID uint16) error {
 		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
+
 	// Application layer decode
 	resp, err := al.DecodeResponse(appData)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
+
 
 	// Update outstation IIN
 	o, ok := m.GetOutstation(outstationID)
@@ -449,8 +562,10 @@ func (m *Master) processResponse(data []byte, outstationID uint16) error {
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
+
 	return nil
 }
+
 
 // processReceivedBytes processes raw TCP data through DLL and TL layers.
 // Returns the reassembled application layer data.
@@ -470,8 +585,10 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			if len(completeData) > 0 {
 				return completeData, nil
 			}
+
 			return nil, fmt.Errorf("DLL decode error at offset %d: %w", offset, err)
 		}
+
 
 		// Move past this frame
 		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes header
@@ -488,11 +605,14 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
 				continue
 			}
+
 		}
+
 		// For secondary station (PRM=0), only process user data frames
 		if !dllFrame.Control.PRM && dllFrame.Control.FuncCode != frame.FuncConfirmedUserDataR {
 			continue
 		}
+
 
 		// Extract TL fragment from frame data
 		tlData := dllFrame.Data
@@ -500,11 +620,13 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue
 		}
 
+
 		// Parse TL header using correct function name
 		tlFrag, err := tl.DecodeFragment(tlData)
 		if err != nil {
 			continue // Skip malformed fragments
 		}
+
 
 		// Push fragment to reassembler - returns complete message when FIN received
 		result, err := m.reassembler.Push(tlFrag)
@@ -512,18 +634,23 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("reassembly error: %w", err)
 		}
 
+
 		if result != nil {
 			completeData = result
 		}
+
 	}
+
 
 	// Check if we have complete application data
 	if len(completeData) == 0 {
 		return nil, fmt.Errorf("no complete response received")
 	}
 
+
 	return completeData, nil
 }
+
 
 // buildRequest creates a request APDU.
 func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
@@ -538,7 +665,9 @@ func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
 		FuncCode: funcCode,
 		Data:     data,
 	}
+
 }
+
 
 // buildPollRequest creates a poll request based on poll type.
 func buildPollRequest(pollType PollType) []byte {
@@ -550,30 +679,39 @@ func buildPollRequest(pollType PollType) []byte {
 	case PollClass0:
 		// Group 60, Variation 1
 		return []byte{60, 1, 0x07, 0x00}
+
 	case PollClass1:
 		// Group 2, Variation 1 = Binary events
 		return []byte{2, 1, 0x07, 0x00}
+
 	case PollClass2:
 		// Group 32, Variation 1 = Analog events
 		return []byte{32, 1, 0x07, 0x00}
+
 	case PollClass3:
 		// Group 22, Variation 1 = Counter events
 		return []byte{22, 1, 0x07, 0x00}
+
 	case PollEvent:
 		// All event classes
 		return []byte{2, 1, 0x07, 0x00, 32, 1, 0x07, 0x00, 22, 1, 0x07, 0x00}
+
 	default:
 		return nil
 	}
+
 }
+
 
 // buildControlRequest creates a control request.
 func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, index uint16, value interface{}) *al.APDU {
 	// Object prefix: Group, Variation, Qualifier (0x00 = index only), Count (1)
 	prefix := []byte{group, variation, 0x00, 0x01}
+
 	
 	// Index: 2 bytes big-endian
 	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
+
 	
 	// Value encoding depends on type
 	var valueBytes []byte
@@ -581,25 +719,33 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 	case bool:
 		if v {
 			valueBytes = []byte{0x01}
+
 		} else {
 			valueBytes = []byte{0x00}
+
 		}
+
 	case uint8:
 		valueBytes = []byte{v}
+
 	case uint16:
 		valueBytes = []byte{byte(v >> 8), byte(v & 0xFF)}
+
 	case uint32:
 		valueBytes = []byte{
 			byte(v >> 24), byte(v >> 16),
 			byte(v >> 8), byte(v & 0xFF),
 		}
+
 	case float32:
 		bits := float32ToUint32Bits(v)
 		valueBytes = []byte{
 			byte(bits >> 24), byte(bits >> 16),
 			byte(bits >> 8), byte(bits & 0xFF),
 		}
+
 	}
+
 	
 	data := append(prefix, indexBytes...)
 	data = append(data, valueBytes...)
@@ -607,10 +753,12 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 	return buildRequest(0, funcCode, data)
 }
 
+
 // float32ToUint32Bits converts float32 to uint32 bits.
 func float32ToUint32Bits(f float32) uint32 {
 	return math.Float32bits(f)
 }
+
 
 // encodeDNP3Time encodes time.Time to DNP3 time format.
 func encodeDNP3Time(t time.Time) []byte {
@@ -627,6 +775,313 @@ func encodeDNP3Time(t time.Time) []byte {
 		byte(ms >> 8), byte(ms & 0xFF),
 		0x00, 0x00, // Reserved/last half
 	}
+
+}
+
+
+// =============================================================================
+// WRITE OPERATIONS
+// =============================================================================
+
+// CROB represents a Control Relay Output Block (Group 12, Variation 1).
+type CROB struct {
+	Code      uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
+	Count     uint8  // Number of operation cycles
+	OnTime    uint32 // Time in ms to energize
+	OffTime   uint32 // Time in ms to de-energize
+	Status    uint8  // Qualifier code (0x00=STANDARD)
+}
+
+// WriteBinaryOutput writes a binary output (CROB) to an outstation.
+func (m *Master) WriteBinaryOutput(outstationID uint16, index uint16, crob *CROB) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	data := buildCROBRequest(index, crob)
+	req := buildRequest(0, al.FuncWrite, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// buildCROBRequest builds a CROB write request.
+func buildCROBRequest(index uint16, crob *CROB) []byte {
+	// Object header: Group 12, Variation 1
+	// Qualifier: 0x00 (index-only)
+	header := []byte{12, 1, 0x00, 0x01}
+
+	// Index: 2 bytes big-endian
+	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
+
+	// CROB data: Code(1) + Count(1) + OnTime(4) + OffTime(4) + Status(1)
+	data := []byte{
+		crob.Code,
+		crob.Count,
+		byte(crob.OnTime >> 24), byte(crob.OnTime >> 16), byte(crob.OnTime >> 8), byte(crob.OnTime),
+		byte(crob.OffTime >> 24), byte(crob.OffTime >> 16), byte(crob.OffTime >> 8), byte(crob.OffTime),
+		crob.Status,
+	}
+
+	return append(append(header, indexBytes...), data...)
+}
+
+// WriteAnalogOutput writes an analog output to an outstation.
+func (m *Master) WriteAnalogOutput(outstationID uint16, index uint16, value interface{}, variation uint8) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	data := buildAnalogOutputRequest(index, value, variation)
+	req := buildRequest(0, al.FuncWrite, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// buildAnalogOutputRequest builds an analog output write request.
+func buildAnalogOutputRequest(index uint16, value interface{}, variation uint8) []byte {
+	// Object header based on variation:
+	// Group 41 = 16-bit signed
+	// Group 42 = 32-bit signed
+	// Group 43 = 32-bit float
+	// Group 44 = 64-bit double
+	group := uint8(41)
+	if variation >= 5 {
+		group = 42
+	} else if variation >= 9 {
+		group = 43
+	} else if variation >= 13 {
+		group = 44
+	}
+
+	// Object header: Group, Variation, Qualifier (0x00=index-only), Count (1)
+	header := []byte{group, variation, 0x00, 0x01}
+
+	// Index: 2 bytes big-endian
+	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
+
+	// Value encoding depends on variation
+	var valueBytes []byte
+	switch variation {
+	case 1, 5: // 16-bit signed
+		v := int16(0)
+		switch val := value.(type) {
+		case int:
+			v = int16(val)
+		case int16:
+			v = val
+		case int32:
+			v = int16(val)
+		case float64:
+			v = int16(val)
+		}
+		valueBytes = []byte{byte(v >> 8), byte(v)}
+
+	case 2, 6: // 16-bit unsigned
+		v := uint16(0)
+		switch val := value.(type) {
+		case int:
+			v = uint16(val)
+		case uint16:
+			v = val
+		case uint32:
+			v = uint16(val)
+		case float64:
+			v = uint16(val)
+		}
+		valueBytes = []byte{byte(v >> 8), byte(v)}
+
+	case 3, 7: // 32-bit signed
+		v := int32(0)
+		switch val := value.(type) {
+		case int:
+			v = int32(val)
+		case int32:
+			v = val
+		case int64:
+			v = int32(val)
+		case float64:
+			v = int32(val)
+		}
+		valueBytes = []byte{
+			byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v),
+		}
+
+	case 4, 8: // 32-bit unsigned
+		v := uint32(0)
+		switch val := value.(type) {
+		case int:
+			v = uint32(val)
+		case uint32:
+			v = val
+		case uint64:
+			v = uint32(val)
+		case float64:
+			v = uint32(val)
+		}
+		valueBytes = []byte{
+			byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v),
+		}
+
+	case 9, 10: // 32-bit float
+		v := float32(0)
+		switch val := value.(type) {
+		case float32:
+			v = val
+		case float64:
+			v = float32(val)
+		case int, int32:
+			v = float32(reflectValue(val))
+		}
+		bits := math.Float32bits(v)
+		valueBytes = []byte{
+			byte(bits >> 24), byte(bits >> 16), byte(bits >> 8), byte(bits),
+		}
+
+	case 13, 14: // 64-bit double
+		v := float64(0)
+		switch val := value.(type) {
+		case float64:
+			v = val
+		case float32:
+			v = float64(val)
+		case int, int32, int64:
+			v = float64(reflectValue(val))
+		}
+		bits := math.Float64bits(v)
+		valueBytes = []byte{
+			byte(bits >> 56), byte(bits >> 48), byte(bits >> 40), byte(bits >> 32),
+			byte(bits >> 24), byte(bits >> 16), byte(bits >> 8), byte(bits),
+		}
+
+	default: // Default to 16-bit signed
+		v := int16(0)
+		switch val := value.(type) {
+		case int:
+			v = int16(val)
+		case int16:
+			v = val
+		case float64:
+			v = int16(val)
+		}
+		valueBytes = []byte{byte(v >> 8), byte(v)}
+	}
+
+	return append(append(header, indexBytes...), valueBytes...)
+}
+
+// reflectValue converts interface{} to int64 for numeric operations.
+func reflectValue(v interface{}) int64 {
+	switch val := v.(type) {
+	case int:
+		return int64(val)
+	case int32:
+		return int64(val)
+	case int64:
+		return val
+	case uint:
+		return int64(val)
+	case uint32:
+		return int64(val)
+	case uint64:
+		return int64(val)
+	default:
+		return 0
+	}
+}
+
+// =============================================================================
+// READ OPERATIONS (Convenience Methods)
+// =============================================================================
+
+// ReadBinaryInputs reads binary inputs from an outstation.
+func (m *Master) ReadBinaryInputs(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 1, Variation 1 with range qualifier
+	data := []byte{1, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadDoubleBinaryInputs reads double-bit binary inputs from an outstation.
+func (m *Master) ReadDoubleBinaryInputs(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 3, Variation 1 with range qualifier
+	data := []byte{3, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadAnalogInputs reads analog inputs from an outstation.
+func (m *Master) ReadAnalogInputs(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 30, Variation 1 with range qualifier
+	data := []byte{30, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadCounters reads counters from an outstation.
+func (m *Master) ReadCounters(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 20, Variation 1 with range qualifier
+	data := []byte{20, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadFrozenCounters reads frozen counters from an outstation.
+func (m *Master) ReadFrozenCounters(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 21, Variation 1 with range qualifier
+	data := []byte{21, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadBinaryOutputStatus reads binary output status from an outstation.
+func (m *Master) ReadBinaryOutputStatus(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 10, Variation 1 with range qualifier
+	data := []byte{10, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
+}
+
+// ReadAnalogOutputStatus reads analog output status from an outstation.
+func (m *Master) ReadAnalogOutputStatus(outstationID uint16, start, stop uint16) error {
+	if m.State() < StateInitialized {
+		return ErrNotConnected
+	}
+
+	// Group 40, Variation 1 with range qualifier
+	data := []byte{40, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	req := buildRequest(0, al.FuncRead, data)
+
+	return m.sendWithRetry(req, outstationID)
 }
 
 // HandleUnsolicited processes an unsolicited response from an outstation.
@@ -635,16 +1090,19 @@ func (m *Master) HandleUnsolicited(data []byte) error {
 	if err != nil {
 		return err
 	}
+
 	
 	if !resp.Header.Control.UNS {
 		return errors.New("not an unsolicited response")
 	}
+
 	
 	// Update outstation state (we need to track this somehow)
 	// In practice, you'd have sequence number tracking to identify the source
 	
 	return nil
 }
+
 
 // Placeholder for al import (would be internal/al in real implementation)
 // In this file, al functions are simplified
