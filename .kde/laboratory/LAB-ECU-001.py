@@ -251,13 +251,13 @@ def run_laboratory():
     # Integration
     int_score = 10
     int_issues = []
-    if not validation.get('ready_for_execution'):
+    if validation and not validation.get('ready_for_execution'):
         int_score -= 3
         int_issues.append("Runtime not ready")
     
     report.assessments['Runtime Integration'] = {
         'score': max(int_score, 0),
-        'evidence': [f"Validation: {validation.get('status')}", f"Ready: {validation.get('ready_for_execution')}"],
+        'evidence': [f"Validation: {validation.get('status') if validation else 'N/A'}", f"Ready: {validation.get('ready_for_execution') if validation else False}"],
         'issues': int_issues
     }
     

@@ -81,30 +81,45 @@ class EngineRegistry:
         Returns:
             EngineMetadata if valid engine found, None otherwise
         """
-        # Look for specification file
+        # Look for specification files
         spec_path = os.path.join(engine_path, "specification.md")
+        spec_alt_path = os.path.join(engine_path, "SPEC.md")  # Alternative naming
+        manifest_path = os.path.join(engine_path, "manifest.yaml")
         
-        if not os.path.exists(spec_path):
-            return None
+        metadata = None
         
-        # Parse specification
-        metadata = self._parse_specification(spec_path)
+        if os.path.exists(spec_path):
+            # Parse specification
+            metadata = self._parse_specification(spec_path)
+            if metadata:
+                metadata.specification_path = spec_path
+                
+                # Look for manifest.yaml for additional metadata
+                if os.path.exists(manifest_path):
+                    self._parse_manifest(metadata, manifest_path)
+        elif os.path.exists(spec_alt_path):
+            # Parse from SPEC.md
+            metadata = self._parse_specification(spec_alt_path)
+            if metadata:
+                metadata.specification_path = spec_alt_path
+                
+                # Look for manifest.yaml for additional metadata
+                if os.path.exists(manifest_path):
+                    self._parse_manifest(metadata, manifest_path)
+        elif os.path.exists(manifest_path):
+            # Parse from manifest.yaml only
+            metadata = self._parse_manifest_only(directory, manifest_path)
+        
         if not metadata:
             return None
         
-        # Set directory and paths
+        # Set directory
         metadata.directory = directory
-        metadata.specification_path = spec_path
         
         # Look for methodology
         methodology_path = os.path.join(engine_path, "methodology.md")
         if os.path.exists(methodology_path):
             metadata.methodology_path = methodology_path
-        
-        # Look for manifest.yaml
-        manifest_path = os.path.join(engine_path, "manifest.yaml")
-        if os.path.exists(manifest_path):
-            self._parse_manifest(metadata, manifest_path)
         
         # Extract capabilities from metadata
         metadata.capabilities = self._extract_capabilities(metadata)
@@ -216,6 +231,95 @@ class EngineRegistry:
             
         except Exception:
             pass
+    
+    def _parse_manifest_only(self, directory: str, manifest_path: str) -> Optional[EngineMetadata]:
+        """
+        Parse engine from manifest.yaml (markdown format, no specification.md).
+        
+        Args:
+            directory: Engine directory name
+            manifest_path: Path to manifest.yaml
+        
+        Returns:
+            EngineMetadata if valid, None otherwise
+        """
+        try:
+            with open(manifest_path, 'r') as f:
+                content = f.read()
+            
+            # Extract basic metadata using regex (markdown format)
+            engine_id_match = re.search(r'\*\*Engine ID\*\*:\s*(\S+)', content)
+            engine_id = engine_id_match.group(1) if engine_id_match else f"KDE-{directory.upper()}"
+            
+            version_match = re.search(r'\*\*Version\*\*:\s*(\S+)', content)
+            version = version_match.group(1) if version_match else "1.0.0"
+            
+            # Extract codename from filename
+            codename = directory
+            
+            # Extract status
+            status_match = re.search(r'\*\*Status\*\*:\s*(\S+)', content)
+            status_str = status_match.group(1).lower() if status_match else "active"
+            
+            if "historical" in status_str:
+                status = EngineStatus.HISTORICAL
+            elif "deprecated" in status_str:
+                status = EngineStatus.DEPRECATED
+            elif "experimental" in status_str:
+                status = EngineStatus.EXPERIMENTAL
+            else:
+                status = EngineStatus.ACTIVE
+            
+            # Default stability
+            stability = EngineStability.TESTING
+            
+            # Extract capabilities from markdown list
+            capabilities = []
+            capabilities_section = re.search(r'## Capabilities\s*\n(.*?)(?:\n##|\Z)', content, re.DOTALL)
+            if capabilities_section:
+                cap_lines = capabilities_section.group(1).strip().split('\n')
+                for line in cap_lines:
+                    if line.strip().startswith('-'):
+                        cap_name = line.strip().lstrip('-').strip()
+                        # Determine type from keywords
+                        cap_type = CapabilityType.ANALYSIS
+                        for kw in ['synthes', 'generat', 'creat']:
+                            if kw in cap_name.lower():
+                                cap_type = CapabilityType.SYNTHESIS
+                                break
+                        for kw in ['validat', 'test', 'check', 'review']:
+                            if kw in cap_name.lower():
+                                cap_type = CapabilityType.VALIDATION
+                                break
+                        for kw in ['evaluat', 'critique', 'assess']:
+                            if kw in cap_name.lower():
+                                cap_type = CapabilityType.EVALUATION
+                                break
+                        capabilities.append(Capability(
+                            name=cap_name,
+                            type=cap_type,
+                            description=cap_name,
+                            keywords=[]
+                        ))
+            
+            metadata = EngineMetadata(
+                engine_id=engine_id,
+                directory=directory,
+                name=codename,
+                codename=codename,
+                version=version,
+                status=status,
+                stability=stability,
+                priority=100,
+                capabilities=capabilities,
+                provenance=f"Discovered from manifest.yaml in {directory}"
+            )
+            
+            return metadata
+            
+        except Exception as e:
+            print(f"Error parsing manifest {manifest_path}: {e}")
+            return None
     
     def _extract_capabilities(self, metadata: EngineMetadata) -> List[Capability]:
         """

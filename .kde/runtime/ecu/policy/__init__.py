@@ -143,8 +143,8 @@ class PolicyLayer:
                     violations.extend(result.get('violations', []))
                     details.extend(result.get('details', []))
         
-        blocked = any(v.violated for v in violations) and any(
-            r.blocking for r in self._rules if r.name in [v.value for v in violations]
+        blocked = len(violations) > 0 and any(
+            r.blocking for r in self._rules if r.name in [v.value if hasattr(v, 'value') else v for v in violations]
         )
         
         self.total_checks += 1
@@ -178,8 +178,8 @@ class PolicyLayer:
                     violations.extend(result.get('violations', []))
                     details.extend(result.get('details', []))
         
-        blocked = any(v.violated for v in violations) and any(
-            r.blocking for r in self._rules if r.name in [v.name for v in violations]
+        blocked = len(violations) > 0 and any(
+            r.blocking for r in self._rules if r.name in [v.value if hasattr(v, 'value') else v for v in violations]
         )
         
         self.total_checks += 1
