@@ -64,12 +64,13 @@ func DefaultTCPConfig() *TCPConfig {
 
 // TCPTransport implements Handler for TCP connections.
 type TCPTransport struct {
-	conn    net.Conn
-	config  *TCPConfig
-	mu      sync.RWMutex
-	closed  bool
-	ctx     context.Context
-	cancel  context.CancelFunc
+	conn     net.Conn
+	listener net.Listener
+	config   *TCPConfig
+	mu       sync.RWMutex
+	closed   bool
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // NewTCPTransport creates a new TCP transport.
@@ -120,6 +121,7 @@ func (t *TCPTransport) Connect() error {
 }
 
 // Accept waits for an incoming TCP connection (server mode).
+// In server mode, the listener is kept open to accept multiple connections.
 func (t *TCPTransport) Accept() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -127,22 +129,51 @@ func (t *TCPTransport) Accept() error {
 	if t.closed {
 		return ErrClosed
 	}
+
+	// If already connected, return success
 	if t.conn != nil {
-		return nil // Already connected
+		return nil
 	}
 
-	addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("TCP listen failed: %w", err)
+	// Create listener if not already created
+	if t.listener == nil {
+		addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("TCP listen failed: %w", err)
+		}
+		t.listener = listener
 	}
 
-	timeout := time.Duration(t.config.ConnectTimeout) * time.Millisecond
-	conn, err := listener.Accept()
-	listener.Close()
+	// For deadline support, we need to use TCPListener specifically
+	// Cast to *net.TCPListener if possible
+	var conn net.Conn
+	var err error
+
+	if tcpListener, ok := t.listener.(*net.TCPListener); ok {
+		// Set deadline for accepting
+		timeout := time.Duration(t.config.ConnectTimeout) * time.Millisecond
+		tcpListener.SetDeadline(time.Now().Add(timeout))
+		conn, err = tcpListener.Accept()
+	} else {
+		// Fallback for non-TCP listeners
+		conn, err = t.listener.Accept()
+	}
+
 	if err != nil {
+		// Check if it's a timeout
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return ErrTimeout
+		}
+		// Check if it's a closed error (context cancellation)
+		if t.closed {
+			return ErrClosed
+		}
 		return fmt.Errorf("TCP accept failed: %w", err)
 	}
+
+	// Set read deadline on connection
+	timeout := time.Duration(t.config.ConnectTimeout) * time.Millisecond
 	conn.SetReadDeadline(time.Now().Add(timeout))
 
 	t.conn = conn
@@ -238,7 +269,7 @@ func (t *TCPTransport) SetTimeout(ms int) {
 	t.config.ReceiveTimeout = ms
 }
 
-// Close closes the TCP connection.
+// Close closes the TCP connection and listener.
 func (t *TCPTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -246,13 +277,19 @@ func (t *TCPTransport) Close() error {
 	t.closed = true
 	t.cancel()
 
-	if t.conn == nil {
-		return nil
+	// Close the connection if it exists
+	if t.conn != nil {
+		_ = t.conn.Close()
+		t.conn = nil
 	}
 
-	err := t.conn.Close()
-	t.conn = nil
-	return err
+	// Close the listener if it exists
+	if t.listener != nil {
+		_ = t.listener.Close()
+		t.listener = nil
+	}
+
+	return nil
 }
 
 // LocalAddr returns the local network address.

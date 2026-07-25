@@ -431,18 +431,35 @@ func (s *server) Start(ctx context.Context) error {
 		return fmt.Errorf("start failed: %w", err)
 	}
 
-	// Start the run loop in a goroutine
+	// Start the run loop in a goroutine with proper context
 	runCtx, runCancel := context.WithCancel(context.Background())
 	s.runCancel = runCancel
+
+	// Start accept loop in a separate goroutine
 	go func() {
-		// Accept connection first
-		if err := t.Accept(); err != nil {
-			// Log error but don't crash
-			return
+		for {
+			select {
+			case <-runCtx.Done():
+				// Server is shutting down
+				return
+			default:
+				// Accept connection
+				if err := t.Accept(); err != nil {
+					// Check if it's a timeout (normal in server mode)
+					if err == transport.ErrTimeout {
+						continue
+					}
+					// Check if transport is closed
+					if err == transport.ErrClosed {
+						return
+					}
+					// Log other errors but continue
+					continue
+				}
+				// Connection accepted, run the main loop
+				s.internalOutstation.Run()
+			}
 		}
-		// Then run the main loop using the context
-		_ = runCtx
-		s.internalOutstation.Run()
 	}()
 
 	s.state = ServerStateRunning
