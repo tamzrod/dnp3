@@ -153,24 +153,26 @@ func TestControlByte(t *testing.T) {
 		want    byte
 	}{
 		{
+			// DNP3 Control byte format (IEEE 1815-2012 Section 5.2):
+			// Bit 7: DIR, Bit 6: PRM, Bit 5: FCB, Bit 4: FCV, Bits 3-0: FuncCode
 			name:    "master to outstation reset",
 			control: Control{DIR: true, PRM: true, FuncCode: FuncResetLinkStations},
-			want:    0x49, // 0100 1001
+			want:    0xC0, // 1100 0000: DIR=1, PRM=1, FCB=0, FCV=0, FuncCode=0
 		},
 		{
 			name:    "outstation to master ack",
 			control: Control{DIR: false, PRM: false, FuncCode: FuncAck},
-			want:    0x00,
+			want:    0x00, // 0000 0000: DIR=0, PRM=0, FuncCode=0
 		},
 		{
 			name:    "confirmed data with FCB",
 			control: Control{DIR: true, PRM: true, FCB: true, FCV: true, FuncCode: FuncConfirmedUserData},
-			want:    0x64, // 0110 0100
+			want:    0xF4, // 1111 0100: DIR=1, PRM=1, FCB=1, FCV=1, FuncCode=4
 		},
 		{
 			name:    "confirmed data no FCB",
 			control: Control{DIR: true, PRM: true, FCB: false, FCV: true, FuncCode: FuncConfirmedUserData},
-			want:    0x44, // 0100 0100
+			want:    0xD4, // 1101 0100: DIR=1, PRM=1, FCB=0, FCV=1, FuncCode=4
 		},
 	}
 

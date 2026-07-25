@@ -107,6 +107,13 @@ type Control struct {
 }
 
 // ToByte converts the Control byte to a single byte.
+//
+// DNP3 Control byte format (IEEE 1815-2012 Section 5.2):
+//   Bit 7: DIR (Direction)
+//   Bit 6: PRM (Primary)
+//   Bit 5: FCB (Frame Count Bit)
+//   Bit 4: FCV (Frame Count Bit Valid)
+//   Bits 3-0: Function Code (4 bits, primary functions 0-15)
 func (c Control) ToByte() byte {
 	var b byte
 
@@ -120,15 +127,11 @@ func (c Control) ToByte() byte {
 		b |= 0x20
 	}
 	if c.FCV {
-		b |= 0x04
-	}
-	if c.DFC {
-		b |= 0x02
+		b |= 0x10
 	}
 
-	// FuncCode occupies bits 5-3 when PRM=1, or varies when PRM=0
-	// Extract bits 5-3 from FuncCode
-	b |= (c.FuncCode & 0x07) << 3
+	// FuncCode occupies bits 3-0 (4 bits)
+	b |= c.FuncCode & 0x0F
 
 	return b
 }
@@ -138,10 +141,9 @@ func (c *Control) FromByte(b byte) {
 	c.DIR = (b & 0x80) != 0
 	c.PRM = (b & 0x40) != 0
 	c.FCB = (b & 0x20) != 0
-	c.FCV = (b & 0x04) != 0
-	c.DFC = (b & 0x02) != 0
-	// Function code is in bits 5-3 (3 bits, values 0-7)
-	c.FuncCode = (b >> 3) & 0x07
+	c.FCV = (b & 0x10) != 0
+	// Function code is in bits 3-0 (4 bits)
+	c.FuncCode = b & 0x0F
 }
 
 // IsResetLinkStations returns true if this is a Reset Link Stations frame.
