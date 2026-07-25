@@ -1,10 +1,12 @@
 # KDE Testing Capability
 
-**Version**: 1.0.0  
+**Version**: 1.1.0  
 **Status**: Active  
 **Authority**: KDE Laboratory (DNP3 Library)  
 **Parent**: laboratory/  
 **Created**: 2026-07-25  
+**Updated**: 2026-07-25 (KDE-INV-048)
+**Approval**: Recommendation 1 & 2  
 
 ---
 
@@ -35,6 +37,18 @@ The Testing capability owns the following asset categories:
 | **Fixtures** | Test data and certificates | Sample datasets, TLS certificates |
 | **Infrastructure** | Testing frameworks | Test harnesses, utilities |
 | **Validation Tools** | Compliance verification | Scripts, validators |
+| **Command-Line Tools** | Reusable CLI applications | dnp3-cli, dnp3-server |
+
+### Simulator Ownership (per KDE-INV-048 Recommendation 1)
+
+The Testing capability **owns** the following planned simulators:
+
+| Simulator | Status | Location | Owner |
+|-----------|--------|----------|-------|
+| **dnp3-sim** | Planned | `cmd/dnp3-sim/` | Testing Capability |
+| dnp3-proxy | Future | `cmd/dnp3-proxy/` | Testing Capability |
+| dnp3-cli | Future | `cmd/dnp3-cli/` | Testing Capability |
+| dnp3-server | Future | `cmd/dnp3-server/` | Testing Capability |
 
 ### Services
 
@@ -151,6 +165,34 @@ An asset is promoted to Testing ownership if:
 | Promote asset to Testing | Testing review |
 | Retire Testing asset | Testing + Governance approval |
 | Modify Testing infrastructure | Testing maintainer |
+
+## Execution Environment (per KDE-INV-048 Recommendation 2)
+
+### Runtime Requirements
+
+The Testing capability requires the following execution environment:
+
+| Component | Version | Source | Owner |
+|-----------|---------|--------|-------|
+| Go compiler | 1.22.0+ | go.dev | Project (go.mod) |
+| Go toolchain | Latest stable | go.dev | Project |
+
+### Environment Policy
+
+1. **Minimum Version**: Go 1.22.0 (per `go.mod`)
+2. **Recommended Version**: Latest stable Go release
+3. **Installation**: User-managed (see `go.mod` for requirements)
+4. **Verification**: `go version` should confirm >= 1.22.0
+
+### Build Verification
+
+All Testing assets must verify the environment before execution:
+
+```bash
+go version  # Must be >= 1.22.0
+go build ./...  # Must succeed
+go test ./...  # Must pass
+```
 
 ## Related Documents
 

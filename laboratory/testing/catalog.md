@@ -1,10 +1,11 @@
 # Testing Asset Catalog
 
 **Document ID**: TEST-CATALOG-001
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Date**: 2026-07-25
 **Status**: ACTIVE
 **Authority**: KDE Testing Capability
+**Updated**: 2026-07-25 (KDE-INV-048)
 
 ---
 
@@ -252,16 +253,43 @@ No fixtures currently cataloged. Fixtures will be added as they are created.
 
 ---
 
-## 5. Simulators
+## 5. Simulators (per KDE-INV-048 Recommendation 1)
 
-No simulators currently cataloged. Simulators will be added as they are created.
+### 5.1 DNP3 Device Simulator
+
+| Property | Value |
+|----------|-------|
+| **Asset ID** | TEST-SIM-DNP3-001 |
+| **Name** | dnp3-sim |
+| **Location** | `cmd/dnp3-sim/` (planned) |
+| **Type** | Simulator |
+| **Status** | **OWNED - Implementation Pending** |
+| **Owner** | Testing Capability |
+| **Created** | 2026-07-25 |
+| **Dependency** | go 1.22.0+, dnp3 library |
+
+**Purpose**: DNP3 device simulator for testing DNP3 Master implementations and protocol compliance.
+
+**Planned Features**:
+- Configurable Outstation behavior
+- Support for Binary, Analog, Counter data types
+- Configurable response patterns
+- Error injection capabilities
+- Unsolicited response support
+
+**Implementation Status**: Planned - awaiting implementation
+
+**Priority**: HIGH - Required for Testing capability validation
+
+---
 
 **Planned Simulators**:
-| Simulator | Purpose | Status |
-|-----------|---------|--------|
-| dnp3-sim | DNP3 device simulator | Planned (cmd/dnp3-sim) |
-| Traffic Generator | Packet generation | Future |
-| Fault Injector | Error condition testing | Future |
+| Simulator | Purpose | Status | Owner |
+|-----------|---------|--------|-------|
+| **dnp3-sim** | DNP3 device simulator | **OWNED** | Testing Capability |
+| dnp3-cli | Command-line client | Future | Testing Capability |
+| dnp3-server | Test server | Future | Testing Capability |
+| Traffic Generator | Packet generation | Future | Testing Capability |
 
 ---
 
@@ -341,6 +369,8 @@ No pending asset requests.
 | Date | Asset | Action | Maintainer |
 |------|-------|--------|------------|
 | 2026-07-25 | All assets | Initial cataloging | Testing Capability |
+| 2026-07-25 | dnp3-sim | Assigned ownership (KDE-INV-048 Rec 1) | Testing Capability |
+| 2026-07-25 | Execution Environment | Documented requirements (KDE-INV-048 Rec 2) | Testing Capability |
 
 ---
 
@@ -351,4 +381,5 @@ No pending asset requests.
 ---
 
 *Generated per KDE-INV-047 recommendation*
+*Updated per KDE-INV-048 recommendations*
 *Maintained by: Testing Capability*
