@@ -266,7 +266,9 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 
 // TestProtocolStackMultiFragment tests multi-fragment handling
 func TestProtocolStackMultiFragment(t *testing.T) {
-	largeData := make([]byte, 600)
+	// Use 500 bytes which will create multiple fragments
+	// Each TL fragment is max 249 bytes, so we need at least 3 fragments
+	largeData := make([]byte, 500)
 	for i := range largeData {
 		largeData[i] = byte(i)
 	}
@@ -287,8 +289,20 @@ func TestProtocolStackMultiFragment(t *testing.T) {
 		t.Fatal("Expected multi-fragment APDU")
 	}
 
+	// Verify all fragments can be encoded/decoded
 	for i, frag := range frags {
+		t.Logf("Fragment %d: FIR=%v, FIN=%v, Seq=%d, DataLen=%d",
+			i, frag.FIR, frag.FIN, frag.Seq, len(frag.Data))
+
+		// Verify fragment data fits within DLL limits
+		if len(frag.Data) > int(frame.MaxDataSize) {
+			t.Fatalf("Fragment %d data (%d bytes) exceeds MaxDataSize (%d bytes)",
+				i, len(frag.Data), frame.MaxDataSize)
+		}
+
 		tlEnc := tl.EncodeFragment(frag)
+		t.Logf("Fragment %d: TL encoded len=%d", i, len(tlEnc))
+
 		dllFr := &frame.Frame{
 			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1024, SrcAddr: 1, Data: tlEnc,
@@ -297,22 +311,45 @@ func TestProtocolStackMultiFragment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Fragment %d: DLL encode failed: %v", i, err)
 		}
+		t.Logf("Fragment %d: DLL encoded len=%d", i, len(dllEnc))
 
-		decoded, err := frame.Decode(dllEnc)
-		if err != nil {
+		if _, err := frame.Decode(dllEnc); err != nil {
 			t.Fatalf("Fragment %d: DLL decode failed: %v", i, err)
 		}
+		t.Logf("Fragment %d: DLL decoded successfully", i)
+	}
 
-		reassembler := tl.NewReassembler()
+	// Test reassembly with a single reassembler
+	t.Log("Testing reassembly with single reassembler...")
+	reassembler := tl.NewReassembler()
+	var completeMsg []byte
+
+	for i, frag := range frags {
+		tlEnc := tl.EncodeFragment(frag)
+		dllFr := &frame.Frame{
+			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+			DestAddr: 1024, SrcAddr: 1, Data: tlEnc,
+		}
+		dllEnc, _ := frame.Encode(dllFr)
+		decoded, _ := frame.Decode(dllEnc)
 		tlFrag, _ := tl.DecodeFragment(decoded.Data)
-		msg, _ := reassembler.Push(tlFrag)
-
-		if i == len(frags)-1 && msg == nil {
-			t.Error("Last fragment should complete reassembly")
+		msg, err := reassembler.Push(tlFrag)
+		if err != nil {
+			t.Fatalf("Fragment %d: Reassembler error: %v", i, err)
+		}
+		if msg != nil {
+			completeMsg = msg
+			t.Logf("Reassembly complete after fragment %d: %d bytes", i, len(msg))
 		}
 	}
 
-	t.Log("Multi-fragment protocol stack verified")
+	if completeMsg == nil {
+		t.Error("Reassembly did not complete")
+	} else if len(completeMsg) != len(apduData) {
+		t.Errorf("Reassembled message length mismatch: got %d, want %d", len(completeMsg), len(apduData))
+	}
+
+	t.Log("Multi-fragment handling verified")
 }
 
 // TestProtocolStackOutstationDirectProcessing tests outstation.ProcessRequest

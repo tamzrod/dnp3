@@ -28,11 +28,15 @@ const (
 
 // Maximum frame sizes per IEEE 1815-2012
 const (
-	// MaxFrameSize is the maximum total frame size (292 data + 10 header)
+	// MaxFrameSize is the maximum total frame size (250 data + 8 header + 131 CRC = 289, rounded to 302)
+	// Per IEEE 1815-2012, the length field is 1 byte (max 255)
+	// Length = Control(1) + Dest(2) + Src(2) + Data
+	// Max Data = 255 - 1 - 2 - 2 = 250 bytes
 	MaxFrameSize = 302
 
-	// MaxDataSize is the maximum user data size
-	MaxDataSize = 292
+	// MaxDataSize is the maximum user data size (250 bytes)
+	// This fits within the 1-byte length field: 1+2+2+250 = 255
+	MaxDataSize = 250
 
 	// HeaderSize is the size without data but with CRC
 	HeaderSize = 10
@@ -314,14 +318,12 @@ func Decode(data []byte) (*Frame, error) {
 
 	// CRC for data (pairs of bytes)
 	for i := 0; i < len(frameData); i += 2 {
-		dataEnd := i + 2
 		var pair [2]byte
 		pair[0] = frameData[i]
-		if dataEnd < len(frameData) {
+		// If odd number of data bytes, do not include padding in CRC
+		// This matches the Encode behavior which only includes bytes that exist
+		if i+1 < len(frameData) {
 			pair[1] = frameData[i+1]
-		} else {
-			// Pad with 0x00 to make a complete pair, matching Encode behavior
-			pair[1] = 0x00
 		}
 		calculatedCRC := crc.CRC16(pair[:])
 		storedCRC := uint16(data[crcOffset]) | (uint16(data[crcOffset+1]) << 8)
