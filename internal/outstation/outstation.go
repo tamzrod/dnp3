@@ -8,6 +8,7 @@
 package outstation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
