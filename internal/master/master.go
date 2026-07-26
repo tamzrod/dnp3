@@ -486,6 +486,14 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	return fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
 
+// SendRequestWithRetry sends a request with retry logic (public wrapper).
+// This method is used by the public API to leverage the internal master's
+// protocol handling, including proper transport layer fragmentation,
+// data link layer framing, and retry logic.
+func (m *Master) SendRequestWithRetry(req *al.APDU, outstationID uint16) error {
+	return m.sendWithRetry(req, outstationID)
+}
+
 // waitForConfirmation waits for an application layer confirmation.
 func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 	m.transport.SetTimeout(m.config.Timeout)

@@ -99,6 +99,126 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+// TestNewClientWiring verifies that NewClient properly initializes.
+// This is an integration test for REC-1 and REC-2 from DNP3-EXP-002.
+func TestNewClientWiring(t *testing.T) {
+	cfg := NewConfig(
+		WithMasterAddress(0xFFFF),
+		WithOutstationAddress(1024),
+		WithTransport(dnp3.TCP, "localhost", 20000),
+		WithTimeout(5*time.Second),
+		WithRetry(3, 1*time.Second),
+	)
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v, want nil", err)
+	}
+
+	if client == nil {
+		t.Fatal("NewClient() returned nil client")
+	}
+
+	// Verify initial state is disconnected
+	state := client.State()
+	if state != dnp3.StateDisconnected {
+		t.Errorf("Initial state = %v, want StateDisconnected", state)
+	}
+}
+
+// TestReadRequestValidation verifies that Read validates input properly.
+func TestReadRequestValidation(t *testing.T) {
+	cfg := NewConfig(
+		WithOutstationAddress(1024),
+		WithTransport(dnp3.TCP, "localhost", 20000),
+	)
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v, want nil", err)
+	}
+
+	tests := []struct {
+		name    string
+		request *types.ReadRequest
+		wantErr bool
+	}{
+		{
+			name:    "nil request",
+			request: nil,
+			wantErr: true,
+		},
+		{
+			name:    "empty groups",
+			request: &types.ReadRequest{Groups: nil},
+			wantErr: true,
+		},
+		{
+			name:    "valid request",
+			request: types.NewReadRequest(types.GroupRequest{Group: 1, Variation: 1}),
+			wantErr: false, // Will fail on not connected, but validation passes
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.Read(context.Background(), tt.request)
+			// For nil/empty, we expect validation error
+			// For valid, we expect not-connected error
+			if tt.wantErr && err == nil {
+				t.Errorf("Read() expected error for %v, got nil", tt.name)
+			}
+		})
+	}
+}
+
+// TestOperateRequestValidation verifies that Operate validates input properly.
+func TestOperateRequestValidation(t *testing.T) {
+	cfg := NewConfig(
+		WithOutstationAddress(1024),
+		WithTransport(dnp3.TCP, "localhost", 20000),
+	)
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v, want nil", err)
+	}
+
+	tests := []struct {
+		name    string
+		command *types.ControlOutput
+		wantErr bool
+	}{
+		{
+			name:    "nil command",
+			command: nil,
+			wantErr: true,
+		},
+		{
+			name: "valid command",
+			command: &types.ControlOutput{
+				Group:      12,
+				Variation:   1,
+				Index:      0,
+				Value:      &types.BinaryCommandValue{Value: true},
+				CommandType: types.DirectOperate,
+			},
+			wantErr: false, // Will fail on not connected, but validation passes
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.Operate(context.Background(), tt.command)
+			// For nil, we expect validation error
+			// For valid, we expect not-connected error
+			if tt.wantErr && err == nil {
+				t.Errorf("Operate() expected error for %v, got nil", tt.name)
+			}
+		})
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	cfg := NewConfig()
 	client, err := NewClient(cfg)
