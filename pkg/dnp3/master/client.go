@@ -407,15 +407,24 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		return nil, dnp3.ErrNotConnected
 	}
 
-	// Build APDU for read request
+	// Wire to internal master for proper protocol handling
+	// This uses sendWithRetry logic instead of direct APDU send
+	outstationID := c.config.OutstationAddress
+
+	// Build APDU using internal master for proper retry/timeout handling
 	apdu := buildReadRequest(c.sequence, request)
 	c.sequence = (c.sequence + 1) % 16
 
-	// Send and receive
-	data := apdu.Encode()
-	respData, err := c.sendAndReceive(data)
+	// Use internal master's sendWithRetry for reliable transmission
+	err := c.internalMaster.SendRequestWithRetry(apdu, outstationID)
 	if err != nil {
 		return nil, fmt.Errorf("read failed: %w", err)
+	}
+
+	// Wait for and decode response
+	respData, err := c.transport.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("receive failed: %w", err)
 	}
 
 	// Decode response
