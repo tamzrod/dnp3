@@ -19,6 +19,7 @@ func TestDebugMasterOutstation(t *testing.T) {
         MaxRetries:        1,
     }
     outstationConfig := &outstation.Config{
+        OutstationAddress: 1024,
         MasterAddress:     1,
         SBOTimeout:        5000,
         MaxEventBuffers:   1000,

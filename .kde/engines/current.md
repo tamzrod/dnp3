@@ -14,6 +14,7 @@ The Laboratory supports multiple engines. Select the appropriate engine for each
 | KDE-ENGINE-001 | 0.1.0 | Alpha | Historical | NO | Pattern discovery (legacy) |
 | **KDE-ENGINE-003** | 0.1.0 | Gamma | **Active** | NO | Causal discovery (INV-EVOLUTION-001) |
 | **KDE-ENGINE-004** | 0.1.0 | Delta | **Active** | NO | Bootstrap + Context discovery (INV-EVOLUTION-001) |
+| KDE-ENGINE-005 | 0.1.0 | Epsilon | Candidate | NO | Gap Analysis and Improvement Discovery (KDE-INV-052) |
 
 ---
 
@@ -206,6 +207,27 @@ For detailed information about Gamma, see:
 **Activation Evidence**: LAB-017, LAB-044, LAB-045, LAB-046 (Repeatability: 100%)
 **Activation Date**: 2026-07-24 (INV-EVOLUTION-001 REC-003)
 
+### When to Use Epsilon (KDE-ENGINE-005)
+
+Use Epsilon for experiments when:
+- Gap analysis required across all components
+- Improvement opportunities need systematic discovery
+- Weakness classification needed
+- Cross-component dependencies need mapping
+
+**Epsilon Selection Keywords**: gap, weakness, improvement, missing, incomplete, opportunity, roadmap
+
+### Epsilon (KDE-ENGINE-005) — **Candidate**
+
+Epsilon is the Gap Analysis and Improvement Discovery engine.
+
+For detailed information about Epsilon, see:
+
+- [epsilon/SPEC.md](./epsilon/SPEC.md) — Engine gap documentation
+
+**Status**: Candidate (from INV-EVOLUTION-001)
+**Note**: Not yet validated - requires implementation
+
 ---
 
 ## Migration History
@@ -220,6 +242,7 @@ For detailed information about Gamma, see:
 | 2026-07-23 | Gamma Promotion | Gamma: Experimental → Candidate (LAB-045/046) |
 | 2026-07-24 | **Gamma Activation** | Gamma: Candidate → Active (INV-EVOLUTION-001 REC-003) |
 | 2026-07-24 | **Delta Activation** | Delta: Experimental → Active (INV-EVOLUTION-001 REC-004) |
+| 2026-07-26 | **Epsilon Created** | KDE-ENGINE-005 (Epsilon) documented (KDE-INV-052) |
 
 ---
 

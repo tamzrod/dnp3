@@ -739,6 +739,11 @@ func parseBinaryInputResponse(data []byte) []bool {
 	var result []bool
 	offset := 0
 
+	// Skip IIN bytes (first 2 bytes of response data)
+	if len(data) >= 2 {
+		offset = 2
+	}
+
 	for offset < len(data)-4 {
 		group := data[offset]
 		if group != 1 {
@@ -772,6 +777,11 @@ func parseBinaryInputResponse(data []byte) []bool {
 func parseAnalogInputResponse(data []byte) []float64 {
 	var result []float64
 	offset := 0
+
+	// Skip IIN bytes (first 2 bytes of response data)
+	if len(data) >= 2 {
+		offset = 2
+	}
 
 	for offset < len(data)-4 {
 		group := data[offset]
