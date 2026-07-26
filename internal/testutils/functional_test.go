@@ -113,6 +113,7 @@ func TestConnectionConnectDisconnect(t *testing.T) {
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -171,6 +172,7 @@ func TestConnectionReconnect(t *testing.T) {
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -213,6 +215,7 @@ func TestMultipleReconnect(t *testing.T) {
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -254,6 +257,7 @@ func TestLinkStatus(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -292,6 +296,7 @@ func TestLinkReset(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -326,6 +331,7 @@ func TestReadBinaryInputs(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -388,6 +394,7 @@ func TestReadAnalogInputs(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -441,6 +448,7 @@ func TestReadCounters(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -498,6 +506,7 @@ func TestControlSelectOperate(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -551,6 +560,7 @@ func TestControlDirectOperate(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -600,6 +610,7 @@ func TestControlDirectOperate(t *testing.T) {
 // TestEventGeneration tests event generation and queueing.
 func TestEventGeneration(t *testing.T) {
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -635,6 +646,7 @@ func TestEventGeneration(t *testing.T) {
 func TestEventBufferOverflow(t *testing.T) {
 	// Very small buffer for testing
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -671,6 +683,7 @@ func TestFreezeCounters(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -731,6 +744,7 @@ func TestConfirmationRequired(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -799,6 +813,7 @@ func TestTimeoutBehavior(t *testing.T) {
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -835,6 +850,7 @@ func TestInvalidAPDU(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -869,6 +885,7 @@ func TestManyReads(t *testing.T) {
 		MaxRetries:        1,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -913,6 +930,7 @@ func TestManyReads(t *testing.T) {
 // TestManyEvents tests generating many events.
 func TestManyEvents(t *testing.T) {
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1028,6 +1046,7 @@ func CreateTestOutstation(masterAddr uint16) (*outstation.Outstation, *Outstatio
 	_, _, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     masterAddr,
 		SBOTimeout:        5000,
@@ -1052,6 +1071,7 @@ func SetupConnectedPair() (*master.Master, *outstation.Outstation, *MasterTransp
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1106,6 +1126,7 @@ func TestWriteCROB(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1167,6 +1188,7 @@ func TestWriteAnalogInt16(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1220,6 +1242,7 @@ func TestWriteAnalogInt32(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1273,6 +1296,7 @@ func TestWriteAnalogFloat(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1326,6 +1350,7 @@ func TestWriteAnalogDouble(t *testing.T) {
 		MaxRetries:        2,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,
@@ -1421,6 +1446,7 @@ func TestConfirmationRetry(t *testing.T) {
 		MaxRetries:        3,
 	}
 	outstationConfig := &outstation.Config{
+                OutstationAddress:     1024,
 		
 		MasterAddress:     1,
 		SBOTimeout:        5000,

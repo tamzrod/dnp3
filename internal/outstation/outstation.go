@@ -918,37 +918,55 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	}
 
 	// Default request processing
+	var resp *al.APDU
+	var err error
+
 	switch req.FuncCode {
 	case al.FuncRead:
-		return o.handleRead(req)
+		resp, err = o.handleRead(req)
 	case al.FuncWrite:
-		return o.handleWrite(req)
+		resp, err = o.handleWrite(req)
 	case al.FuncSelect:
-		return o.handleSelect(req)
+		resp, err = o.handleSelect(req)
 	case al.FuncOperate:
-		return o.handleOperate(req)
+		resp, err = o.handleOperate(req)
 	case al.FuncDirectOperate:
-		return o.handleDirectOperate(req)
+		resp, err = o.handleDirectOperate(req)
 	case al.FuncDirectOperateNoResp:
-		return o.handleDirectOperateNoResp(req)
+		resp, err = o.handleDirectOperateNoResp(req)
 	case al.FuncEnableUnsolicited:
-		return o.handleEnableUnsolicited(req)
+		resp, err = o.handleEnableUnsolicited(req)
 	case al.FuncDisableUnsolicited:
-		return o.handleDisableUnsolicited(req)
+		resp, err = o.handleDisableUnsolicited(req)
 	case al.FuncFreeze:
-		return o.handleFreeze(req)
+		resp, err = o.handleFreeze(req)
 	case al.FuncFreezeClear:
-		return o.handleFreezeClear(req)
+		resp, err = o.handleFreezeClear(req)
 	case al.FuncTimeSync:
-		return o.handleTimeSync(req)
+		resp, err = o.handleTimeSync(req)
 	case al.FuncDelayMeasurement:
-		return o.handleDelayMeasurement(req)
+		resp, err = o.handleDelayMeasurement(req)
 	case al.FuncRecordCurrentTime:
-		return o.handleRecordCurrentTime(req)
+		resp, err = o.handleRecordCurrentTime(req)
 	default:
 		o.iin.ParamUnavail = true
-		return nil, fmt.Errorf("unsupported function code: %d", req.FuncCode)
+		err = fmt.Errorf("unsupported function code: %d", req.FuncCode)
 	}
+
+	// If we have a response, prepend IIN bytes
+	if resp != nil && err == nil {
+		iinBytes := o.iin.Bytes()
+		// Prepend IIN to data
+		newData := make([]byte, 2+len(resp.Data))
+		newData[0] = iinBytes[0]
+		newData[1] = iinBytes[1]
+		if len(resp.Data) > 0 {
+			copy(newData[2:], resp.Data)
+		}
+		resp.Data = newData
+	}
+
+	return resp, err
 }
 
 // handleRead handles READ requests.

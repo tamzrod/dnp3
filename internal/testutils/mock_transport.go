@@ -76,6 +76,7 @@ func (t *MockTransport) Receive() ([]byte, error) {
 		for time.Now().Before(deadline) {
 			t.mu.Lock()
 			if t.sendQueue.Len() > 0 {
+				t.mu.Unlock()
 				break
 			}
 			t.mu.Unlock()
