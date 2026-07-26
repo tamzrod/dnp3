@@ -1,0 +1,8 @@
+# KDE Runtime Python Dependencies
+#
+# Install with: pip install --user -r .kde/requirements.txt
+#
+# This file lists Python packages required for the KDE Runtime.
+# Use --user flag for sandboxed environments where global install is not allowed.
+
+PyYAML>=6.0.0

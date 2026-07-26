@@ -88,6 +88,63 @@ list-files:
 	@echo "Project structure:"
 	@find . -type f -not -path '*/.git/*' | sort
 
+## kde-start - Start KDE runtime with quick preflight and bootstrap verification
+kde-start:
+	@echo "=== KDE Runtime Startup ==="
+	@echo ""
+	@echo "Step 1: Bootstrap Status Check"
+	@python3 .kde/bootstrap/status.py || true
+	@echo ""
+	@echo "Step 2: Environment Preflight (Quick)"
+	@python3 .kde/bootstrap/gates.py --quick
+	@echo ""
+	@echo "Step 3: Starting KDE Engine..."
+	@python3 -c "import sys; sys.path.insert(0, '.kde'); from runtime.runtime import demo; demo()"
+
+## kde-check - Run full preflight check with bootstrap status
+kde-check:
+	@echo "=== KDE Full Check ==="
+	@echo ""
+	@echo "Step 1: Bootstrap Status"
+	@python3 .kde/bootstrap/status.py
+	@echo ""
+	@echo "Step 2: Environment Gates (Full)"
+	@python3 .kde/bootstrap/gates.py --full
+
+## kde-quick - Run quick preflight check (skip slow checks)
+kde-quick:
+	@echo "=== KDE Quick Check ==="
+	@python3 .kde/bootstrap/gates.py --quick
+
+## kde-status - Show bootstrap status (no environment checks)
+kde-status:
+	@python3 .kde/bootstrap/status.py
+
+## kde-watch - Watch bootstrap status continuously
+kde-watch:
+	@python3 .kde/bootstrap/status.py --watch --interval 5
+
+## kde-help - Show KDE-specific help
+kde-help:
+	@echo ""
+	@echo "${BOLD}${GREEN}KDE Runtime Commands${NC}"
+	@echo ""
+	@echo "${BOLD}make kde-start${NC}   - Start KDE runtime (bootstrap + preflight + engine)"
+	@echo "${BOLD}make kde-check${NC}    - Full bootstrap and environment check"
+	@echo "${BOLD}make kde-quick${NC}    - Quick preflight check (skip slow checks)"
+	@echo "${BOLD}make kde-status${NC}   - Show bootstrap status (no environment checks)"
+	@echo "${BOLD}make kde-watch${NC}    - Watch bootstrap status continuously"
+	@echo ""
+	@echo "Direct Commands:"
+	@echo "  python3 .kde/bootstrap/gates.py --quick  # Quick preflight"
+	@echo "  python3 .kde/bootstrap/gates.py --full   # Full preflight"
+	@echo "  python3 .kde/bootstrap/status.py         # Bootstrap status"
+	@echo ""
+	@echo "For more details on KDE Runtime, see:"
+	@echo "  .kde/README.md"
+	@echo "  laboratory/investigations/"
+	@echo ""
+
 ## commit-msg - Validate commit message format
 commit-msg:
 	@echo "Commit message validation (conventional commits):"
