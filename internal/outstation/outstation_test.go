@@ -240,7 +240,11 @@ func TestEventQueueClear(t *testing.T) {
 
 // TestGenerateEvent tests event generation.
 func TestGenerateEvent(t *testing.T) {
-	ost := NewOutstation(nil)
+	// Use a small buffer size to test overflow behavior
+	config := &Config{
+		MaxEventBuffers: 15, // Small buffer to test overflow
+	}
+	ost := NewOutstation(config)
 	ost.Initialize()
 	ost.Start()
 
@@ -253,8 +257,8 @@ func TestGenerateEvent(t *testing.T) {
 		t.Errorf("EventCount = %d, want 1", ost.EventCount())
 	}
 
-	// Generate more events to fill buffer
-	for i := 1; i < 10; i++ {
+	// Generate more events to fill buffer (15 total, 5 per class)
+	for i := 1; i < 15; i++ {
 		ost.GenerateEvent(Class1, 2, uint16(i), []byte{byte(i)}, BinaryQualityOnline)
 	}
 
