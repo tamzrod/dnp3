@@ -55,6 +55,7 @@ func TestOutstationProcessWriteRequest(t *testing.T) {
 	ost.Start()
 
 	// Create a WRITE request
+	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
 	request := &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
@@ -62,7 +63,8 @@ func TestOutstationProcessWriteRequest(t *testing.T) {
 			Seq: 1,
 		},
 		FuncCode: al.FuncWrite,
-		Data:     []byte{0x01, 0x02, 0x03},
+		// Group=12 (CROB), Variation=1, Qualifier=0, Count=1, Index=0, CROB value=11 bytes
+		Data: []byte{0x0C, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	// Process request
