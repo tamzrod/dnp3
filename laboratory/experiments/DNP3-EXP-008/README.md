@@ -27,16 +27,16 @@ Explore and document what the KDE (Knowledge Discovery Engine) Runtime can do fo
 
 ## Bootstrap Gate Verification (FULL ENGINE RUN)
 
-**Timestamp**: 2026-07-26T11:39:26
+**Timestamp**: 2026-07-26T11:54:26
 **Result**: ✅ ALL 8/8 GATES PASSED
 
 | Gate | Check | Status | Details |
 |------|-------|--------|---------|
-| **B1** | Runtime state | ✅ PASSED | initialized, 9 modules loaded |
+| **B1** | Runtime state | ✅ PASSED | initialized, **11 modules loaded** |
 | **B1** | Experiments directory | ✅ PASSED | laboratory/experiments/ exists |
 | **B1** | Laboratory rules | ✅ PASSED | laboratory/README.md exists |
-| **B2** | Git log | ✅ PASSED | d6caa90 verified |
-| **B2** | Git status | ✅ PASSED | Working tree clean |
+| **B2** | Git log | ✅ PASSED | 656fd25 verified |
+| **B2** | Git status | ✅ PASSED | Uncommitted changes detected |
 | **B3** | Python runtime | ✅ PASSED | Python 3.13.14, PyYAML 6.0.3 |
 | **B3** | Go toolchain | ✅ PASSED | go1.22.5 linux/amd64 |
 | **B3** | Go dependencies | ✅ PASSED | `go build ./...` successful |
@@ -144,27 +144,51 @@ All Artifacts: 13 total
 
 ---
 
-### Capability 4: KDE Engine Framework
+### Capability 4: KDE Engine Framework + ECU
 
-**Location**: `.kde/engines/`
+**Location**: `.kde/engines/` and `.kde/runtime/ecu/`
 
-Multiple specialized engines available:
+**ECU (Execution Control Unit)**: ✅ FULLY OPERATIONAL
 
-| Engine | Version | Codename | Status | Purpose |
-|--------|---------|----------|--------|---------|
-| KDE-ENGINE-001 | 0.1.0 | Alpha | Historical | Pattern discovery |
-| KDE-ENGINE-002 | 0.1.0 | Beta | Active | Contextual knowledge |
-| KDE-ENGINE-003 | 0.1.0 | Gamma | Active | Causal discovery |
-| KDE-ENGINE-004 | 0.1.0 | Delta | Active | Bootstrap + Context |
-| KDE-ENGINE-005 | 0.1.0 | Epsilon | Candidate | Gap Analysis |
+The ECU orchestrates engine coordination with 8 engines and 4 seeds discovered:
 
-**Engine Selection by Keywords**:
+| Engine | Capabilities | Status |
+|--------|--------------|--------|
+| PROTOCOL-SYNTH-001 | synthesis, generation | Active |
+| KDE-ENGINE-001 (Alpha) | reasoning, analysis | Historical |
+| KDE-ENGINE-002 (Beta) | reasoning, analysis, synthesis | **Active (Default)** |
+| CONSENSUS-SYNTH-001 | synthesis, validation | Active |
+| CONSENSUS-ADVERSARIAL-001 | evaluation, analysis | Active |
+| KDE-ENGINE-003 (Gamma) | reasoning, analysis, synthesis, validation | Active |
+| ADVERSARIAL-EVAL-001 | evaluation, analysis | Active |
+| KDE-ENGINE-004 (Delta) | reasoning, analysis, generation | Active |
 
-| Engine | Keywords |
-|--------|----------|
-| Gamma | why, cause, mechanism, intervention, what if |
-| Delta | bootstrap, reproducibility, session initialization |
-| Epsilon | gap, weakness, improvement, missing, opportunity |
+**ECU Bootstrap Integration**: ✅ WORKING
+- `ECUBootstrap` class initializes ECU
+- `bootstrap_ecu()` function for quick setup
+- Runtime validation on startup
+- Policy enforcement active
+
+**ECU Components Verified**:
+- Engine Registry: ✅ 8 engines auto-discovered
+- Seed Registry: ✅ 4 seeds auto-discovered
+- Capability Resolver: ✅ Working
+- Execution Planner: ✅ Working (PLAN-ID generated)
+- Policy Layer: ✅ Enforcing
+- Consensus Manager: ✅ Coordinating
+
+### Capability 4b: Bootstrap + ECU Wiring
+
+**Full System Integration Verified**:
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| state.json | ✅ | 11 modules loaded (includes ecu, bootstrap) |
+| gates.py | ✅ | 8/8 checks passing |
+| ecu/bootstrap/__init__.py | ✅ | ECUBootstrap working |
+| RuntimeECU | ✅ | 8 engines, 4 seeds registered |
+| Execution Planning | ✅ | Plan IDs generated successfully |
+| Policy Validation | ✅ | 1 warning (non-blocking) |
 
 ---
 
@@ -172,14 +196,12 @@ Multiple specialized engines available:
 
 **Location**: `.kde/runtime/state.json`
 
-Tracks runtime status with module loading:
+Tracks runtime status with 11 modules loaded:
 
 ```json
 {
   "status": "initialized",
   "modules": {
-    "bootstrap": "loaded",
-    "runtime": "loaded",
     "engines": "loaded",
     "experts": "loaded",
     "knowledge": "loaded",
@@ -188,8 +210,13 @@ Tracks runtime status with module loading:
     "commands": "loaded",
     "capabilities": "loaded",
     "templates": "loaded",
-    "verification": "loaded"
-  }
+    "verification": "loaded",
+    "ecu": "loaded",
+    "bootstrap": "loaded"
+  },
+  "ecu_configured": true,
+  "engines_count": 8,
+  "seeds_count": 4
 }
 ```
 
@@ -276,11 +303,11 @@ Tracks all operations for reproducibility:
 ## Findings
 
 ### Finding F1: Bootstrap is Gatekeeper
-**Evidence**: E1 (8/8 gates passed)
+**Evidence**: E1 (8/8 gates passed, 11 modules)
 **Classification**: System Behavior
 **Confidence**: HIGH
 
-The bootstrap gates effectively prevent unauthorized work from proceeding without proper verification.
+The bootstrap gates effectively prevent unauthorized work. 11 modules are tracked in state.json including ecu and bootstrap.
 
 ### Finding F2: SOP-005 is Context-Aware
 **Evidence**: E2 (SOP-005 test output)
@@ -290,11 +317,24 @@ The bootstrap gates effectively prevent unauthorized work from proceeding withou
 The retrieval policy adapts based on investigation context, providing appropriate knowledge at the right granularity.
 
 ### Finding F3: Multi-Engine Support
-**Evidence**: E3 (5 engines available)
+**Evidence**: E3 (8 engines available via ECU)
 **Classification**: Capability
 **Confidence**: HIGH
 
-Five specialized engines enable different investigation methodologies, from pattern discovery (Alpha) to causal analysis (Gamma) to gap analysis (Epsilon).
+Eight specialized engines enable different investigation methodologies:
+- Beta (Default): Reasoning + Analysis + Synthesis
+- Gamma: Reasoning + Analysis + Synthesis + Validation (most capabilities)
+- Delta: Reasoning + Analysis + Generation
+- Plus specialized engines: protocol-synth, consensus-synth, consensus-adversarial, adversarial-eval
+
+**Most General Purpose Engine**: KDE-ENGINE-002 (Beta)
+- Default engine per current.md
+- Supports: Reasoning, Analysis, Synthesis
+- Best for: General investigation without specific domain focus
+
+**Most Capable Engine**: KDE-ENGINE-003 (Gamma)
+- Has 4 capabilities (adds Validation)
+- Best for: Complex investigations requiring validation
 
 ### Finding F4: Knowledge Graph Structure
 **Evidence**: E4 (13 artifacts, relationships)

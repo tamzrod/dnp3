@@ -12,7 +12,12 @@
     "commands": "loaded",
     "capabilities": "loaded",
     "templates": "loaded",
-    "verification": "loaded"
+    "verification": "loaded",
+    "ecu": "loaded",
+    "bootstrap": "loaded"
   },
-  "state": "ready"
+  "state": "ready",
+  "ecu_configured": true,
+  "engines_count": 8,
+  "seeds_count": 4
 }
