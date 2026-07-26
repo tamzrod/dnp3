@@ -36,14 +36,25 @@ Side experiment requested by user to analyze Google Sheets data containing NRF (
 
 ## Methodology
 
-### Step 1: Bootstrap Gate Verification
-- [x] Gate B1: Runtime state verified (initialized, 9 modules loaded)
-- [x] Gate B1: Experiments directory exists
-- [x] Gate B1: Laboratory rules documentation exists
-- [x] Gate B2: Git log verified (clean working tree)
-- [x] Gate B3: Python runtime available (3.13+)
-- [ ] Gate B3: PyYAML not installed (not required for this experiment)
-- [ ] Gate B3: Go toolchain not available (not required - external data)
+### Step 1: Bootstrap Gate Verification (FULL ENGINE RUN)
+**Timestamp**: 2026-07-26T11:23:06
+**Result**: ✅ ALL 8/8 GATES PASSED
+
+| Gate | Check | Status | Details |
+|------|-------|--------|---------|
+| **B1** | Runtime state | ✅ PASSED | initialized, 9 modules loaded |
+| **B1** | Experiments directory | ✅ PASSED | laboratory/experiments/ exists |
+| **B1** | Laboratory rules | ✅ PASSED | laboratory/README.md exists |
+| **B2** | Git log | ✅ PASSED | 01842bc, d8c40ec verified |
+| **B2** | Git status | ✅ PASSED | Working tree clean |
+| **B3** | Python runtime | ✅ PASSED | Python 3.13.14, PyYAML 6.0.3 |
+| **B3** | Go toolchain | ✅ PASSED | go1.22.5 linux/amd64 |
+| **B3** | Go dependencies | ✅ PASSED | `go build ./...` successful |
+
+### Environment Setup Performed
+- [x] Installed Go 1.22.5 (linux/amd64)
+- [x] Installed PyYAML 6.0.3
+- [x] Verified DNP3 project builds (`go build ./...` successful)
 
 ### Step 2: Data Acquisition
 - Downloaded Google Sheets as XLSX from shared link
@@ -66,18 +77,32 @@ Side experiment requested by user to analyze Google Sheets data containing NRF (
 
 ## Evidence Collected
 
-### Evidence E1: Bootstrap Gate Results
+### Evidence E1: Bootstrap Gate Results (Full Engine Run)
 ```
-Gate B1: PASSED (3/3 checks)
-- Runtime state: initialized
-- Experiments directory: exists
-- Laboratory rules: exists
+======================================================================
+KDE BOOTSTRAP GATE VERIFICATION
+======================================================================
+Timestamp: 2026-07-26T11:23:06.091634
+Project Type: go
 
-Gate B2: PASSED (2/2 checks)
-- Git log: clean
-- Working tree: clean
+--- Gate B1 ---
+  [✓] runtime_state: PASSED: Runtime status is 'initialized', all 9 modules loaded
+  [✓] experiments_directory: PASSED: laboratory/experiments/ exists
+  [✓] laboratory_rules: PASSED: Laboratory rules documentation exists
 
-Gate B3: PARTIAL (Python OK, PyYAML/Go N/A for this experiment)
+--- Gate B2 ---
+  [✓] git_log_check: PASSED: 01842bc, d8c40ec verified
+  [✓] git_status_check: PASSED: Working tree clean
+
+--- Gate B3 ---
+  [✓] python_runtime: PASSED: Python 3.13.14, PyYAML 6.0.3
+  [✓] go_toolchain: PASSED: go1.22.5 linux/amd64
+  [✓] go_dependencies: PASSED: go build ./... successful
+
+======================================================================
+RESULT: PASSED
+Bootstrap gates verified: 8/8 checks passed. Can proceed with investigation.
+======================================================================
 ```
 
 ### Evidence E2: Category Distribution
