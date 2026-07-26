@@ -192,11 +192,11 @@ compatible_seeds:
 
 | Proposal | Status | Date | Lessons Source |
 |----------|--------|------|---------------|
-| SEED-003 | PROPOSED | 2026-07-26 | KDE-INV-051/052 |
+| SEED-003 | ACTIVE | 2026-07-26 | KDE-INV-051/052 |
 
 ### SEED-003 Proposal
 
-SEED-003 is currently proposed to address Bootstrap Validation principles identified in KDE-INV-051/052.
+SEED-003 is now ACTIVE with Bootstrap Validation principles identified in KDE-INV-051/052.
 
 See: [evolution/SEED-003-PROPOSAL.md](./evolution/SEED-003-PROPOSAL.md)
 

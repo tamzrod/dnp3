@@ -20,6 +20,8 @@ Each expert contains:
 | Expert ID | Domain | Status |
 |-----------|--------|--------|
 | DNP3-EXPERT-001 | DNP3 Protocol (IEEE 1815) | Active |
+| DNP3-SEC-EXPERT-001 | DNP3 Security (IEC 62351-6) | Active |
+| DNP3-TEST-EXPERT-001 | DNP3 Testing | Active |
 | KDE-EXPERT-001 | KDE Governance | Active |
 
 ## Expert Usage
