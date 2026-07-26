@@ -1,0 +1,31 @@
+Headline,Outlet,Date,Classification,Mandate,Domain,LF_Topic,Gate_Failed,Reasoning,Confidence,SG_Entity,Second_Pass,Category,Agrees_Part1
+Headline,Media Outlet,Date,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+"IPO battle between S’pore, US heats up",The Straits Times (Mon - Wed),30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+"Singapore's construction boom strains large prefab component storage, putting project timelines at risk",channelnewsasia.com,29 Dec,RELEVANT,No,USS,built_environment,None,Article passes all gates,HIGH,Yes — Singapore,No,USS,Yes
+Exploiting a centrally powered coherent microcomb for lightweight optical transmission,nature.com,29 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Superadiabatic topological pumping on photonic chips,nature.com,29 Dec,RELEVANT,No,MTC,electronics,None,Article passes all gates,HIGH,No,No,MTC,Yes
+Study of the effect of pinning size on the critical current density in a superconducting tape with a Moiré triangular pinning array at magic angles,nature.com,29 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Flow-synchronized ring-shaped electrochemical ion pumping for redox-free desalination without terminal electrodes,nature.com,29 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Bio-inspired copper composite achieves zero thermal expansion and high heat transfer,techxplore.com,30 Dec,RELEVANT,No,USS,climate_change,None,Article passes all gates,HIGH,No,No,USS,Yes
+AI early warning combined with lifestyle intervention builds a new line of defence against dementia,Lianhe Zaobao (Sun - Wed),30 Dec,RELEVANT,No,HHP,ageing,None,Article passes all gates,HIGH,No,No,HHP,Yes
+Don’t let the game steal your next life chapter—step out of the psychological isolation of internet addiction,Lianhe Zaobao (Sun - Wed),30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Precision dosing of recombinant vaccinia vaccine via pillar-guided microneedle patch confers SARS-CoV-2 immunity,nature.com,29 Dec,RELEVANT,No,HHP,prepare,None,Article passes all gates,HIGH,No,No,HHP,Yes
+Breakthrough in intractable intestinal disease treatment using xenogeneic-free intestinal stem cells​,eurekalert.org,29 Dec,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+A new way to map how cells choose their fate,eurekalert.org,29 Dec,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+There are new antivirals being tested for herpesviruses. Scientists now know how they work,eurekalert.org,29 Dec,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+Emissions are still rising. That doesn’t mean we’re failing,The Business Times,30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Widespread heat stress will become the norm in a warming Southeast Asia,nature.com,29 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+"AI-driven smart grid optimization for hospital energy systems integrating renewable generation, predictive maintenance, and resilient infrastructure",nature.com,29 Dec,RELEVANT,No,USS,sustainability,None,Article passes all gates,HIGH,No,No,USS,Yes
+Design of a hybrid learning model for establishing consistency in smart grid environment,nature.com,29 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Institutes of higher learning expand industry partnerships to prepare students for tech-driven media landscape,channelnewsasia.com,29 Dec,RELEVANT,No,HHP,prepare,None,Article passes all gates,HIGH,No,No,HHP,Yes
+Realistic vulnerabilities of decoy-state quantum key distribution,nature.com,29 Dec,RELEVANT,No,SNDE,quantum,None,Article passes all gates,HIGH,No,No,SNDE,Yes
+"Josephson junctions — quantum computing building blocks — are possible with only one superconductor, experiment confirms",eurekalert.org,29 Dec,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+"Accelerated streaming subgraph matching framework is faster, more robust, and scalable",eurekalert.org,29 Dec,IRRELEVANT,No,NONE,NONE,0,Paywall stub or insufficient content,HIGH,No,No,,
+New AI-based technology offers real-time electric vehicle state estimation for safer driving,techxplore.com,30 Dec,RELEVANT,No,USS,sustainability,None,Article passes all gates,HIGH,No,No,USS,Yes
+AI device with ion gel and graphene cuts machine learning power use 100-fold,techxplore.com,29 Dec,RELEVANT,No,MTC,manufacturing_material_science,None,Article passes all gates,HIGH,No,No,MTC,Yes
+"AI models stumble on basic multiplication without special training methods, study finds",techxplore.com,29 Dec,RELEVANT,No,NONE,NONE,None,Article passes all gates,HIGH,No,No,SNDE,Yes
+"In a triumph over tariffs, the world is trading more than ever",ST Online,30 Dec,RELEVANT,No,MTC,trade_connectivity,None,Article passes all gates,HIGH,No,No,MTC,Yes
+LTPO-based pixel circuit with highly uniform luminance and low flicker for variable refresh rate in AMOLED displays,nature.com,30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Ferroelectric ultraviolet photodetector material with ultrafast response speed,nature.com,30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+High-k water intermediate layer-mediated charge transfer modulation toward stable and augmented output generation of droplet-based electricity generators,nature.com,30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
+Study of the process-structure-property correlation in CVD-SiC coatings on graphite substrates,nature.com,30 Dec,IRRELEVANT,No,NONE,NONE,1,Article does not fit any of 21 framework topics,HIGH,No,No,,
