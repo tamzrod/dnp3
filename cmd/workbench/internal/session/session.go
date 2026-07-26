@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
 	"dnp3/pkg/transport"
 )
