@@ -227,6 +227,12 @@ type DataHandler interface {
 
 	// GetCounters returns counter data points
 	GetCounters() []*types.Counter
+
+	// GetFrozenCounters returns frozen counter data points
+	GetFrozenCounters() []*types.Counter
+
+	// FreezeCounters freezes the counters. If clear is true, also zero the counters.
+	FreezeCounters(clear bool) error
 }
 
 // CommandHandler handles control commands from the master
@@ -297,6 +303,25 @@ func (h *internalDataHandler) GetCounters() []outstation.Counter {
 	return internal
 }
 
+func (h *internalDataHandler) GetFrozenCounters() []outstation.Counter {
+	public := h.publicHandler.GetFrozenCounters()
+	if public == nil {
+		return nil
+	}
+	internal := make([]outstation.Counter, len(public))
+	for i, c := range public {
+		internal[i] = outstation.Counter{
+			Value:   c.Value,
+			Quality: uint8(c.Quality),
+		}
+	}
+	return internal
+}
+
+func (h *internalDataHandler) FreezeCounters(clear bool) error {
+	return h.publicHandler.FreezeCounters(clear)
+}
+
 // DefaultDataHandler is a simple data handler that returns empty data
 type DefaultDataHandler struct{}
 
@@ -322,6 +347,16 @@ func (d *DefaultDataHandler) GetCounters() []*types.Counter {
 		{Index: 0, Value: 1000, Quality: types.QualityOnline},
 		{Index: 1, Value: 2000, Quality: types.QualityOnline},
 	}
+}
+
+// GetFrozenCounters returns empty frozen counters
+func (d *DefaultDataHandler) GetFrozenCounters() []*types.Counter {
+	return []*types.Counter{}
+}
+
+// FreezeCounters is a no-op for DefaultDataHandler
+func (d *DefaultDataHandler) FreezeCounters(clear bool) error {
+	return nil
 }
 
 // server is the internal implementation of Server

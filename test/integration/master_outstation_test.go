@@ -265,9 +265,10 @@ func TestOutstationCustomDataHandler(t *testing.T) {
 
 // CustomDataHandler implements outstation.DataHandler with custom data.
 type CustomDataHandler struct {
-	binaryInputs []outstation.BinaryInput
-	analogInputs []outstation.AnalogInput
-	counters     []outstation.Counter
+	binaryInputs   []outstation.BinaryInput
+	analogInputs   []outstation.AnalogInput
+	counters       []outstation.Counter
+	frozenCounters []outstation.Counter
 }
 
 func (c *CustomDataHandler) GetBinaryInputs() []outstation.BinaryInput {
@@ -280,4 +281,12 @@ func (c *CustomDataHandler) GetAnalogInputs() []outstation.AnalogInput {
 
 func (c *CustomDataHandler) GetCounters() []outstation.Counter {
 	return c.counters
+}
+
+func (c *CustomDataHandler) GetFrozenCounters() []outstation.Counter {
+	return c.frozenCounters
+}
+
+func (c *CustomDataHandler) FreezeCounters(clear bool) error {
+	return nil
 }

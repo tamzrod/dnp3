@@ -202,9 +202,10 @@ func TestServerClose(t *testing.T) {
 
 // MockDataHandler for testing
 type MockDataHandler struct {
-	binaryInputs []*types.BinaryInput
-	analogInputs []*types.AnalogInput
-	counters     []*types.Counter
+	binaryInputs   []*types.BinaryInput
+	analogInputs   []*types.AnalogInput
+	counters       []*types.Counter
+	frozenCounters []*types.Counter
 }
 
 func (m *MockDataHandler) GetBinaryInputs() []*types.BinaryInput {
@@ -217,6 +218,14 @@ func (m *MockDataHandler) GetAnalogInputs() []*types.AnalogInput {
 
 func (m *MockDataHandler) GetCounters() []*types.Counter {
 	return m.counters
+}
+
+func (m *MockDataHandler) GetFrozenCounters() []*types.Counter {
+	return m.frozenCounters
+}
+
+func (m *MockDataHandler) FreezeCounters(clear bool) error {
+	return nil
 }
 
 func TestServerWithCustomDataHandler(t *testing.T) {

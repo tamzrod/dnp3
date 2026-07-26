@@ -692,8 +692,9 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 
 // comprehensiveDataHandler provides test data for the outstation using public API types
 type comprehensiveDataHandler struct {
-	binaryInputs []*types.BinaryInput
-	analogInputs []*types.AnalogInput
+	binaryInputs   []*types.BinaryInput
+	analogInputs   []*types.AnalogInput
+	frozenCounters []*types.Counter
 }
 
 func (h *comprehensiveDataHandler) GetBinaryInputs() []*types.BinaryInput {
@@ -706,6 +707,14 @@ func (h *comprehensiveDataHandler) GetAnalogInputs() []*types.AnalogInput {
 
 func (h *comprehensiveDataHandler) GetCounters() []*types.Counter {
 	return []*types.Counter{}
+}
+
+func (h *comprehensiveDataHandler) GetFrozenCounters() []*types.Counter {
+	return h.frozenCounters
+}
+
+func (h *comprehensiveDataHandler) FreezeCounters(clear bool) error {
+	return nil
 }
 
 // comprehensiveCommandHandler tracks command execution using public API types

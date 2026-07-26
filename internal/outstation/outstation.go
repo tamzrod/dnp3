@@ -691,6 +691,12 @@ func (o *Outstation) GetEvents() []Event {
 }
 
 // Run starts the outstation's main loop.
+// This is a convenience method that uses context.Background().
+func (o *Outstation) Run() error {
+	return o.RunWithContext(context.Background())
+}
+
+// RunWithContext starts the outstation's main loop.
 // This version supports context cancellation for graceful shutdown.
 func (o *Outstation) RunWithContext(ctx context.Context) error {
 	o.mu.RLock()
