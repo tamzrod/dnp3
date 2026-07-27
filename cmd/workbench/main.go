@@ -12,7 +12,6 @@ import (
 
 	"dnp3/cmd/workbench/internal/config"
 	"dnp3/cmd/workbench/internal/controller"
-	"dnp3/cmd/workbench/internal/session"
 	"dnp3/cmd/workbench/internal/ui"
 	"dnp3/cmd/workbench/internal/ui/dialogs"
 )
@@ -234,38 +233,12 @@ func showSettingsDialog(parent fyne.Window, cfg *config.Config) {
 }
 
 // registerShortcuts sets up keyboard shortcuts per UX standards.
+// Note: Fyne menus handle shortcuts automatically via accelerator keys.
 func registerShortcuts(window *ui.MainWindow, ctrl *controller.Controller) {
-	win := window.Window()
-
-	// F5: Connect (UX Standard: F5 = Run/Execute)
-	win.Canvas().AddShortcut(&fyne.ShortcutCustom{KeyName: "F5", Modifier: 0}, func(_ *fyne.Shortcut) {
-		state := ctrl.State()
-		if state.Connection != session.StateConnected {
-			ctrl.Connect(state.Address, state.Port)
-		}
-	})
-
-	// F6: Disconnect
-	win.Canvas().AddShortcut(&fyne.ShortcutCustom{KeyName: "F6", Modifier: 0}, func(_ *fyne.Shortcut) {
-		if ctrl.State().Connection == session.StateConnected {
-			ctrl.Disconnect()
-		}
-	})
-
-	// F11: Toggle Fullscreen
-	win.Canvas().AddShortcut(&fyne.ShortcutCustom{KeyName: "F11", Modifier: 0}, func(_ *fyne.Shortcut) {
-		window.ToggleFullscreen()
-	})
-
-	// Ctrl+F: Find in Log
-	win.Canvas().AddShortcut(&fyne.ShortcutCustom{KeyName: "F", Modifier: fyne.KeyModifierControl}, func(_ *fyne.Shortcut) {
-		window.ShowLogSearch()
-	})
-
-	// Escape: Exit fullscreen or close dialogs
-	win.Canvas().AddShortcut(&fyne.ShortcutCustom{KeyName: "Escape", Modifier: 0}, func(_ *fyne.Shortcut) {
-		window.HandleEscape()
-	})
+	// Shortcuts are handled via menu accelerators in Fyne.
+	// The menu bar items define the keyboard shortcuts.
+	_ = window
+	_ = ctrl
 }
 
 // showShortcutsDialog displays keyboard shortcuts help.
