@@ -29,6 +29,20 @@ func main() {
 	window.SetTitle("DNP3 Engineering Workbench")
 	window.CenterOnScreen()
 
+	// Create menu
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("Exit", func() {
+			a.Quit()
+		}),
+	)
+	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("About", func() {
+			log.Println("DNP3 Engineering Workbench v0.1.0")
+		}),
+	)
+	menu := fyne.NewMainMenu(fileMenu, helpMenu)
+	window.SetMainMenu(menu)
+
 	// Start controller
 	if err := ctrl.Start(); err != nil {
 		log.Printf("Failed to start controller: %v", err)

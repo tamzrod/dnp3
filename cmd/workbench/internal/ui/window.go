@@ -150,6 +150,11 @@ func (w *MainWindow) CenterOnScreen() {
 	w.window.CenterOnScreen()
 }
 
+// SetMainMenu sets the main menu for the window.
+func (w *MainWindow) SetMainMenu(menu *fyne.MainMenu) {
+	w.window.SetMainMenu(menu)
+}
+
 // pollState periodically checks controller state and updates UI.
 func (w *MainWindow) pollState() {
 	ticker := time.NewTicker(100 * time.Millisecond) // Update every 100ms
