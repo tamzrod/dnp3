@@ -5,7 +5,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -69,14 +68,14 @@ func NewStatusBar(state, connection, iin binding.String) *StatusBar {
 	iinLabel.TextStyle.Bold = true
 	iinValue := widget.NewLabelWithData(iin)
 
-	p.sidebarToggle = widget.NewButtonWithIcon("", theme.ViewRestoreIcon(), func() {
+	p.sidebarToggle = widget.NewButton("Sidebar", func() {
 		if p.OnSidebarToggle != nil {
 			p.OnSidebarToggle()
 		}
 	})
 	p.sidebarToggle.Importance = widget.MediumImportance
 	
-	p.logPanelToggle = widget.NewButtonWithIcon("", theme.ViewBottomSheetIcon(), func() {
+	p.logPanelToggle = widget.NewButton("Log", func() {
 		if p.OnLogPanelToggle != nil {
 			p.OnLogPanelToggle()
 		}
