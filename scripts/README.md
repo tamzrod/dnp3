@@ -4,6 +4,12 @@ This directory contains utility scripts for development, testing, and maintenanc
 
 ## Available Scripts
 
+### Build Scripts
+
+| Script | Platform | Purpose |
+|--------|---------|---------|
+| `build-workbench.ps1` | Windows | Build and run the DNP3 Workbench |
+
 ### Development
 
 - [ ] `bootstrap.sh` - Initialize development environment
@@ -28,20 +34,42 @@ This directory contains utility scripts for development, testing, and maintenanc
 
 ## Usage
 
-Make scripts executable:
+### Windows - PowerShell
 
+```powershell
+# Build the workbench
+.\build-workbench.ps1 -Action build
+
+# Build and run
+.\build-workbench.ps1 -Action run
+
+# Clean build artifacts
+.\build-workbench.ps1 -Action clean
+
+# Full rebuild
+.\build-workbench.ps1 -Action all
+```
+
+### Linux/macOS - Bash
+
+Make scripts executable first:
 ```bash
 chmod +x scripts/*.sh
 ```
 
 Run a script:
-
 ```bash
 ./scripts/<script-name>.sh
 ```
 
 ## Requirements
 
-Scripts may have dependencies. Check individual script documentation for requirements.
+| Script | Requirements |
+|--------|--------------|
+| `build-workbench.ps1` | Go 1.22+, PowerShell 5.1+ |
+| `bootstrap.sh` | Bash, Go |
+| `test-*.sh` | Bash, Go, test dependencies |
+
+Check individual script documentation for requirements.
 
 > ⚠️ **Note**: Scripts will be implemented as needed during development.

@@ -3,13 +3,17 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
 
+	"dnp3/cmd/workbench/internal/config"
 	"dnp3/cmd/workbench/internal/controller"
 	"dnp3/cmd/workbench/internal/session"
 	"dnp3/cmd/workbench/internal/ui/panels"
@@ -30,6 +34,18 @@ type MainWindow struct {
 	logPanel        *panels.LogPanel
 	statusBar       *panels.StatusBar
 
+	// Toolbar (UX Standard Section 5.1-5.4)
+	toolbar *Toolbar
+
+	// Layout state (UX Standard Section 6.3)
+	sidebarVisible  bool
+	logPanelVisible bool
+	fullscreen      bool
+
+	// Search state
+	searchEntry *widget.Entry
+	searchOpen  bool
+
 	// State bindings
 	state        binding.String
 	connectionBinding binding.String
@@ -40,7 +56,7 @@ type MainWindow struct {
 }
 
 // NewMainWindow creates a new main window.
-func NewMainWindow(app fyne.App, ctrl *controller.Controller) *MainWindow {
+func NewMainWindow(app fyne.App, ctrl *controller.Controller, cfg *config.Config) *MainWindow {
 	w := &MainWindow{
 		app:    app,
 		window:  app.NewWindow("DNP3 Engineering Workbench"),
@@ -48,6 +64,12 @@ func NewMainWindow(app fyne.App, ctrl *controller.Controller) *MainWindow {
 		state:   binding.NewString(),
 		connectionBinding: binding.NewString(),
 		iinBinding: binding.NewString(),
+		
+		// Initialize visibility states from config (UX Standard: collapsible panels)
+		sidebarVisible:  cfg.Layout.SidebarVisible,
+		logPanelVisible: cfg.Layout.LogPanelVisible,
+		fullscreen:      cfg.Window.Full,
+		searchOpen:      false,
 	}
 
 	w.state.Set("Disconnected")
@@ -71,6 +93,9 @@ func (w *MainWindow) setupUI() {
 	w.logPanel = panels.NewLogPanel()
 	w.statusBar = panels.NewStatusBar(w.state, w.connectionBinding, w.iinBinding)
 
+	// Create toolbar (UX Standard Section 5.1-5.4)
+	w.toolbar = NewToolbar()
+
 	// Left sidebar
 	leftSidebar := container.NewVBox(
 		w.modePanel.Container(),
@@ -87,10 +112,10 @@ func (w *MainWindow) setupUI() {
 		),
 	)
 
-	// Complete layout
+	// Complete layout with toolbar at top (UX Standard Section 5.1)
 	content := container.NewBorder(
-		nil, // top
-		w.statusBar.Container(), // bottom
+		w.toolbar.Container(), // top - toolbar
+		w.statusBar.Container(), // bottom - status bar
 		nil, // left
 		nil, // right
 		container.NewVBox(
@@ -126,6 +151,33 @@ func (w *MainWindow) setupEventHandlers() {
 	w.logPanel.OnClear = func() {
 		w.ctrl.Logger().Clear()
 		w.logPanel.Clear()
+	}
+
+	// Toolbar events (UX Standard Section 5.4)
+	w.toolbar.OnConnect = func() {
+		w.ctrl.Connect(w.ctrl.State().Address, w.ctrl.State().Port)
+	}
+
+	w.toolbar.OnDisconnect = func() {
+		w.ctrl.Disconnect()
+	}
+
+	w.toolbar.OnReadClass0 = func() {
+		w.ctrl.ReadClass(0)
+	}
+
+	w.toolbar.OnClear = func() {
+		w.ctrl.Logger().Clear()
+		w.logPanel.Clear()
+	}
+
+	// Status bar toggle callbacks (UX Standard Section 6.3)
+	w.statusBar.OnSidebarToggle = func() {
+		w.ToggleSidebar()
+	}
+
+	w.statusBar.OnLogPanelToggle = func() {
+		w.ToggleLogPanel()
 	}
 }
 
@@ -188,6 +240,172 @@ func (w *MainWindow) updateUI(state *controller.AppState) {
 		w.dataPanel.Update(state.LastResponse)
 	}
 
-	// Update connection panel state
-	w.connectionPanel.SetConnected(state.Connection == session.StateConnected)
+	// Update all panels based on connection state
+	connected := state.Connection == session.StateConnected
+	
+	// Update connection panel
+	w.connectionPanel.SetConnected(connected)
+	
+	// Update command panel (UX Standard: disable commands when disconnected)
+	w.commandPanel.SetConnected(connected)
+	
+	// Update toolbar (UX Standard Section 5.4: disable when unavailable)
+	w.toolbar.SetConnected(connected)
+	
+	// Update status bar with visual indicator
+	w.updateStatusBar(state)
+}
+
+// updateStatusBar updates the status bar with connection state.
+func (w *MainWindow) updateStatusBar(state *controller.AppState) {
+	switch state.Connection {
+	case session.StateConnected:
+		w.statusBar.SetConnectionState(panels.ConnectionStateConnected, "Connected")
+		w.statusBar.ClearError()
+	case session.StateConnecting:
+		w.statusBar.SetConnectionState(panels.ConnectionStateConnecting, "Connecting...")
+	case session.StateError:
+		w.statusBar.SetConnectionState(panels.ConnectionStateError, "Error")
+		if state.ConnectionError != "" {
+			w.statusBar.ShowError(state.ConnectionError)
+		}
+	default:
+		w.statusBar.SetConnectionState(panels.ConnectionStateDisconnected, "Disconnected")
+	}
+}
+
+// Window returns the underlying Fyne window.
+func (w *MainWindow) Window() fyne.Window {
+	return w.window
+}
+
+// SetMinSize sets the minimum window size (UX Standard: 800x600 minimum).
+func (w *MainWindow) SetMinSize(size fyne.Size) {
+	w.window.SetMinSize(size)
+}
+
+// ToggleSidebar shows/hides the sidebar panel (UX Standard Section 6.3).
+func (w *MainWindow) ToggleSidebar() {
+	w.mu.Lock()
+	w.sidebarVisible = !w.sidebarVisible
+	visible := w.sidebarVisible
+	w.mu.Unlock()
+	
+	if visible {
+		w.statusBar.SetSidebarToggleChecked(true)
+	} else {
+		w.statusBar.SetSidebarToggleChecked(false)
+	}
+	// Note: Full layout rebuild would be needed for proper toggle
+	// This is a placeholder for future implementation
+}
+
+// ToggleLogPanel shows/hides the log panel (UX Standard Section 6.3).
+func (w *MainWindow) ToggleLogPanel() {
+	w.mu.Lock()
+	w.logPanelVisible = !w.logPanelVisible
+	visible := w.logPanelVisible
+	w.mu.Unlock()
+	
+	if visible {
+		w.statusBar.SetLogPanelToggleChecked(true)
+	} else {
+		w.statusBar.SetLogPanelToggleChecked(false)
+	}
+	// Note: Full layout rebuild would be needed for proper toggle
+	// This is a placeholder for future implementation
+}
+
+// ToggleFullscreen toggles fullscreen mode (UX Standard Section 4.4).
+func (w *MainWindow) ToggleFullscreen() {
+	w.mu.Lock()
+	w.fullscreen = !w.fullscreen
+	fullscreen := w.fullscreen
+	w.mu.Unlock()
+	
+	if fullscreen {
+		w.window.SetFullScreen(true)
+	} else {
+		w.window.SetFullScreen(false)
+	}
+}
+
+// ShowLogSearch shows the log search bar (UX Standard Section 7.3).
+func (w *MainWindow) ShowLogSearch() {
+	if w.searchOpen {
+		return
+	}
+	
+	w.searchOpen = true
+	w.searchEntry = widget.NewEntry()
+	w.searchEntry.SetPlaceHolder("Search log...")
+	
+	w.searchEntry.OnSubmitted = func(text string) {
+		w.logPanel.Search(text)
+	}
+	
+	// Create a simple dialog for search
+	dialog.ShowCustom("Find in Log", "Close", container.NewHBox(
+		w.searchEntry,
+		widget.NewButton("Find", func() {
+			w.logPanel.Search(w.searchEntry.Text)
+		}),
+	), w.window)
+	
+	w.searchEntry.FocusGained()
+}
+
+// HandleEscape handles escape key press (UX Standard).
+func (w *MainWindow) HandleEscape() {
+	if w.fullscreen {
+		w.ToggleFullscreen()
+		return
+	}
+	
+	if w.searchOpen {
+		w.searchOpen = false
+		return
+	}
+}
+
+// ExportLog exports the log to the provided writer (UX Standard Section 7.3).
+func (w *MainWindow) ExportLog(writer fyne.URIWriteCloser) {
+	if writer == nil {
+		return
+	}
+	defer writer.Close()
+	
+	entries := w.logPanel.GetEntries()
+	for _, entry := range entries {
+		line := fmt.Sprintf("[%s] %s %s\n",
+			entry.Timestamp.Format("2006-01-02 15:04:05.000"),
+			entry.Direction,
+			entry.Message)
+		io.WriteString(writer, line)
+	}
+}
+
+// ClearLog clears the log panel.
+func (w *MainWindow) ClearLog() {
+	w.logPanel.Clear()
+}
+
+// Geometry returns the window size.
+func (w *MainWindow) Geometry() fyne.Size {
+	return w.window.Geometry()
+}
+
+// Position returns the window position.
+func (w *MainWindow) Position() fyne.Position {
+	return w.window.Position()
+}
+
+// SetPosition sets the window position.
+func (w *MainWindow) SetPosition(pos fyne.Position) {
+	w.window.SetPosition(pos)
+}
+
+// IsFullscreen returns whether the window is in fullscreen mode.
+func (w *MainWindow) IsFullscreen() bool {
+	return w.fullscreen
 }
