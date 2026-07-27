@@ -1,0 +1,306 @@
+{
+  "$schema": "https://kde.schema.org/alias-registry/v1",
+  "version": "1.0.0",
+  "registry_version": "1.0.0",
+  "last_updated": "2026-07-27T00:00:00Z",
+  "description": "KDE Runtime Alias Registry - Canonical commands and human-friendly aliases",
+  
+  "categories": {
+    "canonical": {
+      "description": "Authoritative command names",
+      "priority": 1,
+      "deprecated_allowed": false
+    },
+    "operational": {
+      "description": "Mission-oriented workflow commands",
+      "priority": 2,
+      "deprecated_allowed": true
+    },
+    "professional": {
+      "description": "Engineering terminology",
+      "priority": 3,
+      "deprecated_allowed": true
+    },
+    "friendly": {
+      "description": "New user-friendly commands",
+      "priority": 4,
+      "deprecated_allowed": true
+    },
+    "deprecated": {
+      "description": "Backward compatibility aliases",
+      "priority": 5,
+      "deprecated_allowed": true
+    }
+  },
+  
+  "aliases": [
+    {
+      "alias": "start engine",
+      "canonical": "start engine",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Initialize KDE Runtime ECU",
+      "namespace": "runtime",
+      "examples": ["start engine", "start-engine"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for runtime initialization"
+    },
+    {
+      "alias": "start-runtime",
+      "canonical": "start engine",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Initialize KDE Runtime ECU",
+      "namespace": "runtime",
+      "examples": ["start-runtime"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Kebab-case variant for scripting"
+    },
+    {
+      "alias": "initialize kde",
+      "canonical": "start engine",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Initialize KDE Runtime ECU (Mission Control theme)",
+      "namespace": "runtime",
+      "examples": ["initialize kde", "init kde"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control terminology for initialization"
+    },
+    {
+      "alias": "init kde",
+      "canonical": "start engine",
+      "category": "friendly",
+      "version": "1.0.0",
+      "description": "Initialize KDE (short form)",
+      "namespace": "runtime",
+      "examples": ["init kde"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Friendly short form for new users"
+    },
+    {
+      "alias": "run",
+      "canonical": "start engine",
+      "category": "friendly",
+      "version": "1.0.0",
+      "description": "Run KDE engine",
+      "namespace": "runtime",
+      "examples": ["run"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Simple friendly alias"
+    },
+    {
+      "alias": "pre-flight check",
+      "canonical": "pre-flight check",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Verify runtime readiness",
+      "namespace": "runtime",
+      "examples": ["pre-flight check", "preflight"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for pre-flight check"
+    },
+    {
+      "alias": "systems check",
+      "canonical": "pre-flight check",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Verify runtime readiness (Mission Control theme)",
+      "namespace": "runtime",
+      "examples": ["systems check", "system-check"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control terminology"
+    },
+    {
+      "alias": "health",
+      "canonical": "pre-flight check",
+      "category": "friendly",
+      "version": "1.0.0",
+      "description": "Quick health check",
+      "namespace": "runtime",
+      "examples": ["health", "health-check"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Simple friendly alias"
+    },
+    {
+      "alias": "check",
+      "canonical": "pre-flight check",
+      "category": "friendly",
+      "version": "1.0.0",
+      "description": "Quick check",
+      "namespace": "runtime",
+      "examples": ["check"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Minimal friendly alias"
+    },
+    {
+      "alias": "go",
+      "canonical": "pre-flight check",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Execute pre-flight check (Mission Control: Go/No-Go)",
+      "namespace": "runtime",
+      "examples": ["go", "go for launch"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control operational command"
+    },
+    {
+      "alias": "mission ready",
+      "canonical": "mission ready",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Session readiness confirmation",
+      "namespace": "runtime",
+      "examples": ["mission ready"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for mission ready"
+    },
+    {
+      "alias": "go for launch",
+      "canonical": "mission ready",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Confirm mission ready (Mission Control)",
+      "namespace": "mission",
+      "examples": ["go for launch"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control terminology"
+    },
+    {
+      "alias": "status report",
+      "canonical": "check state",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Get runtime status report",
+      "namespace": "runtime",
+      "examples": ["status report", "status"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control operational command"
+    },
+    {
+      "alias": "check state",
+      "canonical": "check state",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Read runtime state",
+      "namespace": "runtime",
+      "examples": ["check state"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for state check"
+    },
+    {
+      "alias": "bootstrap",
+      "canonical": "bootstrap",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Canonical entry point",
+      "namespace": "lab",
+      "examples": ["bootstrap"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for bootstrap"
+    },
+    {
+      "alias": "lab entry",
+      "canonical": "bootstrap",
+      "category": "professional",
+      "version": "1.0.0",
+      "description": "Enter laboratory (Scientific Laboratory theme)",
+      "namespace": "lab",
+      "examples": ["lab entry", "enter lab"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Scientific Laboratory terminology"
+    },
+    {
+      "alias": "run demo",
+      "canonical": "run demo",
+      "category": "canonical",
+      "version": "1.0.0",
+      "description": "Execute demonstration routine",
+      "namespace": "runtime",
+      "examples": ["run demo", "demo"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Primary canonical command for demo"
+    },
+    {
+      "alias": "demo sequence",
+      "canonical": "run demo",
+      "category": "operational",
+      "version": "1.0.0",
+      "description": "Execute demonstration sequence",
+      "namespace": "runtime",
+      "examples": ["demo sequence"],
+      "deprecated": false,
+      "deprecation_date": null,
+      "approved_by": "human",
+      "approval_date": "2026-07-27",
+      "rationale": "Mission Control terminology"
+    }
+  ],
+  
+  "namespace_conflicts": [],
+  
+  "deprecation_schedule": [],
+  
+  "metadata": {
+    "total_aliases": 17,
+    "canonical_commands": 6,
+    "by_category": {
+      "canonical": 6,
+      "operational": 6,
+      "professional": 1,
+      "friendly": 4,
+      "deprecated": 0
+    }
+  }
+}

@@ -142,18 +142,25 @@ make kde-check
 make kde-start
 ```
 
-### Direct Commands
+### Direct Commands (Recommended for AI/Sandbox)
 
 ```bash
-# Quick preflight (skip slow checks)
+# 1. Quick preflight (skip slow checks)
 python3 .kde/bootstrap/gates.py --quick
 
-# Full preflight (includes go mod verify)
-python3 .kde/bootstrap/gates.py --full
-
-# Start runtime
+# 2. Start runtime
 python3 -c "import sys; sys.path.insert(0, '.kde'); from runtime.runtime import demo; demo()"
+
+# 3. Run preflight health check
+python3 .kde/runtime/preflight.py
+
+# 4. Check runtime state
+cat .kde/runtime/state.json
 ```
+
+### For Fresh AI/Sandbox Initialization
+
+See [`start-engine.md`](../start-engine.md) for the canonical AI guide.
 
 ## Preflight Modes
 
