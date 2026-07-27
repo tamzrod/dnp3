@@ -11,7 +11,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 
 	"dnp3/cmd/workbench/internal/controller"
-	"dnp3/cmd/workbench/internal/logger"
+	"dnp3/cmd/workbench/internal/session"
 	"dnp3/cmd/workbench/internal/ui/panels"
 )
 
@@ -56,7 +56,6 @@ func NewMainWindow(app fyne.App, ctrl *controller.Controller) *MainWindow {
 
 	w.setupUI()
 	w.setupEventHandlers()
-	w.setupControllerCallbacks()
 
 	return w
 }
@@ -130,42 +129,47 @@ func (w *MainWindow) setupEventHandlers() {
 	}
 }
 
-// setupControllerCallbacks sets up callbacks for controller events.
-func (w *MainWindow) setupControllerCallbacks() {
-	// State change callback
-	w.ctrl.OnStateChange = func(state *controller.AppState) {
-		fyne.NewRunnable(func() {
-			w.state.Set(state.Connection.String())
-			
-			if state.Address != "" {
-				w.connectionBinding.Set(fmt.Sprintf("%s:%d", state.Address, state.Port))
-			}
-			
-			if state.LastResponse != nil {
-				w.iinBinding.Set(fmt.Sprintf("0x%02X%02X", state.LastResponse.IIN[0], state.LastResponse.IIN[1]))
-				w.dataPanel.Update(state.LastResponse)
-			}
-			
-			// Update connection panel state
-			w.connectionPanel.SetConnected(state.Connection == controller.StateConnected)
-		})
-	}
+// ShowAndRun shows the window and runs the application.
+func (w *MainWindow) ShowAndRun() {
+	// Start a goroutine to poll state changes and update UI
+	go w.pollState()
 
-	// Log entry callback
-	w.ctrl.OnLogEntry = func(entry *logger.Entry) {
-		fyne.NewRunnable(func() {
-			direction := "INFO"
-			if entry.Level == logger.LevelError {
-				direction = "ERROR"
-			} else if entry.Level == logger.LevelDebug {
-				direction = "DEBUG"
-			}
-			w.logPanel.Append(entry.Timestamp, direction, entry.Message)
-		})
+	w.window.Show()
+}
+
+// pollState periodically checks controller state and updates UI.
+func (w *MainWindow) pollState() {
+	ticker := time.NewTicker(100 * time.Millisecond) // Update every 100ms
+	defer ticker.Stop()
+
+	var lastState *controller.AppState
+	for !w.closed {
+		<-ticker.C
+
+		state := w.ctrl.State()
+		if state != lastState {
+			lastState = state
+			w.updateUI(state)
+		}
 	}
 }
 
-// ShowAndRun shows the window and runs the application.
-func (w *MainWindow) ShowAndRun() {
-	w.window.Show()
+// updateUI updates UI elements from the app state.
+func (w *MainWindow) updateUI(state *controller.AppState) {
+	// Update state display
+	w.state.Set(state.Connection.String())
+
+	// Update connection info
+	if state.Address != "" {
+		w.connectionBinding.Set(fmt.Sprintf("%s:%d", state.Address, state.Port))
+	}
+
+	// Update IIN and data panel
+	if state.LastResponse != nil {
+		w.iinBinding.Set(fmt.Sprintf("0x%02X%02X", state.LastResponse.IIN[0], state.LastResponse.IIN[1]))
+		w.dataPanel.Update(state.LastResponse)
+	}
+
+	// Update connection panel state
+	w.connectionPanel.SetConnected(state.Connection == session.StateConnected)
 }
