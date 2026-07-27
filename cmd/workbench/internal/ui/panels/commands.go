@@ -3,7 +3,6 @@ package panels
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -12,7 +11,7 @@ type CommandPanel struct {
 	container *fyne.Container
 
 	OnReadClass  func(class int)
-	OnOperate    func(index uint16, value bool)
+	OnOperate   func(index uint16, value bool)
 }
 
 // NewCommandPanel creates a new command panel.
@@ -68,13 +67,13 @@ func NewCommandPanel() *CommandPanel {
 
 	p.container = container.NewVBox(
 		title,
-		layout.NewSpacer().MinSize().Height,
+		widget.NewLabel(""),
 		readLabel,
 		btnReadClass0,
 		btnReadClass1,
 		btnReadClass2,
 		btnReadClass3,
-		layout.NewSpacer().MinSize().Height,
+		widget.NewLabel(""),
 		controlLabel,
 		btnOperateOn,
 		btnOperateOff,

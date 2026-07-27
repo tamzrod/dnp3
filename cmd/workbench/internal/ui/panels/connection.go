@@ -5,7 +5,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"dnp3/cmd/workbench/internal/controller"
@@ -13,13 +12,13 @@ import (
 
 // ConnectionPanel provides connection configuration and controls.
 type ConnectionPanel struct {
-	container    *fyne.Container
-	addressEntry *widget.Entry
-	portEntry    *widget.Entry
-	connectBtn   *widget.Button
+	container     *fyne.Container
+	addressEntry   *widget.Entry
+	portEntry     *widget.Entry
+	connectBtn    *widget.Button
 	disconnectBtn *widget.Button
-	ctrl         *controller.Controller
-	connected    bool
+	ctrl          *controller.Controller
+	connected     bool
 
 	OnConnect    func(address string, port int)
 	OnDisconnect func()
@@ -67,7 +66,7 @@ func NewConnectionPanel(ctrl *controller.Controller) *ConnectionPanel {
 
 	p.container = container.NewVBox(
 		title,
-		layout.NewSpacer().MinSize().Height,
+		widget.NewLabel(""),
 		addrLabel,
 		p.addressEntry,
 		portLabel,
