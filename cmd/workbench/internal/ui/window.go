@@ -279,11 +279,6 @@ func (w *MainWindow) Window() fyne.Window {
 	return w.window
 }
 
-// SetMinSize sets the minimum window size (UX Standard: 800x600 minimum).
-func (w *MainWindow) SetMinSize(size fyne.Size) {
-	w.window.SetMinSize(size)
-}
-
 // ToggleSidebar shows/hides the sidebar panel (UX Standard Section 6.3).
 func (w *MainWindow) ToggleSidebar() {
 	w.mu.Lock()
@@ -388,21 +383,6 @@ func (w *MainWindow) ExportLog(writer fyne.URIWriteCloser) {
 // ClearLog clears the log panel.
 func (w *MainWindow) ClearLog() {
 	w.logPanel.Clear()
-}
-
-// Geometry returns the window size.
-func (w *MainWindow) Geometry() fyne.Size {
-	return w.window.Geometry()
-}
-
-// Position returns the window position.
-func (w *MainWindow) Position() fyne.Position {
-	return w.window.Position()
-}
-
-// SetPosition sets the window position.
-func (w *MainWindow) SetPosition(pos fyne.Position) {
-	w.window.SetPosition(pos)
 }
 
 // IsFullscreen returns whether the window is in fullscreen mode.

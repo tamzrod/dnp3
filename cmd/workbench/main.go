@@ -50,11 +50,10 @@ func main() {
 	// Create main window with controller
 	window := ui.NewMainWindow(a, ctrl, cfg)
 
-	// Set window constraints (UX Standard: Minimum Size 800×600)
-	window.SetMinSize(fyne.NewSize(MinWindowWidth, MinWindowHeight))
-
-	// Apply saved window geometry or use defaults (UX Standard Section 8.2)
-	applyWindowGeometry(window, cfg)
+	// Set default window size
+	window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
+	window.SetTitle("DNP3 Engineering Workbench")
+	window.CenterOnScreen()
 
 	// Create complete menu structure (UX Standard: File, Edit, View, Session, Help)
 	window.SetMainMenu(createMainMenu(a, window, ctrl, cfg))
@@ -73,47 +72,9 @@ func main() {
 	// Run the Fyne event loop - this blocks until the app terminates
 	a.Run()
 
-	// Cleanup and save config (UX Standard Section 8.2)
-	saveWindowGeometry(window, cfg)
+	// Cleanup
 	cfg.Save()
 	ctrl.Stop()
-}
-
-// applyWindowGeometry restores window position and size from config.
-func applyWindowGeometry(window *ui.MainWindow, cfg *config.Config) {
-	// Apply saved geometry if valid
-	if cfg.Window.Width > 0 && cfg.Window.Height > 0 {
-		window.Resize(fyne.NewSize(float32(cfg.Window.Width), float32(cfg.Window.Height)))
-	} else {
-		window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
-	}
-
-	window.SetTitle("DNP3 Engineering Workbench")
-
-	// Center or restore position
-	if cfg.Window.X >= 0 && cfg.Window.Y >= 0 {
-		window.SetPosition(fyne.NewPos(float32(cfg.Window.X), float32(cfg.Window.Y)))
-	} else {
-		window.CenterOnScreen()
-	}
-
-	// Apply fullscreen if saved
-	if cfg.Window.Full {
-		window.ToggleFullscreen()
-	}
-}
-
-// saveWindowGeometry saves current window position and size to config.
-func saveWindowGeometry(window *ui.MainWindow, cfg *config.Config) {
-	geom := window.Geometry()
-	cfg.Window.Width = int(geom.Width)
-	cfg.Window.Height = int(geom.Height)
-
-	pos := window.Position()
-	cfg.Window.X = int(pos.X)
-	cfg.Window.Y = int(pos.Y)
-
-	cfg.Window.Full = window.IsFullscreen()
 }
 
 // createMainMenu builds the complete menu structure per UX standards.

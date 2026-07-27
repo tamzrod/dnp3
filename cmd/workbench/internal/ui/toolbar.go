@@ -30,23 +30,21 @@ func NewToolbar() *Toolbar {
 	t := &Toolbar{}
 
 	// Connect button
-	t.connectBtn = widget.NewButtonWithIcon("Connect", theme.ConfirmIcon(), func() {
+	t.connectBtn = widget.NewButtonWithIcon("Connect (F5)", theme.ConfirmIcon(), func() {
 		if t.OnConnect != nil {
 			t.OnConnect()
 		}
 	})
 	t.connectBtn.Importance = widget.HighImportance
-	t.connectBtn.SetTooltip("Connect to outstation (F5)")
 
 	// Disconnect button
-	t.disconnectBtn = widget.NewButtonWithIcon("Disconnect", theme.CancelIcon(), func() {
+	t.disconnectBtn = widget.NewButtonWithIcon("Disconnect (F6)", theme.CancelIcon(), func() {
 		if t.OnDisconnect != nil {
 			t.OnDisconnect()
 		}
 	})
 	t.disconnectBtn.Importance = widget.MediumImportance
 	t.disconnectBtn.Disable()
-	t.disconnectBtn.SetTooltip("Disconnect (F6)")
 
 	// Read Class 0 button
 	t.readClass0Btn = widget.NewButtonWithIcon("Read All", theme.SearchIcon(), func() {
@@ -55,7 +53,6 @@ func NewToolbar() *Toolbar {
 		}
 	})
 	t.readClass0Btn.Disable()
-	t.readClass0Btn.SetTooltip("Read Class 0 (Integrity Poll)")
 
 	// Clear button
 	t.clearBtn = widget.NewButtonWithIcon("Clear Log", theme.ContentClearIcon(), func() {
@@ -63,7 +60,6 @@ func NewToolbar() *Toolbar {
 			t.OnClear()
 		}
 	})
-	t.clearBtn.SetTooltip("Clear communication log")
 
 	// Layout with separators (UX Standard: Group related actions)
 	sep1 := widget.NewSeparator()
