@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"dnp3/cmd/workbench/internal/session"
@@ -39,7 +38,7 @@ func NewProtocolPanel() *ProtocolPanel {
 
 	p.container = container.NewVBox(
 		title,
-		layout.NewSpacer().MinSize().Height,
+		widget.NewLabel(""),
 		p.dllLabel,
 		p.tlLabel,
 		p.alLabel,
