@@ -129,11 +129,9 @@ func (w *MainWindow) setupEventHandlers() {
 	}
 }
 
-// ShowAndRun shows the window and runs the application.
-func (w *MainWindow) ShowAndRun() {
-	// Start a goroutine to poll state changes and update UI
+// Show shows the window and starts the state polling goroutine.
+func (w *MainWindow) Show() {
 	go w.pollState()
-
 	w.window.Show()
 }
 
