@@ -1,11 +1,9 @@
-// Package dialogs provides dialog windows for the DNP3 Workbench.
 package dialogs
 
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -26,42 +24,22 @@ var AppInfo = struct {
 
 // ShowAbout displays the About dialog.
 func ShowAbout(parent fyne.Window) {
-	// Create icon label with styling
-	iconLabel := widget.NewLabelWithStyle("⬡", fyne.TextAlignCenter, widget.TextStyle{
-		Size: 48,
-	})
+	nameLabel := widget.NewLabel(AppInfo.Name)
+	nameLabel.Alignment = fyne.TextAlignCenter
 
-	// Application name with bold styling
-	nameLabel := widget.NewLabelWithStyle(AppInfo.Name, fyne.TextAlignCenter, widget.TextStyle{
-		Bold: true,
-		Size: 20,
-	})
+	versionLabel := widget.NewLabel("Version " + AppInfo.Version)
+	versionLabel.Alignment = fyne.TextAlignCenter
 
-	// Version
-	versionLabel := widget.NewLabelWithStyle("Version "+AppInfo.Version, fyne.TextAlignCenter, widget.TextStyle{
-		Italic: true,
-	})
-
-	// Description
 	descLabel := widget.NewLabel(AppInfo.Description)
 	descLabel.Alignment = fyne.TextAlignCenter
 
-	// Framework info
 	frameworkLabel := widget.NewLabel("Built with " + AppInfo.Framework)
 	frameworkLabel.Alignment = fyne.TextAlignCenter
-	frameworkLabel.TextStyle.Italic = true
-	frameworkLabel.TextStyle.Color = theme.DisabledColor()
 
-	// Copyright
-	copyrightLabel := widget.NewLabel("© " + AppInfo.Copyright + " All rights reserved.")
+	copyrightLabel := widget.NewLabel("Copyright " + AppInfo.Copyright)
 	copyrightLabel.Alignment = fyne.TextAlignCenter
-	copyrightLabel.TextStyle.Italic = true
-	copyrightLabel.TextStyle.Color = theme.DisabledColor()
 
-	// Layout with padding
 	content := container.NewVBox(
-		iconLabel,
-		widget.NewLabel(""),
 		nameLabel,
 		versionLabel,
 		widget.NewLabel(""),
@@ -102,14 +80,14 @@ func (s *ShortcutsDialog) Show() {
 	}
 
 	content := container.NewVBox()
-	content.Add(widget.NewLabelWithStyle("Keyboard Shortcuts", fyne.TextAlignCenter, widget.TextStyle{Bold: true}))
+	content.Add(widget.NewLabel("Keyboard Shortcuts"))
 	content.Add(widget.NewLabel(""))
 
-	for _, s := range shortcuts {
+	for _, sc := range shortcuts {
 		row := container.NewHBox(
-			widget.NewLabel(s.shortcut),
+			widget.NewLabel(sc.shortcut),
+			widget.NewLabel("  " + sc.action),
 		)
-		row.Add(widget.NewLabel("                    " + s.action))
 		content.Add(row)
 	}
 

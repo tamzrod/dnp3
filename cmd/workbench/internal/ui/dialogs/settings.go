@@ -1,12 +1,9 @@
-// Package dialogs provides dialog windows for the DNP3 Workbench.
 package dialogs
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"dnp3/cmd/workbench/internal/config"
@@ -19,7 +16,6 @@ type SettingsDialog struct {
 	
 	cfg       *config.Config
 	
-	// Settings widgets
 	autoScroll  *widget.Check
 	confirmDisc *widget.Check
 	themeSelect *widget.Select
@@ -31,20 +27,12 @@ func NewSettingsDialog(parent fyne.Window, cfg *config.Config) *SettingsDialog {
 		cfg: cfg,
 	}
 
-	// Appearance section
 	appearanceLabel := widget.NewLabel("Appearance")
 	appearanceLabel.TextStyle.Bold = true
 
 	themeLabel := widget.NewLabel("Theme:")
 	s.themeSelect = widget.NewSelect([]string{"Light", "Dark"}, func(selected string) {
 		s.cfg.Appearance.Theme = selected
-		// Apply theme immediately
-		a := app.Current()
-		if selected == "Dark" {
-			a.Settings().SetTheme(theme.DarkTheme())
-		} else {
-			a.Settings().SetTheme(theme.LightTheme())
-		}
 	})
 	if cfg.Appearance.Theme == "" {
 		s.themeSelect.Selected = "Light"
@@ -52,8 +40,7 @@ func NewSettingsDialog(parent fyne.Window, cfg *config.Config) *SettingsDialog {
 		s.themeSelect.Selected = cfg.Appearance.Theme
 	}
 
-	// Behavior section
-	behaviorLabel := widget.NewLabel("")
+	behaviorLabel := widget.NewLabel("Behavior")
 	behaviorLabel.TextStyle.Bold = true
 
 	s.autoScroll = widget.NewCheck("Auto-scroll log on new entries", func(checked bool) {
@@ -66,7 +53,6 @@ func NewSettingsDialog(parent fyne.Window, cfg *config.Config) *SettingsDialog {
 	})
 	s.confirmDisc.SetChecked(s.cfg.Behavior.ConfirmDisconnect)
 
-	// Buttons
 	saveBtn := widget.NewButton("Save", func() {
 		s.cfg.Save()
 		s.dialog.Hide()

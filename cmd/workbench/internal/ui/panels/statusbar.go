@@ -26,18 +26,15 @@ type StatusBar struct {
 	connection binding.String
 	iin       binding.String
 	
-	// Visual indicators (UX Standard Section 7.1)
 	connectionIndicator *widget.Label
 	errorLabel         *widget.Label
-	progressBar        *widget.ProgressBar
+	progressBar        *widget.ProgressBarInfinite
 	sidebarToggle      *widget.Button
 	logPanelToggle     *widget.Button
 	
-	// Callbacks for toggle actions
 	OnSidebarToggle func()
 	OnLogPanelToggle func()
 	
-	// Current state
 	currentState ConnectionState
 }
 
@@ -50,17 +47,14 @@ func NewStatusBar(state, connection, iin binding.String) *StatusBar {
 		currentState: ConnectionStateDisconnected,
 	}
 
-	// Connection indicator with colored icon (UX Standard: Visual feedback)
-	p.connectionIndicator = widget.NewLabel("○ Disconnected")
+	p.connectionIndicator = widget.NewLabel("Disconnected")
 	p.connectionIndicator.TextStyle.Bold = true
 
-	// Error display (UX Standard Section 7.4)
 	p.errorLabel = widget.NewLabel("")
 	p.errorLabel.TextStyle.Italic = true
 	p.errorLabel.Hide()
 
-	// Progress bar for long operations (UX Standard Section 7.1)
-	p.progressBar = widget.NewProgressBar()
+	p.progressBar = widget.NewProgressBarInfinite()
 	p.progressBar.Hide()
 
 	stateLabel := widget.NewLabel("State:")
@@ -75,14 +69,12 @@ func NewStatusBar(state, connection, iin binding.String) *StatusBar {
 	iinLabel.TextStyle.Bold = true
 	iinValue := widget.NewLabelWithData(iin)
 
-	// Toggle buttons for panel visibility (UX Standard Section 6.3)
 	p.sidebarToggle = widget.NewButtonWithIcon("", theme.ViewRestoreIcon(), func() {
 		if p.OnSidebarToggle != nil {
 			p.OnSidebarToggle()
 		}
 	})
 	p.sidebarToggle.Importance = widget.MediumImportance
-	p.sidebarToggle.SetTooltip("Toggle Sidebar")
 	
 	p.logPanelToggle = widget.NewButtonWithIcon("", theme.ViewBottomSheetIcon(), func() {
 		if p.OnLogPanelToggle != nil {
@@ -90,9 +82,7 @@ func NewStatusBar(state, connection, iin binding.String) *StatusBar {
 		}
 	})
 	p.logPanelToggle.Importance = widget.MediumImportance
-	p.logPanelToggle.SetTooltip("Toggle Log Panel")
 
-	// Layout with proper spacing
 	p.container = container.NewHBox(
 		p.connectionIndicator,
 		layout.NewSpacer(),
@@ -119,29 +109,24 @@ func (p *StatusBar) Container() *fyne.Container {
 	return p.container
 }
 
-// SetConnectionState updates the visual connection indicator (UX Standard Section 7.1).
+// SetConnectionState updates the visual connection indicator.
 func (p *StatusBar) SetConnectionState(state ConnectionState, text string) {
 	p.currentState = state
 	
 	switch state {
 	case ConnectionStateConnected:
-		p.connectionIndicator.SetText("● " + text)
-		p.connectionIndicator.TextStyle.Color = theme.ColorNameSuccess
+		p.connectionIndicator.SetText("Connected")
 		p.errorLabel.Hide()
 		p.progressBar.Hide()
 	case ConnectionStateConnecting:
-		p.connectionIndicator.SetText("◐ " + text)
-		p.connectionIndicator.TextStyle.Color = theme.ColorNameWarning
+		p.connectionIndicator.SetText("Connecting...")
 		p.errorLabel.Hide()
 		p.progressBar.Show()
-		p.progressBar.Start()
 	case ConnectionStateError:
-		p.connectionIndicator.SetText("✗ " + text)
-		p.connectionIndicator.TextStyle.Color = theme.ColorNameError
+		p.connectionIndicator.SetText("Error")
 		p.progressBar.Hide()
 	case ConnectionStateDisconnected:
-		p.connectionIndicator.SetText("○ " + text)
-		p.connectionIndicator.TextStyle.Color = theme.ColorNameForeground
+		p.connectionIndicator.SetText("Disconnected")
 		p.errorLabel.Hide()
 		p.progressBar.Hide()
 	}
@@ -149,9 +134,9 @@ func (p *StatusBar) SetConnectionState(state ConnectionState, text string) {
 	p.connectionIndicator.Refresh()
 }
 
-// ShowError displays an error message in the status bar (UX Standard Section 7.4).
+// ShowError displays an error message in the status bar.
 func (p *StatusBar) ShowError(message string) {
-	p.errorLabel.SetText("⚠ " + message)
+	p.errorLabel.SetText(message)
 	p.errorLabel.Show()
 	p.errorLabel.Refresh()
 }
@@ -165,12 +150,10 @@ func (p *StatusBar) ClearError() {
 // ShowProgress shows a progress indicator.
 func (p *StatusBar) ShowProgress() {
 	p.progressBar.Show()
-	p.progressBar.Start()
 }
 
 // HideProgress hides the progress indicator.
 func (p *StatusBar) HideProgress() {
-	p.progressBar.Stop()
 	p.progressBar.Hide()
 }
 
