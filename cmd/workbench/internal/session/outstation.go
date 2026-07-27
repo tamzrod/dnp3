@@ -192,8 +192,8 @@ func (s *OutstationSession) handleConnection(conn net.Conn) {
 				"size": n,
 			})
 
-			// For MVP, send mock response
-			s.sendMockResponse(conn)
+			// For MVP, send mock response (non-blocking)
+			go s.sendMockResponse(conn)
 		}
 	}
 }

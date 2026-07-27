@@ -266,7 +266,7 @@ func (w *MainWindow) SetMainMenu(menu *fyne.MainMenu) {
 
 // pollState periodically checks controller state and updates UI.
 func (w *MainWindow) pollState() {
-	ticker := time.NewTicker(100 * time.Millisecond) // Update every 100ms
+	ticker := time.NewTicker(250 * time.Millisecond) // Update every 250ms to avoid UI freeze
 	defer ticker.Stop()
 
 	var lastState *controller.AppState
