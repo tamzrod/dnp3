@@ -65,17 +65,17 @@ func (p *ControlPanel) setupUI() {
 	p.selectToggle.SetChecked(true)
 
 	// Binary Output controls
-	p.pointLabel = widget.NewLabel("Binary Output:")
+	doLabel := widget.NewLabel("Binary Output:")
 
-	doOnBtn := widget.NewButtonWithIcon("ON", theme.ConfirmIcon(), func() {
+	p.doOnBtn = widget.NewButtonWithIcon("ON", theme.ConfirmIcon(), func() {
 		p.operateSelected(PointTypeDO, true)
 	})
-	doOnBtn.Importance = widget.HighImportance
+	p.doOnBtn.Importance = widget.HighImportance
 
-	doOffBtn := widget.NewButtonWithIcon("OFF", theme.CancelIcon(), func() {
+	p.doOffBtn = widget.NewButtonWithIcon("OFF", theme.CancelIcon(), func() {
 		p.operateSelected(PointTypeDO, false)
 	})
-	doOffBtn.Importance = widget.MediumImportance
+	p.doOffBtn.Importance = widget.MediumImportance
 
 	// Analog Output controls
 	aoLabel := widget.NewLabel("Analog Output:")
@@ -120,8 +120,8 @@ func (p *ControlPanel) setupUI() {
 	// Build layout
 	controls := container.NewVBox(
 		widget.NewLabel(""),
-		p.pointLabel,
-		container.NewHBox(doOnBtn, doOffBtn),
+		doLabel,
+		container.NewHBox(p.doOnBtn, p.doOffBtn),
 		widget.NewLabel(""),
 		aoLabel,
 		container.NewHBox(p.aoInput, p.aoSendBtn),

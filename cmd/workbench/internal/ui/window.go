@@ -74,6 +74,10 @@ func NewMainWindow(app fyne.App, ctrl *controller.Controller, cfg *config.Config
 		searchOpen:      false,
 	}
 
+	// Enable native window decorations for proper OS integration
+	// This provides native title bar, menu bar, and window controls
+	w.window.SetNativeDecorations(true)
+
 	w.state.Set("Disconnected")
 	w.connectionBinding.Set("Not Connected")
 	w.iinBinding.Set("0x0000")
@@ -113,15 +117,17 @@ func (w *MainWindow) setupUI() {
 		w.controlPanel.Container(),
 	)
 
-	// Main content area - split between sidebar and data/control
+	// Make the split pane resizable
 	mainContent := container.NewHSplit(
 		leftSidebar,
 		rightContent,
 	)
+	mainContent.Offset = 0.25 // 25% for sidebar
 
-	// Complete layout with toolbar at top (UX Standard Section 5.1)
+	// Complete layout - toolbar at top, status bar at bottom
+	// With native decorations enabled, menu bar appears in native title bar area
 	content := container.NewBorder(
-		w.toolbar.Container(), // top - toolbar
+		nil, // Top - menu bar is handled by native decorations
 		w.statusBar.Container(), // bottom - status bar
 		nil, // left
 		nil, // right
@@ -203,6 +209,10 @@ func (w *MainWindow) setupEventHandlers() {
 		}
 	}
 
+	w.dataTablePanel.SetOnReadAll(func() {
+		w.ctrl.ReadClass(0)
+	})
+
 	// Control panel events
 	w.controlPanel.OnOperate = func(pointType panels.PointType, index uint16, value interface{}) {
 		switch v := value.(type) {
@@ -281,10 +291,12 @@ func (w *MainWindow) updateUI(state *controller.AppState) {
 		w.connectionBinding.Set(fmt.Sprintf("%s:%d", state.Address, state.Port))
 	}
 
-	// Update IIN and data panel
+	// Update IIN and data table panel
 	if state.LastResponse != nil {
 		w.iinBinding.Set(fmt.Sprintf("0x%02X%02X", state.LastResponse.IIN[0], state.LastResponse.IIN[1]))
+		// Update both data panels for compatibility
 		w.dataPanel.Update(state.LastResponse)
+		w.dataTablePanel.Update(state.LastResponse)
 	}
 
 	// Update all panels based on connection state

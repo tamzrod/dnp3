@@ -7,7 +7,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -59,22 +58,21 @@ type DataTablePanel struct {
 	container *fyne.Container
 
 	// Data
-	points      []DataPoint
-	mu          sync.RWMutex
+	points []DataPoint
+	mu     sync.RWMutex
 
 	// UI components
-	table         *widget.Table
-	selectedIndex binding.Int
+	table *widget.Table
 
 	// Callbacks
 	OnPointSelected func(pointType PointType, index uint16, selected bool)
+	OnReadAll      func()
 }
 
 // NewDataTablePanel creates a new data table panel.
 func NewDataTablePanel() *DataTablePanel {
 	p := &DataTablePanel{
-		points:        make([]DataPoint, 0),
-		selectedIndex: binding.NewInt(),
+		points: make([]DataPoint, 0),
 	}
 
 	p.setupUI()
@@ -86,39 +84,41 @@ func (p *DataTablePanel) setupUI() {
 	title := widget.NewLabel("DATA MONITORING")
 	title.TextStyle.Bold = true
 
-	// Create table
+	// Create table with proper template
 	p.createTable()
 
 	// Toolbar
 	toolbar := p.createToolbar()
 
+	// Wrap table in scroll container
+	scrollContainer := container.NewScroll(p.table)
+	scrollContainer.SetMinSize(fyne.NewSize(400, 300))
+
 	// Main container
 	p.container = container.NewBorder(
 		container.NewVBox(title, toolbar),
 		nil, nil, nil,
-		p.table,
+		scrollContainer,
 	)
 }
 
 // createTable creates the data table.
 func (p *DataTablePanel) createTable() {
-	// Headers
-	headers := []string{"Index", "Type", "Value", "Quality", "Time"}
-
-	// Table dimensions
-	colWidths := []float32{60, 40, 100, 70, 140}
-	rowHeight := float32(30)
+	// Template cell for the table
+	template := widget.NewLabel("")
 
 	p.table = widget.NewTable(
 		p.tableLength,
-		p.tableCreateCell,
+		func() fyne.CanvasObject { return widget.NewLabel("") },
 		p.tableOnSelected,
 	)
-	p.table.SetColumnWidth(0, colWidths[0])
-	p.table.SetColumnWidth(1, colWidths[1])
-	p.table.SetColumnWidth(2, colWidths[2])
-	p.table.SetColumnWidth(3, colWidths[3])
-	p.table.SetColumnWidth(4, colWidths[4])
+
+	// Set column widths
+	p.table.SetColumnWidth(0, 60)  // Index
+	p.table.SetColumnWidth(1, 40)   // Type
+	p.table.SetColumnWidth(2, 100) // Value
+	p.table.SetColumnWidth(3, 80)  // Quality
+	p.table.SetColumnWidth(4, 150) // Time
 }
 
 // tableLength returns the number of rows.
@@ -128,17 +128,22 @@ func (p *DataTablePanel) tableLength() int {
 	return len(p.points) + 1 // +1 for header
 }
 
-// tableCreateCell creates a table cell.
+// tableCreateCell creates or updates a table cell.
 func (p *DataTablePanel) tableCreateCell(id widget.TableCellID, cell fyne.CanvasObject) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	label := cell.(*widget.Label)
+	label.TextStyle = fyne.TextStyle{}
+	label.TextStyle.Color = theme.ForegroundColor()
+
+	headers := []string{"Index", "Type", "Value", "Quality", "Time"}
+
 	if id.Row == 0 {
 		// Header row
-		headers := []string{"Index", "Type", "Value", "Quality", "Time"}
 		if id.Column < len(headers) {
-			cell.(*widget.Label).SetText(headers[id.Column])
-			cell.(*widget.Label).TextStyle.Bold = true
+			label.SetText(headers[id.Column])
+			label.TextStyle.Bold = true
 		}
 		return
 	}
@@ -146,24 +151,27 @@ func (p *DataTablePanel) tableCreateCell(id widget.TableCellID, cell fyne.Canvas
 	// Data row
 	row := id.Row - 1
 	if row >= len(p.points) {
+		label.SetText("")
 		return
 	}
 
 	point := p.points[row]
 	switch id.Column {
 	case 0:
-		cell.(*widget.Label).SetText(fmt.Sprintf("%d", point.Index))
+		label.SetText(fmt.Sprintf("%d", point.Index))
 	case 1:
-		cell.(*widget.Label).SetText(point.Type.String())
+		label.SetText(point.Type.String())
 	case 2:
-		cell.(*widget.Label).SetText(point.Value)
+		label.SetText(point.Value)
 	case 3:
-		cell.(*widget.Label).SetText(point.Quality)
+		label.SetText(point.Quality)
 		if !point.QualityGood {
-			cell.(*widget.Label).TextStyle.Color = theme.ErrorColor()
+			label.TextStyle.Color = theme.ErrorColor()
+		} else {
+			label.TextStyle.Color = theme.ForegroundColor()
 		}
 	case 4:
-		cell.(*widget.Label).SetText(point.Timestamp)
+		label.SetText(point.Timestamp)
 	}
 }
 
@@ -192,10 +200,14 @@ func (p *DataTablePanel) createToolbar() *fyne.Container {
 	clearBtn := widget.NewButtonWithIcon("Clear", theme.ContentClearIcon(), func() {
 		p.Clear()
 	})
+	clearBtn.Importance = widget.MediumImportance
 
 	readAllBtn := widget.NewButtonWithIcon("Read All", theme.ContentRefreshIcon(), func() {
-		// Trigger read all callback if set
+		if p.OnReadAll != nil {
+			p.OnReadAll()
+		}
 	})
+	readAllBtn.Importance = widget.HighImportance
 
 	return container.NewHBox(clearBtn, readAllBtn)
 }
@@ -308,6 +320,11 @@ func (p *DataTablePanel) GetPoints() []DataPoint {
 	result := make([]DataPoint, len(p.points))
 	copy(result, p.points)
 	return result
+}
+
+// SetOnReadAll sets the callback for Read All button.
+func (p *DataTablePanel) SetOnReadAll(callback func()) {
+	p.OnReadAll = callback
 }
 
 // boolToString converts a boolean to a display string.
