@@ -7,40 +7,74 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// ModePanel provides mode selection (Master/Outstation).
+// WorkbenchMode represents the workbench operating mode.
+type WorkbenchMode int
+
+const (
+	// ModePollOutstation - Master mode: connect to and poll an outstation
+	ModePollOutstation WorkbenchMode = iota
+	// ModeSimulateOutstation - Outstation mode: act as a DNP3 server
+	ModeSimulateOutstation
+)
+
+// String returns a string representation of the mode.
+func (m WorkbenchMode) String() string {
+	switch m {
+	case ModePollOutstation:
+		return "Poll Outstation"
+	case ModeSimulateOutstation:
+		return "Simulate Outstation"
+	default:
+		return "Unknown"
+	}
+}
+
+// ModePanel provides mode selection (Poll Outstation / Simulate Outstation).
 type ModePanel struct {
 	container    *fyne.Container
-	masterRB     *widget.RadioGroup
-	isMaster     bool
-	onModeChange func(bool)
+	modeRB       *widget.RadioGroup
+	mode         WorkbenchMode
+	onModeChange func(WorkbenchMode)
 }
 
 // NewModePanel creates a new mode panel.
 func NewModePanel() *ModePanel {
 	p := &ModePanel{
-		isMaster: true, // Master is default for MVP
+		mode: ModePollOutstation, // Default to master/poll mode
 	}
 
-	title := widget.NewLabel("MODE SELECTION")
+	title := widget.NewLabel("WORKBENCH MODE")
 	title.TextStyle.Bold = true
 
-	p.masterRB = widget.NewRadioGroup([]string{"Master Mode", "Outstation Mode"}, func(selected string) {
-		p.isMaster = (selected == "Master Mode")
+	// Clear, action-oriented labels
+	p.modeRB = widget.NewRadioGroup([]string{
+		"Poll Outstation",
+		"Simulate Outstation",
+	}, func(selected string) {
+		switch selected {
+		case "Poll Outstation":
+			p.mode = ModePollOutstation
+		case "Simulate Outstation":
+			p.mode = ModeSimulateOutstation
+		}
 		if p.onModeChange != nil {
-			p.onModeChange(p.isMaster)
+			p.onModeChange(p.mode)
 		}
 	})
-	p.masterRB.Selected = "Master Mode"
-	p.masterRB.Horizontal = false
+	p.modeRB.Selected = "Poll Outstation"
+	p.modeRB.Horizontal = false
 
-	note := widget.NewLabel("MVP: Master Mode Only")
-	note.TextStyle.Italic = true
+	// Help text
+	helpText := widget.NewLabel("Poll: Connect to remote outstation\nSimulate: Act as DNP3 server")
+	helpText.TextStyle.Italic = true
+	helpText.Wrapping = fyne.TextWrapWord
 
 	p.container = container.NewVBox(
 		title,
 		widget.NewLabel(""),
-		p.masterRB,
-		note,
+		p.modeRB,
+		widget.NewLabel(""),
+		helpText,
 	)
 
 	return p
@@ -51,23 +85,33 @@ func (p *ModePanel) Container() *fyne.Container {
 	return p.container
 }
 
-// IsMaster returns true if Master mode is selected.
-func (p *ModePanel) IsMaster() bool {
-	return p.isMaster
+// Mode returns the current mode.
+func (p *ModePanel) Mode() WorkbenchMode {
+	return p.mode
 }
 
-// SetMaster sets the mode to Master.
-func (p *ModePanel) SetMaster(master bool) {
-	if master {
-		p.masterRB.Selected = "Master Mode"
-		p.isMaster = true
-	} else {
-		p.masterRB.Selected = "Outstation Mode"
-		p.isMaster = false
+// IsPollMode returns true if in poll outstation mode.
+func (p *ModePanel) IsPollMode() bool {
+	return p.mode == ModePollOutstation
+}
+
+// IsSimulateMode returns true if in simulate outstation mode.
+func (p *ModePanel) IsSimulateMode() bool {
+	return p.mode == ModeSimulateOutstation
+}
+
+// SetMode sets the workbench mode.
+func (p *ModePanel) SetMode(mode WorkbenchMode) {
+	p.mode = mode
+	switch mode {
+	case ModePollOutstation:
+		p.modeRB.Selected = "Poll Outstation"
+	case ModeSimulateOutstation:
+		p.modeRB.Selected = "Simulate Outstation"
 	}
 }
 
 // SetOnModeChange sets a callback for mode changes.
-func (p *ModePanel) SetOnModeChange(callback func(bool)) {
+func (p *ModePanel) SetOnModeChange(callback func(WorkbenchMode)) {
 	p.onModeChange = callback
 }

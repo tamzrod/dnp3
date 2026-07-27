@@ -30,6 +30,8 @@ type MainWindow struct {
 	connectionPanel *panels.ConnectionPanel
 	commandPanel    *panels.CommandPanel
 	dataPanel       *panels.DataPanel
+	dataTablePanel  *panels.DataTablePanel
+	controlPanel    *panels.ControlPanel
 	protocolPanel   *panels.ProtocolPanel
 	logPanel        *panels.LogPanel
 	statusBar       *panels.StatusBar
@@ -47,9 +49,9 @@ type MainWindow struct {
 	searchOpen  bool
 
 	// State bindings
-	state        binding.String
-	connectionBinding binding.String
-	iinBinding       binding.String
+	state              binding.String
+	connectionBinding  binding.String
+	iinBinding         binding.String
 
 	mu     sync.RWMutex
 	closed bool
@@ -89,6 +91,8 @@ func (w *MainWindow) setupUI() {
 	w.connectionPanel = panels.NewConnectionPanel(w.ctrl)
 	w.commandPanel = panels.NewCommandPanel()
 	w.dataPanel = panels.NewDataPanel()
+	w.dataTablePanel = panels.NewDataTablePanel()
+	w.controlPanel = panels.NewControlPanel()
 	w.protocolPanel = panels.NewProtocolPanel()
 	w.logPanel = panels.NewLogPanel()
 	w.statusBar = panels.NewStatusBar(w.state, w.connectionBinding, w.iinBinding)
@@ -96,20 +100,23 @@ func (w *MainWindow) setupUI() {
 	// Create toolbar (UX Standard Section 5.1-5.4)
 	w.toolbar = NewToolbar()
 
-	// Left sidebar
+	// Left sidebar - mode, connection, command
 	leftSidebar := container.NewVBox(
 		w.modePanel.Container(),
 		w.connectionPanel.Container(),
 		w.commandPanel.Container(),
 	)
 
-	// Main content area - split between data/protocol and sidebar
+	// Right side - data table and control panel
+	rightContent := container.NewVBox(
+		w.dataTablePanel.Container(),
+		w.controlPanel.Container(),
+	)
+
+	// Main content area - split between sidebar and data/control
 	mainContent := container.NewHSplit(
 		leftSidebar,
-		container.NewVBox(
-			w.dataPanel.Container(),
-			w.protocolPanel.Container(),
-		),
+		rightContent,
 	)
 
 	// Complete layout with toolbar at top (UX Standard Section 5.1)
@@ -129,9 +136,16 @@ func (w *MainWindow) setupUI() {
 
 // setupEventHandlers sets up event handling between panels.
 func (w *MainWindow) setupEventHandlers() {
+	// Mode panel events
+	w.modePanel.SetOnModeChange(func(mode panels.WorkbenchMode) {
+		w.handleModeChange(mode)
+	})
+
 	// Connection panel events
 	w.connectionPanel.OnConnect = func(address string, port int) {
-		w.ctrl.Connect(address, port)
+		if w.modePanel.IsPollMode() {
+			w.ctrl.Connect(address, port)
+		}
 	}
 
 	w.connectionPanel.OnDisconnect = func() {
@@ -178,6 +192,39 @@ func (w *MainWindow) setupEventHandlers() {
 
 	w.statusBar.OnLogPanelToggle = func() {
 		w.ToggleLogPanel()
+	}
+
+	// Data table panel events
+	w.dataTablePanel.OnPointSelected = func(pointType panels.PointType, index uint16, selected bool) {
+		if selected {
+			w.controlPanel.SelectPoint(pointType, index)
+		} else {
+			w.controlPanel.DeselectPoint(pointType, index)
+		}
+	}
+
+	// Control panel events
+	w.controlPanel.OnOperate = func(pointType panels.PointType, index uint16, value interface{}) {
+		switch v := value.(type) {
+		case bool:
+			w.ctrl.Operate(index, v)
+		case string:
+			// Handle analog output
+		}
+	}
+}
+
+// handleModeChange handles mode changes between poll and simulate.
+func (w *MainWindow) handleModeChange(mode panels.WorkbenchMode) {
+	switch mode {
+	case panels.ModePollOutstation:
+		// Poll mode: show connection panel, hide outstation panel
+		w.controlPanel.Enable()
+		w.dataTablePanel.Clear()
+	case panels.ModeSimulateOutstation:
+		// Simulate mode: show outstation panel, hide control
+		w.controlPanel.Disable()
+		w.dataTablePanel.Clear()
 	}
 }
 
