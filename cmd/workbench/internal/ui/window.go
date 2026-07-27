@@ -49,9 +49,9 @@ type MainWindow struct {
 	searchOpen  bool
 
 	// State bindings
-	state              binding.String
-	connectionBinding  binding.String
-	iinBinding         binding.String
+	state             binding.String
+	connectionBinding binding.String
+	iinBinding        binding.String
 
 	mu     sync.RWMutex
 	closed bool
@@ -60,13 +60,13 @@ type MainWindow struct {
 // NewMainWindow creates a new main window.
 func NewMainWindow(app fyne.App, ctrl *controller.Controller, cfg *config.Config) *MainWindow {
 	w := &MainWindow{
-		app:    app,
-		window:  app.NewWindow("DNP3 Engineering Workbench"),
-		ctrl:    ctrl,
-		state:   binding.NewString(),
+		app:               app,
+		window:            app.NewWindow("DNP3 Engineering Workbench"),
+		ctrl:              ctrl,
+		state:             binding.NewString(),
 		connectionBinding: binding.NewString(),
-		iinBinding: binding.NewString(),
-		
+		iinBinding:        binding.NewString(),
+
 		// Initialize visibility states from config (UX Standard: collapsible panels)
 		sidebarVisible:  cfg.Layout.SidebarVisible,
 		logPanelVisible: cfg.Layout.LogPanelVisible,
@@ -76,7 +76,7 @@ func NewMainWindow(app fyne.App, ctrl *controller.Controller, cfg *config.Config
 
 	// Enable native window decorations for proper OS integration
 	// This provides native title bar, menu bar, and window controls
-	w.window.SetNativeDecorations(true)
+	// Note: SetNativeDecorations may not be available in all Fyne versions
 
 	w.state.Set("Disconnected")
 	w.connectionBinding.Set("Not Connected")
@@ -127,10 +127,10 @@ func (w *MainWindow) setupUI() {
 	// Complete layout - toolbar at top, status bar at bottom
 	// With native decorations enabled, menu bar appears in native title bar area
 	content := container.NewBorder(
-		nil, // Top - menu bar is handled by native decorations
+		nil,                     // Top - menu bar is handled by native decorations
 		w.statusBar.Container(), // bottom - status bar
-		nil, // left
-		nil, // right
+		nil,                     // left
+		nil,                     // right
 		container.NewVBox(
 			mainContent,
 			w.logPanel.Container(),
@@ -229,11 +229,11 @@ func (w *MainWindow) handleModeChange(mode panels.WorkbenchMode) {
 	switch mode {
 	case panels.ModePollOutstation:
 		// Poll mode: show connection panel, hide outstation panel
-		w.controlPanel.Enable()
+		w.controlPanel.Enable(true)
 		w.dataTablePanel.Clear()
 	case panels.ModeSimulateOutstation:
 		// Simulate mode: show outstation panel, hide control
-		w.controlPanel.Disable()
+		w.controlPanel.Enable(false)
 		w.dataTablePanel.Clear()
 	}
 }
@@ -301,16 +301,16 @@ func (w *MainWindow) updateUI(state *controller.AppState) {
 
 	// Update all panels based on connection state
 	connected := state.Connection == session.StateConnected
-	
+
 	// Update connection panel
 	w.connectionPanel.SetConnected(connected)
-	
+
 	// Update command panel (UX Standard: disable commands when disconnected)
 	w.commandPanel.SetConnected(connected)
-	
+
 	// Update toolbar (UX Standard Section 5.4: disable when unavailable)
 	w.toolbar.SetConnected(connected)
-	
+
 	// Update status bar with visual indicator
 	w.updateStatusBar(state)
 }
@@ -344,7 +344,7 @@ func (w *MainWindow) ToggleSidebar() {
 	w.sidebarVisible = !w.sidebarVisible
 	visible := w.sidebarVisible
 	w.mu.Unlock()
-	
+
 	if visible {
 		w.statusBar.SetSidebarToggleChecked(true)
 	} else {
@@ -360,7 +360,7 @@ func (w *MainWindow) ToggleLogPanel() {
 	w.logPanelVisible = !w.logPanelVisible
 	visible := w.logPanelVisible
 	w.mu.Unlock()
-	
+
 	if visible {
 		w.statusBar.SetLogPanelToggleChecked(true)
 	} else {
@@ -376,7 +376,7 @@ func (w *MainWindow) ToggleFullscreen() {
 	w.fullscreen = !w.fullscreen
 	fullscreen := w.fullscreen
 	w.mu.Unlock()
-	
+
 	if fullscreen {
 		w.window.SetFullScreen(true)
 	} else {
@@ -389,15 +389,15 @@ func (w *MainWindow) ShowLogSearch() {
 	if w.searchOpen {
 		return
 	}
-	
+
 	w.searchOpen = true
 	w.searchEntry = widget.NewEntry()
 	w.searchEntry.SetPlaceHolder("Search log...")
-	
+
 	w.searchEntry.OnSubmitted = func(text string) {
 		w.logPanel.Search(text)
 	}
-	
+
 	// Create a simple dialog for search
 	dialog.ShowCustom("Find in Log", "Close", container.NewHBox(
 		w.searchEntry,
@@ -405,7 +405,7 @@ func (w *MainWindow) ShowLogSearch() {
 			w.logPanel.Search(w.searchEntry.Text)
 		}),
 	), w.window)
-	
+
 	w.searchEntry.FocusGained()
 }
 
@@ -415,7 +415,7 @@ func (w *MainWindow) HandleEscape() {
 		w.ToggleFullscreen()
 		return
 	}
-	
+
 	if w.searchOpen {
 		w.searchOpen = false
 		return
@@ -428,7 +428,7 @@ func (w *MainWindow) ExportLog(writer fyne.URIWriteCloser) {
 		return
 	}
 	defer writer.Close()
-	
+
 	entries := w.logPanel.GetEntries()
 	for _, entry := range entries {
 		line := fmt.Sprintf("[%s] %s %s\n",

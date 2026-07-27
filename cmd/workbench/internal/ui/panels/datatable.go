@@ -66,7 +66,7 @@ type DataTablePanel struct {
 
 	// Callbacks
 	OnPointSelected func(pointType PointType, index uint16, selected bool)
-	OnReadAll      func()
+	OnReadAll       func()
 }
 
 // NewDataTablePanel creates a new data table panel.
@@ -104,45 +104,45 @@ func (p *DataTablePanel) setupUI() {
 
 // createTable creates the data table.
 func (p *DataTablePanel) createTable() {
-	// Template cell for the table
-	template := widget.NewLabel("")
-
 	p.table = widget.NewTable(
 		p.tableLength,
 		func() fyne.CanvasObject { return widget.NewLabel("") },
-		p.tableOnSelected,
+		p.updateCell,
 	)
 
 	// Set column widths
-	p.table.SetColumnWidth(0, 60)  // Index
+	p.table.SetColumnWidth(0, 60)   // Index
 	p.table.SetColumnWidth(1, 40)   // Type
-	p.table.SetColumnWidth(2, 100) // Value
-	p.table.SetColumnWidth(3, 80)  // Quality
-	p.table.SetColumnWidth(4, 150) // Time
+	p.table.SetColumnWidth(2, 100)  // Value
+	p.table.SetColumnWidth(3, 80)   // Quality
+	p.table.SetColumnWidth(4, 150)  // Time
+
+	// Show header row with column names
+	p.table.ShowHeaderRow = true
 }
 
-// tableLength returns the number of rows.
-func (p *DataTablePanel) tableLength() int {
+// tableLength returns the number of rows and columns.
+func (p *DataTablePanel) tableLength() (int, int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return len(p.points) + 1 // +1 for header
+	// +1 for header row, 5 columns
+	return len(p.points) + 1, 5
 }
 
-// tableCreateCell creates or updates a table cell.
-func (p *DataTablePanel) tableCreateCell(id widget.TableCellID, cell fyne.CanvasObject) {
+// updateCell updates a table cell with data.
+func (p *DataTablePanel) updateCell(id widget.TableCellID, cell fyne.CanvasObject) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	label := cell.(*widget.Label)
 	label.TextStyle = fyne.TextStyle{}
-	label.TextStyle.Color = theme.ForegroundColor()
 
 	headers := []string{"Index", "Type", "Value", "Quality", "Time"}
 
 	if id.Row == 0 {
 		// Header row
-		if id.Column < len(headers) {
-			label.SetText(headers[id.Column])
+		if id.Col < len(headers) {
+			label.SetText(headers[id.Col])
 			label.TextStyle.Bold = true
 		}
 		return
@@ -156,7 +156,7 @@ func (p *DataTablePanel) tableCreateCell(id widget.TableCellID, cell fyne.Canvas
 	}
 
 	point := p.points[row]
-	switch id.Column {
+	switch id.Col {
 	case 0:
 		label.SetText(fmt.Sprintf("%d", point.Index))
 	case 1:
@@ -165,33 +165,8 @@ func (p *DataTablePanel) tableCreateCell(id widget.TableCellID, cell fyne.Canvas
 		label.SetText(point.Value)
 	case 3:
 		label.SetText(point.Quality)
-		if !point.QualityGood {
-			label.TextStyle.Color = theme.ErrorColor()
-		} else {
-			label.TextStyle.Color = theme.ForegroundColor()
-		}
 	case 4:
 		label.SetText(point.Timestamp)
-	}
-}
-
-// tableOnSelected handles cell selection.
-func (p *DataTablePanel) tableOnSelected(id widget.TableCellID) {
-	if id.Row == 0 {
-		return // Ignore header row
-	}
-
-	p.mu.RLock()
-	row := id.Row - 1
-	if row >= len(p.points) {
-		p.mu.RUnlock()
-		return
-	}
-	point := p.points[row]
-	p.mu.RUnlock()
-
-	if p.OnPointSelected != nil {
-		p.OnPointSelected(point.Type, point.Index, true)
 	}
 }
 
@@ -202,7 +177,7 @@ func (p *DataTablePanel) createToolbar() *fyne.Container {
 	})
 	clearBtn.Importance = widget.MediumImportance
 
-	readAllBtn := widget.NewButtonWithIcon("Read All", theme.ContentRefreshIcon(), func() {
+	readAllBtn := widget.NewButtonWithIcon("Read All", theme.ViewRefreshIcon(), func() {
 		if p.OnReadAll != nil {
 			p.OnReadAll()
 		}
@@ -243,18 +218,6 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 		p.points = append(p.points, dp)
 	}
 
-	// Add binary outputs
-	for _, bo := range resp.BinaryOutputs {
-		dp := DataPoint{
-			Index:       bo.Index,
-			Type:        PointTypeDO,
-			Value:       boolToString(bo.Value),
-			Quality:     bo.Status.String(),
-			QualityGood: true,
-		}
-		p.points = append(p.points, dp)
-	}
-
 	// Add analog inputs
 	for _, ai := range resp.AnalogInputs {
 		dp := DataPoint{
@@ -266,18 +229,6 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 		}
 		if ai.Time != nil {
 			dp.Timestamp = ai.Time.String()
-		}
-		p.points = append(p.points, dp)
-	}
-
-	// Add analog outputs
-	for _, ao := range resp.AnalogOutputs {
-		dp := DataPoint{
-			Index:       ao.Index,
-			Type:        PointTypeAO,
-			Value:       fmt.Sprintf("%.2f", ao.Value),
-			Quality:     ao.Status.String(),
-			QualityGood: true,
 		}
 		p.points = append(p.points, dp)
 	}

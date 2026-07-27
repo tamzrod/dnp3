@@ -7,7 +7,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -130,7 +129,7 @@ func (p *ControlPanel) setupUI() {
 	// Left side: selected list
 	leftPanel := container.NewVBox(
 		widget.NewLabel("Selected Points:"),
-		widget.NewScrollContainer(p.selectedList),
+		container.NewScroll(p.selectedList),
 	)
 
 	p.container = container.NewBorder(
@@ -240,16 +239,15 @@ func (p *ControlPanel) GetSelectedPoints() []*SelectedPoint {
 
 // Enable enables/disables the control panel.
 func (p *ControlPanel) Enable(enabled bool) {
-	p.doOnBtn.Enable()
-	p.doOffBtn.Enable()
-	p.aoInput.Enable()
-	p.aoSendBtn.Enable()
-}
-
-// Disable disables the control panel.
-func (p *ControlPanel) Disable() {
-	p.doOnBtn.Disable()
-	p.doOffBtn.Disable()
-	p.aoInput.Disable()
-	p.aoSendBtn.Disable()
+	if enabled {
+		p.doOnBtn.Enable()
+		p.doOffBtn.Enable()
+		p.aoInput.Enable()
+		p.aoSendBtn.Enable()
+	} else {
+		p.doOnBtn.Disable()
+		p.doOffBtn.Disable()
+		p.aoInput.Disable()
+		p.aoSendBtn.Disable()
+	}
 }

@@ -13,21 +13,21 @@ import (
 
 // OutstationSession represents a DNP3 Outstation session (server).
 type OutstationSession struct {
-	mu        sync.RWMutex
-	address   string
-	port      int
-	state     ConnectionState
-	listener  net.Listener
-	conn      net.Conn
-	events    chan SessionEvent
-	log       Logger
+	mu       sync.RWMutex
+	address  string
+	port     int
+	state    ConnectionState
+	listener net.Listener
+	conn     net.Conn
+	events   chan SessionEvent
+	log      Logger
 
 	// Data points
-	BinaryInputs   []*types.BinaryInput
-	AnalogInputs   []*types.AnalogInput
-	Counters       []*types.Counter
-	BinaryOutputs  []*types.BinaryOutput
-	AnalogOutputs  []*types.AnalogOutput
+	BinaryInputs  []*types.BinaryInput
+	AnalogInputs  []*types.AnalogInput
+	Counters      []*types.Counter
+	BinaryOutputs []*types.BinaryOutput
+	AnalogOutputs []*types.AnalogOutput
 
 	// Connection info
 	clientAddress string
@@ -36,14 +36,14 @@ type OutstationSession struct {
 // NewOutstationSession creates a new Outstation session.
 func NewOutstationSession(log Logger) (*OutstationSession, error) {
 	return &OutstationSession{
-		state:          StateDisconnected,
-		events:         make(chan SessionEvent, 100),
-		log:            log,
-		BinaryInputs:   make([]*types.BinaryInput, 0),
-		AnalogInputs:   make([]*types.AnalogInput, 0),
-		Counters:       make([]*types.Counter, 0),
-		BinaryOutputs:  make([]*types.BinaryOutput, 0),
-		AnalogOutputs:  make([]*types.AnalogOutput, 0),
+		state:         StateDisconnected,
+		events:        make(chan SessionEvent, 100),
+		log:           log,
+		BinaryInputs:  make([]*types.BinaryInput, 0),
+		AnalogInputs:  make([]*types.AnalogInput, 0),
+		Counters:      make([]*types.Counter, 0),
+		BinaryOutputs: make([]*types.BinaryOutput, 0),
+		AnalogOutputs: make([]*types.AnalogOutput, 0),
 	}, nil
 }
 
@@ -215,7 +215,7 @@ func (s *OutstationSession) AddBinaryInput(index uint16, value bool) {
 		Index:   index,
 		Value:   value,
 		Quality: types.QualityOnline,
-		Time:    types.Timestamp{}.Now(),
+		Time:    (&types.Timestamp{}).Now(),
 	}
 	s.BinaryInputs = append(s.BinaryInputs, bi)
 }
@@ -228,7 +228,7 @@ func (s *OutstationSession) SetBinaryInput(index uint16, value bool) {
 	for _, bi := range s.BinaryInputs {
 		if bi.Index == index {
 			bi.Value = value
-			bi.Time = types.Timestamp{}.Now()
+			bi.Time = (&types.Timestamp{}).Now()
 			return
 		}
 	}
@@ -243,7 +243,7 @@ func (s *OutstationSession) AddAnalogInput(index uint16, value float64) {
 		Index:   index,
 		Value:   value,
 		Quality: types.QualityOnline,
-		Time:    types.Timestamp{}.Now(),
+		Time:    (&types.Timestamp{}).Now(),
 	}
 	s.AnalogInputs = append(s.AnalogInputs, ai)
 }
@@ -256,7 +256,7 @@ func (s *OutstationSession) SetAnalogInput(index uint16, value float64) {
 	for _, ai := range s.AnalogInputs {
 		if ai.Index == index {
 			ai.Value = value
-			ai.Time = types.Timestamp{}.Now()
+			ai.Time = (&types.Timestamp{}).Now()
 			return
 		}
 	}
@@ -271,7 +271,7 @@ func (s *OutstationSession) AddCounter(index uint16, value uint32) {
 		Index:   index,
 		Value:   value,
 		Quality: types.QualityOnline,
-		Time:    types.Timestamp{}.Now(),
+		Time:    (&types.Timestamp{}).Now(),
 	}
 	s.Counters = append(s.Counters, c)
 }
@@ -284,7 +284,7 @@ func (s *OutstationSession) IncrementCounter(index uint16, delta uint32) {
 	for _, c := range s.Counters {
 		if c.Index == index {
 			c.Value += delta
-			c.Time = types.Timestamp{}.Now()
+			c.Time = (&types.Timestamp{}).Now()
 			return
 		}
 	}
