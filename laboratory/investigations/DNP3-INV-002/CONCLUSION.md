@@ -41,6 +41,7 @@ The recurring Fyne API build failures are caused by **API method calls that do n
 | `ProgressBar.Start()` | Method doesn't exist |
 | `ProgressBar.Stop()` | Method doesn't exist |
 | `theme.ViewBottomSheetIcon` | Icon doesn't exist in theme |
+| `fyne.ShortcutCustom` | Type doesn't exist in Fyne |
 
 ### Finding F3: Pre-commit Build Not Required
 
