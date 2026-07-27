@@ -137,6 +137,21 @@ func (w *MainWindow) ShowAndRun() {
 	w.window.Show()
 }
 
+// Resize resizes the window.
+func (w *MainWindow) Resize(size fyne.Size) {
+	w.window.Resize(size)
+}
+
+// SetTitle sets the window title.
+func (w *MainWindow) SetTitle(title string) {
+	w.window.SetTitle(title)
+}
+
+// CenterOnScreen centers the window on screen.
+func (w *MainWindow) CenterOnScreen() {
+	w.window.CenterOnScreen()
+}
+
 // pollState periodically checks controller state and updates UI.
 func (w *MainWindow) pollState() {
 	ticker := time.NewTicker(100 * time.Millisecond) // Update every 100ms
