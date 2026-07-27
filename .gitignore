@@ -56,3 +56,12 @@ kde_archive/
 
 # KDE Runtime - State (may be committed if desired)
 # .kde/runtime/state/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# KDE Runtime logs
+.kde/runtime/logs/
