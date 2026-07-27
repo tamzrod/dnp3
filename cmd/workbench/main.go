@@ -34,10 +34,13 @@ func main() {
 		log.Printf("Failed to start controller: %v", err)
 	}
 
-	// Show and run
-	window.ShowAndRun()
+	// Show window
+	window.Show()
 
-	// Cleanup
+	// Run the Fyne event loop - this blocks until the app terminates
+	a.Run()
+
+	// Cleanup (executed after window is closed)
 	ctrl.Stop()
 }
 
