@@ -2,7 +2,6 @@ package dialogs
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -21,13 +20,13 @@ func ShowModeSelection(a fyne.App, onSelect func(types.Mode)) {
 	// Title
 	title := widget.NewLabel("DNP3 Engineering Workbench")
 	title.Alignment = fyne.TextAlignCenter
-	title.TextStyle = widget.RichTextStyleHeading1
+	title.TextStyle.Bold = true
 
 	subtitle := widget.NewLabel("Choose Operating Mode:")
 	subtitle.Alignment = fyne.TextAlignCenter
 
 	// Master mode card
-	masterIcon := widget.NewLabel("🔌")
+	masterIcon := widget.NewLabel("[ M ]")
 	masterIcon.Alignment = fyne.TextAlignCenter
 
 	masterTitle := widget.NewLabel("Master Mode")
@@ -38,13 +37,13 @@ func ShowModeSelection(a fyne.App, onSelect func(types.Mode)) {
 	masterDesc.Alignment = fyne.TextAlignCenter
 
 	masterCard := widget.NewCard("", "", container.NewVBox(masterIcon, masterTitle, masterDesc))
-	masterCard.OnTapped = func() {
+	masterBtn := widget.NewButton("Select Master", func() {
 		dialogWindow.Close()
 		onSelect(types.ModeMaster)
-	}
+	})
 
 	// Outstation mode card
-	outstationIcon := widget.NewLabel("🖥️")
+	outstationIcon := widget.NewLabel("[ O ]")
 	outstationIcon.Alignment = fyne.TextAlignCenter
 
 	outstationTitle := widget.NewLabel("Outstation Mode")
@@ -55,15 +54,15 @@ func ShowModeSelection(a fyne.App, onSelect func(types.Mode)) {
 	outstationDesc.Alignment = fyne.TextAlignCenter
 
 	outstationCard := widget.NewCard("", "", container.NewVBox(outstationIcon, outstationTitle, outstationDesc))
-	outstationCard.OnTapped = func() {
+	outstationBtn := widget.NewButton("Select Outstation", func() {
 		dialogWindow.Close()
 		onSelect(types.ModeOutstation)
-	}
+	})
 
-	// Cards container
-	cardsContainer := container.NewGridWithColumns(2,
-		masterCard,
-		outstationCard,
+	// Buttons container
+	buttonsContainer := container.NewGridWithColumns(2,
+		masterBtn,
+		outstationBtn,
 	)
 
 	// Cancel button
@@ -79,7 +78,10 @@ func ShowModeSelection(a fyne.App, onSelect func(types.Mode)) {
 		widget.NewLabel(""),
 		subtitle,
 		widget.NewLabel(""),
-		cardsContainer,
+		masterCard,
+		outstationCard,
+		widget.NewLabel(""),
+		buttonsContainer,
 		widget.NewLabel(""),
 		cancelBtn,
 		layout.NewSpacer(),

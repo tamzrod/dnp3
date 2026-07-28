@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"dnp3/cmd/workbench/internal/config"
@@ -261,12 +261,12 @@ func (w *MasterWindow) SetMainMenu(menu *fyne.MainMenu) {
 
 // Maximize maximizes the window.
 func (w *MasterWindow) Maximize() {
-	w.window.Maximize()
+	w.window.SetFullScreen(true)
 }
 
 // Restore restores the window.
 func (w *MasterWindow) Restore() {
-	w.window.Restore()
+	w.window.SetFullScreen(false)
 }
 
 // ToggleSidebar shows/hides the sidebar panel.

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -26,17 +27,17 @@ type OutstationWindow struct {
 	ctrl   *outstationctrl.Controller
 
 	// Panels
-	serverPanel     *ServerPanel
-	simulationPanel *SimulationPanel
-	dataPointsPanel *DataPointsPanel
-	logPanel        *panels.LogPanel
-	statusBar       *panels.StatusBar
+	serverPanel      *ServerPanel
+	simulationPanel  *SimulationPanel
+	dataPointsPanel  *DataPointsPanel
+	logPanel         *panels.LogPanel
+	statusBar        *panels.StatusBar
 
 	// State bindings
-	state              binding.String
-	serverBinding      binding.String
-	mastersBinding     binding.String
-	simulationBinding   binding.String
+	state             binding.String
+	serverBinding     binding.String
+	mastersBinding    binding.String
+	simulationBinding binding.String
 
 	mu     sync.RWMutex
 	closed bool
@@ -69,10 +70,6 @@ func NewServerPanel() *ServerPanel {
 		// Will be set by event handler
 	})
 	startBtn.Importance = widget.HighImportance
-	p.onStart = func(addr string, port int) {
-		startBtn.SetText("Starting...")
-		startBtn.Disable()
-	}
 
 	stopBtn := widget.NewButton("Stop Server", func() {
 		if p.onStop != nil {
@@ -91,6 +88,12 @@ func NewServerPanel() *ServerPanel {
 		stopBtn,
 	)
 
+	// Set default onStart to change button state
+	p.onStart = func(addr string, port int) {
+		startBtn.SetText("Starting...")
+		startBtn.Disable()
+	}
+
 	return p
 }
 
@@ -104,11 +107,11 @@ func (p *ServerPanel) SetOnStop(f func()) {
 
 // SimulationPanel represents the simulation configuration panel.
 type SimulationPanel struct {
-	container           *fyne.Container
-	enabled             *widget.Check
-	updateRate          *widget.Entry
-	binaryRate          *widget.Entry
-	analogVariance      *widget.Entry
+	container      *fyne.Container
+	enabled        *widget.Check
+	updateRate     *widget.Entry
+	binaryRate     *widget.Entry
+	analogVariance *widget.Entry
 }
 
 func NewSimulationPanel() *SimulationPanel {
@@ -150,13 +153,10 @@ func NewSimulationPanel() *SimulationPanel {
 
 // DataPointsPanel represents the data points display panel.
 type DataPointsPanel struct {
-	container      *fyne.Container
-	binaryList    *widget.List
-	analogList    *widget.List
-	counterList   *widget.List
-	binaryItems   []*types.BinaryInput
-	analogItems   []*types.AnalogInput
-	counterItems  []*types.Counter
+	container    *fyne.Container
+	binaryLabel  *widget.Label
+	analogLabel  *widget.Label
+	counterLabel *widget.Label
 }
 
 func NewDataPointsPanel() *DataPointsPanel {
@@ -165,85 +165,65 @@ func NewDataPointsPanel() *DataPointsPanel {
 	title := widget.NewLabel("DATA POINTS")
 	title.TextStyle.Bold = true
 
-	// Binary inputs section
-	binaryHeader := widget.NewLabel("▼ Binary Inputs (8)")
-	binaryHeader.TextStyle.Bold = true
-	binaryList := widget.NewList(
-		func() fyne.CanvasObject {
-			return widget.NewLabel("BI0: false")
-		},
-		func(data interface{}, item fyne.CanvasObject) {
-			item.(*widget.Label).SetText(data.(string))
-		},
-	)
-
-	// Analog inputs section
-	analogHeader := widget.NewLabel("▼ Analog Inputs (4)")
-	analogHeader.TextStyle.Bold = true
-	analogList := widget.NewList(
-		func() fyne.CanvasObject {
-			return widget.NewLabel("AI0: 0.0")
-		},
-		func(data interface{}, item fyne.CanvasObject) {
-			item.(*widget.Label).SetText(data.(string))
-		},
-	)
-
-	// Counters section
-	counterHeader := widget.NewLabel("▼ Counters (4)")
-	counterHeader.TextStyle.Bold = true
-	counterList := widget.NewList(
-		func() fyne.CanvasObject {
-			return widget.NewLabel("C0: 0")
-		},
-		func(data interface{}, item fyne.CanvasObject) {
-			item.(*widget.Label).SetText(data.(string))
-		},
-	)
-
-	p.binaryList = binaryList
-	p.analogList = analogList
-	p.counterList = counterList
+	p.binaryLabel = widget.NewLabel("Binary Inputs: No data")
+	p.analogLabel = widget.NewLabel("Analog Inputs: No data")
+	p.counterLabel = widget.NewLabel("Counters: No data")
 
 	p.container = container.NewVBox(
 		title,
-		binaryHeader,
-		container.NewVScroll(binaryList),
-		analogHeader,
-		container.NewVScroll(analogList),
-		counterHeader,
-		container.NewVScroll(counterList),
+		widget.NewLabel(""),
+		widget.NewLabel("Binary Inputs (8):"),
+		p.binaryLabel,
+		widget.NewLabel(""),
+		widget.NewLabel("Analog Inputs (4):"),
+		p.analogLabel,
+		widget.NewLabel(""),
+		widget.NewLabel("Counters (4):"),
+		p.counterLabel,
 	)
 
 	return p
 }
 
 func (p *DataPointsPanel) Update(binary []*types.BinaryInput, analog []*types.AnalogInput, counters []*types.Counter) {
-	p.binaryItems = binary
-	p.analogItems = analog
-	p.counterItems = counters
-
-	// Update lists
-	binaryStrings := make([]string, len(binary))
+	// Build binary string
+	binaryStr := ""
 	for i, b := range binary {
-		binaryStrings[i] = fmt.Sprintf("BI%d: %v", i, b.Value)
+		if i > 0 {
+			binaryStr += ", "
+		}
+		binaryStr += fmt.Sprintf("BI%d:%v", i, b.Value)
 	}
-	p.binaryList.Data = binaryStrings
-	p.binaryList.Refresh()
+	if binaryStr == "" {
+		binaryStr = "No data"
+	}
+	p.binaryLabel.SetText(binaryStr)
 
-	analogStrings := make([]string, len(analog))
+	// Build analog string
+	analogStr := ""
 	for i, a := range analog {
-		analogStrings[i] = fmt.Sprintf("AI%d: %.2f", i, a.Value)
+		if i > 0 {
+			analogStr += ", "
+		}
+		analogStr += fmt.Sprintf("AI%d:%.1f", i, a.Value)
 	}
-	p.analogList.Data = analogStrings
-	p.analogList.Refresh()
+	if analogStr == "" {
+		analogStr = "No data"
+	}
+	p.analogLabel.SetText(analogStr)
 
-	counterStrings := make([]string, len(counters))
+	// Build counter string
+	counterStr := ""
 	for i, c := range counters {
-		counterStrings[i] = fmt.Sprintf("C%d: %d", i, c.Value)
+		if i > 0 {
+			counterStr += ", "
+		}
+		counterStr += fmt.Sprintf("C%d:%d", i, c.Value)
 	}
-	p.counterList.Data = counterStrings
-	p.counterList.Refresh()
+	if counterStr == "" {
+		counterStr = "No data"
+	}
+	p.counterLabel.SetText(counterStr)
 }
 
 // NewOutstationWindow creates a new Outstation window.
@@ -253,9 +233,9 @@ func NewOutstationWindow(app fyne.App, ctrl *outstationctrl.Controller, cfg *con
 		window:            app.NewWindow("DNP3 Outstation"),
 		ctrl:              ctrl,
 		state:             binding.NewString(),
-		serverBinding:      binding.NewString(),
-		mastersBinding:     binding.NewString(),
-		simulationBinding:  binding.NewString(),
+		serverBinding:     binding.NewString(),
+		mastersBinding:    binding.NewString(),
+		simulationBinding: binding.NewString(),
 	}
 
 	w.state.Set("Stopped")
@@ -280,13 +260,13 @@ func (w *OutstationWindow) setupUI() {
 
 	// Left sidebar - server, simulation
 	leftSidebar := container.NewVBox(
-		w.serverPanel.Container(),
-		w.simulationPanel.Container(),
+		w.serverPanel.container,
+		w.simulationPanel.container,
 	)
 
 	// Right side - data points
 	rightContent := container.NewVBox(
-		w.dataPointsPanel.Container(),
+		w.dataPointsPanel.container,
 	)
 
 	// Make the split pane resizable
@@ -434,12 +414,12 @@ func (w *OutstationWindow) SetMainMenu(menu *fyne.MainMenu) {
 
 // Maximize maximizes the window.
 func (w *OutstationWindow) Maximize() {
-	w.window.Maximize()
+	w.window.SetFullScreen(true)
 }
 
 // Restore restores the window.
 func (w *OutstationWindow) Restore() {
-	w.window.Restore()
+	w.window.SetFullScreen(false)
 }
 
 // ToggleSidebar shows/hides the sidebar panel.
