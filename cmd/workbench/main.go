@@ -1,5 +1,5 @@
 // DNP3 Engineering Workbench
-// A desktop application for validating and debugging the native Go DNP3 library.
+// A terminal-based application for validating and debugging the native Go DNP3 library.
 package main
 
 import (
@@ -7,309 +7,260 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"sync"
+	"time"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
-
-	"dnp3/cmd/workbench/internal/config"
 	"dnp3/cmd/workbench/internal/logger"
 	masterctrl "dnp3/cmd/workbench/internal/master"
 	outstationctrl "dnp3/cmd/workbench/internal/outstation"
-	"dnp3/cmd/workbench/internal/shared/types"
-	"dnp3/cmd/workbench/internal/ui"
-	"dnp3/cmd/workbench/internal/ui/dialogs"
+	"dnp3/cmd/workbench/tui"
+	"dnp3/pkg/dnp3/types"
 )
 
-// Window size constraints
-const (
-	MinWindowWidth  = 800
-	MinWindowHeight = 600
-	DefaultWidth    = 1200
-	DefaultHeight   = 800
+// Global state for data updates
+var (
+	updateMu sync.RWMutex
+	updateCh chan struct{}
 )
 
 func main() {
 	// Parse command-line flags
-	modeStr := flag.String("mode", "select", "Operating mode: master, outstation, or select (default)")
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "DNP3 Engineering Workbench\n\nUsage: %s [options]\n\nOptions:\n", os.Args[0])
-		flag.PrintDefaults()
-	}
+	modeStr := flag.String("mode", "master", "Operating mode: master or outstation")
+	address := flag.String("address", "127.0.0.1", "Remote address (Master mode)")
+	port := flag.Int("port", 20000, "Port number")
 	flag.Parse()
 
 	// Validate mode
-	mode := types.Mode(*modeStr)
-	if err := mode.Validate(); err != nil {
-		log.Fatalf("%v", err)
+	mode := tui.Mode(strings.ToLower(*modeStr))
+	if mode != tui.ModeMaster && mode != tui.ModeOutstation {
+		fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'master' or 'outstation')\n", *modeStr)
+		os.Exit(1)
 	}
 
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.Printf("Failed to load config: %v, using defaults", err)
-		cfg = config.Default()
-	}
+	// Create channel for updates
+	updateCh = make(chan struct{}, 1)
 
-	// Create Fyne application
-	a := app.New()
+	// Create TUI application
+	app := tui.NewApp(mode)
 
-	// Apply saved theme
-	if cfg.Appearance.Theme == "Dark" {
-		a.Settings().SetTheme(theme.DarkTheme())
+	// Set up logging
+	app.LogInfo("DNP3 Engineering Workbench starting...")
+	app.LogInfo(fmt.Sprintf("Mode: %s", mode))
+
+	// Set up callbacks based on mode
+	if mode == tui.ModeMaster {
+		setupMaster(app, *address, *port)
 	} else {
-		a.Settings().SetTheme(theme.LightTheme())
+		setupOutstation(app, *address, *port)
 	}
+
+	// Handle quit
+	app.OnQuit = func() {
+		app.LogInfo("Shutting down...")
+	}
+
+	// Run the application
+	if err := app.Run(); err != nil {
+		log.Fatalf("Application error: %v", err)
+	}
+}
+
+// setupMaster sets up Master mode callbacks.
+func setupMaster(app *tui.App, address string, port int) {
+	app.LogInfo(fmt.Sprintf("Connecting to %s:%d", address, port))
 
 	// Create logger
 	log := logger.New()
 
-	// Route to appropriate mode
-	switch mode {
-	case types.ModeMaster:
-		runMaster(a, cfg, log)
-	case types.ModeOutstation:
-		runOutstation(a, cfg, log)
-	case types.ModeSelect:
-		runModeSelection(a, cfg, log)
-	}
-}
-
-// runMaster runs the application in Master mode.
-func runMaster(a fyne.App, cfg *config.Config, log *logger.Logger) {
-	log.Info("Starting DNP3 Master mode")
-
-	// Create Master controller
+	// Create controller
 	ctrl := masterctrl.NewController(log)
 
-	// Create Master window
-	window := ui.NewMasterWindow(a, ctrl, cfg)
-
-	// Set window properties
-	window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
-	window.SetTitle("DNP3 Master - Connect to Outstation")
-	window.CenterOnScreen()
-
-	// Create menu with window controls
-	window.SetMainMenu(createMasterMenu(a, window, ctrl, cfg))
-
-	// Register keyboard shortcuts
-	registerMasterShortcuts(window, ctrl)
-
-	// Start controller
-	if err := ctrl.Start(); err != nil {
-		log.Error("Failed to start controller: %v", err)
+	// Connect callback
+	app.OnConnect = func() {
+		app.LogInfo(fmt.Sprintf("Connecting to %s:%d...", address, port))
+		if err := ctrl.Connect(address, port); err != nil {
+			app.LogError(fmt.Sprintf("Connection failed: %v", err))
+		} else {
+			app.LogInfo("Connected!")
+			app.SetConnection("Connected", fmt.Sprintf("%s:%d", address, port))
+		}
 	}
 
-	// Show window
-	window.Show()
+	// Disconnect callback
+	app.OnDisconnect = func() {
+		app.LogInfo("Disconnecting...")
+		if err := ctrl.Disconnect(); err != nil {
+			app.LogError(fmt.Sprintf("Disconnect failed: %v", err))
+		} else {
+			app.LogInfo("Disconnected")
+			app.SetConnection("Disconnected", "")
+		}
+	}
 
-	// Run event loop
-	a.Run()
+	// Read class callback
+	app.OnReadClass = func(class int) {
+		app.LogSend(fmt.Sprintf("Read Class %d", class))
+		if err := ctrl.ReadClass(class); err != nil {
+			app.LogError(fmt.Sprintf("Read failed: %v", err))
+		}
+	}
 
-	// Cleanup
-	cfg.Save()
-	ctrl.Stop()
+	// Operate callback
+	app.OnOperate = func(index int, value bool) {
+		app.LogSend(fmt.Sprintf("Operate BO%d=%v", index, value))
+		if err := ctrl.Operate(uint16(index), value); err != nil {
+			app.LogError(fmt.Sprintf("Operate failed: %v", err))
+		}
+	}
+
+	// Start polling for state updates
+	go func() {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				state := ctrl.State()
+				updateData(app, state)
+			case <-updateCh:
+				return
+			}
+		}
+	}()
 }
 
-// runOutstation runs the application in Outstation mode.
-func runOutstation(a fyne.App, cfg *config.Config, log *logger.Logger) {
-	log.Info("Starting DNP3 Outstation mode")
+// setupOutstation sets up Outstation mode callbacks.
+func setupOutstation(app *tui.App, address string, port int) {
+	app.LogInfo(fmt.Sprintf("Starting server on %s:%d", address, port))
 
-	// Create Outstation controller
+	// Create logger
+	log := logger.New()
+
+	// Create controller
 	ctrl := outstationctrl.NewController(log)
 
-	// Create Outstation window
-	window := ui.NewOutstationWindow(a, ctrl, cfg)
-
-	// Set window properties
-	window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
-	window.SetTitle("DNP3 Outstation - Simulate Data")
-	window.CenterOnScreen()
-
-	// Create menu with window controls
-	window.SetMainMenu(createOutstationMenu(a, window, ctrl, cfg))
-
-	// Register keyboard shortcuts
-	registerOutstationShortcuts(window, ctrl)
-
-	// Start controller
-	if err := ctrl.Start(); err != nil {
-		log.Error("Failed to start controller: %v", err)
+	// Start server callback (not wired to keyboard yet, just for reference)
+	_ = func() {
+		app.LogInfo(fmt.Sprintf("Starting server on %s:%d...", address, port))
+		if err := ctrl.StartServer(address, port); err != nil {
+			app.LogError(fmt.Sprintf("Server start failed: %v", err))
+		} else {
+			app.LogInfo("Server started!")
+			app.SetConnection("Listening", fmt.Sprintf("%s:%d", address, port))
+		}
 	}
 
-	// Show window
-	window.Show()
+	// Start polling for state updates
+	go func() {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
 
-	// Run event loop
-	a.Run()
-
-	// Cleanup
-	cfg.Save()
-	ctrl.Stop()
-}
-
-// runModeSelection shows the mode selection dialog.
-func runModeSelection(a fyne.App, cfg *config.Config, log *logger.Logger) {
-	log.Info("Showing mode selection dialog")
-
-	// Create a temporary window for the dialog
-	dialogs.ShowModeSelection(a, func(mode types.Mode) {
-		// User selected a mode - restart with selected mode
-		switch mode {
-		case types.ModeMaster:
-			runMaster(a, cfg, log)
-		case types.ModeOutstation:
-			runOutstation(a, cfg, log)
-		default:
-			log.Error("Invalid mode selected")
-			a.Quit()
+		for {
+			select {
+			case <-ticker.C:
+				updateOutstationData(app, ctrl)
+			case <-updateCh:
+				return
+			}
 		}
-	})
+	}()
 }
 
-// createMasterMenu creates the menu for Master window with File menu controls.
-func createMasterMenu(a fyne.App, window *ui.MasterWindow, ctrl *masterctrl.Controller, cfg *config.Config) *fyne.MainMenu {
-	// File Menu with window controls
-	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("Minimize", func() {
-			window.Window().Minimize()
-		}),
-		fyne.NewMenuItem("Maximize", func() {
-			window.Maximize()
-		}),
-		fyne.NewMenuItem("Restore", func() {
-			window.Restore()
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Close", func() {
-			a.Quit()
-		}),
-	)
+// updateData updates the TUI with controller state (Master mode).
+func updateData(app *tui.App, state *masterctrl.State) {
+	// Build data rows from response
+	var rows []tui.Row
 
-	// Edit Menu
-	editMenu := fyne.NewMenu("Edit",
-		fyne.NewMenuItem("Find in Log", func() {
-			window.ShowLogSearch()
-		}),
-	)
+	if state.LastResponse != nil {
+		resp := state.LastResponse
 
-	// Session Menu
-	sessionMenu := fyne.NewMenu("Session",
-		fyne.NewMenuItem("Connect", func() {
-			ctrl.Connect(ctrl.State().Address, ctrl.State().Port)
-		}),
-		fyne.NewMenuItem("Disconnect", func() {
-			ctrl.Disconnect()
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Read Class 0", func() {
-			ctrl.ReadClass(0)
-		}),
-		fyne.NewMenuItem("Read Class 1", func() {
-			ctrl.ReadClass(1)
-		}),
-		fyne.NewMenuItem("Read Class 2", func() {
-			ctrl.ReadClass(2)
-		}),
-		fyne.NewMenuItem("Read Class 3", func() {
-			ctrl.ReadClass(3)
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Clear Log", func() {
-			ctrl.Logger().Clear()
-			window.ClearLog()
-		}),
-	)
+		for _, bi := range resp.BinaryInputs {
+			quality := qualityString(bi.Quality)
+			rows = append(rows, tui.Row{Cells: []string{
+				"BI",
+				fmt.Sprintf("%d", bi.Index),
+				fmt.Sprintf("%v", bi.Value),
+				quality,
+				time.Now().Format("15:04:05"),
+			}})
+		}
 
-	// Help Menu
-	helpMenu := fyne.NewMenu("Help",
-		fyne.NewMenuItem("Keyboard Shortcuts", func() {
-			showShortcutsDialog(window.Window())
-		}),
-		fyne.NewMenuItem("About DNP3 Workbench", func() {
-			dialogs.ShowAbout(window.Window())
-		}),
-	)
+		for _, ai := range resp.AnalogInputs {
+			quality := qualityString(ai.Quality)
+			rows = append(rows, tui.Row{Cells: []string{
+				"AI",
+				fmt.Sprintf("%d", ai.Index),
+				fmt.Sprintf("%.2f", ai.Value),
+				quality,
+				time.Now().Format("15:04:05"),
+			}})
+		}
 
-	return fyne.NewMainMenu(fileMenu, editMenu, sessionMenu, helpMenu)
+		for _, c := range resp.Counters {
+			quality := qualityString(c.Quality)
+			rows = append(rows, tui.Row{Cells: []string{
+				"CTR",
+				fmt.Sprintf("%d", c.Index),
+				fmt.Sprintf("%d", c.Value),
+				quality,
+				time.Now().Format("15:04:05"),
+			}})
+		}
+	}
+
+	app.UpdateData(rows)
 }
 
-// createOutstationMenu creates the menu for Outstation window with File menu controls.
-func createOutstationMenu(a fyne.App, window *ui.OutstationWindow, ctrl *outstationctrl.Controller, cfg *config.Config) *fyne.MainMenu {
-	// File Menu with window controls
-	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("Minimize", func() {
-			window.Window().Minimize()
-		}),
-		fyne.NewMenuItem("Maximize", func() {
-			window.Maximize()
-		}),
-		fyne.NewMenuItem("Restore", func() {
-			window.Restore()
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Close", func() {
-			a.Quit()
-		}),
-	)
+// updateOutstationData updates the TUI with controller state (Outstation mode).
+func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
+	// Build data rows from simulator
+	var rows []tui.Row
 
-	// Edit Menu
-	editMenu := fyne.NewMenu("Edit",
-		fyne.NewMenuItem("Find in Log", func() {
-			window.ShowLogSearch()
-		}),
-	)
+	binary := ctrl.GetBinaryInputs()
+	for _, bi := range binary {
+		quality := qualityString(bi.Quality)
+		rows = append(rows, tui.Row{Cells: []string{
+			"BI",
+			fmt.Sprintf("%d", bi.Index),
+			fmt.Sprintf("%v", bi.Value),
+			quality,
+			time.Now().Format("15:04:05"),
+		}})
+	}
 
-	// Session Menu
-	sessionMenu := fyne.NewMenu("Session",
-		fyne.NewMenuItem("Start Server", func() {
-			ctrl.StartServer(ctrl.State().ListenAddress, ctrl.State().ListenPort)
-		}),
-		fyne.NewMenuItem("Stop Server", func() {
-			ctrl.Stop()
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Clear Log", func() {
-			ctrl.Logger().Clear()
-			window.ClearLog()
-		}),
-	)
+	analog := ctrl.GetAnalogInputs()
+	for _, ai := range analog {
+		quality := qualityString(ai.Quality)
+		rows = append(rows, tui.Row{Cells: []string{
+			"AI",
+			fmt.Sprintf("%d", ai.Index),
+			fmt.Sprintf("%.2f", ai.Value),
+			quality,
+			time.Now().Format("15:04:05"),
+		}})
+	}
 
-	// Help Menu
-	helpMenu := fyne.NewMenu("Help",
-		fyne.NewMenuItem("Keyboard Shortcuts", func() {
-			showShortcutsDialog(window.Window())
-		}),
-		fyne.NewMenuItem("About DNP3 Workbench", func() {
-			dialogs.ShowAbout(window.Window())
-		}),
-	)
+	counters := ctrl.GetCounters()
+	for _, c := range counters {
+		quality := qualityString(c.Quality)
+		rows = append(rows, tui.Row{Cells: []string{
+			"CTR",
+			fmt.Sprintf("%d", c.Index),
+			fmt.Sprintf("%d", c.Value),
+			quality,
+			time.Now().Format("15:04:05"),
+		}})
+	}
 
-	return fyne.NewMainMenu(fileMenu, editMenu, sessionMenu, helpMenu)
+	app.UpdateData(rows)
 }
 
-// registerMasterShortcuts sets up keyboard shortcuts for Master window.
-func registerMasterShortcuts(window *ui.MasterWindow, ctrl *masterctrl.Controller) {
-	// Shortcuts are handled via menu accelerators in Fyne.
-	_ = window
-	_ = ctrl
-}
-
-// registerOutstationShortcuts sets up keyboard shortcuts for Outstation window.
-func registerOutstationShortcuts(window *ui.OutstationWindow, ctrl *outstationctrl.Controller) {
-	// Shortcuts are handled via menu accelerators in Fyne.
-	_ = window
-	_ = ctrl
-}
-
-// showShortcutsDialog displays keyboard shortcuts help.
-func showShortcutsDialog(parent fyne.Window) {
-	content := dialogs.NewShortcutsDialog(parent)
-	content.Show()
-}
-
-func init() {
-	log.SetFlags(log.Lshortfile | log.Ltime)
+// qualityString converts quality flags to a string.
+func qualityString(q types.QualityFlags) string {
+	if q.IsGood() {
+		return "ONLINE"
+	}
+	return "OFFLINE"
 }
