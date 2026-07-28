@@ -41,6 +41,21 @@ func NewController(log *logger.Logger) *Controller {
 	}
 }
 
+// Start initializes the controller.
+func (c *Controller) Start() error {
+	c.logger.Info("Master controller started")
+	return nil
+}
+
+// Stop shuts down the controller.
+func (c *Controller) Stop() error {
+	c.logger.Info("Master controller stopping")
+	if c.session != nil {
+		c.session.Close()
+	}
+	return nil
+}
+
 // Connect establishes a connection to an outstation.
 func (c *Controller) Connect(address string, port int) error {
 	c.mu.Lock()

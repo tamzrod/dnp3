@@ -1,158 +1,158 @@
 # DNP3 Engineering Workbench - Layout Preview
 
-## Main Window Layout
+## Instance 1: Master Mode
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  DNP3 Engineering Workbench                                        [_][□][X] │
-├──────────────────────────────────────────────────────────────────────────────┤
-│  File  Edit  View  Settings  Session  Help                                    │
-├────────────────────┬─────────────────────────────────────────────────────────┤
-│                    │                                                         │
-│  ┌──────────────┐ │  ┌─────────────────────────────────────────────────┐   │
-│  │WORKBENCH MODE│ │  │              DATA TABLE PANEL                    │   │
-│  │              │ │  │  ┌───────┬───────┬────────┬────────┬─────────┐│   │
-│  │(•) Poll      │ │  │  │ Index │ Type  │ Value  │ Quality│ Time    ││   │
-│  │( ) Simulate  │ │  │  ├───────┼───────┼────────┼────────┼─────────┤│   │
-│  │              │ │  │  │ 0     │ BI    │ true   │ ONLINE │ 10:23:01││   │
-│  │ Poll: Connect │ │  │  │ 1     │ BI    │ false  │ ONLINE │ 10:23:01││   │
-│  │ to remote    │ │  │  │ 0     │ AI    │ 100.5  │ ONLINE │ 10:23:01││   │
-│  │ outstation   │ │  │  │ 1     │ AI    │ 50.25  │ ONLINE │ 10:23:01││   │
-│  │              │ │  │  │ 0     │ CTR   │ 1000   │ ONLINE │ 10:23:01││   │
-│  │ Simulate: Act│ │  │  │ ...   │ ...   │ ...    │ ...    │ ...     ││   │
-│  │ as DNP3     │ │  │  └───────┴───────┴────────┴────────┴─────────┘│   │
-│  │ server       │ │  │  [Read All] [Export CSV] [Refresh]          │   │
-│  └──────────────┘ │  └─────────────────────────────────────────────────┘   │
-│                    │                                                         │
-│  ┌──────────────┐ │  ┌─────────────────────────────────────────────────┐   │
-│  │CONNECTION    │ │  │              CONTROL PANEL                      │   │
-│  │              │ │  │  Selected: Binary Input #0                     │   │
-│  │ Address:     │ │  │  Current Value: true                          │   │
-│  │ [127.0.0.1] │ │  │  Quality: ONLINE                             │   │
-│  │ Port:        │ │  │                                                 │   │
-│  │ [20000     ] │ │  │  ┌─────────────────┐  ┌─────────────────┐   │   │
-│  │              │ │  │  │  [  ON  ] [OFF] │  │  [Set Value]    │   │   │
-│  │ [ Connect ]  │ │  │  └─────────────────┘  └─────────────────┘   │   │
-│  │ [Disconnect] │ │  │                                                 │   │
-│  └──────────────┘ │  └─────────────────────────────────────────────────┘   │
-│                    │                                                         │
-│  ┌──────────────┐ │                                                         │
-│  │COMMANDS      │ │                                                         │
-│  │              │ │                                                         │
-│  │ [Read Class 0]│                                                         │
-│  │ [Read Class 1]│                                                         │
-│  │ [Read Class 2]│                                                         │
-│  │ [Read Class 3]│                                                         │
-│  │ [Enable Unsol]│                                                         │
-│  └──────────────┘ │                                                         │
-│                    │                                                         │
-│  25%              │  75%                                                  │
-├────────────────────┴─────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │ LOG PANEL                                                           │    │
-│  │ [10:23:01.123] ← RECV: 05 64 0C 01 00 00 00 ...                  │    │
-│  │ [10:23:01.456] → SEND: 00 03 00 00 00 06 C0 ...                   │    │
-│  │ [10:23:02.001] ← RECV: 05 64 0C 01 00 00 00 ...                  │    │
-│  │ [10:23:02.234] → SEND: 00 03 00 00 00 06 C0 ...                   │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ● Connected │ State: Connected │ Connection: 127.0.0.1:20000 │ IIN: 0x0000 │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  DNP3 Master - Connect to Outstation                                        [_][□][X]│
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  File   Edit   View   Session   Help                                                │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌─ File ──────────────────────────────────────────────────────────────────────┐  │
+│  │ Minimize (Alt+N) │ Maximize (Alt+M) │ Restore (Alt+R) │ Close (Alt+F4) │ Exit (Ctrl+Q) │  │
+│  └───────────────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────┬─────────────────────────────────────────────────┤
+│                                 │                                                   │
+│  ┌─────────────────────────┐  │  ┌─────────────────────────────────────────────┐  │
+│  │ CONNECTION              │  │  │ DATA TABLE                                  │  │
+│  │                         │  │  │ ┌───────┬────────┬────────┬──────────┬─────┐│  │
+│  │ Address: [127.0.0.1  ] │  │  │ │ Index │ Type   │ Value  │ Quality  │Time ││  │
+│  │ Port:   [20000      ] │  │  │ ├───────┼────────┼────────┼──────────┼─────┤│  │
+│  │                         │  │  │ │ 0     │ BI     │ true   │ ONLINE  │10:23││  │
+│  │ [Connect]  [Disconnect] │  │  │ │ 1     │ BI     │ false  │ ONLINE  │10:23││  │
+│  └─────────────────────────┘  │  │ │ 0     │ AI     │ 100.5  │ ONLINE  │10:23││  │
+│                                 │  │ │ 1     │ AI     │ 50.25  │ ONLINE  │10:23││  │
+│  ┌─────────────────────────┐  │  │ │ 0     │ CTR    │ 1000   │ ONLINE  │10:23││  │
+│  │ COMMANDS               │  │  │ │ ...   │ ...    │ ...    │ ...     │ ... ││  │
+│  │                         │  │  │ └───────┴────────┴────────┴──────────┴─────┘│  │
+│  │ [Read 0] [Read 1]      │  │  │ [Read All]  [Export CSV]  [Clear]            │  │
+│  │ [Read 2] [Read 3]      │  │  └─────────────────────────────────────────────┘  │
+│  │ [Enable Unsolicited]    │  │                                                   │
+│  └─────────────────────────┘  │  ┌─────────────────────────────────────────────┐  │
+│                                 │  │ CONTROL                                    │  │
+│                                 │  │ Selected: Binary Output #0                │  │
+│                                 │  │ Current Value: [true]                    │  │
+│                                 │  │ Quality: ONLINE                           │  │
+│                                 │  │                                           │  │
+│                                 │  │ [ON]  [OFF]    [Set Value]               │  │
+│                                 │  └─────────────────────────────────────────────┘  │
+├─────────────────────────────────┴─────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │ LOG                                                                          │    │
+│  │ [10:23:01.123] → SEND: Read Class 0                                      │    │
+│  │ [10:23:01.456] ← RECV: 10 binary, 5 analog, 3 counters                 │    │
+│  │ [10:23:02.001] → SEND: Operate BO0=true                                  │    │
+│  │ [10:23:02.234] ← RECV: SUCCESS                                          │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ ● Connected │ 127.0.0.1:20000 │ IIN: 0x0000 │ Masters: 0                         │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Panel Descriptions
+---
 
-### Left Sidebar (25% width)
+## Instance 2: Outstation Mode
 
-| Panel | Description |
-|-------|-------------|
-| **Mode Panel** | Radio buttons to switch between Poll Outstation (Master) and Simulate Outstation modes |
-| **Connection Panel** | IP address and port input fields with Connect/Disconnect buttons |
-| **Commands Panel** | Buttons for Read Class 0/1/2/3 and Enable Unsolicited |
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  DNP3 Outstation - Simulate Data                                            [_][□][X]│
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  File   Edit   View   Session   Help                                                │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌─ File ──────────────────────────────────────────────────────────────────────┐  │
+│  │ Minimize (Alt+N) │ Maximize (Alt+M) │ Restore (Alt+R) │ Close (Alt+F4) │ Exit (Ctrl+Q) │  │
+│  └───────────────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────┬─────────────────────────────────────────────────┤
+│                                 │                                                   │
+│  ┌─────────────────────────┐  │  ┌─────────────────────────────────────────────┐  │
+│  │ SERVER                 │  │  │ DATA POINTS                                │  │
+│  │                         │  │  │                                            │  │
+│  │ Port: [20000        ] │  │  │ ▼ Binary Inputs (8)                       │  │
+│  │ Address: [0.0.0.0  ] │  │  │   ├─ BI0: true                             │  │
+│  │                         │  │  │   ├─ BI1: false                            │  │
+│  │ [Start Server]         │  │  │   ├─ BI2: true                             │  │
+│  │ [Stop Server ]         │  │  │   └─ ...                                   │  │
+│  └─────────────────────────┘  │  │                                            │  │
+│                                 │  │ ▼ Analog Inputs (4)                      │  │
+│  ┌─────────────────────────┐  │  │   ├─ AI0: 100.5                            │  │
+│  │ SIMULATION             │  │  │   ├─ AI1: 50.25                            │  │
+│  │                         │  │  │   └─ ...                                   │  │
+│  │ [✓] Enable Simulation │  │  │                                            │  │
+│  │                         │  │  │ ▼ Counters (4)                           │  │
+│  │ Update Rate: [1.0] sec│  │  │   ├─ C0: 1000                              │  │
+│  │ Binary Rate: [0.5] Hz │  │  │   └─ ...                                   │  │
+│  │ Analog Var: [±10.0]   │  │  │                                            │  │
+│  └─────────────────────────┘  │  └─────────────────────────────────────────────┘  │
+│                                 │                                                   │
+├─────────────────────────────────┴─────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │ LOG                                                                          │    │
+│  │ [10:23:01.001] → Server started on 0.0.0.0:20000                          │    │
+│  │ [10:23:05.123] ← INCOMING: Master connected from 127.0.0.1                │    │
+│  │ [10:23:05.234] → SENT: Response to Read Class 0                           │    │
+│  │ [10:23:10.456] → SENT: 8 binary, 4 analog, 4 counters                    │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ ● Listening │ Port: 20000 │ Masters: 1 │ Simulation: Running                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-### Main Content Area (75% width)
+---
 
-| Panel | Description |
-|-------|-------------|
-| **Data Table Panel** | Sortable table showing all data points with Index, Type, Value, Quality, Timestamp |
-| **Control Panel** | Shows selected point details and allows value changes (for binary/analog outputs) |
+## Mode Selection Dialog (Default)
 
-### Bottom Panel
+```
+┌───────────────────────────────────────────────────────┐
+│                                                       │
+│         DNP3 Engineering Workbench                     │
+│                                                       │
+│   Choose Operating Mode:                               │
+│                                                       │
+│   ┌─────────────────────────────────────────────────┐  │
+│   │                                                 │  │
+│   │   [Master Mode]                                │  │
+│   │   Connect to remote outstations                 │  │
+│   │   Read/write data points                       │  │
+│   │                                                 │  │
+│   └─────────────────────────────────────────────────┘  │
+│                                                       │
+│   ┌─────────────────────────────────────────────────┐  │
+│   │                                                 │  │
+│   │   [Outstation Mode]                            │  │
+│   │   Run simulated DNP3 server                    │  │
+│   │   Generate random data                          │  │
+│   │                                                 │  │
+│   └─────────────────────────────────────────────────┘  │
+│                                                       │
+│              [Cancel]                                 │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
 
-| Panel | Description |
-|-------|-------------|
-| **Log Panel** | Scrollable log showing timestamped DNP3 protocol traffic (← RECV, → SEND) |
+---
 
-### Status Bar
+## Summary
 
-| Element | Description |
-|---------|-------------|
-| Connection Indicator | ● Green = Connected, ○ Gray = Disconnected |
-| State | Current connection state |
-| Connection | Remote address:port |
-| IIN | DNP3 Internal Indications (hex) |
-
-## Layout Features
-
-- **Resizable Split Pane**: Left sidebar can be resized (25% default)
-- **Collapsible Panels**: Sidebar and Log Panel can be toggled via View menu or status bar buttons
-- **Fullscreen Mode**: Toggle via View menu or keyboard shortcut
+| Component | Master Window | Outstation Window |
+|-----------|--------------|-------------------|
+| **Title** | DNP3 Master - Connect to Outstation | DNP3 Outstation - Simulate Data |
+| **Left Panel** | Connection, Commands | Server, Simulation |
+| **Right Panel** | Data Table, Control | Data Points |
+| **Status** | Connected to address:port | Listening on port |
+| **File Menu** | Minimize, Maximize, Restore, Close, Exit | Same |
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+N | New Session |
-| Ctrl+O | Open Configuration |
-| Ctrl+S | Save Configuration |
-| Ctrl+F | Find in Log |
-| Ctrl+L | Clear Log |
-| F11 | Toggle Fullscreen |
-
-## Menu Structure
-
-```
-File
-├── New Session
-├── Open Configuration...
-├── Save Configuration
-├── Save Configuration As...
-├── Export Log...
-├── Print...
-└── Exit
-
-Edit
-├── Undo
-├── Redo
-├── Cut
-├── Copy
-├── Paste
-├── Delete
-├── Find in Log
-└── Select All
-
-View
-├── Zoom In
-├── Zoom Out
-├── Reset Zoom
-├── Sidebar
-├── Log Panel
-└── Fullscreen
-
-Settings
-└── Preferences...
-
-Session
-├── Connect
-├── Disconnect
-├── Read Class 0
-├── Read Class 1
-├── Read Class 2
-├── Read Class 3
-└── Clear Log
-
-Help
-├── Documentation
-├── Keyboard Shortcuts
-└── About DNP3 Workbench
-```
+| `Alt+N` | Minimize |
+| `Alt+M` | Maximize |
+| `Alt+R` | Restore |
+| `Alt+F4` | Close |
+| `Ctrl+Q` | Exit |
+| `Ctrl+0` | Read Class 0 |
+| `Ctrl+1` | Read Class 1 |
+| `Ctrl+2` | Read Class 2 |
+| `Ctrl+3` | Read Class 3 |
+| `Ctrl+L` | Clear Log |
+| `F11` | Toggle Fullscreen |

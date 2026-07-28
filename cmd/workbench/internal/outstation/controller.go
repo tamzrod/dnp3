@@ -14,13 +14,13 @@ import (
 
 // State represents the current state of the Outstation controller.
 type State struct {
-	Running         bool
-	ListenAddress   string
-	ListenPort      int
-	ConnectedMasters int
+	Running           bool
+	ListenAddress     string
+	ListenPort        int
+	ConnectedMasters  int
 	SimulationEnabled bool
-	UpdateRate      time.Duration
-	LastError       string
+	UpdateRate        time.Duration
+	LastError         string
 }
 
 // Controller handles Outstation-specific operations.
@@ -41,17 +41,45 @@ func NewController(log *logger.Logger) *Controller {
 	return &Controller{
 		logger: log,
 		state: &State{
-			ListenAddress:    "0.0.0.0",
-			ListenPort:       20000,
-			SimulationEnabled: true,
-			UpdateRate:       time.Second,
+			ListenAddress:     "0.0.0.0",
+			ListenPort:        20000,
+			SimulationEnabled:  true,
+			UpdateRate:        time.Second,
 		},
 		simulator: sim,
 	}
 }
 
-// Start begins listening for master connections.
-func (c *Controller) Start(address string, port int) error {
+// Start initializes the controller (starts simulation if enabled).
+func (c *Controller) Start() error {
+	c.logger.Info("Outstation controller started")
+	if c.state.SimulationEnabled {
+		c.simulator.Start()
+	}
+	return nil
+}
+
+// Stop shuts down the controller.
+func (c *Controller) Stop() error {
+	c.logger.Info("Outstation controller stopping")
+
+	// Stop simulation
+	if c.simulator != nil {
+		c.simulator.Stop()
+	}
+
+	// Stop session if running
+	if c.state.Running && c.session != nil {
+		c.session.Close()
+		c.session = nil
+	}
+
+	c.state.Running = false
+	return nil
+}
+
+// StartServer begins listening for master connections.
+func (c *Controller) StartServer(address string, port int) error {
 	c.mu.Lock()
 
 	if c.state.Running {
@@ -64,7 +92,7 @@ func (c *Controller) Start(address string, port int) error {
 	c.state.Running = true
 	c.mu.Unlock()
 
-	c.logger.Info("Outstation starting on %s:%d", address, port)
+	c.logger.Info("Outstation starting server on %s:%d", address, port)
 
 	// Create outstation session
 	outstationSession, err := session.NewOutstationSession(c.logger)
@@ -104,34 +132,6 @@ func (c *Controller) Start(address string, port int) error {
 
 	// Pump events in background
 	go c.pumpEvents()
-
-	return nil
-}
-
-// Stop stops the outstation.
-func (c *Controller) Stop() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if !c.state.Running {
-		return nil
-	}
-
-	c.logger.Info("Outstation stopping")
-
-	// Stop simulation
-	if c.simulator != nil {
-		c.simulator.Stop()
-	}
-
-	// Stop session
-	if c.session != nil {
-		c.session.Close()
-		c.session = nil
-	}
-
-	c.state.Running = false
-	c.logger.Info("Outstation stopped")
 
 	return nil
 }

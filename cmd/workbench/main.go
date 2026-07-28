@@ -3,7 +3,10 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
+	"os"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -11,12 +14,15 @@ import (
 	"fyne.io/fyne/v2/theme"
 
 	"dnp3/cmd/workbench/internal/config"
-	"dnp3/cmd/workbench/internal/controller"
+	"dnp3/cmd/workbench/internal/logger"
+	masterctrl "dnp3/cmd/workbench/internal/master"
+	outstationctrl "dnp3/cmd/workbench/internal/outstation"
+	"dnp3/cmd/workbench/internal/shared/types"
 	"dnp3/cmd/workbench/internal/ui"
 	"dnp3/cmd/workbench/internal/ui/dialogs"
 )
 
-// Window size constraints as per UX standards (Section 3.2)
+// Window size constraints
 const (
 	MinWindowWidth  = 800
 	MinWindowHeight = 600
@@ -25,7 +31,21 @@ const (
 )
 
 func main() {
-	// Load configuration (UX Standard Section 8.1)
+	// Parse command-line flags
+	modeStr := flag.String("mode", "select", "Operating mode: master, outstation, or select (default)")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "DNP3 Engineering Workbench\n\nUsage: %s [options]\n\nOptions:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	// Validate mode
+	mode := types.Mode(*modeStr)
+	if err := mode.Validate(); err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Printf("Failed to load config: %v, using defaults", err)
@@ -34,41 +54,58 @@ func main() {
 
 	// Create Fyne application
 	a := app.New()
-	
-	// Apply saved theme or default to light (UX Standard: Platform consistency)
-	// Fyne uses native decorations by default on all platforms
+
+	// Apply saved theme
 	if cfg.Appearance.Theme == "Dark" {
 		a.Settings().SetTheme(theme.DarkTheme())
 	} else {
 		a.Settings().SetTheme(theme.LightTheme())
 	}
 
-	// Create controller
-	ctrl := controller.New(nil)
+	// Create logger
+	log := logger.New()
 
-	// Create main window with controller
-	window := ui.NewMainWindow(a, ctrl, cfg)
+	// Route to appropriate mode
+	switch mode {
+	case types.ModeMaster:
+		runMaster(a, cfg, log)
+	case types.ModeOutstation:
+		runOutstation(a, cfg, log)
+	case types.ModeSelect:
+		runModeSelection(a, cfg, log)
+	}
+}
 
-	// Set default window size
+// runMaster runs the application in Master mode.
+func runMaster(a fyne.App, cfg *config.Config, log *logger.Logger) {
+	log.Info("Starting DNP3 Master mode")
+
+	// Create Master controller
+	ctrl := masterctrl.NewController(log)
+
+	// Create Master window
+	window := ui.NewMasterWindow(a, ctrl, cfg)
+
+	// Set window properties
 	window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
-	window.SetTitle("DNP3 Engineering Workbench")
+	window.SetTitle("DNP3 Master - Connect to Outstation")
 	window.CenterOnScreen()
 
-	// Create complete menu structure (UX Standard: File, Edit, View, Session, Help)
-	window.SetMainMenu(createMainMenu(a, window, ctrl, cfg))
+	// Create menu with window controls
+	window.SetMainMenu(createMasterMenu(a, window, ctrl, cfg))
 
-	// Register keyboard shortcuts (UX Standard: Standard shortcuts reduce learning curve)
-	registerShortcuts(window, ctrl)
+	// Register keyboard shortcuts
+	registerMasterShortcuts(window, ctrl)
 
 	// Start controller
 	if err := ctrl.Start(); err != nil {
-		log.Printf("Failed to start controller: %v", err)
+		log.Error("Failed to start controller: %v", err)
 	}
 
 	// Show window
 	window.Show()
 
-	// Run the Fyne event loop - this blocks until the app terminates
+	// Run event loop
 	a.Run()
 
 	// Cleanup
@@ -76,116 +113,89 @@ func main() {
 	ctrl.Stop()
 }
 
-// createMainMenu builds the complete menu structure per UX standards.
-func createMainMenu(a fyne.App, window *ui.MainWindow, ctrl *controller.Controller, cfg *config.Config) *fyne.MainMenu {
-	// File Menu (UX Standard Section 4.2)
+// runOutstation runs the application in Outstation mode.
+func runOutstation(a fyne.App, cfg *config.Config, log *logger.Logger) {
+	log.Info("Starting DNP3 Outstation mode")
+
+	// Create Outstation controller
+	ctrl := outstationctrl.NewController(log)
+
+	// Create Outstation window
+	window := ui.NewOutstationWindow(a, ctrl, cfg)
+
+	// Set window properties
+	window.Resize(fyne.NewSize(DefaultWidth, DefaultHeight))
+	window.SetTitle("DNP3 Outstation - Simulate Data")
+	window.CenterOnScreen()
+
+	// Create menu with window controls
+	window.SetMainMenu(createOutstationMenu(a, window, ctrl, cfg))
+
+	// Register keyboard shortcuts
+	registerOutstationShortcuts(window, ctrl)
+
+	// Start controller
+	if err := ctrl.Start(); err != nil {
+		log.Error("Failed to start controller: %v", err)
+	}
+
+	// Show window
+	window.Show()
+
+	// Run event loop
+	a.Run()
+
+	// Cleanup
+	cfg.Save()
+	ctrl.Stop()
+}
+
+// runModeSelection shows the mode selection dialog.
+func runModeSelection(a fyne.App, cfg *config.Config, log *logger.Logger) {
+	log.Info("Showing mode selection dialog")
+
+	// Create a temporary window for the dialog
+	dialogs.ShowModeSelection(a, func(mode types.Mode) {
+		// User selected a mode - restart with selected mode
+		switch mode {
+		case types.ModeMaster:
+			runMaster(a, cfg, log)
+		case types.ModeOutstation:
+			runOutstation(a, cfg, log)
+		default:
+			log.Error("Invalid mode selected")
+			a.Quit()
+		}
+	})
+}
+
+// createMasterMenu creates the menu for Master window with File menu controls.
+func createMasterMenu(a fyne.App, window *ui.MasterWindow, ctrl *masterctrl.Controller, cfg *config.Config) *fyne.MainMenu {
+	// File Menu with window controls
 	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("New Session", func() {
-			// Stub: Reset to default state
-			dialog.ShowInformation("New Session", "Starting a new session...", window.Window())
+		fyne.NewMenuItem("Minimize", func() {
+			window.Window().Minimize()
 		}),
-		fyne.NewMenuItem("Open Configuration...", func() {
-			dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
-				if err != nil || reader == nil {
-					return
-				}
-				defer reader.Close()
-				dialog.ShowInformation("Open", "Configuration loading not yet implemented.", window.Window())
-			}, window.Window())
+		fyne.NewMenuItem("Maximize", func() {
+			window.Maximize()
 		}),
-		fyne.NewMenuItem("Save Configuration", func() {
-			dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
-				if err != nil || writer == nil {
-					return
-				}
-				defer writer.Close()
-				dialog.ShowInformation("Save", "Configuration saving not yet implemented.", window.Window())
-			}, window.Window())
+		fyne.NewMenuItem("Restore", func() {
+			window.Restore()
 		}),
-		fyne.NewMenuItem("Save Configuration As...", func() {
-			dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
-				if err != nil || writer == nil {
-					return
-				}
-				defer writer.Close()
-				dialog.ShowInformation("Save As", "Configuration saving not yet implemented.", window.Window())
-			}, window.Window())
-		}),
-		fyne.NewMenuItem("Export Log...", func() {
-			dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
-				if err != nil || writer == nil {
-					return
-				}
-				defer writer.Close()
-				window.ExportLog(writer)
-			}, window.Window())
-		}),
-		fyne.NewMenuItem("Print...", func() {
-			dialog.ShowInformation("Print", "Printing not yet implemented.", window.Window())
-		}),
-		fyne.NewMenuItem("Exit", func() {
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Close", func() {
 			a.Quit()
 		}),
 	)
 
-	// Edit Menu (UX Standard Section 4.3)
+	// Edit Menu
 	editMenu := fyne.NewMenu("Edit",
-		fyne.NewMenuItem("Undo", func() {
-			// Stub: Undo not implemented
-		}),
-		fyne.NewMenuItem("Redo", func() {
-			// Stub: Redo not implemented
-		}),
-		fyne.NewMenuItem("Cut", func() {
-			// Use standard clipboard cut
-		}),
-		fyne.NewMenuItem("Copy", func() {
-			// Use standard clipboard copy
-		}),
-		fyne.NewMenuItem("Paste", func() {
-			// Use standard clipboard paste
-		}),
-		fyne.NewMenuItem("Delete", func() {
-			// Context-dependent delete
-		}),
 		fyne.NewMenuItem("Find in Log", func() {
 			window.ShowLogSearch()
 		}),
-		fyne.NewMenuItem("Select All", func() {
-			// Use standard select all
-		}),
 	)
 
-	// View Menu (UX Standard Section 4.4)
-	viewMenu := fyne.NewMenu("View",
-		fyne.NewMenuItem("Zoom In", func() {
-			// Stub: Zoom not implemented
-		}),
-		fyne.NewMenuItem("Zoom Out", func() {
-			// Stub: Zoom not implemented
-		}),
-		fyne.NewMenuItem("Reset Zoom", func() {
-			// Stub: Zoom not implemented
-		}),
-		fyne.NewMenuItem("Sidebar", func() {
-			window.ToggleSidebar()
-		}),
-		fyne.NewMenuItem("Log Panel", func() {
-			window.ToggleLogPanel()
-		}),
-		fyne.NewMenuItem("Fullscreen", func() {
-			window.ToggleFullscreen()
-		}),
-	)
-
-	// Settings menu (UX Standard Section 4.5)
-	settingsMenu := fyne.NewMenu("Settings",
-		fyne.NewMenuItem("Preferences...", func() {
-			showSettingsDialog(window.Window(), cfg)
-		}),
-	)
-
-	// Session Menu (UX Standard: Engineering-specific actions)
+	// Session Menu
 	sessionMenu := fyne.NewMenu("Session",
 		fyne.NewMenuItem("Connect", func() {
 			ctrl.Connect(ctrl.State().Address, ctrl.State().Port)
@@ -193,6 +203,7 @@ func createMainMenu(a fyne.App, window *ui.MainWindow, ctrl *controller.Controll
 		fyne.NewMenuItem("Disconnect", func() {
 			ctrl.Disconnect()
 		}),
+		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Read Class 0", func() {
 			ctrl.ReadClass(0)
 		}),
@@ -205,17 +216,15 @@ func createMainMenu(a fyne.App, window *ui.MainWindow, ctrl *controller.Controll
 		fyne.NewMenuItem("Read Class 3", func() {
 			ctrl.ReadClass(3)
 		}),
+		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Clear Log", func() {
 			ctrl.Logger().Clear()
 			window.ClearLog()
 		}),
 	)
 
-	// Help Menu (UX Standard Section 4.1)
+	// Help Menu
 	helpMenu := fyne.NewMenu("Help",
-		fyne.NewMenuItem("Documentation", func() {
-			dialog.ShowInformation("Documentation", "DNP3 Engineering Workbench Documentation\n\nSee README.md for usage instructions.", window.Window())
-		}),
 		fyne.NewMenuItem("Keyboard Shortcuts", func() {
 			showShortcutsDialog(window.Window())
 		}),
@@ -224,19 +233,73 @@ func createMainMenu(a fyne.App, window *ui.MainWindow, ctrl *controller.Controll
 		}),
 	)
 
-	return fyne.NewMainMenu(fileMenu, editMenu, viewMenu, sessionMenu, settingsMenu, helpMenu)
+	return fyne.NewMainMenu(fileMenu, editMenu, sessionMenu, helpMenu)
 }
 
-// showSettingsDialog displays the settings dialog.
-func showSettingsDialog(parent fyne.Window, cfg *config.Config) {
-	dialogs.NewSettingsDialog(parent, cfg).Show()
+// createOutstationMenu creates the menu for Outstation window with File menu controls.
+func createOutstationMenu(a fyne.App, window *ui.OutstationWindow, ctrl *outstationctrl.Controller, cfg *config.Config) *fyne.MainMenu {
+	// File Menu with window controls
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("Minimize", func() {
+			window.Window().Minimize()
+		}),
+		fyne.NewMenuItem("Maximize", func() {
+			window.Maximize()
+		}),
+		fyne.NewMenuItem("Restore", func() {
+			window.Restore()
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Close", func() {
+			a.Quit()
+		}),
+	)
+
+	// Edit Menu
+	editMenu := fyne.NewMenu("Edit",
+		fyne.NewMenuItem("Find in Log", func() {
+			window.ShowLogSearch()
+		}),
+	)
+
+	// Session Menu
+	sessionMenu := fyne.NewMenu("Session",
+		fyne.NewMenuItem("Start Server", func() {
+			ctrl.StartServer(ctrl.State().ListenAddress, ctrl.State().ListenPort)
+		}),
+		fyne.NewMenuItem("Stop Server", func() {
+			ctrl.Stop()
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Clear Log", func() {
+			ctrl.Logger().Clear()
+			window.ClearLog()
+		}),
+	)
+
+	// Help Menu
+	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("Keyboard Shortcuts", func() {
+			showShortcutsDialog(window.Window())
+		}),
+		fyne.NewMenuItem("About DNP3 Workbench", func() {
+			dialogs.ShowAbout(window.Window())
+		}),
+	)
+
+	return fyne.NewMainMenu(fileMenu, editMenu, sessionMenu, helpMenu)
 }
 
-// registerShortcuts sets up keyboard shortcuts per UX standards.
-// Note: Fyne menus handle shortcuts automatically via accelerator keys.
-func registerShortcuts(window *ui.MainWindow, ctrl *controller.Controller) {
+// registerMasterShortcuts sets up keyboard shortcuts for Master window.
+func registerMasterShortcuts(window *ui.MasterWindow, ctrl *masterctrl.Controller) {
 	// Shortcuts are handled via menu accelerators in Fyne.
-	// The menu bar items define the keyboard shortcuts.
+	_ = window
+	_ = ctrl
+}
+
+// registerOutstationShortcuts sets up keyboard shortcuts for Outstation window.
+func registerOutstationShortcuts(window *ui.OutstationWindow, ctrl *outstationctrl.Controller) {
+	// Shortcuts are handled via menu accelerators in Fyne.
 	_ = window
 	_ = ctrl
 }

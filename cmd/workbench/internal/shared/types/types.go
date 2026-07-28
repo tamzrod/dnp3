@@ -1,6 +1,8 @@
 // Package types provides shared types for Master and Outstation controllers.
 package types
 
+import "errors"
+
 // Mode represents the operating mode of the workbench.
 type Mode string
 
@@ -9,6 +11,8 @@ const (
 	ModeMaster Mode = "master"
 	// ModeOutstation indicates Outstation mode (run as server).
 	ModeOutstation Mode = "outstation"
+	// ModeSelect indicates mode selection dialog should be shown.
+	ModeSelect Mode = "select"
 )
 
 // String returns the string representation of the mode.
@@ -26,11 +30,21 @@ func (m Mode) IsOutstation() bool {
 	return m == ModeOutstation
 }
 
+// Validate checks if the mode is valid.
+func (m Mode) Validate() error {
+	switch m {
+	case ModeMaster, ModeOutstation, ModeSelect:
+		return nil
+	default:
+		return errors.New("invalid mode: must be 'master', 'outstation', or 'select'")
+	}
+}
+
 // WindowConfig holds window configuration.
 type WindowConfig struct {
-	Title   string
-	Width   int
-	Height  int
+	Title     string
+	Width     int
+	Height    int
 	MinWidth  int
 	MinHeight int
 }
@@ -38,9 +52,9 @@ type WindowConfig struct {
 // DefaultMasterWindowConfig returns default configuration for Master window.
 func DefaultMasterWindowConfig() *WindowConfig {
 	return &WindowConfig{
-		Title:   "DNP3 Master - Connect to Outstation",
-		Width:   1200,
-		Height:  800,
+		Title:     "DNP3 Master - Connect to Outstation",
+		Width:     1200,
+		Height:    800,
 		MinWidth:  800,
 		MinHeight: 600,
 	}
@@ -49,9 +63,9 @@ func DefaultMasterWindowConfig() *WindowConfig {
 // DefaultOutstationWindowConfig returns default configuration for Outstation window.
 func DefaultOutstationWindowConfig() *WindowConfig {
 	return &WindowConfig{
-		Title:   "DNP3 Outstation - Simulate Data",
-		Width:   1200,
-		Height:  800,
+		Title:     "DNP3 Outstation - Simulate Data",
+		Width:     1200,
+		Height:    800,
 		MinWidth:  800,
 		MinHeight: 600,
 	}
