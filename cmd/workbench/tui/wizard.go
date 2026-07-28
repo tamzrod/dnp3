@@ -26,17 +26,18 @@ func NewWizard() *Wizard {
 // Run displays the wizard and returns the selected mode.
 func (w *Wizard) Run() (Mode, string, int) {
 	fmt.Print(ClearScreen)
+	fmt.Println()
+	fmt.Println(Cyan + Bold + "╔═══════════════════════════════════════════════════════════╗" + Reset)
+	fmt.Println(Cyan + Bold + "║" + Reset + BrightWhite + Bold + "           DNP3 Engineering Workbench" + Reset + Cyan + Bold + "                    ║" + Reset)
+	fmt.Println(Cyan + Bold + "╚═══════════════════════════════════════════════════════════╝" + Reset)
+	fmt.Println()
+	fmt.Println(BrightWhite + "Select operating mode:" + Reset)
+	fmt.Println()
+
+	// Create a single reader for all input
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		// Print banner
-		fmt.Println()
-		fmt.Println(Cyan + Bold + "╔═══════════════════════════════════════════════════════════╗" + Reset)
-		fmt.Println(Cyan + Bold + "║" + Reset + BrightWhite + Bold + "           DNP3 Engineering Workbench" + Reset + Cyan + Bold + "                    ║" + Reset)
-		fmt.Println(Cyan + Bold + "╚═══════════════════════════════════════════════════════════╝" + Reset)
-		fmt.Println()
-		fmt.Println(BrightWhite + "Select operating mode:" + Reset)
-		fmt.Println()
-
 		// Print mode options
 		if w.choice == 0 {
 			fmt.Println(BrightGreen + "  >>> [1] Master Mode" + Reset + Dim + " - connect to outstation" + Reset)
@@ -51,26 +52,29 @@ func (w *Wizard) Run() (Mode, string, int) {
 		}
 
 		fmt.Println()
-		fmt.Println(Dim + "Type 1 or 2 and press Enter, q to quit" + Reset)
+		fmt.Print(Dim + "Type 1 or 2, press Enter to confirm, or q to quit: " + Reset)
 
-		// Read input
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("> ")
-		input, _ := reader.ReadString('\n')
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			continue
+		}
 		input = strings.TrimSpace(strings.ToLower(input))
 
 		if input == "q" || input == "quit" || input == "exit" {
-			fmt.Println("Exiting...")
+			fmt.Println("\nExiting...")
 			os.Exit(0)
 		}
 
-		if input == "1" {
+		if input == "1" || input == "master" {
 			w.choice = 0
 			break
-		} else if input == "2" {
+		} else if input == "2" || input == "outstation" {
 			w.choice = 1
 			break
 		}
+
+		// Invalid input, just show error and loop
+		fmt.Println(Red + "Invalid selection. Please type 1 or 2." + Reset)
 	}
 
 	// If Master mode, ask for address and port
@@ -80,8 +84,7 @@ func (w *Wizard) Run() (Mode, string, int) {
 
 		// Get address
 		fmt.Printf("Remote address ["+BrightCyan+"%s"+Reset+"] (Enter for default): ", w.address)
-		addrReader := bufio.NewReader(os.Stdin)
-		addrInput, _ := addrReader.ReadString('\n')
+		addrInput, _ := reader.ReadString('\n')
 		addrInput = strings.TrimSpace(addrInput)
 		if addrInput != "" {
 			w.address = addrInput
@@ -89,8 +92,7 @@ func (w *Wizard) Run() (Mode, string, int) {
 
 		// Get port
 		fmt.Printf("Port ["+BrightCyan+"%d"+Reset+"] (Enter for default): ", w.port)
-		portReader := bufio.NewReader(os.Stdin)
-		portInput, _ := portReader.ReadString('\n')
+		portInput, _ := reader.ReadString('\n')
 		portInput = strings.TrimSpace(portInput)
 		if portInput != "" {
 			fmt.Sscanf(portInput, "%d", &w.port)
