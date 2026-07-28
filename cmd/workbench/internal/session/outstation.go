@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"dnp3/cmd/workbench/internal/simulation"
 	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/outstation"
 	"dnp3/pkg/dnp3/types"
@@ -25,6 +26,9 @@ type OutstationSession struct {
 	// Data handler for providing data points
 	dataHandler *outstationDataHandler
 
+	// Simulation for random data
+	simulator *simulation.Simulator
+
 	// Connection info
 	clientAddress string
 }
@@ -35,15 +39,15 @@ type outstationDataHandler struct {
 }
 
 func (h *outstationDataHandler) GetBinaryInputs() []*types.BinaryInput {
-	return h.session.GetBinaryInputs()
+	return h.session.simulator.GetBinaryInputs()
 }
 
 func (h *outstationDataHandler) GetAnalogInputs() []*types.AnalogInput {
-	return h.session.GetAnalogInputs()
+	return h.session.simulator.GetAnalogInputs()
 }
 
 func (h *outstationDataHandler) GetCounters() []*types.Counter {
-	return h.session.GetCounters()
+	return h.session.simulator.GetCounters()
 }
 
 func (h *outstationDataHandler) GetFrozenCounters() []*types.Counter {
@@ -51,20 +55,15 @@ func (h *outstationDataHandler) GetFrozenCounters() []*types.Counter {
 }
 
 func (h *outstationDataHandler) FreezeCounters(clear bool) error {
-	if clear {
-		for _, c := range h.session.GetCounters() {
-			c.Value = 0
-		}
-	}
 	return nil
 }
 
 func (h *outstationDataHandler) HandleBinaryCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
 	// Type assert the command value
 	if v, ok := cmd.Value.(*types.BinaryCommandValue); ok {
-		h.session.SetBinaryOutput(cmd.Index, v.Value)
+		h.session.simulator.SetBinaryInput(cmd.Index, v.Value)
 	} else {
-		h.session.SetBinaryOutput(cmd.Index, false)
+		h.session.simulator.SetBinaryInput(cmd.Index, false)
 	}
 	status := types.ControlSuccess
 	return &status, nil
@@ -73,9 +72,9 @@ func (h *outstationDataHandler) HandleBinaryCommand(cmd *types.ControlOutput) (*
 func (h *outstationDataHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
 	// Type assert the command value
 	if v, ok := cmd.Value.(*types.AnalogCommandValue); ok {
-		h.session.SetAnalogOutput(cmd.Index, v.Value)
+		h.session.simulator.SetAnalogInput(cmd.Index, v.Value)
 	} else {
-		h.session.SetAnalogOutput(cmd.Index, 0.0)
+		h.session.simulator.SetAnalogInput(cmd.Index, 0.0)
 	}
 	status := types.ControlSuccess
 	return &status, nil
@@ -83,11 +82,16 @@ func (h *outstationDataHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*
 
 // NewOutstationSession creates a new Outstation session.
 func NewOutstationSession(log Logger) (*OutstationSession, error) {
+	// Create simulator with default configuration
+	sim := simulation.NewSimulator(nil)
+	sim.AddDefaultPoints()
+
 	s := &OutstationSession{
 		state:        StateDisconnected,
 		events:       make(chan SessionEvent, 100),
 		log:          log,
 		dataHandler:  &outstationDataHandler{},
+		simulator:    sim,
 	}
 	s.dataHandler.session = s
 	return s, nil
@@ -150,6 +154,10 @@ func (s *OutstationSession) Start(address string, port int) error {
 	s.state = StateConnected
 	s.log.Info("DNP3 outstation listening on %s:%d", address, port)
 
+	// Start the simulator
+	s.simulator.Start()
+	s.log.Info("Data simulation started")
+
 	// Emit started event
 	s.emitEvent("started", map[string]interface{}{
 		"address": address,
@@ -165,6 +173,11 @@ func (s *OutstationSession) Stop() error {
 	defer s.mu.Unlock()
 
 	s.log.Info("Stopping DNP3 outstation")
+
+	// Stop the simulator
+	if s.simulator != nil {
+		s.simulator.Stop()
+	}
 
 	if s.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -231,46 +244,6 @@ func (s *OutstationSession) SendCommand(ctx context.Context, cmd Command) (*Resp
 // Required interface compliance
 func (s *OutstationSession) SendCommandCompat(ctx context.Context, cmd Command) (*Response, error) {
 	return s.SendCommand(ctx, cmd)
-}
-
-// GetBinaryInputs returns current binary inputs
-func (s *OutstationSession) GetBinaryInputs() []*types.BinaryInput {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return default simulated data if none configured
-	return []*types.BinaryInput{
-		{Index: 0, Value: true, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 1, Value: false, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 2, Value: true, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 3, Value: false, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-	}
-}
-
-// GetAnalogInputs returns current analog inputs
-func (s *OutstationSession) GetAnalogInputs() []*types.AnalogInput {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return default simulated data if none configured
-	return []*types.AnalogInput{
-		{Index: 0, Value: 100.5, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 1, Value: 200.25, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 2, Value: -50.0, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 3, Value: 0.0, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-	}
-}
-
-// GetCounters returns current counters
-func (s *OutstationSession) GetCounters() []*types.Counter {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return default simulated data if none configured
-	return []*types.Counter{
-		{Index: 0, Value: 1000, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-		{Index: 1, Value: 2000, Quality: types.QualityOnline, Time: (&types.Timestamp{}).Now()},
-	}
 }
 
 // AddBinaryInput adds a binary input point.
