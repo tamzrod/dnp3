@@ -2,9 +2,10 @@
 id: DNP3-INV-063
 type: investigation
 title: "Terminal-based Workbench (TUI) Development"
-status: in_progress
+status: completed
 authority: "KDE Runtime (DNP3 Library)"
 created: "2026-07-28T01:30:00Z"
+completed: "2026-07-28T01:45:00Z"
 supersedes: "DNP3-INV-062"
 reason: "Simpler approach using terminal/TUI instead of graphical framework"
 ---

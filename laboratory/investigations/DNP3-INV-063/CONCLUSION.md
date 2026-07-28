@@ -1,7 +1,7 @@
 # DNP3-INV-063 Conclusion
 
 **Investigation ID**: DNP3-INV-063
-**Status**: IN PROGRESS
+**Status**: ✅ COMPLETED
 **Date**: 2026-07-28
 
 ---
@@ -23,12 +23,12 @@ Replace Fyne-based GUI (DNP3-INV-062) with terminal-based TUI approach.
 | Performance | Good | Excellent |
 | User skill | GUI expertise | Terminal knowledge |
 
-### 1.3 Proposed Solution
+### 1.3 Implemented Solution
 
-Build a custom TUI using ANSI escape codes:
+Built a custom TUI using ANSI escape codes:
 - Similar to `top`, `htop`, `btop`
 - Full terminal control
-- No external dependencies beyond Go stdlib
+- No external dependencies beyond Go stdlib + golang.org/x/term
 
 ---
 
@@ -55,13 +55,16 @@ Build a custom TUI using ANSI escape codes:
 
 ### 2.2 Components
 
-| Component | Description |
-|-----------|-------------|
-| `tui/app.go` | Main application loop |
-| `tui/render.go` | ANSI rendering |
-| `tui/table.go` | Data table widget |
-| `tui/statusbar.go` | Status display |
-| `tui/input.go` | Keyboard handling |
+| Component | File | Lines |
+|-----------|------|-------|
+| Main application | `tui/app.go` | ~200 |
+| ANSI rendering | `tui/render.go` | ~170 |
+| Layout manager | `tui/layout.go` | ~60 |
+| Data table | `tui/table.go` | ~150 |
+| Status bar | `tui/statusbar.go` | ~80 |
+| Log display | `tui/log.go` | ~120 |
+| Keyboard input | `tui/input.go` | ~260 |
+| Color constants | `tui/colors.go` | ~150 |
 
 ---
 
@@ -69,25 +72,56 @@ Build a custom TUI using ANSI escape codes:
 
 | Phase | Status |
 |-------|--------|
-| Investigation | IN PROGRESS |
+| Investigation | ✅ COMPLETE |
 | Specification | ✅ COMPLETE |
-| Implementation | PENDING |
-| Testing | PENDING |
-| Deployment | PENDING |
+| Implementation | ✅ COMPLETE |
+| Testing | ✅ COMPLETE |
+| Deployment | ✅ COMPLETE |
 
 ---
 
-## 4. Next Actions
+## 4. Usage
 
-1. [ ] Await approval of specification
-2. [ ] Create tui package structure
-3. [ ] Implement ANSI rendering
-4. [ ] Create layout manager
-5. [ ] Build table widget
-6. [ ] Add keyboard input
-7. [ ] Test Master mode
-8. [ ] Test Outstation mode
+```bash
+# Master mode (connect to outstation)
+./workbench --mode master --address 127.0.0.1 --port 20000
+
+# Outstation mode (run as server)
+./workbench --mode outstation
+```
+
+### Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| `q`, `Esc` | Quit |
+| `c` | Connect (Master) |
+| `d` | Disconnect |
+| `r` | Read Class 0 |
+| `1-3` | Read Class 1-3 |
+| `↑`, `k` | Move cursor up |
+| `↓`, `j` | Move cursor down |
+| `Enter` | Select/Operate |
+| `l` | Clear log |
+| `h`, `?` | Show help |
 
 ---
 
-*Investigation conclusion: PENDING*
+## 5. Files Changed
+
+| File | Status |
+|------|--------|
+| `cmd/workbench/main.go` | Replaced Fyne with TUI |
+| `cmd/workbench/tui/` | New package created |
+| `cmd/workbench/internal/ui/` | Replaced by tui/ |
+| `cmd/workbench/internal/ui/dialogs/` | Removed |
+
+---
+
+## 6. Next Actions
+
+None - investigation complete.
+
+---
+
+*Investigation completed: 2026-07-28*
