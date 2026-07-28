@@ -61,15 +61,13 @@ func (c *Controller) Start() error {
 
 // Stop shuts down the controller.
 func (c *Controller) Stop() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.logger.Info("Outstation controller stopping")
 
-	// Stop simulation
-	if c.simulator != nil {
-		c.simulator.Stop()
-	}
-
 	// Stop session if running
-	if c.state.Running && c.session != nil {
+	if c.session != nil {
 		c.session.Close()
 		c.session = nil
 	}

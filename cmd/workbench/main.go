@@ -225,39 +225,54 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	// Build data rows from simulator
 	var rows []tui.Row
 
+	// Get current timestamp for display
+	now := time.Now().Format("15:04:05.000")
+
 	binary := ctrl.GetBinaryInputs()
 	for _, bi := range binary {
 		quality := qualityString(bi.Quality)
+		ts := now
+		if bi.Time != nil && !bi.Time.IsNull() {
+			ts = bi.Time.Time().Format("15:04:05.000")
+		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"BI",
 			fmt.Sprintf("%d", bi.Index),
 			fmt.Sprintf("%v", bi.Value),
 			quality,
-			time.Now().Format("15:04:05"),
+			ts,
 		}})
 	}
 
 	analog := ctrl.GetAnalogInputs()
 	for _, ai := range analog {
 		quality := qualityString(ai.Quality)
+		ts := now
+		if ai.Time != nil && !ai.Time.IsNull() {
+			ts = ai.Time.Time().Format("15:04:05.000")
+		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"AI",
 			fmt.Sprintf("%d", ai.Index),
 			fmt.Sprintf("%.2f", ai.Value),
 			quality,
-			time.Now().Format("15:04:05"),
+			ts,
 		}})
 	}
 
 	counters := ctrl.GetCounters()
 	for _, c := range counters {
 		quality := qualityString(c.Quality)
+		ts := now
+		if c.Time != nil && !c.Time.IsNull() {
+			ts = c.Time.Time().Format("15:04:05.000")
+		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"CTR",
 			fmt.Sprintf("%d", c.Index),
 			fmt.Sprintf("%d", c.Value),
 			quality,
-			time.Now().Format("15:04:05"),
+			ts,
 		}})
 	}
 

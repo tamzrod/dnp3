@@ -27,11 +27,11 @@ type Config struct {
 // DefaultConfig returns a sensible default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		BinaryInputUpdateRate: 0.5,  // 0.5 flips per second
-		AnalogInputVariance:   10.0, // ±10 units per tick
-		CounterIncrementRate:  0.1,  // 10% chance per tick
-		CounterIncrementAmount: 1,
-		TickInterval:          1 * time.Second,
+		BinaryInputUpdateRate:  0.3,  // 0.3 flips per second (slower)
+		AnalogInputVariance:    5.0,  // ±5 units per tick
+		CounterIncrementRate:   1.0,  // 100% chance per tick (always increment)
+		CounterIncrementAmount:  1,    // Increment by 1
+		TickInterval:           500 * time.Millisecond,
 	}
 }
 
@@ -68,6 +68,7 @@ func (b *BinaryInputSimulation) Update(cfg *Config) {
 	if b.FlipTimer <= 0 {
 		b.Value = !b.Value
 		b.Time = (&types.Timestamp{}).Now()
+		// Set timer for next flip (average 2 seconds per flip)
 		b.FlipTimer = rand.ExpFloat64() / b.UpdateRate
 	}
 }
@@ -115,11 +116,9 @@ func (a *AnalogInputSimulation) Update(cfg *Config) {
 	// Clamp to range
 	newValue = math.Max(a.MinValue, math.Min(a.MaxValue, newValue))
 	
-	// Update if changed
-	if newValue != a.Value {
-		a.Value = newValue
-		a.Time = (&types.Timestamp{}).Now()
-	}
+	// Always update with small variation
+	a.Value = math.Round(newValue*100) / 100 // Round to 2 decimal places
+	a.Time = (&types.Timestamp{}).Now()
 }
 
 // ToAnalogInput converts to an AnalogInput type
@@ -150,12 +149,11 @@ func NewCounterSimulation(index uint16, initialValue uint32) *CounterSimulation 
 	}
 }
 
-// Update potentially increments the counter
+// Update increments the counter
 func (c *CounterSimulation) Update(cfg *Config) {
-	if rand.Float64() < cfg.CounterIncrementRate {
-		c.Value += cfg.CounterIncrementAmount
-		c.Time = (&types.Timestamp{}).Now()
-	}
+	// Always increment the counter
+	c.Value += cfg.CounterIncrementAmount
+	c.Time = (&types.Timestamp{}).Now()
 }
 
 // ToCounter converts to a Counter type
@@ -170,9 +168,10 @@ func (c *CounterSimulation) ToCounter() *types.Counter {
 
 // Simulator manages all simulated data points
 type Simulator struct {
-	mu     sync.RWMutex
-	config *Config
-	stopCh chan struct{}
+	mu      sync.RWMutex
+	config  *Config
+	stopCh  chan struct{}
+	running bool
 
 	BinaryInputs []*BinaryInputSimulation
 	AnalogInputs []*AnalogInputSimulation
@@ -222,19 +221,34 @@ func (s *Simulator) AddDefaultPoints() {
 		s.AnalogInputs = append(s.AnalogInputs, sim)
 	}
 
-	// Add 4 counters
+	// Add 4 counters starting at 0
 	for i := 0; i < 4; i++ {
-		s.Counters = append(s.Counters, NewCounterSimulation(uint16(i), uint32((i+1)*1000)))
+		s.Counters = append(s.Counters, NewCounterSimulation(uint16(i), 0))
 	}
 }
 
 // Start begins the simulation loop
 func (s *Simulator) Start() {
+	s.mu.Lock()
+	if s.running {
+		s.mu.Unlock()
+		return
+	}
+	s.stopCh = make(chan struct{})
+	s.running = true
+	s.mu.Unlock()
 	go s.runLoop()
 }
 
 // Stop ends the simulation loop
 func (s *Simulator) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if !s.running {
+		return
+	}
+	s.running = false
 	close(s.stopCh)
 }
 
