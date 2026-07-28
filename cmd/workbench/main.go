@@ -26,29 +26,16 @@ var (
 
 func main() {
 	// Parse command-line flags
-	modeStr := flag.String("mode", "", "Operating mode: master, outstation, or leave empty for wizard")
+	modeStr := flag.String("mode", "master", "Operating mode: master or outstation")
 	address := flag.String("address", "127.0.0.1", "Remote address (Master mode)")
 	port := flag.Int("port", 20000, "Port number")
 	flag.Parse()
 
-	var mode tui.Mode
-	var addr string
-	var p int
-
-	// Check if mode was specified on command line
-	if *modeStr != "" {
-		// Use command-line arguments
-		mode = tui.Mode(strings.ToLower(*modeStr))
-		if mode != tui.ModeMaster && mode != tui.ModeOutstation {
-			fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'master' or 'outstation')\n", *modeStr)
-			os.Exit(1)
-		}
-		addr = *address
-		p = *port
-	} else {
-		// Run wizard to select mode
-		wizard := tui.NewWizard()
-		mode, addr, p = wizard.Run()
+	// Validate mode
+	mode := tui.Mode(strings.ToLower(*modeStr))
+	if mode != tui.ModeMaster && mode != tui.ModeOutstation {
+		fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'master' or 'outstation')\n", *modeStr)
+		os.Exit(1)
 	}
 
 	// Create channel for updates
@@ -63,9 +50,9 @@ func main() {
 
 	// Set up callbacks based on mode
 	if mode == tui.ModeMaster {
-		setupMaster(app, addr, p)
+		setupMaster(app, *address, *port)
 	} else {
-		setupOutstation(app, addr, p)
+		setupOutstation(app, *address, *port)
 	}
 
 	// Handle quit
@@ -81,16 +68,14 @@ func main() {
 
 // setupMaster sets up Master mode callbacks.
 func setupMaster(app *tui.App, address string, port int) {
-	app.LogInfo(fmt.Sprintf("Connecting to %s:%d", address, port))
-
 	// Create logger
 	log := logger.New()
 
 	// Create controller
 	ctrl := masterctrl.NewController(log)
 
-	// Connect callback
-	app.OnConnect = func() {
+	// Start callback (connect)
+	app.OnStart = func() {
 		app.LogInfo(fmt.Sprintf("Connecting to %s:%d...", address, port))
 		if err := ctrl.Connect(address, port); err != nil {
 			app.LogError(fmt.Sprintf("Connection failed: %v", err))
@@ -100,8 +85,8 @@ func setupMaster(app *tui.App, address string, port int) {
 		}
 	}
 
-	// Disconnect callback
-	app.OnDisconnect = func() {
+	// Stop callback (disconnect)
+	app.OnStop = func() {
 		app.LogInfo("Disconnecting...")
 		if err := ctrl.Disconnect(); err != nil {
 			app.LogError(fmt.Sprintf("Disconnect failed: %v", err))
@@ -146,22 +131,31 @@ func setupMaster(app *tui.App, address string, port int) {
 
 // setupOutstation sets up Outstation mode callbacks.
 func setupOutstation(app *tui.App, address string, port int) {
-	app.LogInfo(fmt.Sprintf("Starting server on %s:%d", address, port))
-
 	// Create logger
 	log := logger.New()
 
 	// Create controller
 	ctrl := outstationctrl.NewController(log)
 
-	// Start server callback (not wired to keyboard yet, just for reference)
-	_ = func() {
+	// Start callback
+	app.OnStart = func() {
 		app.LogInfo(fmt.Sprintf("Starting server on %s:%d...", address, port))
 		if err := ctrl.StartServer(address, port); err != nil {
 			app.LogError(fmt.Sprintf("Server start failed: %v", err))
 		} else {
 			app.LogInfo("Server started!")
 			app.SetConnection("Listening", fmt.Sprintf("%s:%d", address, port))
+		}
+	}
+
+	// Stop callback
+	app.OnStop = func() {
+		app.LogInfo("Stopping server...")
+		if err := ctrl.Stop(); err != nil {
+			app.LogError(fmt.Sprintf("Server stop failed: %v", err))
+		} else {
+			app.LogInfo("Server stopped")
+			app.SetConnection("Stopped", "")
 		}
 	}
 

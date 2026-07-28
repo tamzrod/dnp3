@@ -34,6 +34,8 @@ type App struct {
 	// Callbacks
 	OnConnect    func()
 	OnDisconnect func()
+	OnStart      func()
+	OnStop       func()
 	OnReadClass  func(class int)
 	OnOperate    func(index int, value bool)
 	OnQuit       func()
@@ -197,14 +199,17 @@ func (a *App) handleKey(key Key, r rune) bool {
 			a.OnQuit()
 		}
 		return true
-	case 'c', 'C':
-		if a.OnConnect != nil {
-			a.OnConnect()
+	case 'm', 'M':
+		a.toggleMode()
+		return true
+	case 's', 'S':
+		if a.OnStart != nil {
+			a.OnStart()
 		}
 		return true
-	case 'd', 'D':
-		if a.OnDisconnect != nil {
-			a.OnDisconnect()
+	case 'x', 'X':
+		if a.OnStop != nil {
+			a.OnStop()
 		}
 		return true
 	case 'r', 'R':
@@ -235,6 +240,32 @@ func (a *App) handleKey(key Key, r rune) bool {
 		return true
 	}
 	return false
+}
+
+// toggleMode toggles between Master and Outstation mode.
+func (a *App) toggleMode() {
+	a.Log.Info("Switching mode...")
+	
+	// Stop current operation
+	if a.OnStop != nil {
+		a.OnStop()
+	}
+	
+	// Toggle mode
+	if a.Mode == ModeMaster {
+		a.Mode = ModeOutstation
+		a.Log.Info("Switched to Outstation mode")
+	} else {
+		a.Mode = ModeMaster
+		a.Log.Info("Switched to Master mode")
+	}
+	
+	// Update status
+	a.Status.Mode = string(a.Mode)
+	
+	// Clear data table
+	a.Table.Clear()
+	a.UpdateData(nil)
 }
 
 // draw redraws the entire screen.
@@ -316,26 +347,17 @@ func (a *App) drawFooter() {
 	// Draw separator
 	s.DrawSeparator(height-1, "─")
 
-	// Draw controls based on mode
-	var controls []string
-	if a.Mode == ModeMaster {
-		controls = []string{
-			"[q]uit",
-			"[c]onnect/[d]isconnect",
-			"[r]ead",
-			"[1-3] class",
-			"[↑↓] nav",
-			"[l]og clear",
-			"[h]elp",
-		}
-	} else {
-		controls = []string{
-			"[q]uit",
-			"[s]tart/[x]stop server",
-			"[↑↓] nav",
-			"[l]og clear",
-			"[h]elp",
-		}
+	// Draw controls
+	controls := []string{
+		"[m]ode",
+		"[s]tart",
+		"[x]stop",
+		"[r]ead",
+		"[1-3] class",
+		"[↑↓] nav",
+		"[l]og",
+		"[h]elp",
+		"[q]uit",
 	}
 
 	// Draw controls
