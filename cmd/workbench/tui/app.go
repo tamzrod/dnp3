@@ -150,10 +150,11 @@ func (a *App) Stop() {
 func (a *App) handleEvent(event Event) bool {
 	switch event.Type {
 	case EventResize:
-		width, height, _ := term.GetSize(int(os.Stdout.Fd()))
-		a.Layout.Resize(width, height)
-		a.Screen.width = width
-		a.Screen.height = height
+		if width, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			a.Layout.Resize(width, height)
+			a.Screen.width = width
+			a.Screen.height = height
+		}
 		return true
 	case EventKey:
 		return a.handleKey(event.Key, event.Rune)

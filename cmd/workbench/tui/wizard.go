@@ -9,8 +9,6 @@ import (
 
 // Wizard runs an interactive mode selection wizard.
 type Wizard struct {
-	screen  *Screen
-	reader  *bufio.Reader
 	choice  int
 	address string
 	port    int
@@ -19,63 +17,59 @@ type Wizard struct {
 // NewWizard creates a new wizard.
 func NewWizard() *Wizard {
 	return &Wizard{
-		choice: 0,
+		choice:  0,
 		address: "127.0.0.1",
-		port: 20000,
+		port:    20000,
 	}
 }
 
 // Run displays the wizard and returns the selected mode.
 func (w *Wizard) Run() (Mode, string, int) {
-	// Print banner
-	fmt.Println()
-	fmt.Println(Cyan + Bold + "╔═══════════════════════════════════════════════════════════╗" + Reset)
-	fmt.Println(Cyan + Bold + "║" + Reset + BrightWhite + Bold + "           DNP3 Engineering Workbench" + Reset + Cyan + Bold + "                    ║" + Reset)
-	fmt.Println(Cyan + Bold + "╚═══════════════════════════════════════════════════════════╝" + Reset)
-	fmt.Println()
-	fmt.Println(BrightWhite + "Select operating mode:" + Reset)
-	fmt.Println()
+	fmt.Print(ClearScreen)
 
 	for {
+		// Print banner
+		fmt.Println()
+		fmt.Println(Cyan + Bold + "╔═══════════════════════════════════════════════════════════╗" + Reset)
+		fmt.Println(Cyan + Bold + "║" + Reset + BrightWhite + Bold + "           DNP3 Engineering Workbench" + Reset + Cyan + Bold + "                    ║" + Reset)
+		fmt.Println(Cyan + Bold + "╚═══════════════════════════════════════════════════════════╝" + Reset)
+		fmt.Println()
+		fmt.Println(BrightWhite + "Select operating mode:" + Reset)
+		fmt.Println()
+
 		// Print mode options
 		if w.choice == 0 {
-			fmt.Println(BrightGreen + "  ► " + Reset + BrightWhite + "1. Master Mode" + Reset + Dim + " (connect to outstation)" + Reset)
+			fmt.Println(BrightGreen + "  >>> [1] Master Mode" + Reset + Dim + " - connect to outstation" + Reset)
 		} else {
-			fmt.Println("  " + BrightBlack + "1. Master Mode" + Reset + Dim + " (connect to outstation)" + Reset)
+			fmt.Println("      [1] Master Mode" + Dim + " - connect to outstation" + Reset)
 		}
 
 		if w.choice == 1 {
-			fmt.Println(BrightGreen + "  ► " + Reset + BrightWhite + "2. Outstation Mode" + Reset + Dim + " (run as server)" + Reset)
+			fmt.Println(BrightGreen + "  >>> [2] Outstation Mode" + Reset + Dim + " - run as server" + Reset)
 		} else {
-			fmt.Println("  " + BrightBlack + "2. Outstation Mode" + Reset + Dim + " (run as server)" + Reset)
+			fmt.Println("      [2] Outstation Mode" + Dim + " - run as server" + Reset)
 		}
 
 		fmt.Println()
-		fmt.Println(Dim + "Use 1/2 to select, Enter to confirm, q to quit" + Reset)
+		fmt.Println(Dim + "Type 1 or 2 and press Enter, q to quit" + Reset)
 
-		// Create a simple reader
+		// Read input
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("> ")
-
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(strings.ToLower(input))
 
-		switch input {
-		case "1", "master":
-			w.choice = 0
-		case "2", "outstation":
-			w.choice = 1
-		case "q", "quit", "exit":
+		if input == "q" || input == "quit" || input == "exit" {
 			fmt.Println("Exiting...")
 			os.Exit(0)
-		case "":
-			// Enter pressed - confirm selection
-			break
 		}
 
-		// Move cursor up and redraw
-		if input != "" && (input == "1" || input == "2" || input == "master" || input == "outstation") {
-			// Just update the choice
+		if input == "1" {
+			w.choice = 0
+			break
+		} else if input == "2" {
+			w.choice = 1
+			break
 		}
 	}
 
@@ -85,7 +79,7 @@ func (w *Wizard) Run() (Mode, string, int) {
 		fmt.Println(BrightWhite + "Master Mode Configuration:" + Reset)
 
 		// Get address
-		fmt.Printf("Remote address ["+BrightCyan+"%s"+Reset+"] (press Enter for default): ", w.address)
+		fmt.Printf("Remote address ["+BrightCyan+"%s"+Reset+"] (Enter for default): ", w.address)
 		addrReader := bufio.NewReader(os.Stdin)
 		addrInput, _ := addrReader.ReadString('\n')
 		addrInput = strings.TrimSpace(addrInput)
@@ -94,7 +88,7 @@ func (w *Wizard) Run() (Mode, string, int) {
 		}
 
 		// Get port
-		fmt.Printf("Port ["+BrightCyan+"%d"+Reset+"] (press Enter for default): ", w.port)
+		fmt.Printf("Port ["+BrightCyan+"%d"+Reset+"] (Enter for default): ", w.port)
 		portReader := bufio.NewReader(os.Stdin)
 		portInput, _ := portReader.ReadString('\n')
 		portInput = strings.TrimSpace(portInput)
@@ -105,7 +99,6 @@ func (w *Wizard) Run() (Mode, string, int) {
 
 	// Clear screen for the main app
 	fmt.Print(ClearScreen)
-	fmt.Print(MoveTo(1, 1))
 
 	if w.choice == 0 {
 		return ModeMaster, w.address, w.port
