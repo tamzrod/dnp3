@@ -281,9 +281,6 @@ func (a *App) draw() {
 	// Draw table
 	a.drawTable()
 
-	// Draw log
-	a.drawLog()
-
 	// Draw footer
 	a.drawFooter()
 }

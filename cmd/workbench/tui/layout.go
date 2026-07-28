@@ -67,9 +67,9 @@ func (l *Layout) FooterBounds() Rect {
 // LogBounds returns the log panel region within main.
 func (l *Layout) LogBounds() Rect {
 	main := l.MainBounds()
-	logHeight := 4 // 3 lines for log + 1 separator
+	// Hide log by returning empty rect
 	return Rect{
-		Top:    main.Bottom - logHeight,
+		Top:    main.Bottom,
 		Left:   main.Left,
 		Bottom: main.Bottom,
 		Right:  main.Right,
@@ -79,11 +79,10 @@ func (l *Layout) LogBounds() Rect {
 // TableBounds returns the table region within main.
 func (l *Layout) TableBounds() Rect {
 	main := l.MainBounds()
-	log := l.LogBounds()
 	return Rect{
 		Top:    main.Top,
 		Left:   main.Left,
-		Bottom: log.Top - 2, // 1 separator line
+		Bottom: main.Bottom,
 		Right:  main.Right,
 	}
 }
@@ -95,5 +94,5 @@ func (l *Layout) ContentHeight() int {
 
 // TableHeight returns the height available for the table.
 func (l *Layout) TableHeight() int {
-	return l.ContentHeight() - 6 // 4 for log + 2 separators
+	return l.ContentHeight()
 }
