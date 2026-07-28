@@ -301,3 +301,14 @@ func (s *OutstationSession) SetAnalogOutput(index uint16, value float64) {
 	defer s.mu.Unlock()
 	s.log.Info("Set analog output: index=%d, value=%v", index, value)
 }
+
+// SetSimulator sets the data simulator for the outstation.
+func (s *OutstationSession) SetSimulator(sim *simulation.Simulator) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.simulator = sim
+	// Update the data handler to use the new simulator
+	if s.dataHandler != nil {
+		s.dataHandler.session = s
+	}
+}
