@@ -26,16 +26,29 @@ var (
 
 func main() {
 	// Parse command-line flags
-	modeStr := flag.String("mode", "master", "Operating mode: master or outstation")
+	modeStr := flag.String("mode", "", "Operating mode: master, outstation, or leave empty for wizard")
 	address := flag.String("address", "127.0.0.1", "Remote address (Master mode)")
 	port := flag.Int("port", 20000, "Port number")
 	flag.Parse()
 
-	// Validate mode
-	mode := tui.Mode(strings.ToLower(*modeStr))
-	if mode != tui.ModeMaster && mode != tui.ModeOutstation {
-		fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'master' or 'outstation')\n", *modeStr)
-		os.Exit(1)
+	var mode tui.Mode
+	var addr string
+	var p int
+
+	// Check if mode was specified on command line
+	if *modeStr != "" {
+		// Use command-line arguments
+		mode = tui.Mode(strings.ToLower(*modeStr))
+		if mode != tui.ModeMaster && mode != tui.ModeOutstation {
+			fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'master' or 'outstation')\n", *modeStr)
+			os.Exit(1)
+		}
+		addr = *address
+		p = *port
+	} else {
+		// Run wizard to select mode
+		wizard := tui.NewWizard()
+		mode, addr, p = wizard.Run()
 	}
 
 	// Create channel for updates
@@ -50,9 +63,9 @@ func main() {
 
 	// Set up callbacks based on mode
 	if mode == tui.ModeMaster {
-		setupMaster(app, *address, *port)
+		setupMaster(app, addr, p)
 	} else {
-		setupOutstation(app, *address, *port)
+		setupOutstation(app, addr, p)
 	}
 
 	// Handle quit

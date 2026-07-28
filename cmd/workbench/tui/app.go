@@ -149,12 +149,6 @@ func (a *App) Stop() {
 // handleEvent handles an input event.
 func (a *App) handleEvent(event Event) bool {
 	switch event.Type {
-	case EventQuit:
-		a.Stop()
-		if a.OnQuit != nil {
-			a.OnQuit()
-		}
-		return true
 	case EventResize:
 		width, height, _ := term.GetSize(int(os.Stdout.Fd()))
 		a.Layout.Resize(width, height)
@@ -168,9 +162,9 @@ func (a *App) handleEvent(event Event) bool {
 }
 
 // handleKey handles a key press.
-func (a *App) handleKey(key Key, rune rune) bool {
+func (a *App) handleKey(key Key, r rune) bool {
 	switch key {
-	case KeyCtrlC, KeyCtrlQ, KeyEscape:
+	case KeyEscape:
 		// Quit
 		a.Log.Info("Exiting...")
 		a.Stop()
@@ -178,30 +172,41 @@ func (a *App) handleKey(key Key, rune rune) bool {
 			a.OnQuit()
 		}
 		return true
-	case KeyUp, 'k':
+	case KeyUp:
 		a.Table.MoveUp()
 		return true
-	case KeyDown, 'j':
+	case KeyDown:
 		a.Table.MoveDown()
 		return true
-	case KeyEnter, ' ':
+	case KeyEnter:
 		a.Table.Select()
 		selected := a.Table.GetSelected()
 		if selected >= 0 && a.OnOperate != nil {
 			a.OnOperate(selected, true)
 		}
 		return true
-	case 'c':
+	}
+
+	// Handle character keys
+	switch r {
+	case 'q', 'Q':
+		a.Log.Info("Exiting...")
+		a.Stop()
+		if a.OnQuit != nil {
+			a.OnQuit()
+		}
+		return true
+	case 'c', 'C':
 		if a.OnConnect != nil {
 			a.OnConnect()
 		}
 		return true
-	case 'd':
+	case 'd', 'D':
 		if a.OnDisconnect != nil {
 			a.OnDisconnect()
 		}
 		return true
-	case 'r':
+	case 'r', 'R':
 		if a.OnReadClass != nil {
 			a.OnReadClass(0)
 		}
@@ -221,10 +226,10 @@ func (a *App) handleKey(key Key, rune rune) bool {
 			a.OnReadClass(3)
 		}
 		return true
-	case 'l':
+	case 'l', 'L':
 		a.Log.Clear()
 		return true
-	case 'h', '?':
+	case 'h', 'H', '?':
 		a.showHelp()
 		return true
 	}
