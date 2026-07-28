@@ -97,6 +97,30 @@ When `--mode select` or no flag is provided, display a mode selection dialog:
 | Default Size | 1200 x 800 |
 | Minimum Size | 800 x 600 |
 
+#### 2.3.2 File Menu Specification
+
+The File menu MUST contain window control buttons:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DNP3 Master - Connect to Outstation                    [_][□][X]│
+├─────────────────────────────────────────────────────────────────┤
+│  File  Edit  View  Session  Help                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ [Minimize] [Maximize/Restore] [Close]                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Menu Item | Action | Shortcut |
+|-----------|--------|----------|
+| Minimize | Minimize window to taskbar | Alt+N |
+| Maximize | Maximize window to fullscreen | Alt+M |
+| Restore | Restore window to previous size | Alt+R |
+| Close | Close the application | Alt+F4 |
+| --- | Separator | - |
+| Exit | Exit application | Ctrl+Q |
+
 #### 2.3.2 UI Layout
 
 ```
@@ -141,7 +165,11 @@ When `--mode select` or no flag is provided, display a mode selection dialog:
 | Default Size | 1200 x 800 |
 | Minimum Size | 800 x 600 |
 
-#### 2.4.2 UI Layout
+#### 2.4.2 File Menu Specification
+
+Same as Master window - File menu with window control buttons.
+
+#### 2.4.3 UI Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -224,11 +252,12 @@ cmd/workbench/
 | 3 | Create Master controller | HIGH | TODO |
 | 4 | Create Outstation controller | HIGH | TODO |
 | 5 | Refactor main entry point | HIGH | TODO |
-| 6 | Update menu structure per mode | MEDIUM | TODO |
-| 7 | Update status bar per mode | MEDIUM | TODO |
-| 8 | Test Master instance | HIGH | TODO |
-| 9 | Test Outstation instance | HIGH | TODO |
-| 10 | Test parallel execution | MEDIUM | TODO |
+| 6 | Add File menu with window controls (Minimize, Maximize/Restore, Close) | HIGH | TODO |
+| 7 | Update menu structure per mode | MEDIUM | TODO |
+| 8 | Update status bar per mode | MEDIUM | TODO |
+| 9 | Test Master instance | HIGH | TODO |
+| 10 | Test Outstation instance | HIGH | TODO |
+| 11 | Test parallel execution | MEDIUM | TODO |
 
 ### 4.2 Implementation Sequence
 

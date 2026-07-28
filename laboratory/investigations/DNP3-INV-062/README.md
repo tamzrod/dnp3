@@ -2,9 +2,10 @@
 id: DNP3-INV-062
 type: investigation
 title: "Workbench Master/Outstation Instance Separation"
-status: in_progress
+status: approved_with_addendum
 authority: "KDE Runtime (DNP3 Library)"
 created: "2026-07-27T23:45:00Z"
+addendum: "File menu with window controls (Minimize, Maximize/Restore, Close)"
 ---
 
 # DNP3-INV-062: Workbench Master/Outstation Instance Separation
