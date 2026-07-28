@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"dnp3/pkg/dnp3"
+	"dnp3/pkg/dnp3/master"
 	"dnp3/pkg/dnp3/types"
-	"dnp3/pkg/transport"
 )
 
 // SessionMode represents the mode of a DNP3 session.
@@ -72,12 +73,13 @@ func (c *OperateCommand) Type() string { return "OPERATE" }
 
 // Response represents a DNP3 response.
 type Response struct {
-	IIN          [2]byte
-	BinaryInputs []*types.BinaryInput
-	AnalogInputs []*types.AnalogInput
-	Counters     []*types.Counter
-	Timestamp    time.Time
-	Error        error
+	IIN            [2]byte
+	BinaryInputs   []*types.BinaryInput
+	AnalogInputs   []*types.AnalogInput
+	Counters       []*types.Counter
+	FrozenCounters []*types.FrozenCounter
+	Timestamp      time.Time
+	Error          error
 }
 
 // SessionEvent represents an event from the session.
@@ -111,7 +113,7 @@ type MasterSession struct {
 	address   string
 	port      int
 	state     ConnectionState
-	transport transport.Handler
+	client    master.Client
 	events    chan SessionEvent
 	log       Logger
 }
@@ -151,25 +153,29 @@ func (s *MasterSession) Connect(ctx context.Context, address string, port int) e
 	s.state = StateConnecting
 	s.log.Info("Connecting to %s:%d", address, port)
 
-	// Create transport configuration
-	config := &transport.TCPConfig{
-		Address:         address,
-		Port:            port,
-		ConnectTimeout:  5000,
-		ReceiveTimeout: 5000,
+	// Create real DNP3 master client
+	config := master.NewConfig(
+		master.WithOutstationAddress(1024),
+		master.WithTransport(dnp3.TCP, address, port),
+		master.WithTimeout(5*time.Second),
+		master.WithRetry(3, 100*time.Millisecond),
+	)
+
+	client, err := master.NewClient(config)
+	if err != nil {
+		s.state = StateError
+		s.log.Error("Failed to create DNP3 client: %v", err)
+		return fmt.Errorf("create client: %w", err)
 	}
 
-	// Create transport
-	t := transport.NewTCPTransport(config)
-
 	// Attempt connection
-	if err := t.Connect(); err != nil {
+	if err := client.Connect(ctx); err != nil {
 		s.state = StateError
 		s.log.Error("Connection failed: %v", err)
 		return fmt.Errorf("connect: %w", err)
 	}
 
-	s.transport = t
+	s.client = client
 	s.state = StateConnected
 	s.log.Info("Connected successfully")
 
@@ -189,9 +195,9 @@ func (s *MasterSession) Disconnect(ctx context.Context) error {
 
 	s.log.Info("Disconnecting")
 
-	if s.transport != nil {
-		s.transport.Close()
-		s.transport = nil
+	if s.client != nil {
+		s.client.Close()
+		s.client = nil
 	}
 
 	s.state = StateDisconnected
@@ -208,45 +214,46 @@ func (s *MasterSession) Disconnect(ctx context.Context) error {
 func (s *MasterSession) SendCommand(ctx context.Context, cmd Command) (*Response, error) {
 	s.mu.RLock()
 	state := s.state
-	t := s.transport
+	client := s.client
 	s.mu.RUnlock()
 
-	if state != StateConnected || t == nil {
+	if state != StateConnected || client == nil {
 		return nil, fmt.Errorf("not connected")
 	}
 
 	switch c := cmd.(type) {
 	case *ReadCommand:
-		return s.sendReadCommand(ctx, t, c)
+		return s.sendReadCommand(ctx, client, c)
 	case *OperateCommand:
-		return s.sendOperateCommand(ctx, t, c)
+		return s.sendOperateCommand(ctx, client, c)
 	}
 
 	return nil, fmt.Errorf("unknown command type")
 }
 
-func (s *MasterSession) sendReadCommand(ctx context.Context, t transport.Handler, cmd *ReadCommand) (*Response, error) {
+func (s *MasterSession) sendReadCommand(ctx context.Context, client master.Client, cmd *ReadCommand) (*Response, error) {
 	s.log.Info("Sending READ command for groups: %v", cmd.Groups)
 
-	// For MVP, return mock data to demonstrate the UI
-	// In full implementation, this would use the actual DNP3 master client
+	// Create read request from groups
+	request := &types.ReadRequest{
+		Groups: cmd.Groups,
+	}
+
+	// Use real DNP3 client
+	readResp, err := client.Read(ctx, request)
+	if err != nil {
+		s.log.Error("READ command failed: %v", err)
+		return nil, fmt.Errorf("read: %w", err)
+	}
+
+	// Convert to session response
 	resp := &Response{
-		IIN:       [2]byte{0, 0},
-		Timestamp: time.Now(),
-		BinaryInputs: []*types.BinaryInput{
-			{Index: 0, Value: true, Quality: types.QualityOnline},
-			{Index: 1, Value: false, Quality: types.QualityOnline},
-			{Index: 2, Value: true, Quality: types.QualityOnline},
-		},
-		AnalogInputs: []*types.AnalogInput{
-			{Index: 0, Value: 123.45, Quality: types.QualityOnline},
-			{Index: 1, Value: -10.5, Quality: types.QualityOnline},
-			{Index: 2, Value: 1000.0, Quality: types.QualityOnline},
-		},
-		Counters: []*types.Counter{
-			{Index: 0, Value: 1000, Quality: types.QualityOnline},
-			{Index: 1, Value: 500, Quality: types.QualityOnline},
-		},
+		IIN:           readResp.IIN,
+		BinaryInputs:  readResp.BinaryInputs,
+		AnalogInputs:  readResp.AnalogInputs,
+		Counters:      readResp.Counters,
+		FrozenCounters: readResp.FrozenCounters,
+		Timestamp:     readResp.Timestamp,
 	}
 
 	s.events <- SessionEvent{
@@ -260,13 +267,44 @@ func (s *MasterSession) sendReadCommand(ctx context.Context, t transport.Handler
 	return resp, nil
 }
 
-func (s *MasterSession) sendOperateCommand(ctx context.Context, t transport.Handler, cmd *OperateCommand) (*Response, error) {
-	s.log.Info("Sending OPERATE command: Group=%d, Var=%d, Index=%d",
-		cmd.Group, cmd.Variation, cmd.Index)
+func (s *MasterSession) sendOperateCommand(ctx context.Context, client master.Client, cmd *OperateCommand) (*Response, error) {
+	s.log.Info("Sending OPERATE command: Group=%d, Var=%d, Index=%d, Value=%v",
+		cmd.Group, cmd.Variation, cmd.Index, cmd.Value)
+
+	// Determine command type based on SelectThenOperate flag
+	cmdType := types.DirectOperate
+	if cmd.SelectThenOperate {
+		cmdType = types.SelectThenOperate
+	}
+
+	// Create control output based on command type
+	var controlOutput *types.ControlOutput
+	if cmd.Group == 12 {
+		// Binary output command
+		if v, ok := cmd.Value.(bool); ok {
+			controlOutput = types.NewBinaryControl(cmd.Index, v, cmdType)
+		}
+	} else if cmd.Group == 41 {
+		// Analog output command
+		if v, ok := cmd.Value.(float64); ok {
+			controlOutput = types.NewAnalogControl(cmd.Index, v, cmdType)
+		}
+	}
+
+	if controlOutput == nil {
+		return nil, fmt.Errorf("unsupported command type: group=%d", cmd.Group)
+	}
+
+	// Use real DNP3 client
+	operateResp, err := client.Operate(ctx, controlOutput)
+	if err != nil {
+		s.log.Error("OPERATE command failed: %v", err)
+		return nil, fmt.Errorf("operate: %w", err)
+	}
 
 	resp := &Response{
-		IIN:       [2]byte{0, 0},
-		Timestamp: time.Now(),
+		IIN:       operateResp.IIN,
+		Timestamp: operateResp.Timestamp,
 	}
 
 	s.events <- SessionEvent{
@@ -274,7 +312,7 @@ func (s *MasterSession) sendOperateCommand(ctx context.Context, t transport.Hand
 		Data: resp,
 	}
 
-	s.log.Info("OPERATE response received")
+	s.log.Info("OPERATE response received, status: %v", operateResp.Status)
 	return resp, nil
 }
 
@@ -290,10 +328,8 @@ func (s *MasterSession) Close() error {
 	return s.Disconnect(ctx)
 }
 
-// Transport returns the underlying transport handler.
-func (s *MasterSession) Transport() transport.Handler {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.transport
+// Transport returns nil for master session (client handles transport internally).
+func (s *MasterSession) Transport() interface{} {
+	return nil
 }
 
