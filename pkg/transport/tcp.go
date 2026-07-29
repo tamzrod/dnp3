@@ -1,15 +1,28 @@
 // Package transport provides network transport implementations for DNP3.
+//
+// DNP3 over TCP uses standard IEEE 1815 framing:
+// - Frames start with sync bytes (0x05 0x64)
+// - Length field at offset 2 (1 byte)
+// - Full frame: sync(2) + length(1) + rest + CRCs
+//
+// Unlike the old implementation, NO external length prefix is added.
+// Frames are self-delimiting via sync bytes.
 package transport
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
+)
+
+// DNP3 sync bytes - start of every frame per IEEE 1815
+const (
+	SyncByte1 = 0x05
+	SyncByte2 = 0x64
 )
 
 var (
@@ -19,6 +32,8 @@ var (
 	ErrTimeout = errors.New("timeout")
 	// ErrClosed indicates the transport has been closed.
 	ErrClosed = errors.New("transport closed")
+	// ErrInvalidFrame indicates an invalid DNP3 frame was received.
+	ErrInvalidFrame = errors.New("invalid DNP3 frame")
 )
 
 // Handler defines the interface for sending and receiving data.
@@ -181,6 +196,9 @@ func (t *TCPTransport) Accept() error {
 }
 
 // Send writes data to the connection.
+//
+// Standard DNP3 over TCP: sends data directly without length prefix.
+// The data should be a complete DNP3 DLL frame starting with sync bytes (0x05 0x64).
 func (t *TCPTransport) Send(data []byte) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -192,25 +210,28 @@ func (t *TCPTransport) Send(data []byte) error {
 		return ErrNotConnected
 	}
 
-	// DNP3 over TCP uses length prefix
-	length := uint16(len(data))
-	header := make([]byte, 2)
-	binary.BigEndian.PutUint16(header, length)
-
-	_, err := t.conn.Write(header)
-	if err != nil {
-		return fmt.Errorf("TCP send header failed: %w", err)
+	// Standard DNP3: send frame directly (no length prefix)
+	// Frame must start with sync bytes 0x05 0x64
+	if len(data) >= 2 && data[0] == SyncByte1 && data[1] == SyncByte2 {
+		// Valid DNP3 frame - send as-is
+	} else if len(data) > 0 {
+		// Data doesn't look like standard DNP3 - still send (for flexibility)
+		// Caller is responsible for proper framing
 	}
 
-	_, err = t.conn.Write(data)
+	_, err := t.conn.Write(data)
 	if err != nil {
-		return fmt.Errorf("TCP send data failed: %w", err)
+		return fmt.Errorf("TCP send failed: %w", err)
 	}
 
 	return nil
 }
 
 // Receive reads data from the connection.
+//
+// Standard DNP3 over TCP: reads self-delimiting frames.
+// Uses sync bytes (0x05 0x64) to find frame start, then reads length field.
+// Returns the complete DNP3 frame including sync bytes and CRCs.
 func (t *TCPTransport) Receive() ([]byte, error) {
 	t.mu.RLock()
 	if t.closed {
@@ -228,9 +249,9 @@ func (t *TCPTransport) Receive() ([]byte, error) {
 	timeout := time.Duration(t.config.ReceiveTimeout) * time.Millisecond
 	conn.SetReadDeadline(time.Now().Add(timeout))
 
-	// Read length prefix (2 bytes)
-	header := make([]byte, 2)
-	_, err := io.ReadFull(conn, header)
+	// Read first byte to look for sync
+	firstByte := make([]byte, 1)
+	_, err := io.ReadFull(conn, firstByte)
 	if err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, ErrClosed
@@ -238,17 +259,34 @@ func (t *TCPTransport) Receive() ([]byte, error) {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return nil, ErrTimeout
 		}
-		return nil, fmt.Errorf("TCP receive header failed: %w", err)
+		return nil, fmt.Errorf("TCP receive failed: %w", err)
 	}
 
-	length := binary.BigEndian.Uint16(header)
-	if length == 0 || length > 65535 {
-		return nil, fmt.Errorf("invalid length: %d", length)
+	// Check if we got sync byte 1
+	if firstByte[0] != SyncByte1 {
+		// Not sync byte 1 - keep reading until we find it
+		// This handles the case where we start mid-frame
+		for {
+			nextByte := make([]byte, 1)
+			_, err := io.ReadFull(conn, nextByte)
+			if err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					return nil, ErrClosed
+				}
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					return nil, ErrTimeout
+				}
+				return nil, fmt.Errorf("TCP receive failed: %w", err)
+			}
+			if nextByte[0] == SyncByte1 {
+				break
+			}
+		}
 	}
 
-	// Read data
-	data := make([]byte, length)
-	_, err = io.ReadFull(conn, data)
+	// Read sync byte 2
+	secondByte := make([]byte, 1)
+	_, err = io.ReadFull(conn, secondByte)
 	if err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, ErrClosed
@@ -256,10 +294,51 @@ func (t *TCPTransport) Receive() ([]byte, error) {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return nil, ErrTimeout
 		}
-		return nil, fmt.Errorf("TCP receive data failed: %w", err)
+		return nil, fmt.Errorf("TCP receive failed reading sync byte 2: %w", err)
 	}
 
-	return data, nil
+	if secondByte[0] != SyncByte2 {
+		return nil, fmt.Errorf("%w: expected 0x%02x, got 0x%02x", ErrInvalidFrame, SyncByte2, secondByte[0])
+	}
+
+	// Read length byte (byte at offset 2 in frame)
+	lengthByte := make([]byte, 1)
+	_, err = io.ReadFull(conn, lengthByte)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, ErrClosed
+		}
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return nil, ErrTimeout
+		}
+		return nil, fmt.Errorf("TCP receive failed reading length: %w", err)
+	}
+
+	// Length field includes: Control(1) + Dest(2) + Src(2) + Data + CRCs
+	// Total frame size = 2 (sync) + 1 (length) + length + CRCs
+	frameLength := int(lengthByte[0])
+	totalSize := 2 + 1 + frameLength // sync(2) + length(1) + rest
+
+	// Read the rest of the frame
+	frame := make([]byte, totalSize)
+	frame[0] = SyncByte1
+	frame[1] = SyncByte2
+	frame[2] = lengthByte[0]
+
+	if frameLength > 0 {
+		_, err = io.ReadFull(conn, frame[3:totalSize])
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, ErrClosed
+			}
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				return nil, ErrTimeout
+			}
+			return nil, fmt.Errorf("TCP receive failed reading frame data: %w", err)
+		}
+	}
+
+	return frame, nil
 }
 
 // SetTimeout sets the receive timeout.
@@ -317,4 +396,21 @@ func (t *TCPTransport) IsConnected() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.conn != nil && !t.closed
+}
+
+// SetConn sets the underlying connection directly.
+// This is useful for server mode where the connection is accepted
+// before the transport is created.
+func (t *TCPTransport) SetConn(conn net.Conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.conn = conn
+}
+
+// SetListener sets the listener directly.
+// This is useful for server mode where the listener is managed externally.
+func (t *TCPTransport) SetListener(listener net.Listener) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.listener = listener
 }

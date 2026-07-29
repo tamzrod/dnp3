@@ -3,6 +3,8 @@
 // This package implements the Outstation role of the DNP3 protocol.
 // An Outstation responds to requests from Masters and reports data.
 //
+// Multi-master support: Each accepted connection gets its own outstation instance.
+//
 // # Usage
 //
 // Create a new server:
@@ -30,6 +32,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -368,14 +372,26 @@ type server struct {
 	commandHandler    CommandHandler
 	unsolicitedHandler UnsolicitedHandler
 
-	// Transport for server mode
-	transport transport.Handler
+	// Listener for accepting connections
+	listener net.Listener
 
-	// Internal implementation
-	internalOutstation *outstation.Outstation
+	// Track active connections
+	connections map[uint64]*outstationInstance
+	connCounter uint64
+	connectionsMu sync.RWMutex
 
-	// For Run loop management
+	// Context for graceful shutdown
+	runCtx    context.Context
 	runCancel context.CancelFunc
+}
+
+// outstationInstance represents a single master connection
+type outstationInstance struct {
+	id        uint64
+	masterAddr net.Addr
+	outstation *outstation.Outstation
+	transport  transport.Handler
+	done      chan struct{}
 }
 
 // NewServer creates a new Outstation server with the given configuration
@@ -384,25 +400,13 @@ func NewServer(config *Config) (Server, error) {
 		return nil, err
 	}
 
-	// Create internal outstation config
-	internalConfig := &outstation.Config{
-		OutstationAddress: config.OutstationAddress,
-		MasterAddress:    config.MasterAddress,
-		Timeout:         5000, // Default timeout in ms
-		MaxEventBuffers: config.MaxEventBuffers,
-		Unsolicited:     config.UnsolicitedMode,
-	}
-
-	// Create internal outstation
-	internal := outstation.NewOutstation(internalConfig)
-
 	return &server{
 		config:            config,
 		state:             ServerStateDown,
 		dataHandler:       &DefaultDataHandler{},
 		commandHandler:    nil,
 		unsolicitedHandler: nil,
-		internalOutstation: internal,
+		connections:      make(map[uint64]*outstationInstance),
 	}, nil
 }
 
@@ -417,88 +421,113 @@ func (s *server) Start(ctx context.Context) error {
 
 	s.state = ServerStateStarting
 
-	// Create transport based on configuration
-	var t transport.Handler
-	switch s.config.TransportType {
-	case dnp3.TCP:
-		tcpConfig := &transport.TCPConfig{
-			Address:         s.config.Address,
-			Port:           s.config.Port,
-			ConnectTimeout: 5000,
-			ReceiveTimeout: 5000,
-			Server:         true, // Server mode
-			KeepAlive:      30000,
-		}
-		t = transport.NewTCPTransport(tcpConfig)
-	case dnp3.TLS:
-		// For TLS, we fall back to TCP for now
-		// Full TLS would require TLSTransport with server certificate
-		tcpConfig := &transport.TCPConfig{
-			Address:         s.config.Address,
-			Port:           s.config.Port,
-			ConnectTimeout: 5000,
-			ReceiveTimeout: 5000,
-			Server:         true,
-			KeepAlive:      30000,
-		}
-		t = transport.NewTCPTransport(tcpConfig)
-	}
-
-	s.transport = t
-
-	// Set transport on internal outstation
-	s.internalOutstation.SetTransport(t)
-
-	// Initialize internal outstation
-	if err := s.internalOutstation.Initialize(); err != nil {
+	// Create TCP listener directly for better control
+	addr := fmt.Sprintf("%s:%d", s.config.Address, s.config.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
 		s.state = ServerStateError
-		return fmt.Errorf("initialize failed: %w", err)
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}
+	s.listener = listener
 
-	// Set up data handler adapter
-	s.internalOutstation.SetDataHandler(&internalDataHandler{
-		publicHandler: s.dataHandler,
-	})
+	log.Printf("DNP3 Outstation listening on %s", addr)
 
-	// Start internal outstation
-	if err := s.internalOutstation.Start(); err != nil {
-		s.state = ServerStateError
-		return fmt.Errorf("start failed: %w", err)
-	}
-
-	// Start the run loop in a goroutine with proper context
-	runCtx, runCancel := context.WithCancel(context.Background())
-	s.runCancel = runCancel
+	// Create context for managing connections
+	s.runCtx, s.runCancel = context.WithCancel(context.Background())
 
 	// Start accept loop in a separate goroutine
-	go func() {
-		for {
-			select {
-			case <-runCtx.Done():
-				// Server is shutting down
-				return
-			default:
-				// Accept connection
-				if err := t.Accept(); err != nil {
-					// Check if it's a timeout (normal in server mode)
-					if err == transport.ErrTimeout {
-						continue
-					}
-					// Check if transport is closed
-					if err == transport.ErrClosed {
-						return
-					}
-					// Log other errors but continue
-					continue
-				}
-				// Connection accepted, run the main loop
-				s.internalOutstation.Run()
-			}
-		}
-	}()
+	go s.acceptLoop()
 
 	s.state = ServerStateRunning
 	return nil
+}
+
+// acceptLoop accepts incoming connections and creates outstation instances
+func (s *server) acceptLoop() {
+	for {
+		select {
+		case <-s.runCtx.Done():
+			log.Printf("Accept loop shutting down")
+			return
+		default:
+			// Set accept deadline
+			s.listener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Second))
+
+			conn, err := s.listener.Accept()
+			if err != nil {
+				// Check if it's a timeout
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
+				// Check if context was cancelled
+				if s.runCtx.Err() != nil {
+					return
+				}
+				// Log other errors but continue
+				log.Printf("Accept error: %v", err)
+				continue
+			}
+
+			// Handle new connection
+			go s.handleConnection(conn)
+		}
+	}
+}
+
+// handleConnection handles a single master connection
+func (s *server) handleConnection(conn net.Conn) {
+	s.connectionsMu.Lock()
+	s.connCounter++
+	connID := s.connCounter
+	
+	// Create transport for this connection
+	tcpConfig := &transport.TCPConfig{
+		Address:         "",
+		Port:           0,
+		ConnectTimeout: 5000,
+		ReceiveTimeout: 5000,
+		KeepAlive:      30000,
+	}
+	t := transport.NewTCPTransport(tcpConfig)
+	// Set the connection directly
+	t.SetConn(conn)
+
+	// Create new outstation for this connection
+	internalConfig := &outstation.Config{
+		OutstationAddress: s.config.OutstationAddress,
+		MasterAddress:     s.config.MasterAddress,
+		Timeout:         5000,
+		MaxEventBuffers: s.config.MaxEventBuffers,
+		Unsolicited:     s.config.UnsolicitedMode,
+	}
+	inst := outstation.NewOutstation(internalConfig)
+	inst.SetTransport(t)
+	inst.Initialize()
+	inst.SetDataHandler(&internalDataHandler{publicHandler: s.dataHandler})
+	inst.Start()
+
+	instance := &outstationInstance{
+		id:        connID,
+		masterAddr: conn.RemoteAddr(),
+		outstation: inst,
+		transport:  t,
+		done:      make(chan struct{}),
+	}
+	s.connections[connID] = instance
+	s.connectionsMu.Unlock()
+
+	log.Printf("Connection %d accepted from %s", connID, conn.RemoteAddr())
+
+	// Run the outstation (this blocks until connection closes)
+	inst.Run()
+
+	// Clean up
+	s.connectionsMu.Lock()
+	delete(s.connections, connID)
+	s.connectionsMu.Unlock()
+
+	conn.Close()
+	log.Printf("Connection %d closed", connID)
 }
 
 // Stop implements Server.Stop
@@ -512,20 +541,24 @@ func (s *server) Stop(ctx context.Context) error {
 
 	s.state = ServerStateStopping
 
-	// Cancel the run loop
+	// Cancel the accept loop
 	if s.runCancel != nil {
 		s.runCancel()
 	}
 
-	// Stop internal outstation
-	if err := s.internalOutstation.Stop(); err != nil {
-		s.state = ServerStateError
-		return fmt.Errorf("stop failed: %w", err)
+	// Close all active connections
+	s.connectionsMu.Lock()
+	for id, inst := range s.connections {
+		log.Printf("Closing connection %d", id)
+		inst.outstation.Stop()
+		inst.transport.Close()
 	}
+	s.connections = make(map[uint64]*outstationInstance)
+	s.connectionsMu.Unlock()
 
-	// Close transport
-	if s.transport != nil {
-		_ = s.transport.Close()
+	// Close listener
+	if s.listener != nil {
+		s.listener.Close()
 	}
 
 	s.state = ServerStateDown
@@ -548,12 +581,21 @@ func (s *server) SetDataHandler(handler DataHandler) {
 	}
 	s.dataHandler = handler
 
-	// Update internal handler if outstation exists
-	if s.internalOutstation != nil {
-		s.internalOutstation.SetDataHandler(&internalDataHandler{
+	// Update all active connections with new data handler
+	s.connectionsMu.Lock()
+	for _, inst := range s.connections {
+		inst.outstation.SetDataHandler(&internalDataHandler{
 			publicHandler: handler,
 		})
 	}
+	s.connectionsMu.Unlock()
+}
+
+// ActiveConnections returns the count of active connections
+func (s *server) ActiveConnections() int {
+	s.connectionsMu.RLock()
+	defer s.connectionsMu.RUnlock()
+	return len(s.connections)
 }
 
 // SetCommandHandler implements Server.SetCommandHandler

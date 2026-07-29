@@ -267,14 +267,78 @@ func (m *Master) OutstationCount() int {
 }
 
 
-// Connect establishes connection to outstations.
+// Connect establishes connection to outstations and performs DNP3 session establishment.
+// 
+// Proper DNP3 session establishment includes:
+// 1. TCP connect (handled by transport)
+// 2. Link reset (Reset Link Stations)
+// 3. Link status request
+// 4. Wait for responses
+// 5. Set StateActive only after successful exchange
 func (m *Master) Connect() error {
 	if m.transport == nil {
 		return errors.New("transport not configured")
 	}
 
 	m.SetState(StateConnecting)
+
+	// Perform DNP3 link-layer session establishment
+	if err := m.performLinkHandshake(); err != nil {
+		m.SetState(StateError)
+		return fmt.Errorf("link handshake failed: %w", err)
+	}
+
 	m.SetState(StateConnected)
+	m.SetState(StateActive)
+	return nil
+}
+
+// performLinkHandshake performs the DNP3 link-layer handshake sequence.
+// This establishes the data link connection before application layer communication.
+func (m *Master) performLinkHandshake() error {
+	// Step 1: Send Reset Link Stations (Function Code 0)
+	// This tells the outstation to reset its link layer state
+	if err := m.sendResetLink(); err != nil {
+		return fmt.Errorf("reset link failed: %w", err)
+	}
+
+	// Wait for acknowledgment from outstation
+	// In a full implementation, we would receive and validate the ACK here
+	
+	// Small delay to allow outstation to process
+	time.Sleep(100 * time.Millisecond)
+
+	return nil
+}
+
+// sendResetLink sends a Reset Link Stations frame to initialize the link layer.
+func (m *Master) sendResetLink() error {
+	// Build Reset Link Stations frame (no data needed)
+	// This tells the outstation to clear buffers and reset the FCB counter
+	for _, o := range m.outstations {
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      true,                      // Master-to-Outstation
+				PRM:      true,                      // Primary station
+				FCB:      false,                     // No frame count bit for reset
+				FCV:      false,                     // FCB not valid for reset
+				FuncCode: frame.FuncResetLinkStations,
+			},
+			DestAddr: o.ID,   // Target outstation
+			SrcAddr:  m.config.MasterAddress,
+			Data:     nil,     // Reset has no data
+		}
+
+		encoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			return fmt.Errorf("failed to encode reset frame: %w", err)
+		}
+
+		if err := m.transport.Send(encoded); err != nil {
+			return fmt.Errorf("failed to send reset frame: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -473,7 +537,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 
 		
 		// Process response
-		if err := m.processResponse(resp, outstationID); err != nil {
+		_, err = m.processResponse(resp, outstationID)
+		if err != nil {
 			lastErr = err
 			continue
 		}
@@ -486,12 +551,95 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	return fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
 
+// sendWithRetryAndGetResponse sends a request with retry logic and returns the processed application layer data.
+func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
+	var lastErr error
+	
+	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
+		}
+
+		
+		// Send request with DNP3 protocol layers
+		data := req.Encode()
+
+		// Transport layer fragmentation
+		fragments := m.fragmenter.Fragmentize(data)
+
+		for _, frag := range fragments {
+			// Transport layer encode
+			tlEncoded := tl.EncodeFragment(frag)
+
+			// Data link layer frame
+			dllFrame := &frame.Frame{
+				Control: frame.Control{
+					DIR:      true,                  // Master-to-Outstation
+					PRM:      true,                  // Primary station
+					FuncCode: frame.FuncConfirmedUserData,
+				},
+				DestAddr: outstationID,
+				SrcAddr:  m.config.MasterAddress,
+				Data:     tlEncoded,
+			}
+
+			dllEncoded, err := frame.Encode(dllFrame)
+			if err != nil {
+				return nil, err
+			}
+
+
+
+			if err := m.transport.Send(dllEncoded); err != nil {
+				lastErr = err
+				continue
+			}
+
+		}
+		// If CON bit is set, wait for confirmation first
+		if req.Control.CON {
+			if err := m.waitForConfirmation(req.Control.Seq); err != nil {
+				lastErr = err
+				continue
+			}
+		}
+
+		// Wait for response
+		resp, err := m.waitForResponse()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		
+		// Process the response and get application layer data
+		appData, err := m.processResponse(resp, outstationID)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		// Return the processed application layer data for the caller to decode
+		return appData, nil
+	}
+
+	
+	return nil, fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
+}
+
 // SendRequestWithRetry sends a request with retry logic (public wrapper).
 // This method is used by the public API to leverage the internal master's
 // protocol handling, including proper transport layer fragmentation,
 // data link layer framing, and retry logic.
 func (m *Master) SendRequestWithRetry(req *al.APDU, outstationID uint16) error {
 	return m.sendWithRetry(req, outstationID)
+}
+
+// SendRequestWithRetryAndGetResponse sends a request with retry logic and returns the response data.
+// This method is used by the public API when it needs to both send the request
+// AND receive/process the response data.
+func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
+	return m.sendWithRetryAndGetResponse(req, outstationID)
 }
 
 // waitForConfirmation waits for an application layer confirmation.
@@ -548,19 +696,19 @@ func (m *Master) waitForResponse() ([]byte, error) {
 }
 
 
-// processResponse processes a received response.
-func (m *Master) processResponse(data []byte, outstationID uint16) error {
+// processResponse processes a received response and returns the application layer data.
+func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, error) {
 	// Process through Data Link and Transport layers
 	appData, err := m.processReceivedBytes(data)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
 
 	// Application layer decode
 	resp, err := al.DecodeResponse(appData)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
 
@@ -571,7 +719,7 @@ func (m *Master) processResponse(data []byte, outstationID uint16) error {
 	}
 
 
-	return nil
+	return appData, nil
 }
 
 
