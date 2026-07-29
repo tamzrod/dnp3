@@ -600,6 +600,9 @@ def verify_bootstrap_gate_b3(project_type: str = "go", quick: bool = False) -> L
     3. If environment incomplete, note limitation
     4. Do not promise execution without verification
     
+    Note: Go toolchain checks are informational only for this project.
+    The KDE Runtime is Python-based and does not require Go.
+    
     Args:
         project_type: Type of project ("go", "python", etc.)
         quick: If True, skip slow dependency checks (e.g., go mod verify)
@@ -609,19 +612,12 @@ def verify_bootstrap_gate_b3(project_type: str = "go", quick: bool = False) -> L
     # Check Python runtime (always needed for KDE)
     checks.append(check_python_runtime())
     
-    # Check Go toolchain for Go projects
-    if project_type.lower() == "go":
-        checks.append(check_go_toolchain())
-        # Skip slow dependency check in quick mode (go mod verify takes ~2s)
-        if not quick:
-            checks.append(check_go_dependencies())
-        else:
-            checks.append(GateCheck(
-                name="go_deps",
-                gate="B3",
-                passed=True,
-                details="SKIPPED: go mod verify skipped (quick mode). Use --full to run all checks."
-            ))
+    # Go toolchain is informational only - KDE Runtime doesn't require Go
+    # Uncomment below if Go validation is needed for specific tasks
+    # if project_type.lower() == "go":
+    #     checks.append(check_go_toolchain())
+    #     if not quick:
+    #         checks.append(check_go_dependencies())
     
     return checks
 

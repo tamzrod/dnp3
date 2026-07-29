@@ -1,5 +1,6 @@
 {
   "status": "initialized",
+  "initialized": true,
   "initialized_at": "2026-07-25T02:30:00Z",
   "version": "1.0.0",
   "project": "DNP3 Library",
@@ -19,5 +20,14 @@
   "state": "ready",
   "ecu_configured": true,
   "engines_count": 8,
-  "seeds_count": 4
+  "seeds_count": 4,
+  "engine_registry": {
+    "total_engines": 8,
+    "active": 1,
+    "historical": 7,
+    "discovery_complete": true
+  },
+  "seed_registry": {
+    "total_seeds": 4
+  }
 }

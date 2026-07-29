@@ -58,10 +58,14 @@ To initialize the KDE runtime and verify system readiness:
 
 ```bash
 python3 -c "
+import sys
+sys.path.insert(0, '.kde')
 from runtime.preflight import run_preflight_check, format_report
 report = run_preflight_check()
 print(format_report(report))
 "
 ```
+
+> **Note**: The `sys.path.insert(0, '.kde')` is required because the KDE runtime modules are located at `.kde/runtime/`, which is not in the default Python path.
 
 See `laboratory/WORKFLOW.md` for the complete investigation protocol.

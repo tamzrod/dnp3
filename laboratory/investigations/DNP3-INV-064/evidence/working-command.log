@@ -1,0 +1,32 @@
+==============================================================================
+PRE-FLIGHT CHECK - KDE RUNTIME
+==============================================================================
+
+■ RUNTIME HEALTH
+------------------------------------------------------------------------------
+  State               ⚠️ DEGRADED
+  Engine Registry     ✅ 8 engines (1 active, 7 historical)
+  Seed Registry       ✅ 4 seeds registered
+  Initialized At      2026-07-29T06:56:59
+
+■ ECU COMPONENT STATUS
+------------------------------------------------------------------------------
+  Execution Planner    ✅ READY      Plan generation available
+  Capability Resolver  ✅ READY      Resolution engine loaded
+  Consensus Manager    ✅ READY      0 runs | 0% success
+  Result Aggregator    ✅ READY      0 aggregations | 0.00ms avg
+  Policy Layer         ✅ READY      8 rules loaded
+  Overall ECU Health   ✅ HEALTHY
+
+■ GOVERNANCE STATUS
+------------------------------------------------------------------------------
+  Authority Verified    ✅ SEED-001 (5 Core Principles acknowledged)
+  Rules Loaded         ✅ 8 rules (7 blocking)
+  Active Violations    ✅ 0
+  Historical Violations ✅ 0 (none)
+
+■ MISSION READINESS
+------------------------------------------------------------------------------
+  Status               ⚠️ OPERATIONAL (LIMITED)
+
+==============================================================================

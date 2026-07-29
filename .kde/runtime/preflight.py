@@ -239,11 +239,28 @@ def run_preflight_check() -> PreflightReport:
     """Run the complete pre-flight check."""
     kde_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .kde/
     project_root = os.path.dirname(kde_root)  # project root (where .kde/ lives)
-    ecu = create_ecu(project_root)
-    state = ecu.get_runtime_state()
     
-    # Gather component statuses
+    # Read state from state.json for runtime health
+    import json
+    state_file = os.path.join(kde_root, 'runtime', 'state.json')
+    state = {}
+    initialized_at = 'Unknown'
+    
+    if os.path.exists(state_file):
+        try:
+            with open(state_file) as f:
+                state = json.load(f)
+            initialized_at = state.get('initialized_at', 'Unknown')
+        except:
+            pass
+    
+    # Get ECU status (for component health, policy, etc.)
+    ecu = create_ecu(project_root)
+    
+    # Determine runtime health based on state.json
     runtime_health = get_runtime_health(state)
+    
+    # Get ECU component statuses
     ecu_components, ecu_health = get_ecu_component_status(ecu)
     governance = get_governance_status(ecu)
     mission = get_mission_status(runtime_health, ecu_health)
@@ -254,7 +271,7 @@ def run_preflight_check() -> PreflightReport:
         overall_ecu_health=ecu_health,
         governance_status=governance,
         mission_status=mission,
-        initialized_at=state.get('last_initialization', 'Unknown')
+        initialized_at=initialized_at
     )
 
 
