@@ -1,0 +1,164 @@
+# Runtime Default Configuration
+
+**Document ID**: RUNTIME-DEFAULTS
+**Version**: 1.2.0
+**Date**: 2026-07-24
+**Authority**: Human Authority
+**Status**: PRODUCTION
+**Source**: INV-EVOLUTION-001 REC-003/REC-004/REC-008
+
+---
+
+## Purpose
+
+This document defines the Runtime defaults for KDE. These defaults are the **single source of truth** for Runtime initialization.
+
+The separation of scientific lifecycle (Engine status) from operational configuration (Runtime defaults) ensures that:
+- Scientific validation does not automatically change operational behavior
+- Human authority governs default selection
+- Runtime behavior is predictable and reproducible
+
+---
+
+## Default Configuration
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| **default_engine** | KDE-ENGINE-002 | Engine loaded at Runtime startup |
+| **default_seed** | SEED-003 | Seed loaded at Runtime startup |
+| **last_updated** | 2026-07-28 | Configuration last modified date |
+| **updated_by** | Human (INV-088) | Authority who made the change |
+
+---
+
+## Runtime Default Selection
+
+### Current Default Engine
+
+| Field | Value |
+|-------|-------|
+| **Engine ID** | KDE-ENGINE-002 |
+| **Codename** | Beta |
+| **Version** | 0.1.0 |
+| **Status** | Active (Scientific) |
+| **Default** | YES (Operational) |
+
+**Note**: Engine "Status" (Active) and "Default" (YES) are independent:
+- **Status** describes scientific validation level
+- **Default** describes operational usage
+
+### Current Default Seed
+
+| Field | Value |
+|-------|-------|
+| **Seed ID** | SEED-003 |
+| **Codename** | Bootstrap Validation |
+| **Version** | 1.0.0 |
+| **Status** | ACTIVE |
+| **Default** | YES |
+
+---
+
+## Human Authority Principle
+
+**The default Engine and default Seed are under exclusive human authority.**
+
+Only a human may:
+- Change the default Engine
+- Change the default Seed
+- Override Runtime defaults for a session
+
+KDE shall never:
+- Promote itself to default
+- Change defaults automatically
+- Infer a better default
+- Rewrite this configuration
+
+---
+
+## Session Override
+
+Experiments and Investigations may specify alternate engines or seeds:
+
+```yaml
+session_override:
+  engine: KDE-ENGINE-004  # Optional override
+  seed: SEED-001         # Optional override
+```
+
+**Rules:**
+1. Override applies only to the current session
+2. Override does not modify this configuration
+3. When session ends, Runtime returns to these defaults
+4. Override must be explicit in the session configuration
+
+---
+
+## Browser-Style Default Model
+
+This configuration implements a **browser-style default model**:
+
+| Browser Behavior | KDE Runtime Behavior |
+|-----------------|---------------------|
+| Home page set by user | Default Engine set by human |
+| User can change anytime | Human can change anytime |
+| Extensions can override temporarily | Sessions can override temporarily |
+| User always has final authority | Human always has final authority |
+
+**Key Principle**: Scientific advancement (new Engine status) does not automatically change operational defaults.
+
+---
+
+## Engine Status vs. Default
+
+| Engine | Status | Default | Explanation |
+|--------|--------|---------|-------------|
+| KDE-ENGINE-001 | Historical | NO | Scientifically deprecated |
+| KDE-ENGINE-002 | Active | **YES** | Scientifically active, human-selected as default |
+| KDE-ENGINE-003 | Active | NO | Causal discovery capability (INV-EVOLUTION-001) |
+| KDE-ENGINE-004 | Active | NO | Bootstrap capability, consider for default (INV-EVOLUTION-001 REC-008) |
+
+**Key Insight**: An Engine can have any Status and be Default or not. They are independent dimensions.
+
+### REC-008 Consideration: Delta as Default
+
+Per INV-EVOLUTION-001 REC-008, Delta has been evaluated as a potential default:
+
+| Evidence | Source | Assessment |
+|----------|--------|------------|
+| Delta optimal in benchmark | LAB-031 | Supports |
+| 100% selection accuracy | LAB-047 | Supports |
+| Bootstrap advantage | Delta specification | Supports |
+| Std dev 0.5 (vs Beta 0.8) | LAB-DELTA-VALIDATION-001 | Supports |
+
+**Decision**: Beta remains default. Delta is available as alternative via session override.
+
+**Note**: Human authority may change default at any time per Human Authority Principle.
+
+---
+
+## Change Log
+
+| Date | Change | Authority |
+|------|--------|-----------|
+| 2026-07-20 | Initial configuration | Human |
+| 2026-07-23 | Gamma status update | Human (LAB-045 approval) |
+| 2026-07-24 | Gamma/Delta Activation | Human (INV-EVOLUTION-001 REC-003/REC-004) |
+| 2026-07-24 | Delta consideration documented | Human (INV-EVOLUTION-001 REC-008) |
+
+---
+
+## Related Documents
+
+| Document | Purpose |
+|----------|---------|
+| [RUNTIME-STARTUP.md](./RUNTIME-STARTUP.md) | Runtime initialization sequence |
+| [SESSION-OVERRIDE.md](./SESSION-OVERRIDE.md) | Session override behavior |
+| [/engines/current.md](/workspace/project/kde/engines/current.md) | Engine registry |
+| [/laboratory/LABORATORY-RULES.md](/workspace/project/kde/laboratory/LABORATORY-RULES.md) | Laboratory Rules |
+
+---
+
+**Authority**: Human Authority
+**Immutable by KDE**: YES
+**Change Requires**: Human Action
