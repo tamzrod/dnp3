@@ -860,6 +860,20 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 			continue
 		}
 
+		// Handle link-layer control frames (not user data)
+		// These require acknowledgment at the link layer
+		if dllFrame.Control.PRM && dllFrame.Control.FuncCode == frame.FuncResetLinkStations {
+			// Reset Link Stations - respond with ACK
+			o.sendLinkAck(dllFrame.SrcAddr)
+			continue
+		}
+
+		if dllFrame.Control.PRM && dllFrame.Control.FuncCode == frame.FuncResetLinkStatus {
+			// Link Status Request - respond with Link Status
+			o.sendLinkStatus(dllFrame.SrcAddr)
+			continue
+		}
+
 		// Skip non-user-data frames (primary station function codes)
 		// For Master→Outstation, only FuncConfirmedUserData (4) carries user data
 		if !dllFrame.Control.PRM || dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
@@ -1054,13 +1068,13 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		return result
 	}
 
-	for i, bi := range data {
-		// Object header: group, variation, qualifier (index), count
-		result = append(result, 1)              // Group 1
-		result = append(result, variation)     // Variation
-		result = append(result, 0x00)          // Qualifier: index
-		result = append(result, byte(len(data))) // Count
+	// Object header: group, variation, qualifier (index), count - OUTSIDE loop
+	result = append(result, 1)              // Group 1
+	result = append(result, variation)     // Variation
+	result = append(result, 0x00)         // Qualifier: index
+	result = append(result, byte(len(data))) // Count
 
+	for i, bi := range data {
 		// Index (2 bytes, big-endian)
 		result = append(result, byte(i>>8), byte(i&0xFF))
 
@@ -1093,13 +1107,13 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 		return result
 	}
 
-	for i, ai := range data {
-		// Object header
-		result = append(result, 30)             // Group 30
-		result = append(result, variation)      // Variation
-		result = append(result, 0x00)          // Qualifier: index
-		result = append(result, byte(len(data))) // Count
+	// Object header - OUTSIDE loop
+	result = append(result, 30)             // Group 30
+	result = append(result, variation)      // Variation
+	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, byte(len(data))) // Count
 
+	for i, ai := range data {
 		// Index (2 bytes, big-endian)
 		result = append(result, byte(i>>8), byte(i&0xFF))
 
@@ -1141,13 +1155,13 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 		return result
 	}
 
-	for i, c := range data {
-		// Object header
-		result = append(result, 20)             // Group 20
-		result = append(result, variation)     // Variation
-		result = append(result, 0x00)          // Qualifier: index
-		result = append(result, byte(len(data))) // Count
+	// Object header - OUTSIDE loop
+	result = append(result, 20)             // Group 20
+	result = append(result, variation)     // Variation
+	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, byte(len(data))) // Count
 
+	for i, c := range data {
 		// Index (2 bytes, big-endian)
 		result = append(result, byte(i>>8), byte(i&0xFF))
 
@@ -1573,6 +1587,69 @@ func (o *Outstation) handleDelayMeasurement(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleRecordCurrentTime(req *al.APDU) (*al.APDU, error) {
 	// Record time and don't respond
 	return nil, nil
+}
+
+// sendLinkAck sends a link-layer ACK response.
+// This is used to acknowledge Reset Link Stations frames.
+func (o *Outstation) sendLinkAck(masterAddr uint16) {
+	o.mu.RLock()
+	transport := o.transport
+	o.mu.RUnlock()
+
+	if transport == nil {
+		return
+	}
+
+	// ACK frame: DIR=0, PRM=0, FuncCode=0 (ACK)
+	dllFrame := &frame.Frame{
+		Control: frame.Control{
+			DIR:      false,            // Outstation-to-Master
+			PRM:      false,            // Secondary station
+			FuncCode: frame.FuncAck,   // ACK
+		},
+		DestAddr: masterAddr,
+		SrcAddr:  o.config.OutstationAddress,
+		Data:     nil, // ACK has no data
+	}
+
+	dllEncoded, err := frame.Encode(dllFrame)
+	if err != nil {
+		return
+	}
+
+	_ = transport.Send(dllEncoded)
+}
+
+// sendLinkStatus sends a link-layer status response.
+// This is used to respond to Link Status Request frames.
+func (o *Outstation) sendLinkStatus(masterAddr uint16) {
+	o.mu.RLock()
+	transport := o.transport
+	o.mu.RUnlock()
+
+	if transport == nil {
+		return
+	}
+
+	// Link Status frame: DIR=0, PRM=0, FuncCode=2 (Link Status)
+	dllFrame := &frame.Frame{
+		Control: frame.Control{
+			DIR:      false,              // Outstation-to-Master
+			PRM:      false,              // Secondary station
+			FuncCode: frame.FuncLinkStatus, // Link Status
+			DFC:      false,              // Data link not busy
+		},
+		DestAddr: masterAddr,
+		SrcAddr:  o.config.OutstationAddress,
+		Data:     nil, // Link Status has no data
+	}
+
+	dllEncoded, err := frame.Encode(dllFrame)
+	if err != nil {
+		return
+	}
+
+	_ = transport.Send(dllEncoded)
 }
 
 // sendErrorResponse sends an error response with DLL framing.

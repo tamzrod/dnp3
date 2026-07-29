@@ -232,6 +232,15 @@ func (t *TCPTransport) Send(data []byte) error {
 // Standard DNP3 over TCP: reads self-delimiting frames.
 // Uses sync bytes (0x05 0x64) to find frame start, then reads length field.
 // Returns the complete DNP3 frame including sync bytes and CRCs.
+//
+// Frame structure per IEEE 1815:
+//   Sync(2) + Length(1) + Control(1) + Dest(2) + Src(2) + Data + CRCs
+//
+// CRCs are 2 bytes each, covering:
+//   - Length + Control (1 pair)
+//   - Destination (1 pair)
+//   - Source (1 pair)
+//   - Data (ceil(dataLen/2) pairs)
 func (t *TCPTransport) Receive() ([]byte, error) {
 	t.mu.RLock()
 	if t.closed {
@@ -314,18 +323,34 @@ func (t *TCPTransport) Receive() ([]byte, error) {
 		return nil, fmt.Errorf("TCP receive failed reading length: %w", err)
 	}
 
-	// Length field includes: Control(1) + Dest(2) + Src(2) + Data + CRCs
-	// Total frame size = 2 (sync) + 1 (length) + length + CRCs
+	// Length field includes: Control(1) + Dest(2) + Src(2) + Data
+	// NOT including the CRCs - they are calculated separately
 	frameLength := int(lengthByte[0])
-	totalSize := 2 + 1 + frameLength // sync(2) + length(1) + rest
+	
+	// Calculate data length (length - control - dest - src)
+	dataLen := frameLength - 5 // 1 + 2 + 2
+	if dataLen < 0 {
+		dataLen = 0
+	}
+	
+	// Calculate CRC bytes:
+	// - 3 header CRCs (Length+Ctrl, Dest, Src) = 6 bytes
+	// - Data CRCs = ceil(dataLen/2) pairs = 2 * ceil(dataLen/2) bytes
+	numDataCRCPairs := (dataLen + 1) / 2 // ceil division
+	crcBytes := 6 + (numDataCRCPairs * 2)
+	
+	// Total frame size: sync(2) + length(1) + rest(frameLength) + CRCs
+	totalSize := 2 + 1 + frameLength + crcBytes
 
-	// Read the rest of the frame
+	// Read the complete frame
 	frame := make([]byte, totalSize)
 	frame[0] = SyncByte1
 	frame[1] = SyncByte2
 	frame[2] = lengthByte[0]
 
-	if frameLength > 0 {
+	// Read rest of frame (control + dest + src + data + CRCs)
+	restSize := totalSize - 3
+	if restSize > 0 {
 		_, err = io.ReadFull(conn, frame[3:totalSize])
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {

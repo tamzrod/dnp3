@@ -332,6 +332,11 @@ func NewClient(config *Config) (Client, error) {
 }
 
 // Connect implements Client.Connect
+//
+// Proper order:
+// 1. Add outstation (needed for handshake destinations)
+// 2. Transport connect (TCP)
+// 3. Internal master connect (handshake with registered outstations)
 func (c *client) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -342,26 +347,26 @@ func (c *client) Connect(ctx context.Context) error {
 
 	c.state = dnp3.StateConnecting
 
-	// Connect transport
+	// Step 1: Add outstation FIRST (needed for link handshake)
+	c.internalMaster.AddOutstation(c.config.OutstationAddress, fmt.Sprintf("outstation-%d", c.config.OutstationAddress))
+
+	// Step 2: Connect transport
 	if err := c.transport.Connect(); err != nil {
 		c.state = dnp3.StateError
 		return fmt.Errorf("transport connect failed: %w", err)
 	}
 
-	// Connect internal master
+	// Step 3: Connect internal master (performs link-layer handshake)
 	if err := c.internalMaster.Connect(); err != nil {
 		c.state = dnp3.StateError
 		return fmt.Errorf("master connect failed: %w", err)
 	}
 
-	// Initialize master
+	// Step 4: Initialize master
 	if err := c.internalMaster.Initialize(); err != nil {
 		c.state = dnp3.StateError
 		return fmt.Errorf("master initialize failed: %w", err)
 	}
-
-	// Add outstation
-	c.internalMaster.AddOutstation(c.config.OutstationAddress, fmt.Sprintf("outstation-%d", c.config.OutstationAddress))
 
 	c.state = dnp3.StateActive
 	return nil
@@ -408,26 +413,22 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	}
 
 	// Wire to internal master for proper protocol handling
-	// This uses sendWithRetry logic instead of direct APDU send
 	outstationID := c.config.OutstationAddress
 
 	// Build APDU using internal master for proper retry/timeout handling
 	apdu := buildReadRequest(c.sequence, request)
 	c.sequence = (c.sequence + 1) % 16
 
-	// Use internal master's sendWithRetry for reliable transmission
-	err := c.internalMaster.SendRequestWithRetry(apdu, outstationID)
+	// Use internal master's sendWithRetryAndGetResponse which:
+	// 1. Sends the request with retry logic
+	// 2. Waits for and processes the response
+	// 3. Returns the processed application layer data
+	respData, err := c.internalMaster.SendRequestWithRetryAndGetResponse(apdu, outstationID)
 	if err != nil {
 		return nil, fmt.Errorf("read failed: %w", err)
 	}
 
-	// Wait for and decode response
-	respData, err := c.transport.Receive()
-	if err != nil {
-		return nil, fmt.Errorf("receive failed: %w", err)
-	}
-
-	// Decode response
+	// Decode response (respData is already transport/data-link decoded)
 	resp, err := al.DecodeResponse(respData)
 	if err != nil {
 		return nil, fmt.Errorf("decode response failed: %w", err)
@@ -466,7 +467,7 @@ func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
 			UNS: false,
 			Seq: seq,
 		},
-		FuncCode: 0x01, // READ
+		FuncCode: al.FuncRead, // 0x02
 		Data:     data,
 	}
 }
@@ -477,7 +478,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset + 4 > len(data) {
+		if offset+4 > len(data) {
 			break
 		}
 
@@ -488,6 +489,8 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 		offset += 4
 
 		if group != 1 { // Group 1 = Binary Input
+			// Skip past this group's data using correct group/variation sizing
+			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
@@ -529,7 +532,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset + 4 > len(data) {
+		if offset+4 > len(data) {
 			break
 		}
 
@@ -540,6 +543,8 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		offset += 4
 
 		if group != 30 { // Group 30 = Analog Input
+			// Skip past this group's data
+			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
@@ -595,7 +600,7 @@ func parseCounters(data []byte) []*types.Counter {
 	offset := 0
 
 	for offset < len(data) {
-		if offset + 4 > len(data) {
+		if offset+4 > len(data) {
 			break
 		}
 
@@ -606,6 +611,8 @@ func parseCounters(data []byte) []*types.Counter {
 		offset += 4
 
 		if group != 20 { // Group 20 = Counter
+			// Skip past this group's data
+			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
@@ -644,6 +651,56 @@ func parseCounters(data []byte) []*types.Counter {
 	}
 
 	return result
+}
+
+// skipGroupData advances the offset past the data for a group.
+// Returns the new offset position.
+func skipGroupData(offset int, data []byte, group uint8, variation uint8, count uint8) int {
+	// Calculate bytes per point based on group/variation
+	var bytesPerPoint int
+	switch group {
+	case 1: // Binary Input Group
+		switch variation {
+		case 1: // With flags: index(2) + value+flags(1) = 3
+			bytesPerPoint = 3
+		case 2: // Without flags: index(2) + value(1) = 3
+			bytesPerPoint = 3
+		default:
+			bytesPerPoint = 3
+		}
+	case 30: // Analog Input Group
+		switch variation {
+		case 1: // 32-bit float with flags: index(2) + float(4) + flags(1) = 7
+			bytesPerPoint = 7
+		case 2: // 16-bit int with flags: index(2) + int16(2) + flags(1) = 5
+			bytesPerPoint = 5
+		case 3: // 32-bit int with flags: index(2) + int32(4) + flags(1) = 7
+			bytesPerPoint = 7
+		case 5: // 32-bit float without flags: index(2) + float(4) = 6
+			bytesPerPoint = 6
+		default:
+			bytesPerPoint = 7
+		}
+	case 20: // Counter Group
+		switch variation {
+		case 1: // 32-bit with flags: index(2) + value(4) + flags(1) = 7
+			bytesPerPoint = 7
+		case 5: // 16-bit with flags: index(2) + value(2) + flags(1) = 5
+			bytesPerPoint = 5
+		case 6: // 32-bit without flags: index(2) + value(4) = 6
+			bytesPerPoint = 6
+		default:
+			bytesPerPoint = 7
+		}
+	default:
+		bytesPerPoint = 7 // Conservative default
+	}
+
+	newOffset := offset + int(count)*bytesPerPoint
+	if newOffset > len(data) {
+		return len(data)
+	}
+	return newOffset
 }
 
 // Operate implements Client.Operate
