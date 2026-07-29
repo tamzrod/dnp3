@@ -353,7 +353,7 @@ func (m *Master) Disconnect() error {
 
 // Initialize performs master initialization sequence.
 func (m *Master) Initialize() error {
-	if m.State() != StateConnected {
+	if m.State() != StateConnected && m.State() != StateActive {
 		return ErrNotConnected
 	}
 
