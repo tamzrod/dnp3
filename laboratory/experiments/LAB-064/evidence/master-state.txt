@@ -1,0 +1,24 @@
+─DATA POINTS──────────────
+
+Type   │ Index  │ Value        │ Quality    │ Timestamp
+───────┼────────┼──────────────┼────────────┼─────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────
+ [m]ode │ [s]tart │ [x]stop │ [r]ead │ [1-3] class │ [↑↓] nav │ [l]og │ [h]elp │
+ [q]uit
