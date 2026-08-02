@@ -212,6 +212,10 @@ type ReadResponse struct {
 	AnalogInputs []*types.AnalogInput
 	// Counters contains counter data
 	Counters []*types.Counter
+	// BinaryOutputs contains binary output status data
+	BinaryOutputs []*types.BinaryOutput
+	// AnalogOutputs contains analog output status data
+	AnalogOutputs []*types.AnalogOutput
 	// FrozenCounters contains frozen counter data
 	FrozenCounters []*types.FrozenCounter
 	// Timestamp is when the response was received
@@ -438,13 +442,17 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	binaryInputs := parseBinaryInputs(resp.Data)
 	analogInputs := parseAnalogInputs(resp.Data)
 	counters := parseCounters(resp.Data)
+	binaryOutputs := parseBinaryOutputs(resp.Data)
+	analogOutputs := parseAnalogOutputs(resp.Data)
 
 	return &ReadResponse{
-		IIN:           resp.IIN.Bytes(),
-		Timestamp:     time.Now(),
-		BinaryInputs:  binaryInputs,
-		AnalogInputs:  analogInputs,
-		Counters:      counters,
+		IIN:            resp.IIN.Bytes(),
+		Timestamp:      time.Now(),
+		BinaryInputs:   binaryInputs,
+		AnalogInputs:   analogInputs,
+		Counters:       counters,
+		BinaryOutputs:  binaryOutputs,
+		AnalogOutputs:  analogOutputs,
 	}, nil
 }
 
@@ -653,6 +661,117 @@ func parseCounters(data []byte) []*types.Counter {
 	return result
 }
 
+// parseBinaryOutputs parses binary output status data from response (Group 10)
+func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
+	var result []*types.BinaryOutput
+	offset := 0
+
+	for offset < len(data) {
+		if offset+4 > len(data) {
+			break
+		}
+
+		group := data[offset]
+		variation := data[offset+1]
+		_ = data[offset+2] // qualifier
+		count := data[offset+3]
+		offset += 4
+
+		if group != 10 { // Group 10 = Binary Output
+			// Skip past this group's data
+			offset = skipGroupData(offset, data, group, variation, count)
+			continue
+		}
+
+		for i := 0; i < int(count) && offset+3 <= len(data); i++ {
+			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			offset += 2
+
+			var value bool
+			var quality types.QualityFlags
+
+			switch variation {
+			case 1: // With flags
+				val := data[offset]
+				value = (val & 0x80) != 0
+				quality = types.QualityFlags(val & 0x7F)
+				offset++
+			case 2: // Without flags
+				value = data[offset] != 0
+				quality = types.QualityOnline
+				offset++
+			default:
+				offset++
+			}
+
+			result = append(result, &types.BinaryOutput{
+				Index:   index,
+				Value:   value,
+				Quality: quality,
+			})
+		}
+	}
+
+	return result
+}
+
+// parseAnalogOutputs parses analog output status data from response (Group 40)
+func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
+	var result []*types.AnalogOutput
+	offset := 0
+
+	for offset < len(data) {
+		if offset+4 > len(data) {
+			break
+		}
+
+		group := data[offset]
+		variation := data[offset+1]
+		_ = data[offset+2] // qualifier
+		count := data[offset+3]
+		offset += 4
+
+		if group != 40 { // Group 40 = Analog Output
+			// Skip past this group's data
+			offset = skipGroupData(offset, data, group, variation, count)
+			continue
+		}
+
+		for i := 0; i < int(count) && offset+6 <= len(data); i++ {
+			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			offset += 2
+
+			var value float64
+			var quality types.QualityFlags
+
+			switch variation {
+			case 1: // 32-bit float with flags
+				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				value = float64(math.Float32frombits(bits))
+				offset += 4
+				quality = types.QualityFlags(data[offset])
+				offset++
+			case 2: // 16-bit int with flags
+				val := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+				value = float64(val)
+				offset += 2
+				quality = types.QualityFlags(data[offset])
+				offset++
+			default:
+				offset += 5
+			}
+
+			result = append(result, &types.AnalogOutput{
+				Index:   index,
+				Value:   value,
+				Quality: quality,
+			})
+		}
+	}
+
+	return result
+}
+
 // skipGroupData advances the offset past the data for a group.
 // Returns the new offset position.
 func skipGroupData(offset int, data []byte, group uint8, variation uint8, count uint8) int {
@@ -689,6 +808,24 @@ func skipGroupData(offset int, data []byte, group uint8, variation uint8, count 
 			bytesPerPoint = 5
 		case 6: // 32-bit without flags: index(2) + value(4) = 6
 			bytesPerPoint = 6
+		default:
+			bytesPerPoint = 7
+		}
+	case 10: // Binary Output Group
+		switch variation {
+		case 1: // With flags: index(2) + value+flags(1) = 3
+			bytesPerPoint = 3
+		case 2: // Without flags: index(2) + value(1) = 3
+			bytesPerPoint = 3
+		default:
+			bytesPerPoint = 3
+		}
+	case 40: // Analog Output Group
+		switch variation {
+		case 1: // 32-bit float with flags: index(2) + float(4) + flags(1) = 7
+			bytesPerPoint = 7
+		case 2: // 16-bit int with flags: index(2) + int16(2) + flags(1) = 5
+			bytesPerPoint = 5
 		default:
 			bytesPerPoint = 7
 		}

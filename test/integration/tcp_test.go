@@ -656,6 +656,94 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	}
 	t.Logf("✅ AI values parsed: %v", aiData)
 
+	t.Log("=== Read Binary Outputs (Group 10) ===")
+
+	// Build and send READ request for Group 10 (Binary Outputs)
+	readBO := &al.APDU{
+		Control: al.AppControl{
+			FIR: true,
+			FIN: true,
+			CON: false,
+			UNS: false,
+			Seq: 3,
+		},
+		FuncCode: al.FuncRead,
+		Data:     []byte{10, 1, 0x07, 0x00}, // Group 10, Variation 1, all with prefix
+	}
+
+	encoded, err = buildMasterRequest(readBO, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build BO request failed: %v", err)
+	}
+	if err := masterTransport.Send(encoded); err != nil {
+		t.Fatalf("Send BO request failed: %v", err)
+	}
+	t.Logf("✅ Sent READ BO request: %d bytes", len(encoded))
+
+	// Receive response
+	boResponse, err := masterTransport.Receive()
+	if err != nil {
+		t.Fatalf("Receive BO response failed: %v", err)
+	}
+	t.Logf("✅ Received BO response: %d bytes", len(boResponse))
+
+	// Decode response through full protocol stack
+	boResp, err := decodeOutstationResponse(boResponse)
+	if err != nil {
+		t.Fatalf("Decode BO response failed: %v", err)
+	}
+
+	// Parse BO response
+	boData := parseBinaryOutputResponse(boResp.Data)
+	if len(boData) != 2 {
+		t.Errorf("Expected 2 binary outputs, got %d", len(boData))
+	}
+	t.Logf("✅ BO values parsed: %v", boData)
+
+	t.Log("=== Read Analog Outputs (Group 40) ===")
+
+	// Build and send READ request for Group 40 (Analog Outputs)
+	readAO := &al.APDU{
+		Control: al.AppControl{
+			FIR: true,
+			FIN: true,
+			CON: false,
+			UNS: false,
+			Seq: 4,
+		},
+		FuncCode: al.FuncRead,
+		Data:     []byte{40, 1, 0x07, 0x00}, // Group 40, Variation 1, all with prefix
+	}
+
+	encoded, err = buildMasterRequest(readAO, 1024, 0xFFFF)
+	if err != nil {
+		t.Fatalf("Build AO request failed: %v", err)
+	}
+	if err := masterTransport.Send(encoded); err != nil {
+		t.Fatalf("Send AO request failed: %v", err)
+	}
+	t.Logf("✅ Sent READ AO request: %d bytes", len(encoded))
+
+	// Receive response
+	aoResponse, err := masterTransport.Receive()
+	if err != nil {
+		t.Fatalf("Receive AO response failed: %v", err)
+	}
+	t.Logf("✅ Received AO response: %d bytes", len(aoResponse))
+
+	// Decode response through full protocol stack
+	aoResp, err := decodeOutstationResponse(aoResponse)
+	if err != nil {
+		t.Fatalf("Decode AO response failed: %v", err)
+	}
+
+	// Parse AO response
+	aoData := parseAnalogOutputResponse(aoResp.Data)
+	if len(aoData) != 2 {
+		t.Errorf("Expected 2 analog outputs, got %d", len(aoData))
+	}
+	t.Logf("✅ AO values parsed: %v", aoData)
+
 	t.Log("=== CAPABILITY 8: Operate Digital Outputs (DO) ===")
 
 	// Build DIRECT OPERATE request for binary output (Group 10, Variation 1)
@@ -675,7 +763,7 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 			FIN: true,
 			CON: false,
 			UNS: false,
-			Seq: 3,
+			Seq: 5,
 		},
 		FuncCode: al.FuncDirectOperate,
 		Data:     doCommand,
@@ -724,7 +812,7 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 			FIN: true,
 			CON: false,
 			UNS: false,
-			Seq: 4,
+			Seq: 6,
 		},
 		FuncCode: al.FuncDirectOperate,
 		Data:     aoCommand,
@@ -741,25 +829,27 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	t.Logf("✅ Sent DIRECT OPERATE AO request: %d bytes", len(encoded))
 
 	// Receive response
-	aoResponse, err := masterTransport.Receive()
+	aoOpResponse, err := masterTransport.Receive()
 	if err != nil {
 		t.Fatalf("Receive AO response failed: %v", err)
 	}
-	t.Logf("✅ Received AO response: %d bytes", len(aoResponse))
+	t.Logf("✅ Received AO response: %d bytes", len(aoOpResponse))
 
 	// Decode response through full protocol stack
-	aoResp, err := decodeOutstationResponse(aoResponse)
+	aoOpResp, err := decodeOutstationResponse(aoOpResponse)
 	if err != nil {
 		t.Errorf("Decode AO response failed: %v", err)
 	}
-	if aoResp.FuncCode != al.FuncResponse {
-		t.Errorf("Expected FuncCode RESPONSE, got %d", aoResp.FuncCode)
+	if aoOpResp.FuncCode != al.FuncResponse {
+		t.Errorf("Expected FuncCode RESPONSE, got %d", aoOpResp.FuncCode)
 	}
 	t.Logf("✅ AO command acknowledged by Outstation")
 
 	t.Log("=== CAPABILITY 10-11: Verify Values Received and Commands Executed ===")
 	t.Logf("✅ DI values received by Master: %v", diData)
 	t.Logf("✅ AI values received by Master: %v", aiData)
+	t.Logf("✅ BO values received by Master: %v", boData)
+	t.Logf("✅ AO values received by Master: %v", aoData)
 	t.Logf("✅ DO command executed by Outstation")
 	t.Logf("✅ AO command executed by Outstation")
 
@@ -905,6 +995,86 @@ func parseAnalogInputResponse(data []byte) []float64 {
 	for offset < len(data)-4 {
 		group := data[offset]
 		if group != 30 {
+			offset += 4
+			continue
+		}
+
+		variation := data[offset+1]
+		_ = data[offset+2] // qualifier
+		count := int(data[offset+3])
+		offset += 4
+
+		for i := 0; i < count && offset < len(data)-4; i++ {
+			offset += 2 // skip index
+			if variation == 1 { // 32-bit float with flags
+				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				result = append(result, float64(math.Float32frombits(bits)))
+				offset += 5
+			} else if variation == 2 { // 16-bit int with flags
+				val := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+				result = append(result, float64(val))
+				offset += 3
+			} else {
+				offset += 5
+			}
+		}
+		break
+	}
+	return result
+}
+
+// parseBinaryOutputResponse parses binary output status data from a DNP3 response
+func parseBinaryOutputResponse(data []byte) []bool {
+	var result []bool
+	offset := 0
+
+	// Skip IIN bytes (first 2 bytes of response data)
+	if len(data) >= 2 {
+		offset = 2
+	}
+
+	for offset < len(data)-4 {
+		group := data[offset]
+		if group != 10 {
+			offset += 4
+			continue
+		}
+
+		variation := data[offset+1]
+		_ = data[offset+2] // qualifier
+		count := int(data[offset+3])
+		offset += 4
+
+		for i := 0; i < count && offset < len(data)-1; i++ {
+			offset += 2 // skip index
+			if variation == 1 {
+				result = append(result, (data[offset]&0x80) != 0)
+				offset++
+			} else if variation == 2 {
+				result = append(result, data[offset] != 0)
+				offset++
+			} else {
+				offset++
+			}
+		}
+		break
+	}
+	return result
+}
+
+// parseAnalogOutputResponse parses analog output status data from a DNP3 response
+func parseAnalogOutputResponse(data []byte) []float64 {
+	var result []float64
+	offset := 0
+
+	// Skip IIN bytes (first 2 bytes of response data)
+	if len(data) >= 2 {
+		offset = 2
+	}
+
+	for offset < len(data)-4 {
+		group := data[offset]
+		if group != 40 {
 			offset += 4
 			continue
 		}

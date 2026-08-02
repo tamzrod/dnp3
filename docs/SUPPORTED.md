@@ -49,8 +49,8 @@ This document lists the object groups, variations, and function codes actually i
 
 | Variation | Name | Encoding | Master Parse | Outstation Build | Notes |
 |-----------|------|----------|--------------|-----------------|-------|
-| 1 | Binary Output (with flags) | index(2) + flags(1) | ❌ | ✅ | Included in Class 0; State in bit 7 (0x80), quality in bits 0-6 |
-| 2 | Binary Output (without flags) | index(2) + value(1) | ❌ | ✅ | Included in Class 0 |
+| 1 | Binary Output (with flags) | index(2) + flags(1) | ✅ | ✅ | Included in Class 0; State in bit 7 (0x80), quality in bits 0-6 |
+| 2 | Binary Output (without flags) | index(2) + value(1) | ✅ | ✅ | Included in Class 0 |
 
 ### Group 11: Binary Output Event
 
@@ -95,8 +95,8 @@ This document lists the object groups, variations, and function codes actually i
 
 | Variation | Name | Encoding | Master Parse | Outstation Build | Notes |
 |-----------|------|----------|--------------|-----------------|-------|
-| 1 | 32-bit Float (with flags) | index(2) + float32(4) + flags(1) | ❌ | ✅ | Included in Class 0; IEEE 754 big-endian |
-| 2 | 16-bit Integer (with flags) | index(2) + int16(2) + flags(1) | ❌ | ✅ | Included in Class 0 |
+| 1 | 32-bit Float (with flags) | index(2) + float32(4) + flags(1) | ✅ | ✅ | Included in Class 0; IEEE 754 big-endian |
+| 2 | 16-bit Integer (with flags) | index(2) + int16(2) + flags(1) | ✅ | ✅ | Included in Class 0 |
 
 ### Group 50: Time
 
