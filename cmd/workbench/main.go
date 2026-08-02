@@ -196,39 +196,51 @@ func updateData(app *tui.App, state *masterctrl.State) {
 
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
+			ts := formatTimestamp(bi.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BI",
 				fmt.Sprintf("%d", bi.Index),
 				fmt.Sprintf("%v", bi.Value),
 				quality,
-				time.Now().Format("15:04:05"),
+				ts,
 			}})
 		}
 
 		for _, ai := range resp.AnalogInputs {
 			quality := qualityString(ai.Quality)
+			ts := formatTimestamp(ai.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AI",
 				fmt.Sprintf("%d", ai.Index),
 				fmt.Sprintf("%.2f", ai.Value),
 				quality,
-				time.Now().Format("15:04:05"),
+				ts,
 			}})
 		}
 
 		for _, c := range resp.Counters {
 			quality := qualityString(c.Quality)
+			ts := formatTimestamp(c.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"CTR",
 				fmt.Sprintf("%d", c.Index),
 				fmt.Sprintf("%d", c.Value),
 				quality,
-				time.Now().Format("15:04:05"),
+				ts,
 			}})
 		}
 	}
 
 	app.UpdateData(rows)
+}
+
+// formatTimestamp formats a DNP3 timestamp for display.
+// Returns "—" if timestamp is nil or null, otherwise formats as HH:MM:SS.
+func formatTimestamp(ts *types.Timestamp) string {
+	if ts == nil || ts.IsNull() {
+		return "—"
+	}
+	return ts.Time().Format("15:04:05")
 }
 
 // updateOutstationData updates the TUI with controller state (Outstation mode).
