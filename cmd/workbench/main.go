@@ -75,6 +75,11 @@ func setupMaster(app *tui.App, address string, port int) {
 	// Create controller
 	ctrl := masterctrl.NewController(log)
 
+	// Start the controller (enables auto-poll and auto-write handlers)
+	if err := ctrl.Start(); err != nil {
+		app.LogError(fmt.Sprintf("Failed to start controller: %v", err))
+	}
+
 	// Start callback (connect)
 	app.OnStart = func() {
 		app.LogInfo(fmt.Sprintf("Connecting to %s:%d...", address, port))
@@ -280,7 +285,8 @@ func updateData(app *tui.App, state *masterctrl.State) {
 		// Add Binary Outputs
 		for _, bo := range resp.BinaryOutputs {
 			quality := qualityString(bo.Quality)
-			ts := respTime.Format("15:04:05")
+			// BO doesn't have per-point timestamp, use labeled RX time
+			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BO",
 				fmt.Sprintf("%d", bo.Index),
@@ -305,7 +311,8 @@ func updateData(app *tui.App, state *masterctrl.State) {
 		// Add Analog Outputs
 		for _, ao := range resp.AnalogOutputs {
 			quality := qualityString(ao.Quality)
-			ts := respTime.Format("15:04:05")
+			// AO doesn't have per-point timestamp, use labeled RX time
+			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AO",
 				fmt.Sprintf("%d", ao.Index),
