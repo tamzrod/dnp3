@@ -69,6 +69,9 @@ type DataHandler interface {
 	GetBinaryInputs() []BinaryInput
 	GetAnalogInputs() []AnalogInput
 	GetCounters() []Counter
+	// Output status for Class 0 reads
+	GetBinaryOutputs() []BinaryOutput
+	GetAnalogOutputs() []AnalogOutput
 	// Freeze support (optional methods - implementations may return nil)
 	GetFrozenCounters() []Counter
 	FreezeCounters(clear bool) error // If clear=true, also zero the counters
@@ -323,6 +326,20 @@ func (d *DefaultDataHandler) GetCounters() []Counter {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.counters
+}
+
+// GetBinaryOutputs returns the binary output status points.
+func (d *DefaultDataHandler) GetBinaryOutputs() []BinaryOutput {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.binaryOutputs
+}
+
+// GetAnalogOutputs returns the analog output status points.
+func (d *DefaultDataHandler) GetAnalogOutputs() []AnalogOutput {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.analogOutputs
 }
 
 // GetFrozenCounters returns the frozen counters.
@@ -1028,6 +1045,8 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildBinaryInputData(variation)...)
 		case 2: // Binary Input Event
 			result = append(result, o.buildBinaryInputData(variation)...)
+		case 10: // Binary Output
+			result = append(result, o.buildBinaryOutputData(variation)...)
 		case 20: // Counter
 			result = append(result, o.buildCounterData(variation)...)
 		case 21: // Counter Event
@@ -1036,6 +1055,8 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildAnalogInputData(variation)...)
 		case 31: // Analog Input Event
 			result = append(result, o.buildAnalogInputData(variation)...)
+		case 40: // Analog Output
+			result = append(result, o.buildAnalogOutputData(variation)...)
 		case 60: // Class data
 			result = append(result, o.buildAllStaticData()...)
 		}
@@ -1056,6 +1077,8 @@ func (o *Outstation) buildAllStaticData() []byte {
 	result = append(result, o.buildBinaryInputData(1)...)
 	result = append(result, o.buildAnalogInputData(1)...)
 	result = append(result, o.buildCounterData(1)...)
+	result = append(result, o.buildBinaryOutputData(1)...)
+	result = append(result, o.buildAnalogOutputData(1)...)
 	return result
 }
 
@@ -1180,6 +1203,82 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 			result = append(result,
 				byte(c.Value>>24), byte(c.Value>>16),
 				byte(c.Value>>8), byte(c.Value))
+		}
+	}
+
+	return result
+}
+
+// buildBinaryOutputData builds binary output status data (Group 10).
+func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
+	var result []byte
+	data := o.data.GetBinaryOutputs()
+
+	if len(data) == 0 {
+		return result
+	}
+
+	// Object header - OUTSIDE loop
+	result = append(result, 10)             // Group 10
+	result = append(result, variation)       // Variation
+	result = append(result, 0x00)            // Qualifier: index
+	result = append(result, byte(len(data))) // Count
+
+	for i, bo := range data {
+		// Index (2 bytes, big-endian)
+		result = append(result, byte(i>>8), byte(i&0xFF))
+
+		// Value based on variation
+		switch variation {
+		case 1: // Binary Output with flags
+			val := byte(0)
+			if bo.Value {
+				val = 0x80
+			}
+			result = append(result, val|bo.Quality)
+		case 2: // Binary Output without flags
+			if bo.Value {
+				result = append(result, 0x01)
+			} else {
+				result = append(result, 0x00)
+			}
+		}
+	}
+
+	return result
+}
+
+// buildAnalogOutputData builds analog output status data (Group 40).
+func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
+	var result []byte
+	data := o.data.GetAnalogOutputs()
+
+	if len(data) == 0 {
+		return result
+	}
+
+	// Object header - OUTSIDE loop
+	result = append(result, 40)              // Group 40
+	result = append(result, variation)      // Variation
+	result = append(result, 0x00)            // Qualifier: index
+	result = append(result, byte(len(data))) // Count
+
+	for i, ao := range data {
+		// Index (2 bytes, big-endian)
+		result = append(result, byte(i>>8), byte(i&0xFF))
+
+		// Value based on variation
+		switch variation {
+		case 1: // 32-bit float with flags
+			bits := float64ToUint32Bits(ao.Value)
+			result = append(result,
+				byte(bits>>24), byte(bits>>16),
+				byte(bits>>8), byte(bits))
+			result = append(result, ao.Quality)
+		case 2: // 16-bit integer with flags
+			val := int16(ao.Value)
+			result = append(result, byte(val>>8), byte(val))
+			result = append(result, ao.Quality)
 		}
 	}
 

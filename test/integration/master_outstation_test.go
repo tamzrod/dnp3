@@ -270,6 +270,8 @@ type CustomDataHandler struct {
 	binaryInputs   []outstation.BinaryInput
 	analogInputs   []outstation.AnalogInput
 	counters       []outstation.Counter
+	binaryOutputs  []outstation.BinaryOutput
+	analogOutputs  []outstation.AnalogOutput
 	frozenCounters []outstation.Counter
 }
 
@@ -283,6 +285,14 @@ func (c *CustomDataHandler) GetAnalogInputs() []outstation.AnalogInput {
 
 func (c *CustomDataHandler) GetCounters() []outstation.Counter {
 	return c.counters
+}
+
+func (c *CustomDataHandler) GetBinaryOutputs() []outstation.BinaryOutput {
+	return c.binaryOutputs
+}
+
+func (c *CustomDataHandler) GetAnalogOutputs() []outstation.AnalogOutput {
+	return c.analogOutputs
 }
 
 func (c *CustomDataHandler) GetFrozenCounters() []outstation.Counter {

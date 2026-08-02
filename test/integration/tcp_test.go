@@ -509,6 +509,14 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 			{Value: 0.0, Quality: types.QualityOnline},  // AI 2: 0.0
 			{Value: 999.9, Quality: types.QualityOnline}, // AI 3: 999.9
 		},
+		binaryOutputs: []*types.BinaryOutput{
+			{Value: true, Quality: types.QualityOnline},   // DO 0: ON
+			{Value: false, Quality: types.QualityOnline},  // DO 1: OFF
+		},
+		analogOutputs: []*types.AnalogOutput{
+			{Value: 50.0, Quality: types.QualityOnline},   // AO 0: 50.0
+			{Value: 25.0, Quality: types.QualityOnline},  // AO 1: 25.0
+		},
 	})
 
 	// Command handler to track DO/AO operations
@@ -795,6 +803,8 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 type comprehensiveDataHandler struct {
 	binaryInputs   []*types.BinaryInput
 	analogInputs   []*types.AnalogInput
+	binaryOutputs  []*types.BinaryOutput
+	analogOutputs  []*types.AnalogOutput
 	frozenCounters []*types.Counter
 }
 
@@ -808,6 +818,14 @@ func (h *comprehensiveDataHandler) GetAnalogInputs() []*types.AnalogInput {
 
 func (h *comprehensiveDataHandler) GetCounters() []*types.Counter {
 	return []*types.Counter{}
+}
+
+func (h *comprehensiveDataHandler) GetBinaryOutputs() []*types.BinaryOutput {
+	return h.binaryOutputs
+}
+
+func (h *comprehensiveDataHandler) GetAnalogOutputs() []*types.AnalogOutput {
+	return h.analogOutputs
 }
 
 func (h *comprehensiveDataHandler) GetFrozenCounters() []*types.Counter {

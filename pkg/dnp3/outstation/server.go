@@ -232,6 +232,12 @@ type DataHandler interface {
 	// GetCounters returns counter data points
 	GetCounters() []*types.Counter
 
+	// GetBinaryOutputs returns binary output status data points
+	GetBinaryOutputs() []*types.BinaryOutput
+
+	// GetAnalogOutputs returns analog output status data points
+	GetAnalogOutputs() []*types.AnalogOutput
+
 	// GetFrozenCounters returns frozen counter data points
 	GetFrozenCounters() []*types.Counter
 
@@ -307,6 +313,36 @@ func (h *internalDataHandler) GetCounters() []outstation.Counter {
 	return internal
 }
 
+func (h *internalDataHandler) GetBinaryOutputs() []outstation.BinaryOutput {
+	public := h.publicHandler.GetBinaryOutputs()
+	if public == nil {
+		return nil
+	}
+	internal := make([]outstation.BinaryOutput, len(public))
+	for i, bo := range public {
+		internal[i] = outstation.BinaryOutput{
+			Value:   bo.Value,
+			Quality: uint8(bo.Quality),
+		}
+	}
+	return internal
+}
+
+func (h *internalDataHandler) GetAnalogOutputs() []outstation.AnalogOutput {
+	public := h.publicHandler.GetAnalogOutputs()
+	if public == nil {
+		return nil
+	}
+	internal := make([]outstation.AnalogOutput, len(public))
+	for i, ao := range public {
+		internal[i] = outstation.AnalogOutput{
+			Value:   ao.Value,
+			Quality: uint8(ao.Quality),
+		}
+	}
+	return internal
+}
+
 func (h *internalDataHandler) GetFrozenCounters() []outstation.Counter {
 	public := h.publicHandler.GetFrozenCounters()
 	if public == nil {
@@ -350,6 +386,22 @@ func (d *DefaultDataHandler) GetCounters() []*types.Counter {
 	return []*types.Counter{
 		{Index: 0, Value: 1000, Quality: types.QualityOnline},
 		{Index: 1, Value: 2000, Quality: types.QualityOnline},
+	}
+}
+
+// GetBinaryOutputs returns binary output status data points
+func (d *DefaultDataHandler) GetBinaryOutputs() []*types.BinaryOutput {
+	return []*types.BinaryOutput{
+		{Index: 0, Value: true, Quality: types.QualityOnline},
+		{Index: 1, Value: false, Quality: types.QualityOnline},
+	}
+}
+
+// GetAnalogOutputs returns analog output status data points
+func (d *DefaultDataHandler) GetAnalogOutputs() []*types.AnalogOutput {
+	return []*types.AnalogOutput{
+		{Index: 0, Value: 50.0, Quality: types.QualityOnline},
+		{Index: 1, Value: 25.0, Quality: types.QualityOnline},
 	}
 }
 

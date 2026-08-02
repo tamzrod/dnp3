@@ -88,9 +88,11 @@ func NewBinaryInput(index uint16, value bool, quality QualityFlags) *BinaryInput
 type BinaryOutput struct {
 	// Index is the point index within the outstation
 	Index uint16
-	// Value is the command value (true = operate, false = de-energize)
+	// Value is the current output value (true = on, false = off)
 	Value bool
-	// Status is the current status of the output
+	// Quality indicates the data quality
+	Quality QualityFlags
+	// Status is the command status
 	Status BinaryOutputStatus
 }
 
@@ -137,9 +139,11 @@ func NewAnalogInput(index uint16, value float64, quality QualityFlags) *AnalogIn
 type AnalogOutput struct {
 	// Index is the point index within the outstation
 	Index uint16
-	// Value is the command value
+	// Value is the current output value
 	Value float64
-	// Status is the current status of the output
+	// Quality indicates the data quality
+	Quality QualityFlags
+	// Status is the command status
 	Status AnalogOutputStatus
 }
 

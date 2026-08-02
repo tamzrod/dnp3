@@ -205,6 +205,8 @@ type MockDataHandler struct {
 	binaryInputs   []*types.BinaryInput
 	analogInputs   []*types.AnalogInput
 	counters       []*types.Counter
+	binaryOutputs  []*types.BinaryOutput
+	analogOutputs  []*types.AnalogOutput
 	frozenCounters []*types.Counter
 }
 
@@ -218,6 +220,14 @@ func (m *MockDataHandler) GetAnalogInputs() []*types.AnalogInput {
 
 func (m *MockDataHandler) GetCounters() []*types.Counter {
 	return m.counters
+}
+
+func (m *MockDataHandler) GetBinaryOutputs() []*types.BinaryOutput {
+	return m.binaryOutputs
+}
+
+func (m *MockDataHandler) GetAnalogOutputs() []*types.AnalogOutput {
+	return m.analogOutputs
 }
 
 func (m *MockDataHandler) GetFrozenCounters() []*types.Counter {
