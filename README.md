@@ -3,7 +3,7 @@
 **A native Go implementation of IEEE 1815 (DNP3)**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-architecture%20complete%20%F0%9F%9F%97-green.svg)](#current-status)
+[![Status](https://img.shields.io/badge/status-core%20working%20%F0%9F%9F%97-green.svg)](#current-status)
 [![KDE](https://img.shields.io/badge/KDE-Governed-blue.svg)](.kde/README.md)
 
 > ✅ **Notice**: This project is governed by the KDE (Knowledge Discovery Engine) Runtime. See [KDE Runtime Environment](#kde-runtime-environment) below.
@@ -82,6 +82,29 @@ The Go ecosystem lacks a **native** DNP3 implementation. Existing solutions are 
 
 This project exists to create **the canonical native Go implementation** of DNP3, designed from protocol invariants rather than ported from other languages.
 
+## Quick Start
+
+```bash
+# Clone and build
+git clone https://github.com/tamzrod/dnp3.git
+cd dnp3
+go build ./...
+
+# Run tests
+go test ./pkg/... ./internal/... ./test/integration/... -count=1
+
+# Build workbench
+go build -o workbench ./cmd/workbench
+
+# Test Master↔Outstation (two terminals)
+# Terminal 1:
+./workbench -mode outstation -address 0.0.0.0 -port 20000
+# Terminal 2:
+./workbench -mode master -address 127.0.0.1 -port 20000
+```
+
+See [cmd/workbench/README.md](cmd/workbench/README.md) for workbench usage.
+
 ---
 
 ## Project Philosophy
@@ -137,29 +160,26 @@ We prioritize sustainable software over short-term development speed.
 
 ## Current Status
 
-### 🟡 Partial Implementation - Integration Incomplete
+### 🟢 Working Core Implementation
 
-**Implementation has begun.** The repository contains 41 Go source files implementing core protocol layers. Integration between layers and end-to-end functionality requires completion.
+The repository contains a working native Go DNP3 implementation with end-to-end Master↔Outstation TCP communication verified by integration tests.
 
-**Implemented**:
+**What Works**:
 - ✅ Data Link Layer (DLL) - Frame encoding/decoding, CRC16, link state machine
 - ✅ Transport Layer (TL) - Segmentation, reassembly, flow control
 - ✅ Application Layer (AL) - APDU encoding/decoding, function codes, IIN
 - ✅ Secure Authentication (SA) - Challenge handling, key management
-- ✅ Master Role - Client interface, state machine, read/operate commands
-- ✅ Outstation Role - Server interface, state machine, data handling
-- ✅ TCP Transport - TCP/IP connectivity
-- ✅ TLS Transport - Stub implementation
-- ✅ Unit tests (22 test files)
-- ✅ Performance benchmarks (3 benchmark suites)
+- ✅ Master Role - Connect, Read Class 0/1/2/3, Operate commands
+- ✅ Outstation Role - Data handling, response generation
+- ✅ TCP Transport - Listen/Accept/Send/Receive contract
+- ✅ Workbench TUI - Master and Outstation modes, auto-poll
+- ✅ Integration tests pass (12/12 capabilities verified)
 
-**Incomplete / Missing**:
-- ⚠️ Public API wiring to internal implementations
-- ⚠️ End-to-end integration tests (CI tests disabled)
-- ⚠️ Object group variations (partial)
-- ❌ Examples (none exist)
-- ❌ CLI tools (none)
-- ❌ Serial transport (out of scope)
+**Known Limitations**:
+- ⚠️ Not IEEE 1815 complete (all object group variations not implemented)
+- ⚠️ Serial transport not implemented (TCP only)
+- ⚠️ TLS transport is a stub
+- ⚠️ Workbench is an engineering tool, not production SCADA
 
 **Repository Statistics**:
 | Metric | Count |

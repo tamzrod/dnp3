@@ -18,6 +18,7 @@ The DNP3 Engineering Workbench is an engineering tool for protocol development a
 - [x] TCP transport
 - [x] Read Class 0/1/2/3 commands
 - [x] Operate commands (binary output)
+- [x] Auto-poll (1s interval) in Master mode
 - [x] Display decoded response data
 - [x] Protocol layer decoder
 - [x] Communication log with TX/RX
@@ -83,12 +84,35 @@ GOOS=windows GOARCH=amd64 go build -o workbench.exe ./cmd/workbench
 ## Usage
 
 1. **Start Workbench**: Run with appropriate mode and flags
-2. **Connect** (Master mode): The app connects to the outstation address
-3. **Read Data**: Use Read Class buttons to poll the outstation
-4. **View Responses**: Check Data Panel for decoded values
-5. **View Protocol**: Check Protocol Decoder for layer breakdown
-6. **Operate**: Send control commands to the outstation
-7. **Monitor**: Watch the Communication Log for all activity
+2. **Connect** (Master mode): Press `s` to connect to the outstation
+3. **Read Data**: Press `r` for Class 0, `1`, `2`, `3` for other classes
+4. **Auto-poll**: Press `a` to toggle 1-second auto-read (Master mode only)
+5. **View Responses**: Check Data Panel for decoded values
+6. **View Protocol**: Check Protocol Decoder for layer breakdown
+7. **Operate**: Send control commands to the outstation
+8. **Monitor**: Watch the Communication Log for all activity
+9. **Quit**: Press `q` to exit
+
+### Key Bindings (Master Mode)
+
+| Key | Action |
+|-----|--------|
+| `s` | Connect to outstation |
+| `x` | Disconnect |
+| `r` | Read Class 0 |
+| `1` | Read Class 1 |
+| `2` | Read Class 2 |
+| `3` | Read Class 3 |
+| `a` | Toggle auto-poll (1s) |
+| `q` | Quit |
+
+### Key Bindings (Outstation Mode)
+
+| Key | Action |
+|-----|--------|
+| `s` | Start server |
+| `x` | Stop server |
+| `q` | Quit |
 
 ## Architecture
 
