@@ -194,12 +194,9 @@ func updateData(app *tui.App, state *masterctrl.State) {
 	if state.LastResponse != nil {
 		resp := state.LastResponse
 
-		// Use response timestamp as fallback when point timestamp not available
-		respTime := resp.Timestamp
-
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
-			ts := formatTimestampWithFallback(bi.Time, respTime)
+			ts := formatTimestampWithFallback(bi.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BI",
 				fmt.Sprintf("%d", bi.Index),
@@ -211,7 +208,7 @@ func updateData(app *tui.App, state *masterctrl.State) {
 
 		for _, ai := range resp.AnalogInputs {
 			quality := qualityString(ai.Quality)
-			ts := formatTimestampWithFallback(ai.Time, respTime)
+			ts := formatTimestampWithFallback(ai.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AI",
 				fmt.Sprintf("%d", ai.Index),
@@ -223,7 +220,7 @@ func updateData(app *tui.App, state *masterctrl.State) {
 
 		for _, c := range resp.Counters {
 			quality := qualityString(c.Quality)
-			ts := formatTimestampWithFallback(c.Time, respTime)
+			ts := formatTimestampWithFallback(c.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"CTR",
 				fmt.Sprintf("%d", c.Index),
@@ -238,13 +235,11 @@ func updateData(app *tui.App, state *masterctrl.State) {
 }
 
 // formatTimestampWithFallback formats a timestamp for display.
-// Uses point timestamp if available, otherwise falls back to response timestamp.
-func formatTimestampWithFallback(ts *types.Timestamp, respTime time.Time) string {
+// Uses point timestamp if available, otherwise shows "—" for static objects without time.
+func formatTimestampWithFallback(ts *types.Timestamp) string {
+	// Static g1v1 responses have no per-point timestamp; shows "—" until event-with-time is implemented.
 	if ts != nil && !ts.IsNull() {
 		return ts.Time().Format("15:04:05")
-	}
-	if !respTime.IsZero() {
-		return respTime.Format("15:04:05")
 	}
 	return "—"
 }
