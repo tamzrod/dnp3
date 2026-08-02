@@ -504,8 +504,8 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 			switch variation {
 			case 1: // With flags
 				val := data[offset]
-				value = (val & 0x01) != 0
-				quality = types.QualityFlags(val & 0xE0)
+				value = (val & 0x80) != 0
+				quality = types.QualityFlags(val & 0x7F) // Mask out state bit, keep quality flags
 				offset++
 			case 2: // Without flags
 				value = data[offset] != 0

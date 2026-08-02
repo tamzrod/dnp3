@@ -1083,7 +1083,7 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		case 1: // Binary Input with flags
 			val := byte(0)
 			if bi.Value {
-				val = 0x01
+				val = 0x80
 			}
 			result = append(result, val|bi.Quality)
 		case 2: // Binary Input without flags
