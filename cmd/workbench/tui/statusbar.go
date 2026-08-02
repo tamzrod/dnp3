@@ -12,6 +12,8 @@ type StatusBar struct {
 	Address     string
 	IIN         string
 	Error       string
+	AutoRead    bool
+	AutoWrite   bool
 }
 
 // NewStatusBar creates a new status bar.
@@ -21,6 +23,8 @@ func NewStatusBar() *StatusBar {
 		Connection: "Disconnected",
 		Address:    "",
 		IIN:        "",
+		AutoRead:   false,
+		AutoWrite:  false,
 	}
 }
 
@@ -50,6 +54,16 @@ func (s *StatusBar) ClearError() {
 	s.Error = ""
 }
 
+// SetAutoRead sets the auto-read status.
+func (s *StatusBar) SetAutoRead(enabled bool) {
+	s.AutoRead = enabled
+}
+
+// SetAutoWrite sets the auto-write status.
+func (s *StatusBar) SetAutoWrite(enabled bool) {
+	s.AutoWrite = enabled
+}
+
 // Draw renders the status bar.
 func (s *StatusBar) Draw(scr *Screen, width int) {
 	y := scr.height
@@ -74,6 +88,18 @@ func (s *StatusBar) Draw(scr *Screen, width int) {
 
 	// Draw status
 	scr.Print(y-1, 2, status)
+
+	// Draw AutoRead/AutoWrite status in the middle area
+	autoStatus := ""
+	if s.AutoRead {
+		autoStatus += "[AutoR] "
+	}
+	if s.AutoWrite {
+		autoStatus += "[AutoW] "
+	}
+	if autoStatus != "" {
+		scr.PrintStyled(y-1, width/2-len(autoStatus)/2, autoStatus, "yellow")
+	}
 
 	// Draw error if present
 	if s.Error != "" {

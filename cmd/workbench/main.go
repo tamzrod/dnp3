@@ -88,12 +88,26 @@ func setupMaster(app *tui.App, address string, port int) {
 	// Stop callback (disconnect)
 	app.OnStop = func() {
 		app.LogInfo("Disconnecting...")
+		// Disable simulation mode on disconnect
+		if ctrl.IsSimulationModeEnabled() {
+			ctrl.EnableSimulationMode(false)
+		} else {
+			if ctrl.IsAutoPollEnabled() {
+				ctrl.EnableAutoPoll(false)
+			}
+			if ctrl.IsAutoWriteEnabled() {
+				ctrl.EnableAutoWrite(false)
+			}
+		}
 		if err := ctrl.Disconnect(); err != nil {
 			app.LogError(fmt.Sprintf("Disconnect failed: %v", err))
 		} else {
 			app.LogInfo("Disconnected")
 			app.SetConnection("Disconnected", "")
 		}
+		// Update TUI status
+		app.SetAutoRead(false)
+		app.SetAutoWrite(false)
 	}
 
 	// Read class callback
@@ -112,14 +126,64 @@ func setupMaster(app *tui.App, address string, port int) {
 		}
 	}
 
-	// Auto-poll toggle callback
+	// Auto-poll toggle callback (auto-read)
 	app.OnAutoPollToggle = func() {
 		if ctrl.IsAutoPollEnabled() {
 			ctrl.EnableAutoPoll(false)
-			app.LogInfo("Auto-poll DISABLED")
+			app.LogInfo("Auto-read DISABLED")
+			app.SetAutoRead(false)
 		} else {
+			// Disable simulation mode if active
+			if ctrl.IsSimulationModeEnabled() {
+				ctrl.EnableSimulationMode(false)
+			}
 			ctrl.EnableAutoPoll(true)
-			app.LogInfo("Auto-poll ENABLED (1s)")
+			app.LogInfo("Auto-read ENABLED (1s)")
+			app.SetAutoRead(true)
+		}
+	}
+
+	// Auto-write toggle callback
+	app.OnAutoWriteToggle = func() {
+		state := ctrl.State()
+		if state.Connection != "Connected" {
+			app.LogError("Not connected - cannot enable auto-write")
+			return
+		}
+		
+		if ctrl.IsAutoWriteEnabled() {
+			ctrl.EnableAutoWrite(false)
+			app.LogInfo("Auto-write DISABLED")
+			app.SetAutoWrite(false)
+		} else {
+			// Disable simulation mode if active
+			if ctrl.IsSimulationModeEnabled() {
+				ctrl.EnableSimulationMode(false)
+			}
+			ctrl.EnableAutoWrite(true)
+			app.LogInfo("Auto-write ENABLED (random operate)")
+			app.SetAutoWrite(true)
+		}
+	}
+
+	// Simulation mode toggle callback
+	app.OnSimulationModeToggle = func() {
+		state := ctrl.State()
+		if state.Connection != "Connected" {
+			app.LogError("Not connected - cannot enable simulation mode")
+			return
+		}
+		
+		if ctrl.IsSimulationModeEnabled() {
+			ctrl.EnableSimulationMode(false)
+			app.LogInfo("Simulation mode DISABLED")
+			app.SetAutoRead(false)
+			app.SetAutoWrite(false)
+		} else {
+			ctrl.EnableSimulationMode(true)
+			app.LogInfo("Simulation mode ENABLED")
+			app.SetAutoRead(true)
+			app.SetAutoWrite(true)
 		}
 	}
 
@@ -133,6 +197,9 @@ func setupMaster(app *tui.App, address string, port int) {
 			case <-ticker.C:
 				state := ctrl.State()
 				updateData(app, state)
+				// Update auto status in TUI
+				app.SetAutoRead(state.AutoPollEnabled)
+				app.SetAutoWrite(state.AutoWriteEnabled)
 			case <-updateCh:
 				return
 			}
@@ -209,6 +276,19 @@ func updateData(app *tui.App, state *masterctrl.State) {
 			}})
 		}
 
+		// Add Binary Outputs
+		for _, bo := range resp.BinaryOutputs {
+			quality := qualityString(bo.Quality)
+			ts := respTime.Format("15:04:05")
+			rows = append(rows, tui.Row{Cells: []string{
+				"BO",
+				fmt.Sprintf("%d", bo.Index),
+				fmt.Sprintf("%v", bo.Value),
+				quality,
+				ts,
+			}})
+		}
+
 		for _, ai := range resp.AnalogInputs {
 			quality := qualityString(ai.Quality)
 			ts := formatTimestamp(ai.Time, respTime)
@@ -216,6 +296,19 @@ func updateData(app *tui.App, state *masterctrl.State) {
 				"AI",
 				fmt.Sprintf("%d", ai.Index),
 				fmt.Sprintf("%.2f", ai.Value),
+				quality,
+				ts,
+			}})
+		}
+
+		// Add Analog Outputs
+		for _, ao := range resp.AnalogOutputs {
+			quality := qualityString(ao.Quality)
+			ts := respTime.Format("15:04:05")
+			rows = append(rows, tui.Row{Cells: []string{
+				"AO",
+				fmt.Sprintf("%d", ao.Index),
+				fmt.Sprintf("%.2f", ao.Value),
 				quality,
 				ts,
 			}})
@@ -275,6 +368,19 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 		}})
 	}
 
+	// Add Binary Outputs
+	binaryOut := ctrl.GetBinaryOutputs()
+	for _, bo := range binaryOut {
+		quality := qualityString(bo.Quality)
+		rows = append(rows, tui.Row{Cells: []string{
+			"BO",
+			fmt.Sprintf("%d", bo.Index),
+			fmt.Sprintf("%v", bo.Value),
+			quality,
+			now,
+		}})
+	}
+
 	analog := ctrl.GetAnalogInputs()
 	for _, ai := range analog {
 		quality := qualityString(ai.Quality)
@@ -288,6 +394,19 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 			fmt.Sprintf("%.2f", ai.Value),
 			quality,
 			ts,
+		}})
+	}
+
+	// Add Analog Outputs
+	analogOut := ctrl.GetAnalogOutputs()
+	for _, ao := range analogOut {
+		quality := qualityString(ao.Quality)
+		rows = append(rows, tui.Row{Cells: []string{
+			"AO",
+			fmt.Sprintf("%d", ao.Index),
+			fmt.Sprintf("%.2f", ao.Value),
+			quality,
+			now,
 		}})
 	}
 

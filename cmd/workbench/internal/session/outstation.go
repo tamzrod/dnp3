@@ -58,23 +58,31 @@ func (h *outstationDataHandler) FreezeCounters(clear bool) error {
 	return nil
 }
 
+func (h *outstationDataHandler) GetBinaryOutputs() []*types.BinaryOutput {
+	return h.session.simulator.GetBinaryOutputs()
+}
+
+func (h *outstationDataHandler) GetAnalogOutputs() []*types.AnalogOutput {
+	return h.session.simulator.GetAnalogOutputs()
+}
+
 func (h *outstationDataHandler) HandleBinaryCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
-	// Type assert the command value
+	// Handle binary output commands (Group 12)
 	if v, ok := cmd.Value.(*types.BinaryCommandValue); ok {
-		h.session.simulator.SetBinaryInput(cmd.Index, v.Value)
+		h.session.simulator.SetBinaryOutput(cmd.Index, v.Value)
 	} else {
-		h.session.simulator.SetBinaryInput(cmd.Index, false)
+		h.session.simulator.SetBinaryOutput(cmd.Index, false)
 	}
 	status := types.ControlSuccess
 	return &status, nil
 }
 
 func (h *outstationDataHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
-	// Type assert the command value
+	// Handle analog output commands (Group 41)
 	if v, ok := cmd.Value.(*types.AnalogCommandValue); ok {
-		h.session.simulator.SetAnalogInput(cmd.Index, v.Value)
+		h.session.simulator.SetAnalogOutput(cmd.Index, v.Value)
 	} else {
-		h.session.simulator.SetAnalogInput(cmd.Index, 0.0)
+		h.session.simulator.SetAnalogOutput(cmd.Index, 0.0)
 	}
 	status := types.ControlSuccess
 	return &status, nil

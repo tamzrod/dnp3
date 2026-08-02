@@ -174,6 +174,16 @@ func (c *Controller) GetCounters() []*types.Counter {
 	return c.simulator.GetCounters()
 }
 
+// GetBinaryOutputs returns current binary outputs.
+func (c *Controller) GetBinaryOutputs() []*types.BinaryOutput {
+	return c.simulator.GetBinaryOutputs()
+}
+
+// GetAnalogOutputs returns current analog outputs.
+func (c *Controller) GetAnalogOutputs() []*types.AnalogOutput {
+	return c.simulator.GetAnalogOutputs()
+}
+
 // SetBinaryInput manually sets a binary input.
 func (c *Controller) SetBinaryInput(index uint16, value bool) {
 	c.simulator.SetBinaryInput(index, value)

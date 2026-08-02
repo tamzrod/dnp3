@@ -73,13 +73,15 @@ func (c *OperateCommand) Type() string { return "OPERATE" }
 
 // Response represents a DNP3 response.
 type Response struct {
-	IIN            [2]byte
-	BinaryInputs   []*types.BinaryInput
-	AnalogInputs   []*types.AnalogInput
-	Counters       []*types.Counter
-	FrozenCounters []*types.FrozenCounter
-	Timestamp      time.Time
-	Error          error
+	IIN             [2]byte
+	BinaryInputs    []*types.BinaryInput
+	AnalogInputs    []*types.AnalogInput
+	Counters        []*types.Counter
+	FrozenCounters  []*types.FrozenCounter
+	BinaryOutputs   []*types.BinaryOutput
+	AnalogOutputs   []*types.AnalogOutput
+	Timestamp       time.Time
+	Error           error
 }
 
 // SessionEvent represents an event from the session.
@@ -248,12 +250,14 @@ func (s *MasterSession) sendReadCommand(ctx context.Context, client master.Clien
 
 	// Convert to session response
 	resp := &Response{
-		IIN:           readResp.IIN,
-		BinaryInputs:  readResp.BinaryInputs,
-		AnalogInputs:  readResp.AnalogInputs,
-		Counters:      readResp.Counters,
+		IIN:            readResp.IIN,
+		BinaryInputs:   readResp.BinaryInputs,
+		AnalogInputs:   readResp.AnalogInputs,
+		Counters:       readResp.Counters,
 		FrozenCounters: readResp.FrozenCounters,
-		Timestamp:     readResp.Timestamp,
+		BinaryOutputs:  readResp.BinaryOutputs,
+		AnalogOutputs:  readResp.AnalogOutputs,
+		Timestamp:      readResp.Timestamp,
 	}
 
 	s.events <- SessionEvent{
@@ -261,8 +265,9 @@ func (s *MasterSession) sendReadCommand(ctx context.Context, client master.Clien
 		Data: resp,
 	}
 
-	s.log.Info("READ response received: %d binary, %d analog, %d counters",
-		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters))
+	s.log.Info("READ response received: %d BI, %d AI, %d CTR, %d BO, %d AO",
+		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters),
+		len(resp.BinaryOutputs), len(resp.AnalogOutputs))
 
 	return resp, nil
 }

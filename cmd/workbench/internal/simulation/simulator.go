@@ -166,6 +166,64 @@ func (c *CounterSimulation) ToCounter() *types.Counter {
 	}
 }
 
+// BinaryOutputSimulation simulates a binary output point (for control operations)
+type BinaryOutputSimulation struct {
+	Index   uint16
+	Value   bool
+	Quality types.QualityFlags
+	Time    *types.Timestamp
+}
+
+// NewBinaryOutputSimulation creates a new binary output simulation
+func NewBinaryOutputSimulation(index uint16, initialValue bool) *BinaryOutputSimulation {
+	return &BinaryOutputSimulation{
+		Index:   index,
+		Value:   initialValue,
+		Quality: types.QualityOnline,
+		Time:    (&types.Timestamp{}).Now(),
+	}
+}
+
+// ToBinaryOutput converts to a BinaryOutput type
+func (b *BinaryOutputSimulation) ToBinaryOutput() *types.BinaryOutput {
+	return &types.BinaryOutput{
+		Index:   b.Index,
+		Value:   b.Value,
+		Quality: b.Quality,
+	}
+}
+
+// AnalogOutputSimulation simulates an analog output point (for control operations)
+type AnalogOutputSimulation struct {
+	Index     uint16
+	Value     float64
+	MinValue  float64
+	MaxValue  float64
+	Quality   types.QualityFlags
+	Time      *types.Timestamp
+}
+
+// NewAnalogOutputSimulation creates a new analog output simulation
+func NewAnalogOutputSimulation(index uint16, initialValue, minValue, maxValue float64) *AnalogOutputSimulation {
+	return &AnalogOutputSimulation{
+		Index:    index,
+		Value:    initialValue,
+		MinValue: minValue,
+		MaxValue: maxValue,
+		Quality:  types.QualityOnline,
+		Time:     (&types.Timestamp{}).Now(),
+	}
+}
+
+// ToAnalogOutput converts to an AnalogOutput type
+func (a *AnalogOutputSimulation) ToAnalogOutput() *types.AnalogOutput {
+	return &types.AnalogOutput{
+		Index:   a.Index,
+		Value:   a.Value,
+		Quality: a.Quality,
+	}
+}
+
 // Simulator manages all simulated data points
 type Simulator struct {
 	mu      sync.RWMutex
@@ -173,9 +231,11 @@ type Simulator struct {
 	stopCh  chan struct{}
 	running bool
 
-	BinaryInputs []*BinaryInputSimulation
-	AnalogInputs []*AnalogInputSimulation
-	Counters     []*CounterSimulation
+	BinaryInputs  []*BinaryInputSimulation
+	AnalogInputs  []*AnalogInputSimulation
+	Counters      []*CounterSimulation
+	BinaryOutputs []*BinaryOutputSimulation
+	AnalogOutputs []*AnalogOutputSimulation
 }
 
 // NewSimulator creates a new simulator with default configuration
@@ -184,11 +244,13 @@ func NewSimulator(cfg *Config) *Simulator {
 		cfg = DefaultConfig()
 	}
 	return &Simulator{
-		config:       cfg,
-		stopCh:       make(chan struct{}),
-		BinaryInputs: make([]*BinaryInputSimulation, 0),
-		AnalogInputs: make([]*AnalogInputSimulation, 0),
-		Counters:    make([]*CounterSimulation, 0),
+		config:        cfg,
+		stopCh:        make(chan struct{}),
+		BinaryInputs:  make([]*BinaryInputSimulation, 0),
+		AnalogInputs:  make([]*AnalogInputSimulation, 0),
+		Counters:      make([]*CounterSimulation, 0),
+		BinaryOutputs: make([]*BinaryOutputSimulation, 0),
+		AnalogOutputs: make([]*AnalogOutputSimulation, 0),
 	}
 }
 
@@ -224,6 +286,30 @@ func (s *Simulator) AddDefaultPoints() {
 	// Add 4 counters starting at 0
 	for i := 0; i < 4; i++ {
 		s.Counters = append(s.Counters, NewCounterSimulation(uint16(i), 0))
+	}
+
+	// Add 2 binary outputs (for control operations)
+	for i := 0; i < 2; i++ {
+		s.BinaryOutputs = append(s.BinaryOutputs, NewBinaryOutputSimulation(
+			uint16(i),
+			false, // Initial value off
+		))
+	}
+
+	// Add 2 analog outputs (for control operations)
+	aoConfigs := []struct {
+		initial, min, max float64
+	}{
+		{50.0, 0.0, 100.0},    // Setpoint-like
+		{25.0, 0.0, 50.0},     // Smaller range
+	}
+	for i, cfg := range aoConfigs {
+		s.AnalogOutputs = append(s.AnalogOutputs, NewAnalogOutputSimulation(
+			uint16(i),
+			cfg.initial,
+			cfg.min,
+			cfg.max,
+		))
 	}
 }
 
@@ -351,6 +437,58 @@ func (s *Simulator) SetAnalogInput(index uint16, value float64) {
 		if ai.Index == index {
 			ai.Value = value
 			ai.Time = (&types.Timestamp{}).Now()
+			return
+		}
+	}
+}
+
+// GetBinaryOutputs returns current binary outputs
+func (s *Simulator) GetBinaryOutputs() []*types.BinaryOutput {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*types.BinaryOutput, len(s.BinaryOutputs))
+	for i, bo := range s.BinaryOutputs {
+		result[i] = bo.ToBinaryOutput()
+	}
+	return result
+}
+
+// GetAnalogOutputs returns current analog outputs
+func (s *Simulator) GetAnalogOutputs() []*types.AnalogOutput {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*types.AnalogOutput, len(s.AnalogOutputs))
+	for i, ao := range s.AnalogOutputs {
+		result[i] = ao.ToAnalogOutput()
+	}
+	return result
+}
+
+// SetBinaryOutput manually sets a binary output value (for control operations)
+func (s *Simulator) SetBinaryOutput(index uint16, value bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, bo := range s.BinaryOutputs {
+		if bo.Index == index {
+			bo.Value = value
+			bo.Time = (&types.Timestamp{}).Now()
+			return
+		}
+	}
+}
+
+// SetAnalogOutput manually sets an analog output value (for control operations)
+func (s *Simulator) SetAnalogOutput(index uint16, value float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, ao := range s.AnalogOutputs {
+		if ao.Index == index {
+			ao.Value = value
+			ao.Time = (&types.Timestamp{}).Now()
 			return
 		}
 	}

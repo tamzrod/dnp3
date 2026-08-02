@@ -32,14 +32,16 @@ type App struct {
 	dataRows  []Row
 
 	// Callbacks
-	OnConnect        func()
-	OnDisconnect     func()
-	OnStart          func()
-	OnStop           func()
-	OnReadClass      func(class int)
-	OnOperate        func(index int, value bool)
-	OnAutoPollToggle func()
-	OnQuit           func()
+	OnConnect             func()
+	OnDisconnect          func()
+	OnStart               func()
+	OnStop                func()
+	OnReadClass           func(class int)
+	OnOperate             func(index int, value bool)
+	OnAutoPollToggle     func()
+	OnAutoWriteToggle     func()
+	OnSimulationModeToggle func()
+	OnQuit               func()
 
 	// State
 	running bool
@@ -200,9 +202,6 @@ func (a *App) handleKey(key Key, r rune) bool {
 			a.OnQuit()
 		}
 		return true
-	case 'm', 'M':
-		a.toggleMode()
-		return true
 	case 's', 'S':
 		if a.OnStart != nil {
 			a.OnStart()
@@ -236,6 +235,16 @@ func (a *App) handleKey(key Key, r rune) bool {
 	case 'a', 'A':
 		if a.OnAutoPollToggle != nil {
 			a.OnAutoPollToggle()
+		}
+		return true
+	case 'w', 'W':
+		if a.OnAutoWriteToggle != nil {
+			a.OnAutoWriteToggle()
+		}
+		return true
+	case 'm', 'M':
+		if a.OnSimulationModeToggle != nil {
+			a.OnSimulationModeToggle()
 		}
 		return true
 	case 'l', 'L':
@@ -352,11 +361,12 @@ func (a *App) drawFooter() {
 
 	// Draw controls
 	controls := []string{
-		"[m]ode",
 		"[s]tart",
 		"[x]stop",
 		"[r]ead",
-		"[1-3] class",
+		"[a]uto-rd",
+		"[w]auto-wr",
+		"[m]sim",
 		"[↑↓] nav",
 		"[l]og",
 		"[h]elp",
@@ -390,12 +400,14 @@ func (a *App) showHelp() {
 
 	help := []string{
 		"q, Esc    Quit the application",
-		"c         Connect (Master mode)",
-		"d         Disconnect",
+		"s         Start (connect/listen)",
+		"x         Stop (disconnect)",
 		"r         Read Class 0",
 		"1-3       Read Class 1-3",
-		"↑, k      Move cursor up",
-		"↓, j      Move cursor down",
+		"a         Toggle auto-read (1s)",
+		"w         Toggle auto-write (random operate)",
+		"m         Toggle simulation mode (both)",
+		"↑, ↓      Move cursor up/down",
 		"Enter     Select/Operate",
 		"l         Clear log",
 		"h, ?      Show this help",
@@ -442,6 +454,16 @@ func (a *App) SetConnection(status string, address string) {
 // SetError updates the error status.
 func (a *App) SetError(err string) {
 	a.Status.SetError(err)
+}
+
+// SetAutoRead updates the auto-read status display.
+func (a *App) SetAutoRead(enabled bool) {
+	a.Status.SetAutoRead(enabled)
+}
+
+// SetAutoWrite updates the auto-write status display.
+func (a *App) SetAutoWrite(enabled bool) {
+	a.Status.SetAutoWrite(enabled)
 }
 
 // LogInfo logs an info message.

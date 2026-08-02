@@ -4,6 +4,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ type State struct {
 	Error            string
 	LastResponse     *session.Response
 	AutoPollEnabled  bool
+	AutoWriteEnabled bool
+	SimulationMode   bool
 }
 
 // Controller handles Master-specific operations.
@@ -29,6 +32,7 @@ type Controller struct {
 	logger      *logger.Logger
 	state       *State
 	autoPollCh  chan bool
+	autoWriteCh chan bool
 	autoPollCtx context.Context
 	autoPollCancel context.CancelFunc
 }
@@ -39,12 +43,15 @@ func NewController(log *logger.Logger) *Controller {
 	return &Controller{
 		logger:        log,
 		state: &State{
-			Connection:      session.StateDisconnected,
-			Address:         "127.0.0.1",
-			Port:            20000,
-			AutoPollEnabled: false,
+			Connection:        session.StateDisconnected,
+			Address:           "127.0.0.1",
+			Port:              20000,
+			AutoPollEnabled:   false,
+			AutoWriteEnabled:  false,
+			SimulationMode:    false,
 		},
 		autoPollCh:    make(chan bool, 1),
+		autoWriteCh:   make(chan bool, 1),
 		autoPollCtx:   ctx,
 		autoPollCancel: cancel,
 	}
@@ -55,6 +62,8 @@ func (c *Controller) Start() error {
 	c.logger.Info("Master controller started")
 	// Start auto-poll handler
 	go c.handleAutoPoll()
+	// Start auto-write handler
+	go c.handleAutoWrite()
 	return nil
 }
 
@@ -63,6 +72,7 @@ func (c *Controller) Stop() error {
 	c.logger.Info("Master controller stopping")
 	// Stop auto-poll
 	c.setAutoPollEnabled(false)
+	c.setAutoWriteEnabled(false)
 	c.autoPollCancel()
 	if c.session != nil {
 		c.session.Close()
@@ -75,6 +85,9 @@ func (c *Controller) EnableAutoPoll(enabled bool) {
 	c.mu.Lock()
 	wasEnabled := c.state.AutoPollEnabled
 	c.state.AutoPollEnabled = enabled
+	if !enabled {
+		c.state.SimulationMode = false
+	}
 	c.mu.Unlock()
 	
 	if enabled && !wasEnabled {
@@ -102,6 +115,75 @@ func (c *Controller) IsAutoPollEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.state.AutoPollEnabled
+}
+
+// EnableAutoWrite enables or disables auto-write (random operate).
+func (c *Controller) EnableAutoWrite(enabled bool) {
+	c.mu.Lock()
+	wasEnabled := c.state.AutoWriteEnabled
+	c.state.AutoWriteEnabled = enabled
+	if !enabled {
+		c.state.SimulationMode = false
+	}
+	c.mu.Unlock()
+	
+	if enabled && !wasEnabled {
+		c.logger.Info("Auto-write ENABLED (random operate)")
+	} else if !enabled && wasEnabled {
+		c.logger.Info("Auto-write DISABLED")
+	}
+	
+	// Signal to auto-write handler
+	select {
+	case c.autoWriteCh <- enabled:
+	default:
+	}
+}
+
+// setAutoWriteEnabled sets auto-write state without logging (internal use).
+func (c *Controller) setAutoWriteEnabled(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.state.AutoWriteEnabled = enabled
+}
+
+// IsAutoWriteEnabled returns whether auto-write is enabled.
+func (c *Controller) IsAutoWriteEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.AutoWriteEnabled
+}
+
+// EnableSimulationMode enables or disables simulation mode (both auto-read and auto-write).
+func (c *Controller) EnableSimulationMode(enabled bool) {
+	c.mu.Lock()
+	c.state.SimulationMode = enabled
+	c.state.AutoPollEnabled = enabled
+	c.state.AutoWriteEnabled = enabled
+	c.mu.Unlock()
+	
+	if enabled {
+		c.logger.Info("Simulation mode ENABLED")
+	} else {
+		c.logger.Info("Simulation mode DISABLED")
+	}
+	
+	// Signal to handlers
+	select {
+	case c.autoPollCh <- enabled:
+	default:
+	}
+	select {
+	case c.autoWriteCh <- enabled:
+	default:
+	}
+}
+
+// IsSimulationModeEnabled returns whether simulation mode is enabled.
+func (c *Controller) IsSimulationModeEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.SimulationMode
 }
 
 // handleAutoPoll manages the auto-poll goroutine.
@@ -156,7 +238,9 @@ func (c *Controller) doAutoRead() {
 	cmd := &session.ReadCommand{
 		Groups: []types.GroupRequest{
 			{Group: 1, Variation: 0},   // Binary Inputs
+			{Group: 10, Variation: 0},  // Binary Outputs (for operate verification)
 			{Group: 30, Variation: 0},  // Analog Inputs
+			{Group: 40, Variation: 0},  // Analog Outputs (for operate verification)
 			{Group: 20, Variation: 0},  // Counters
 		},
 	}
@@ -168,8 +252,138 @@ func (c *Controller) doAutoRead() {
 	}
 	
 	c.handleResponse(resp)
-	c.logger.Debug("Auto-poll: %d BI, %d AI, %d CTR",
-		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters))
+	c.logger.Debug("Auto-poll: %d BI, %d AI, %d CTR, %d BO, %d AO",
+		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters),
+		len(resp.BinaryOutputs), len(resp.AnalogOutputs))
+}
+
+// handleAutoWrite manages the auto-write goroutine.
+func (c *Controller) handleAutoWrite() {
+	for {
+		select {
+		case <-c.autoPollCtx.Done():
+			return
+		case enabled := <-c.autoWriteCh:
+			if !enabled {
+				continue
+			}
+			// Random interval between 1-3 seconds
+			interval := time.Duration(1+rand.Intn(3)) * time.Second
+			ticker := time.NewTicker(interval)
+			
+			for {
+				select {
+				case <-c.autoPollCtx.Done():
+					ticker.Stop()
+					return
+				case enabled := <-c.autoWriteCh:
+					ticker.Stop()
+					if !enabled {
+						goto exitAutoWrite
+					}
+					// Restart with new random interval
+					interval = time.Duration(1+rand.Intn(3)) * time.Second
+					ticker = time.NewTicker(interval)
+					goto restartTicker
+				case <-ticker.C:
+					c.mu.RLock()
+					enabled := c.state.AutoWriteEnabled
+					s := c.session
+					c.mu.RUnlock()
+					
+					if enabled && s != nil {
+						c.doRandomOperate()
+					}
+				restartTicker:
+				}
+			}
+		exitAutoWrite:
+		}
+	}
+}
+
+// doRandomOperate performs a random operate command.
+func (c *Controller) doRandomOperate() {
+	c.mu.RLock()
+	s := c.session
+	resp := c.state.LastResponse
+	c.mu.RUnlock()
+	
+	if s == nil {
+		return
+	}
+	
+	// Determine available BO/AO indices from last response
+	boCount := 2  // Default count
+	aoCount := 2  // Default count
+	
+	if resp != nil {
+		// BO indices come from BinaryOutputs if available
+		if len(resp.BinaryOutputs) > 0 {
+			boCount = len(resp.BinaryOutputs)
+		}
+		if len(resp.AnalogOutputs) > 0 {
+			aoCount = len(resp.AnalogOutputs)
+		}
+	}
+	
+	// Randomly choose: 70% BO operate, 30% AO operate
+	if rand.Float64() < 0.7 {
+		// Binary Output operate
+		index := uint16(rand.Intn(boCount))
+		value := rand.Float64() < 0.5
+		
+		c.mu.RLock()
+		c.logger.Info("Auto-write: BO%d = %v", index, value)
+		c.mu.RUnlock()
+		
+		cmd := &session.OperateCommand{
+			Group:             12, // Binary Output
+			Variation:         1,
+			Index:             index,
+			Value:             value,
+			SelectThenOperate: true,
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		opResp, err := s.SendCommand(ctx, cmd)
+		if err != nil {
+			c.handleError("Auto-write failed: %v", err)
+			return
+		}
+		
+		c.handleResponse(opResp)
+	} else {
+		// Analog Output operate
+		index := uint16(rand.Intn(aoCount))
+		// Random value in a reasonable range (0-100)
+		value := float64(rand.Intn(101))
+		
+		c.mu.RLock()
+		c.logger.Info("Auto-write: AO%d = %.2f", index, value)
+		c.mu.RUnlock()
+		
+		cmd := &session.OperateCommand{
+			Group:             41, // Analog Output
+			Variation:         1,
+			Index:             index,
+			Value:             value,
+			SelectThenOperate: true,
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		opResp, err := s.SendCommand(ctx, cmd)
+		if err != nil {
+			c.handleError("Auto-write failed: %v", err)
+			return
+		}
+		
+		c.handleResponse(opResp)
+	}
 }
 
 // Connect establishes a connection to an outstation.
@@ -229,8 +443,10 @@ func (c *Controller) Disconnect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Always disable auto-poll on disconnect
+	// Always disable auto-poll and auto-write on disconnect
 	c.state.AutoPollEnabled = false
+	c.state.AutoWriteEnabled = false
+	c.state.SimulationMode = false
 
 	if c.session == nil {
 		return nil
