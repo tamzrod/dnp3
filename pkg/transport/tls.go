@@ -43,13 +43,14 @@ func DefaultTLSConfig() *TLSConfig {
 
 // TLSTransport implements Handler for TLS connections.
 type TLSTransport struct {
-	conn    *tls.Conn
-	config  *TLSConfig
+	conn     *tls.Conn
+	listener net.Listener
+	config   *TLSConfig
 	tlsConfig *tls.Config
-	mu      sync.RWMutex
-	closed  bool
-	ctx     context.Context
-	cancel  context.CancelFunc
+	mu       sync.RWMutex
+	closed   bool
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // NewTLSTransport creates a new TLS transport.
@@ -142,7 +143,39 @@ func (t *TLSTransport) Connect() error {
 	return nil
 }
 
+// Listen creates the TCP listener for TLS (server mode). Must be called before Accept().
+// Returns error if already listening, not in server mode, or listener creation fails.
+func (t *TLSTransport) Listen() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return ErrClosed
+	}
+
+	// Error if already listening
+	if t.listener != nil {
+		return errors.New("already listening")
+	}
+
+	// Error if not in server mode
+	if !t.config.Server {
+		return errors.New("not in server mode")
+	}
+
+	// Create listener
+	addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("TLS listen failed: %w", err)
+	}
+
+	t.listener = listener
+	return nil
+}
+
 // Accept waits for an incoming TLS connection (server mode).
+// Requires Listen() to be called first.
 func (t *TLSTransport) Accept() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -150,19 +183,19 @@ func (t *TLSTransport) Accept() error {
 	if t.closed {
 		return ErrClosed
 	}
-	if t.conn != nil {
-		return nil // Already connected
+
+	// Require Listen() to be called first
+	if t.listener == nil {
+		return errors.New("must call Listen() before Accept()")
 	}
 
-	addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("TLS listen failed: %w", err)
+	// If already connected, return nil
+	if t.conn != nil {
+		return nil
 	}
 
 	timeout := time.Duration(t.config.ConnectTimeout) * time.Millisecond
-	conn, err := listener.Accept()
-	listener.Close()
+	conn, err := t.listener.Accept()
 	if err != nil {
 		return fmt.Errorf("TLS accept failed: %w", err)
 	}
@@ -181,6 +214,7 @@ func (t *TLSTransport) Accept() error {
 }
 
 // Send writes data to the TLS connection.
+// Sets a short write deadline so closed peer fails fast.
 func (t *TLSTransport) Send(data []byte) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -191,6 +225,9 @@ func (t *TLSTransport) Send(data []byte) error {
 	if t.conn == nil {
 		return ErrNotConnected
 	}
+
+	// Set short write deadline so closed peer fails fast
+	t.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 
 	// DNP3 over TLS uses length prefix
 	length := uint16(len(data))
@@ -269,7 +306,7 @@ func (t *TLSTransport) SetTimeout(ms int) {
 	t.config.ReceiveTimeout = ms
 }
 
-// Close closes the TLS connection.
+// Close closes the TLS connection and listener.
 func (t *TLSTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -279,13 +316,19 @@ func (t *TLSTransport) Close() error {
 		t.cancel()
 	}
 
-	if t.conn == nil {
-		return nil
+	// Close the connection if it exists
+	if t.conn != nil {
+		_ = t.conn.Close()
+		t.conn = nil
 	}
 
-	err := t.conn.Close()
-	t.conn = nil
-	return err
+	// Close the listener if it exists
+	if t.listener != nil {
+		_ = t.listener.Close()
+		t.listener = nil
+	}
+
+	return nil
 }
 
 // LocalAddr returns the local network address.

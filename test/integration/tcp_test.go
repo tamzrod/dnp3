@@ -99,6 +99,40 @@ func decodeOutstationResponse(data []byte) (*al.APDU, error) {
 	return al.Decode(msg)
 }
 
+// buildOutstationResponse encodes an APDU through the full DNP3 protocol stack
+// (AL -> TL -> DLL) for an outstation-to-master response
+func buildOutstationResponse(apdu *al.APDU, destAddr, srcAddr uint16) ([]byte, error) {
+	// 1. Application Layer: Encode APDU
+	apduData := apdu.Encode()
+
+	// 2. Transport Layer: Fragment if needed
+	fragmenter := tl.NewFragmenter()
+	fragments := fragmenter.Fragmentize(apduData)
+
+	// 3. Data Link Layer: Frame each fragment
+	var result []byte
+	for _, frag := range fragments {
+		tlEncoded := tl.EncodeFragment(frag)
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      false, // Outstation-to-Master
+				PRM:      false, // Not primary station
+				FuncCode: frame.FuncLinkStatus,
+			},
+			DestAddr: destAddr,
+			SrcAddr:  srcAddr,
+			Data:     tlEncoded,
+		}
+		dllEncoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			return nil, fmt.Errorf("DLL encode failed: %w", err)
+		}
+		result = append(result, dllEncoded...)
+	}
+
+	return result, nil
+}
+
 // TestTCPMasterOutstationRead tests READ request over TCP
 func TestTCPMasterOutstationRead(t *testing.T) {
 	// Get a free port
@@ -158,9 +192,16 @@ func TestTCPMasterOutstationRead(t *testing.T) {
 }
 
 // TestTCPDirectCommunication tests direct TCP write/read using raw transport
+// with proper DNP3 protocol stack framing (AL -> TL -> DLL).
 func TestTCPDirectCommunication(t *testing.T) {
 	// Get a free port
 	port := getFreePort(t)
+
+	// DNP3 addresses
+	const (
+		outstationAddr = 1024
+		masterAddr    = 0xFFFF
+	)
 
 	// Create outstation transport in server mode
 	serverTransport := transport.NewTCPTransport(&transport.TCPConfig{
@@ -180,15 +221,21 @@ func TestTCPDirectCommunication(t *testing.T) {
 		Server:         false,
 	})
 
-	// Start server in goroutine
+	// Listen first (required before Accept)
+	if err := serverTransport.Listen(); err != nil {
+		t.Fatalf("Server Listen failed: %v", err)
+	}
+	defer serverTransport.Close()
+
+	// Accept connection in goroutine
+	acceptDone := make(chan error, 1)
 	go func() {
 		if err := serverTransport.Accept(); err != nil {
-			t.Logf("Server Accept error: %v", err)
+			acceptDone <- err
+		} else {
+			close(acceptDone)
 		}
 	}()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Connect client
 	if err := clientTransport.Connect(); err != nil {
@@ -196,16 +243,19 @@ func TestTCPDirectCommunication(t *testing.T) {
 	}
 	defer clientTransport.Close()
 
-	// Server accepts (this is a bit racy, but for test purposes)
-	go func() {
-		if err := serverTransport.Accept(); err != nil {
-			t.Logf("Server Accept error: %v", err)
+	// Wait for accept to complete
+	select {
+	case err := <-acceptDone:
+		if err != nil {
+			t.Fatalf("Server Accept failed: %v", err)
 		}
-	}()
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept timeout")
+	}
 
-	time.Sleep(100 * time.Millisecond)
+	t.Logf("Connection established on port %d", port)
 
-	// Build and send a READ request APDU
+	// Build and send a READ request APDU through full protocol stack
 	readRequest := &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
@@ -218,15 +268,19 @@ func TestTCPDirectCommunication(t *testing.T) {
 		Data:     []byte{60, 1, 0x07, 0x00}, // Group 60, Variation 1, All data
 	}
 
-	// Encode and send
-	encodedData := readRequest.Encode()
+	// Encode through full protocol stack (AL -> TL -> DLL)
+	encodedData, err := buildMasterRequest(readRequest, outstationAddr, masterAddr)
+	if err != nil {
+		t.Fatalf("buildMasterRequest failed: %v", err)
+	}
+
 	if err := clientTransport.Send(encodedData); err != nil {
 		t.Fatalf("Send failed: %v", err)
 	}
 
 	t.Logf("Sent READ request: %d bytes", len(encodedData))
 
-	// Receive response on server
+	// Receive on server
 	serverTransport.SetTimeout(5000)
 	serverResponse, err := serverTransport.Receive()
 	if err != nil {
@@ -235,8 +289,8 @@ func TestTCPDirectCommunication(t *testing.T) {
 
 	t.Logf("Server received: %d bytes", len(serverResponse))
 
-	// Decode request to verify
-	decodedReq, err := al.Decode(serverResponse)
+	// Decode request through full protocol stack (DLL -> TL -> AL)
+	decodedReq, err := decodeOutstationResponse(serverResponse)
 	if err != nil {
 		t.Fatalf("Decode request failed: %v", err)
 	}
@@ -244,8 +298,9 @@ func TestTCPDirectCommunication(t *testing.T) {
 	if decodedReq.FuncCode != al.FuncRead {
 		t.Errorf("Expected FuncCode READ (2), got %d", decodedReq.FuncCode)
 	}
+	t.Logf("Server decoded FuncCode: %d", decodedReq.FuncCode)
 
-	// Build response
+	// Build response APDU
 	response := &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
@@ -258,8 +313,12 @@ func TestTCPDirectCommunication(t *testing.T) {
 		Data:     []byte{0x00, 0x00}, // Empty IIN (all good)
 	}
 
-	// Encode and send response
-	encodedResp := response.Encode()
+	// Encode response through full protocol stack
+	encodedResp, err := buildOutstationResponse(response, masterAddr, outstationAddr)
+	if err != nil {
+		t.Fatalf("buildOutstationResponse failed: %v", err)
+	}
+
 	if err := serverTransport.Send(encodedResp); err != nil {
 		t.Fatalf("Server Send failed: %v", err)
 	}
@@ -275,8 +334,8 @@ func TestTCPDirectCommunication(t *testing.T) {
 
 	t.Logf("Client received: %d bytes", len(clientResponse))
 
-	// Decode response to verify
-	decodedResp, err := al.Decode(clientResponse)
+	// Decode response through full protocol stack
+	decodedResp, err := decodeOutstationResponse(clientResponse)
 	if err != nil {
 		t.Fatalf("Decode response failed: %v", err)
 	}
@@ -288,74 +347,116 @@ func TestTCPDirectCommunication(t *testing.T) {
 	t.Logf("End-to-end TCP communication verified!")
 }
 
-// TestTCPTransportAcceptMultipleConnections tests that server can accept multiple connections
+// TestTCPTransportAcceptMultipleConnections tests that multiple connections can be handled.
+// Current design: 1 connection per transport instance. Uses fresh transport per connection.
 func TestTCPTransportAcceptMultipleConnections(t *testing.T) {
-	port := getFreePort(t)
+	// Use two different ports for two separate connections
+	port1 := getFreePort(t)
+	port2 := getFreePort(t)
 
-	// Create server transport
-	serverTransport := transport.NewTCPTransport(&transport.TCPConfig{
+	// --- Connection 1 ---
+	// Create server transport 1
+	serverTransport1 := transport.NewTCPTransport(&transport.TCPConfig{
 		Address:         "localhost",
-		Port:           port,
-		ConnectTimeout: 1000,
-		ReceiveTimeout: 1000,
+		Port:           port1,
+		ConnectTimeout: 2000,
+		ReceiveTimeout: 2000,
 		Server:         true,
 	})
 
-	// Start accepting in goroutine
-	acceptDone := make(chan error, 1)
-	go func() {
-		for i := 0; i < 2; i++ {
-			err := serverTransport.Accept()
-			if err != nil {
-				acceptDone <- err
-				return
-			}
-			t.Logf("Accepted connection %d", i+1)
-		}
-		acceptDone <- nil
-	}()
+	// Listen first (required before Accept)
+	if err := serverTransport1.Listen(); err != nil {
+		t.Fatalf("Server 1 Listen failed: %v", err)
+	}
+	defer serverTransport1.Close()
 
-	// Give server time to start accepting
-	time.Sleep(100 * time.Millisecond)
-
-	// Create first client
+	// Create client 1
 	client1 := transport.NewTCPTransport(&transport.TCPConfig{
 		Address:         "localhost",
-		Port:           port,
-		ConnectTimeout: 1000,
+		Port:           port1,
+		ConnectTimeout: 2000,
 		Server:         false,
 	})
 
+	// Accept connection 1
+	accept1Done := make(chan error, 1)
+	go func() {
+		if err := serverTransport1.Accept(); err != nil {
+			accept1Done <- err
+		} else {
+			close(accept1Done)
+		}
+	}()
+
+	// Connect client 1
 	if err := client1.Connect(); err != nil {
 		t.Fatalf("Client 1 Connect failed: %v", err)
 	}
-	defer client1.Close()
 
-	// Give time for accept
-	time.Sleep(200 * time.Millisecond)
+	// Wait for accept 1
+	select {
+	case err := <-accept1Done:
+		if err != nil {
+			t.Fatalf("Server 1 Accept failed: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept 1 timeout")
+	}
+	t.Logf("Accepted connection 1 (port %d)", port1)
 
-	// Create second client
+	// --- Connection 2 ---
+	// Create fresh server transport 2 for second connection on different port
+	serverTransport2 := transport.NewTCPTransport(&transport.TCPConfig{
+		Address:         "localhost",
+		Port:           port2,
+		ConnectTimeout: 2000,
+		ReceiveTimeout: 2000,
+		Server:         true,
+	})
+
+	// Listen for second connection
+	if err := serverTransport2.Listen(); err != nil {
+		t.Fatalf("Server 2 Listen failed: %v", err)
+	}
+	defer serverTransport2.Close()
+
+	// Create client 2
 	client2 := transport.NewTCPTransport(&transport.TCPConfig{
 		Address:         "localhost",
-		Port:           port,
-		ConnectTimeout: 1000,
+		Port:           port2,
+		ConnectTimeout: 2000,
 		Server:         false,
 	})
 
+	// Accept connection 2
+	accept2Done := make(chan error, 1)
+	go func() {
+		if err := serverTransport2.Accept(); err != nil {
+			accept2Done <- err
+		} else {
+			close(accept2Done)
+		}
+	}()
+
+	// Connect client 2
 	if err := client2.Connect(); err != nil {
 		t.Fatalf("Client 2 Connect failed: %v", err)
 	}
-	defer client2.Close()
 
-	// Wait for accept to complete
+	// Wait for accept 2
 	select {
-	case err := <-acceptDone:
+	case err := <-accept2Done:
 		if err != nil {
-			t.Errorf("Accept error: %v", err)
+			t.Fatalf("Server 2 Accept failed: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Error("Accept timeout")
+		t.Fatal("Accept 2 timeout")
 	}
+	t.Logf("Accepted connection 2 (port %d)", port2)
+
+	// Clean up
+	client1.Close()
+	client2.Close()
 
 	t.Logf("Multiple connections test passed")
 }

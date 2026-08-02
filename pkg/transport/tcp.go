@@ -38,9 +38,11 @@ var (
 
 // Handler defines the interface for sending and receiving data.
 type Handler interface {
+	// Listen starts listening for connections (server mode). Must be called before Accept().
+	Listen() error
 	// Connect establishes a connection (client mode)
 	Connect() error
-	// Accept waits for an incoming connection (server mode)
+	// Accept waits for an incoming connection (server mode). Requires Listen() to be called first.
 	Accept() error
 	// Close closes the transport
 	Close() error
@@ -135,8 +137,39 @@ func (t *TCPTransport) Connect() error {
 	return nil
 }
 
+// Listen creates the TCP listener (server mode). Must be called before Accept().
+// Returns error if already listening, not in server mode, or listener creation fails.
+func (t *TCPTransport) Listen() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return ErrClosed
+	}
+
+	// Error if already listening
+	if t.listener != nil {
+		return errors.New("already listening")
+	}
+
+	// Error if not in server mode
+	if !t.config.Server {
+		return errors.New("not in server mode")
+	}
+
+	// Create listener
+	addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("TCP listen failed: %w", err)
+	}
+
+	t.listener = listener
+	return nil
+}
+
 // Accept waits for an incoming TCP connection (server mode).
-// In server mode, the listener is kept open to accept multiple connections.
+// Requires Listen() to be called first. Only accepts one connection per transport instance.
 func (t *TCPTransport) Accept() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -145,23 +178,17 @@ func (t *TCPTransport) Accept() error {
 		return ErrClosed
 	}
 
-	// If already connected, return success
+	// Require Listen() to be called first
+	if t.listener == nil {
+		return errors.New("must call Listen() before Accept()")
+	}
+
+	// If already connected, return nil (don't accept another connection)
 	if t.conn != nil {
 		return nil
 	}
 
-	// Create listener if not already created
-	if t.listener == nil {
-		addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
-		listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			return fmt.Errorf("TCP listen failed: %w", err)
-		}
-		t.listener = listener
-	}
-
 	// For deadline support, we need to use TCPListener specifically
-	// Cast to *net.TCPListener if possible
 	var conn net.Conn
 	var err error
 
@@ -199,6 +226,7 @@ func (t *TCPTransport) Accept() error {
 //
 // Standard DNP3 over TCP: sends data directly without length prefix.
 // The data should be a complete DNP3 DLL frame starting with sync bytes (0x05 0x64).
+// Sets a short write deadline so closed peer fails fast.
 func (t *TCPTransport) Send(data []byte) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -209,6 +237,9 @@ func (t *TCPTransport) Send(data []byte) error {
 	if t.conn == nil {
 		return ErrNotConnected
 	}
+
+	// Set short write deadline so closed peer fails fast
+	t.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 
 	// Standard DNP3: send frame directly (no length prefix)
 	// Frame must start with sync bytes 0x05 0x64

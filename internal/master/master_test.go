@@ -200,8 +200,9 @@ func TestMasterConnect(t *testing.T) {
 		t.Errorf("Connect() error = %v", err)
 	}
 	
-	if m.State() != StateConnected {
-		t.Errorf("State = %v, want Connected", m.State())
+	// Connect() sets StateConnected then StateActive; final ready state is Active
+	if m.State() != StateActive {
+		t.Errorf("State = %v, want Active", m.State())
 	}
 }
 
