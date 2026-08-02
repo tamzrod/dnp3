@@ -112,6 +112,17 @@ func setupMaster(app *tui.App, address string, port int) {
 		}
 	}
 
+	// Auto-poll toggle callback
+	app.OnAutoPollToggle = func() {
+		if ctrl.IsAutoPollEnabled() {
+			ctrl.EnableAutoPoll(false)
+			app.LogInfo("Auto-poll DISABLED")
+		} else {
+			ctrl.EnableAutoPoll(true)
+			app.LogInfo("Auto-poll ENABLED (1s)")
+		}
+	}
+
 	// Start polling for state updates
 	go func() {
 		ticker := time.NewTicker(250 * time.Millisecond)

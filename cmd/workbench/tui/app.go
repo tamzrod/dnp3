@@ -32,13 +32,14 @@ type App struct {
 	dataRows  []Row
 
 	// Callbacks
-	OnConnect    func()
-	OnDisconnect func()
-	OnStart      func()
-	OnStop       func()
-	OnReadClass  func(class int)
-	OnOperate    func(index int, value bool)
-	OnQuit       func()
+	OnConnect        func()
+	OnDisconnect     func()
+	OnStart          func()
+	OnStop           func()
+	OnReadClass      func(class int)
+	OnOperate        func(index int, value bool)
+	OnAutoPollToggle func()
+	OnQuit           func()
 
 	// State
 	running bool
@@ -230,6 +231,11 @@ func (a *App) handleKey(key Key, r rune) bool {
 	case '3':
 		if a.OnReadClass != nil {
 			a.OnReadClass(3)
+		}
+		return true
+	case 'a', 'A':
+		if a.OnAutoPollToggle != nil {
+			a.OnAutoPollToggle()
 		}
 		return true
 	case 'l', 'L':

@@ -14,46 +14,162 @@ import (
 
 // State represents the current state of the Master controller.
 type State struct {
-	Connection   session.ConnectionState
-	Address      string
-	Port         int
-	Error        string
-	LastResponse *session.Response
+	Connection       session.ConnectionState
+	Address          string
+	Port             int
+	Error            string
+	LastResponse     *session.Response
+	AutoPollEnabled  bool
 }
 
 // Controller handles Master-specific operations.
 type Controller struct {
-	mu      sync.RWMutex
-	session *session.MasterSession
-	logger  *logger.Logger
-	state   *State
+	mu          sync.RWMutex
+	session     *session.MasterSession
+	logger      *logger.Logger
+	state       *State
+	autoPollCh  chan bool
+	autoPollCtx context.Context
+	autoPollCancel context.CancelFunc
 }
 
 // NewController creates a new Master controller.
 func NewController(log *logger.Logger) *Controller {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Controller{
-		logger: log,
+		logger:        log,
 		state: &State{
-			Connection: session.StateDisconnected,
-			Address:    "127.0.0.1",
-			Port:       20000,
+			Connection:      session.StateDisconnected,
+			Address:         "127.0.0.1",
+			Port:            20000,
+			AutoPollEnabled: false,
 		},
+		autoPollCh:    make(chan bool, 1),
+		autoPollCtx:   ctx,
+		autoPollCancel: cancel,
 	}
 }
 
 // Start initializes the controller.
 func (c *Controller) Start() error {
 	c.logger.Info("Master controller started")
+	// Start auto-poll handler
+	go c.handleAutoPoll()
 	return nil
 }
 
 // Stop shuts down the controller.
 func (c *Controller) Stop() error {
 	c.logger.Info("Master controller stopping")
+	// Stop auto-poll
+	c.setAutoPollEnabled(false)
+	c.autoPollCancel()
 	if c.session != nil {
 		c.session.Close()
 	}
 	return nil
+}
+
+// EnableAutoPoll enables or disables auto-poll (1 second interval).
+func (c *Controller) EnableAutoPoll(enabled bool) {
+	c.mu.Lock()
+	wasEnabled := c.state.AutoPollEnabled
+	c.state.AutoPollEnabled = enabled
+	c.mu.Unlock()
+	
+	if enabled && !wasEnabled {
+		c.logger.Info("Auto-poll ENABLED (1 second interval)")
+	} else if !enabled && wasEnabled {
+		c.logger.Info("Auto-poll DISABLED")
+	}
+	
+	// Signal to auto-poll handler
+	select {
+	case c.autoPollCh <- enabled:
+	default:
+	}
+}
+
+// setAutoPollEnabled sets auto-poll state without logging (internal use).
+func (c *Controller) setAutoPollEnabled(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.state.AutoPollEnabled = enabled
+}
+
+// IsAutoPollEnabled returns whether auto-poll is enabled.
+func (c *Controller) IsAutoPollEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.AutoPollEnabled
+}
+
+// handleAutoPoll manages the auto-poll goroutine.
+func (c *Controller) handleAutoPoll() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-c.autoPollCtx.Done():
+			return
+		case enabled := <-c.autoPollCh:
+			if !enabled {
+				// Drain the ticker channel if disabling
+				for {
+					select {
+					case <-ticker.C:
+					default:
+						goto tickerReset
+					}
+				}
+			tickerReset:
+				ticker.Stop()
+				ticker = time.NewTicker(1 * time.Second)
+			}
+		case <-ticker.C:
+			c.mu.RLock()
+			enabled := c.state.AutoPollEnabled
+			s := c.session
+			c.mu.RUnlock()
+			
+			if enabled && s != nil {
+				c.doAutoRead()
+			}
+		}
+	}
+}
+
+// doAutoRead performs a single auto-read of Class 0.
+func (c *Controller) doAutoRead() {
+	c.mu.RLock()
+	s := c.session
+	c.mu.RUnlock()
+	
+	if s == nil {
+		return
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	cmd := &session.ReadCommand{
+		Groups: []types.GroupRequest{
+			{Group: 1, Variation: 0},   // Binary Inputs
+			{Group: 30, Variation: 0},  // Analog Inputs
+			{Group: 20, Variation: 0},  // Counters
+		},
+	}
+	
+	resp, err := s.SendCommand(ctx, cmd)
+	if err != nil {
+		c.handleError("Auto-poll read failed: %v", err)
+		return
+	}
+	
+	c.handleResponse(resp)
+	c.logger.Debug("Auto-poll: %d BI, %d AI, %d CTR",
+		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters))
 }
 
 // Connect establishes a connection to an outstation.
@@ -112,6 +228,9 @@ func (c *Controller) Connect(address string, port int) error {
 func (c *Controller) Disconnect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Always disable auto-poll on disconnect
+	c.state.AutoPollEnabled = false
 
 	if c.session == nil {
 		return nil
