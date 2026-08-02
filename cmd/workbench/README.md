@@ -114,6 +114,37 @@ GOOS=windows GOARCH=amd64 go build -o workbench.exe ./cmd/workbench
 | `x` | Stop server |
 | `q` | Quit |
 
+## Timestamp Display
+
+
+
+The Master data points table shows timestamps with the following rules:
+
+
+
+| Condition | Display | Meaning |
+
+|-----------|---------|---------|
+
+| Point has timestamp (event data) | `15:04:05` | True outstation point time |
+
+| Point has no timestamp (static data) | `RX 15:04:05` | Response receive time (labeled) |
+
+| No data available | `—` | No timestamp info |
+
+
+
+### Technical Notes
+
+
+
+- **Static Class 0 reads**: Static objects (g1v1, g30v1, etc.) do NOT carry per-point timestamps on the wire in the current stack.
+
+- **Receive time**: The "RX" prefix indicates the timestamp is when the Master received the response, not an outstation sample time.
+
+- **True timestamps**: Event-with-time objects (Group 2, 4, 11, etc.) carry actual point timestamps. This is future work.
+
+
 ## Architecture
 
 ```
