@@ -14,6 +14,7 @@ import (
 	"dnp3/cmd/workbench/internal/logger"
 	masterctrl "dnp3/cmd/workbench/internal/master"
 	outstationctrl "dnp3/cmd/workbench/internal/outstation"
+	"dnp3/cmd/workbench/internal/session"
 	"dnp3/cmd/workbench/tui"
 	"dnp3/pkg/dnp3/types"
 )
@@ -146,7 +147,7 @@ func setupMaster(app *tui.App, address string, port int) {
 	// Auto-write toggle callback
 	app.OnAutoWriteToggle = func() {
 		state := ctrl.State()
-		if state.Connection != "Connected" {
+		if state.Connection != session.StateConnected {
 			app.LogError("Not connected - cannot enable auto-write")
 			return
 		}
@@ -169,7 +170,7 @@ func setupMaster(app *tui.App, address string, port int) {
 	// Simulation mode toggle callback
 	app.OnSimulationModeToggle = func() {
 		state := ctrl.State()
-		if state.Connection != "Connected" {
+		if state.Connection != session.StateConnected {
 			app.LogError("Not connected - cannot enable simulation mode")
 			return
 		}

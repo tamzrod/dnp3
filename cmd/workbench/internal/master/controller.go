@@ -284,7 +284,7 @@ func (c *Controller) handleAutoWrite() {
 					// Restart with new random interval
 					interval = time.Duration(1+rand.Intn(3)) * time.Second
 					ticker = time.NewTicker(interval)
-					goto restartTicker
+					continue
 				case <-ticker.C:
 					c.mu.RLock()
 					enabled := c.state.AutoWriteEnabled
@@ -294,7 +294,6 @@ func (c *Controller) handleAutoWrite() {
 					if enabled && s != nil {
 						c.doRandomOperate()
 					}
-				restartTicker:
 				}
 			}
 		exitAutoWrite:
