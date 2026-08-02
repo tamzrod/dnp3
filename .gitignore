@@ -65,3 +65,4 @@ __pycache__/
 
 # KDE Runtime logs
 .kde/runtime/logs/
+.gobin/
