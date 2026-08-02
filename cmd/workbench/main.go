@@ -194,9 +194,12 @@ func updateData(app *tui.App, state *masterctrl.State) {
 	if state.LastResponse != nil {
 		resp := state.LastResponse
 
+		// Use response timestamp as fallback when point timestamp not available
+		respTime := resp.Timestamp
+
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
-			ts := formatTimestamp(bi.Time)
+			ts := formatTimestampWithFallback(bi.Time, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BI",
 				fmt.Sprintf("%d", bi.Index),
@@ -208,7 +211,7 @@ func updateData(app *tui.App, state *masterctrl.State) {
 
 		for _, ai := range resp.AnalogInputs {
 			quality := qualityString(ai.Quality)
-			ts := formatTimestamp(ai.Time)
+			ts := formatTimestampWithFallback(ai.Time, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AI",
 				fmt.Sprintf("%d", ai.Index),
@@ -220,7 +223,7 @@ func updateData(app *tui.App, state *masterctrl.State) {
 
 		for _, c := range resp.Counters {
 			quality := qualityString(c.Quality)
-			ts := formatTimestamp(c.Time)
+			ts := formatTimestampWithFallback(c.Time, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"CTR",
 				fmt.Sprintf("%d", c.Index),
@@ -234,13 +237,16 @@ func updateData(app *tui.App, state *masterctrl.State) {
 	app.UpdateData(rows)
 }
 
-// formatTimestamp formats a DNP3 timestamp for display.
-// Returns "—" if timestamp is nil or null, otherwise formats as HH:MM:SS.
-func formatTimestamp(ts *types.Timestamp) string {
-	if ts == nil || ts.IsNull() {
-		return "—"
+// formatTimestampWithFallback formats a timestamp for display.
+// Uses point timestamp if available, otherwise falls back to response timestamp.
+func formatTimestampWithFallback(ts *types.Timestamp, respTime time.Time) string {
+	if ts != nil && !ts.IsNull() {
+		return ts.Time().Format("15:04:05")
 	}
-	return ts.Time().Format("15:04:05")
+	if !respTime.IsZero() {
+		return respTime.Format("15:04:05")
+	}
+	return "—"
 }
 
 // updateOutstationData updates the TUI with controller state (Outstation mode).
