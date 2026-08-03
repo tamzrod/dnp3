@@ -93,6 +93,11 @@ func setupMaster(app *tui.App, address string, port int) {
 		} else {
 			app.LogInfo("Connected!")
 			app.SetConnection("Connected", fmt.Sprintf("%s:%d", address, port))
+			// Auto-read Class 0 on connect
+			app.LogInfo("Auto-reading Class 0...")
+			if err := ctrl.ReadClass(0); err != nil {
+				app.LogError(fmt.Sprintf("Initial read failed: %v", err))
+			}
 		}
 	}
 
@@ -273,6 +278,15 @@ func updateData(app *tui.App, state *masterctrl.State) {
 		resp := state.LastResponse
 		respTime := resp.Timestamp
 
+		// Check if read returned any points
+		totalPoints := len(resp.BinaryInputs) + len(resp.AnalogInputs) +
+			len(resp.Counters) + len(resp.BinaryOutputs) + len(resp.AnalogOutputs)
+		if totalPoints == 0 {
+			app.LogError(fmt.Sprintf("Read returned 0 points: BI=%d AI=%d CTR=%d BO=%d AO=%d",
+				len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters),
+				len(resp.BinaryOutputs), len(resp.AnalogOutputs)))
+		}
+
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
 			ts := formatTimestamp(bi.Time, respTime)
@@ -345,12 +359,12 @@ func updateData(app *tui.App, state *masterctrl.State) {
 }
 
 // formatTimestamp formats a timestamp for display.
-// 1. If point.Time is set → show as HH:MM:SS
+// 1. If point.Time is set → show as HH:MM:SS.mmm (matching outstation format)
 // 2. Else if respTime is set → show "RX HH:MM:SS" (labeled receive time)
 // 3. Else → show "—"
 func formatTimestamp(ts *types.Timestamp, respTime time.Time) string {
 	if ts != nil && !ts.IsNull() {
-		return ts.Time().Format("15:04:05")
+		return ts.Time().Format("15:04:05.000")
 	}
 	if !respTime.IsZero() {
 		return "RX " + respTime.Format("15:04:05")

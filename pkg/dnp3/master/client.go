@@ -463,8 +463,9 @@ func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
 	for _, group := range request.Groups {
 		data = append(data, group.Group)
 		data = append(data, group.Variation)
-		data = append(data, 0x00) // Qualifier: all
-		data = append(data, 0x07) // Range: 0x06=prefix, 0x01=count
+		// Qualifier 0x06 = all objects of the specified group/variation
+		data = append(data, 0x06) // Qualifier: all objects
+		data = append(data, 0x00) // Range: unused for all-objects qualifier
 	}
 
 	return &al.APDU{
