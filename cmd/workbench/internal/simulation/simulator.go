@@ -116,9 +116,14 @@ func (a *AnalogInputSimulation) Update(cfg *Config) {
 	// Clamp to range
 	newValue = math.Max(a.MinValue, math.Min(a.MaxValue, newValue))
 	
-	// Always update with small variation
-	a.Value = math.Round(newValue*100) / 100 // Round to 2 decimal places
-	a.Time = (&types.Timestamp{}).Now()
+	// Round to 2 decimal places
+	newValue = math.Round(newValue*100) / 100
+	
+	// Only update timestamp if value actually changed
+	if newValue != a.Value {
+		a.Time = (&types.Timestamp{}).Now()
+	}
+	a.Value = newValue
 }
 
 // ToAnalogInput converts to an AnalogInput type
@@ -151,8 +156,9 @@ func NewCounterSimulation(index uint16, initialValue uint32) *CounterSimulation 
 
 // Update increments the counter
 func (c *CounterSimulation) Update(cfg *Config) {
-	// Always increment the counter
+	// Always increment the counter - timestamp updates on change
 	c.Value += cfg.CounterIncrementAmount
+	// Timestamp is always updated since value always changes
 	c.Time = (&types.Timestamp{}).Now()
 }
 
@@ -193,6 +199,11 @@ func (b *BinaryOutputSimulation) ToBinaryOutput() *types.BinaryOutput {
 	}
 }
 
+// GetTime returns the timestamp of the last change (for display purposes).
+func (b *BinaryOutputSimulation) GetTime() *types.Timestamp {
+	return b.Time
+}
+
 // AnalogOutputSimulation simulates an analog output point (for control operations)
 type AnalogOutputSimulation struct {
 	Index     uint16
@@ -222,6 +233,11 @@ func (a *AnalogOutputSimulation) ToAnalogOutput() *types.AnalogOutput {
 		Value:   a.Value,
 		Quality: a.Quality,
 	}
+}
+
+// GetTime returns the timestamp of the last change (for display purposes).
+func (a *AnalogOutputSimulation) GetTime() *types.Timestamp {
+	return a.Time
 }
 
 // Simulator manages all simulated data points
@@ -454,6 +470,19 @@ func (s *Simulator) GetBinaryOutputs() []*types.BinaryOutput {
 	return result
 }
 
+// GetBinaryOutputTimestamps returns timestamps for binary outputs (for display).
+// Returns a map from index to timestamp (nil if never changed).
+func (s *Simulator) GetBinaryOutputTimestamps() map[uint16]*types.Timestamp {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[uint16]*types.Timestamp)
+	for _, bo := range s.BinaryOutputs {
+		result[bo.Index] = bo.Time
+	}
+	return result
+}
+
 // GetAnalogOutputs returns current analog outputs
 func (s *Simulator) GetAnalogOutputs() []*types.AnalogOutput {
 	s.mu.RLock()
@@ -462,6 +491,19 @@ func (s *Simulator) GetAnalogOutputs() []*types.AnalogOutput {
 	result := make([]*types.AnalogOutput, len(s.AnalogOutputs))
 	for i, ao := range s.AnalogOutputs {
 		result[i] = ao.ToAnalogOutput()
+	}
+	return result
+}
+
+// GetAnalogOutputTimestamps returns timestamps for analog outputs (for display).
+// Returns a map from index to timestamp (nil if never changed).
+func (s *Simulator) GetAnalogOutputTimestamps() map[uint16]*types.Timestamp {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[uint16]*types.Timestamp)
+	for _, ao := range s.AnalogOutputs {
+		result[ao.Index] = ao.Time
 	}
 	return result
 }

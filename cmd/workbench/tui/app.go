@@ -30,7 +30,11 @@ type App struct {
 	// Data
 	dataMu    sync.RWMutex
 	dataRows  []Row
+	lastRows  []Row // For flicker reduction
 
+	// Redraw signaling
+	redrawCh chan struct{}
+	
 	// Callbacks
 	OnConnect             func()
 	OnDisconnect          func()
@@ -62,13 +66,14 @@ func NewApp(mode Mode) *App {
 	screen := NewScreen(width, height)
 
 	app := &App{
-		Mode:   mode,
-		Layout: layout,
-		Screen: screen,
-		Input:  NewInput(),
-		Log:    NewLog(layout.LogBounds()),
-		Status: NewStatusBar(),
-		done:   make(chan struct{}),
+		Mode:     mode,
+		Layout:   layout,
+		Screen:   screen,
+		Input:    NewInput(),
+		Log:      NewLog(layout.LogBounds()),
+		Status:   NewStatusBar(),
+		done:     make(chan struct{}),
+		redrawCh: make(chan struct{}, 1),
 	}
 
 	// Set up table
@@ -113,8 +118,8 @@ func (a *App) Run() error {
 	// Start input handling
 	events := a.Input.Events()
 
-	// Start render loop
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// Start render loop - slower ticker for periodic UI updates (status bar time)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	// Initial draw
@@ -126,8 +131,12 @@ func (a *App) Run() error {
 		select {
 		case <-a.done:
 			return nil
+		case <-a.redrawCh:
+			// Data changed - redraw
+			a.drawTable()
+			a.Screen.Flush()
 		case <-ticker.C:
-			// Periodic redraw (for live data updates)
+			// Periodic redraw for status bar (time, etc.)
 			a.draw()
 			a.Screen.Flush()
 		case event, ok := <-events:
@@ -142,6 +151,15 @@ func (a *App) Run() error {
 	}
 
 	return nil
+}
+
+// SignalRedraw signals that the data has changed and a redraw is needed.
+func (a *App) SignalRedraw() {
+	select {
+	case a.redrawCh <- struct{}{}:
+	default:
+		// Channel already has a value, no need to send again
+	}
 }
 
 // Stop stops the application.
@@ -233,17 +251,20 @@ func (a *App) handleKey(key Key, r rune) bool {
 		}
 		return true
 	case 'a', 'A':
-		if a.OnAutoPollToggle != nil {
+		// Master-only: auto-read toggle
+		if a.Mode == ModeMaster && a.OnAutoPollToggle != nil {
 			a.OnAutoPollToggle()
 		}
 		return true
 	case 'w', 'W':
-		if a.OnAutoWriteToggle != nil {
+		// Master-only: auto-write toggle
+		if a.Mode == ModeMaster && a.OnAutoWriteToggle != nil {
 			a.OnAutoWriteToggle()
 		}
 		return true
 	case 'm', 'M':
-		if a.OnSimulationModeToggle != nil {
+		// Master-only: simulation mode toggle
+		if a.Mode == ModeMaster && a.OnSimulationModeToggle != nil {
 			a.OnSimulationModeToggle()
 		}
 		return true
@@ -332,10 +353,15 @@ func (a *App) drawTable() {
 	tableBounds := a.Layout.TableBounds()
 	s.PrintStyled(tableBounds.Top, 2, "DATA POINTS", "cyan", "bold")
 
-	// Draw table
+	// Draw table - use smart update to avoid flicker
 	a.dataMu.RLock()
-	a.Table.SetRows(a.dataRows)
+	currentRows := a.dataRows
 	a.dataMu.RUnlock()
+	
+	// Only update table if data changed
+	changed := a.Table.SetRowsIfChanged(currentRows)
+	
+	// Always draw, but only update rows if needed
 	a.Table.DrawSimple(s, tableBounds.Top+2)
 }
 
@@ -359,18 +385,27 @@ func (a *App) drawFooter() {
 	// Draw separator
 	s.DrawSeparator(height-1, "─")
 
-	// Draw controls
-	controls := []string{
+	// Build controls based on mode
+	var controls []string
+	
+	// Common controls for both modes
+	controls = []string{
 		"[s]tart",
 		"[x]stop",
-		"[r]ead",
-		"[a]uto-rd",
-		"[w]auto-wr",
-		"[m]sim",
 		"[↑↓] nav",
 		"[l]og",
 		"[h]elp",
 		"[q]uit",
+	}
+	
+	// Master-only controls: auto-rd, auto-wr, simulation mode
+	if a.Mode == ModeMaster {
+		controls = append([]string{
+			"[r]ead",
+			"[a]uto-rd",
+			"[w]auto-wr",
+			"[m]sim",
+		}, controls...)
 	}
 
 	// Draw controls
@@ -398,19 +433,32 @@ func (a *App) showHelp() {
 	// Draw box
 	s.DrawBox(5, 10, 20, width-10, "HELP", "cyan")
 
-	help := []string{
-		"q, Esc    Quit the application",
-		"s         Start (connect/listen)",
-		"x         Stop (disconnect)",
-		"r         Read Class 0",
-		"1-3       Read Class 1-3",
-		"a         Toggle auto-read (1s)",
-		"w         Toggle auto-write (random operate)",
-		"m         Toggle simulation mode (both)",
-		"↑, ↓      Move cursor up/down",
-		"Enter     Select/Operate",
-		"l         Clear log",
-		"h, ?      Show this help",
+	var help []string
+	
+	if a.Mode == ModeMaster {
+		help = []string{
+			"q, Esc    Quit the application",
+			"s         Start (connect/listen)",
+			"x         Stop (disconnect)",
+			"r         Read Class 0",
+			"1-3       Read Class 1-3",
+			"a         Toggle auto-read (1s)",
+			"w         Toggle auto-write (random operate)",
+			"m         Toggle simulation mode (both)",
+			"↑, ↓      Move cursor up/down",
+			"Enter     Select/Operate",
+			"l         Clear log",
+			"h, ?      Show this help",
+		}
+	} else {
+		help = []string{
+			"q, Esc    Quit the application",
+			"s         Start (listen for connections)",
+			"x         Stop (shutdown server)",
+			"↑, ↓      Move cursor up/down",
+			"l         Clear log",
+			"h, ?      Show this help",
+		}
 	}
 
 	for i, line := range help {
@@ -429,6 +477,36 @@ func (a *App) UpdateData(rows []Row) {
 	a.dataMu.Lock()
 	defer a.dataMu.Unlock()
 	a.dataRows = rows
+}
+
+// UpdateDataIfChanged updates the table data only if it differs from current data.
+// Returns true if data was updated, false if no change.
+func (a *App) UpdateDataIfChanged(rows []Row) bool {
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
+	
+	// Quick length check
+	if len(rows) != len(a.dataRows) {
+		a.dataRows = rows
+		return true
+	}
+	
+	// Compare cell contents
+	for i := range rows {
+		if len(rows[i].Cells) != len(a.dataRows[i].Cells) {
+			a.dataRows = rows
+			return true
+		}
+		for j := range rows[i].Cells {
+			if rows[i].Cells[j] != a.dataRows[i].Cells[j] {
+				a.dataRows = rows
+				return true
+			}
+		}
+	}
+	
+	// No change
+	return false
 }
 
 // AddDataPoint adds a data point to the table.

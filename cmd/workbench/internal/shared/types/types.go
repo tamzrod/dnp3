@@ -1,7 +1,19 @@
 // Package types provides shared types for Master and Outstation controllers.
 package types
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
+
+// TimestampedPoint represents a data point with an associated timestamp for display.
+type TimestampedPoint struct {
+	Type      string     // Point type: BI, BO, AI, AO, CTR
+	Index     uint16     // Point index
+	Value     string     // Formatted value string
+	Quality   string     // Quality string
+	Timestamp *time.Time // Last change timestamp (nil if never changed)
+}
 
 // Mode represents the operating mode of the workbench.
 type Mode string

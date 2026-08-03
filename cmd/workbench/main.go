@@ -335,7 +335,10 @@ func updateData(app *tui.App, state *masterctrl.State) {
 		}
 	}
 
-	app.UpdateData(rows)
+	// Use UpdateDataIfChanged and SignalRedraw to avoid flicker
+	if app.UpdateDataIfChanged(rows) {
+		app.SignalRedraw()
+	}
 }
 
 // formatTimestamp formats a timestamp for display.
@@ -357,13 +360,15 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	// Build data rows from simulator
 	var rows []tui.Row
 
-	// Get current timestamp for display
-	now := time.Now().Format("15:04:05.000")
+	// Get BO/AO timestamps from simulator (tracks last change time)
+	boTimestamps := ctrl.GetBinaryOutputTimestamps()
+	aoTimestamps := ctrl.GetAnalogOutputTimestamps()
 
 	binary := ctrl.GetBinaryInputs()
 	for _, bi := range binary {
 		quality := qualityString(bi.Quality)
-		ts := now
+		// BI timestamp: only show if value changed (timestamp not null)
+		ts := "—"
 		if bi.Time != nil && !bi.Time.IsNull() {
 			ts = bi.Time.Time().Format("15:04:05.000")
 		}
@@ -380,19 +385,25 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	binaryOut := ctrl.GetBinaryOutputs()
 	for _, bo := range binaryOut {
 		quality := qualityString(bo.Quality)
+		// BO timestamp: only show if value has ever changed
+		ts := "—"
+		if tsPtr := boTimestamps[bo.Index]; tsPtr != nil && !tsPtr.IsNull() {
+			ts = tsPtr.Time().Format("15:04:05.000")
+		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"BO",
 			fmt.Sprintf("%d", bo.Index),
 			fmt.Sprintf("%v", bo.Value),
 			quality,
-			now,
+			ts,
 		}})
 	}
 
 	analog := ctrl.GetAnalogInputs()
 	for _, ai := range analog {
 		quality := qualityString(ai.Quality)
-		ts := now
+		// AI timestamp: only show if value changed (timestamp not null)
+		ts := "—"
 		if ai.Time != nil && !ai.Time.IsNull() {
 			ts = ai.Time.Time().Format("15:04:05.000")
 		}
@@ -409,19 +420,25 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	analogOut := ctrl.GetAnalogOutputs()
 	for _, ao := range analogOut {
 		quality := qualityString(ao.Quality)
+		// AO timestamp: only show if value has ever changed
+		ts := "—"
+		if tsPtr := aoTimestamps[ao.Index]; tsPtr != nil && !tsPtr.IsNull() {
+			ts = tsPtr.Time().Format("15:04:05.000")
+		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"AO",
 			fmt.Sprintf("%d", ao.Index),
 			fmt.Sprintf("%.2f", ao.Value),
 			quality,
-			now,
+			ts,
 		}})
 	}
 
 	counters := ctrl.GetCounters()
 	for _, c := range counters {
 		quality := qualityString(c.Quality)
-		ts := now
+		// CTR timestamp: always shows (counters always change)
+		ts := "—"
 		if c.Time != nil && !c.Time.IsNull() {
 			ts = c.Time.Time().Format("15:04:05.000")
 		}
@@ -434,7 +451,10 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 		}})
 	}
 
-	app.UpdateData(rows)
+	// Use UpdateDataIfChanged and SignalRedraw to avoid flicker
+	if app.UpdateDataIfChanged(rows) {
+		app.SignalRedraw()
+	}
 }
 
 // qualityString converts quality flags to a string.

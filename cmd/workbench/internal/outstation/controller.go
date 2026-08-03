@@ -179,9 +179,19 @@ func (c *Controller) GetBinaryOutputs() []*types.BinaryOutput {
 	return c.simulator.GetBinaryOutputs()
 }
 
+// GetBinaryOutputTimestamps returns timestamps for binary outputs (for display).
+func (c *Controller) GetBinaryOutputTimestamps() map[uint16]*types.Timestamp {
+	return c.simulator.GetBinaryOutputTimestamps()
+}
+
 // GetAnalogOutputs returns current analog outputs.
 func (c *Controller) GetAnalogOutputs() []*types.AnalogOutput {
 	return c.simulator.GetAnalogOutputs()
+}
+
+// GetAnalogOutputTimestamps returns timestamps for analog outputs (for display).
+func (c *Controller) GetAnalogOutputTimestamps() map[uint16]*types.Timestamp {
+	return c.simulator.GetAnalogOutputTimestamps()
 }
 
 // SetBinaryInput manually sets a binary input.

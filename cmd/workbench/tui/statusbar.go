@@ -90,15 +90,22 @@ func (s *StatusBar) Draw(scr *Screen, width int) {
 	scr.Print(y-1, 2, status)
 
 	// Draw AutoRead/AutoWrite status in the middle area
+	// When enabled: bold + bright green
+	// When disabled: dim (not shown)
 	autoStatus := ""
+	autoX := width / 2
 	if s.AutoRead {
-		autoStatus += "[AutoR] "
+		autoStatus += "[AutoR]"
+	}
+	if s.AutoRead && s.AutoWrite {
+		autoStatus += " "
 	}
 	if s.AutoWrite {
-		autoStatus += "[AutoW] "
+		autoStatus += "[AutoW]"
 	}
 	if autoStatus != "" {
-		scr.PrintStyled(y-1, width/2-len(autoStatus)/2, autoStatus, "yellow")
+		// Use bold + bright green when enabled
+		scr.PrintStyled(y-1, autoX-len(autoStatus)/2, autoStatus, "green", "bold")
 	}
 
 	// Draw error if present

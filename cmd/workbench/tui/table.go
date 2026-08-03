@@ -55,6 +55,40 @@ func (t *Table) SetRows(rows []Row) {
 	}
 }
 
+// SetRowsIfChanged replaces rows only if they differ from current rows.
+// Returns true if rows were updated, false if no change.
+func (t *Table) SetRowsIfChanged(rows []Row) bool {
+	// Check if rows are the same length
+	if len(rows) != len(t.Rows) {
+		t.SetRows(rows)
+		return true
+	}
+	
+	// Check if any cell content changed
+	for i := range rows {
+		if !rowsEqual(rows[i], t.Rows[i]) {
+			t.SetRows(rows)
+			return true
+		}
+	}
+	
+	// No change needed
+	return false
+}
+
+// rowsEqual compares two rows for equality.
+func rowsEqual(a, b Row) bool {
+	if len(a.Cells) != len(b.Cells) {
+		return false
+	}
+	for i := range a.Cells {
+		if a.Cells[i] != b.Cells[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Clear removes all rows.
 func (t *Table) Clear() {
 	t.Rows = []Row{}
