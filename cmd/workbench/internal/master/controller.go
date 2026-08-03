@@ -237,22 +237,19 @@ func (c *Controller) doAutoRead() {
 	
 	cmd := &session.ReadCommand{
 		Groups: []types.GroupRequest{
-			{Group: 1, Variation: 0},   // Binary Inputs
-			{Group: 10, Variation: 0},  // Binary Outputs (for operate verification)
-			{Group: 30, Variation: 0},  // Analog Inputs
-			{Group: 40, Variation: 0},  // Analog Outputs (for operate verification)
-			{Group: 20, Variation: 0},  // Counters
+			{Group: 60, Variation: 1}, // All static data (Class 0)
 		},
 	}
 	
+	c.logger.Info("Auto-read: sending READ Class 0")
 	resp, err := s.SendCommand(ctx, cmd)
 	if err != nil {
-		c.handleError("Auto-poll read failed: %v", err)
+		c.logger.Error("Auto-read failed: %v", err)
 		return
 	}
 	
 	c.handleResponse(resp)
-	c.logger.Debug("Auto-poll: %d BI, %d AI, %d CTR, %d BO, %d AO",
+	c.logger.Info("Auto-read: %d BI, %d AI, %d CTR, %d BO, %d AO",
 		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters),
 		len(resp.BinaryOutputs), len(resp.AnalogOutputs))
 }
