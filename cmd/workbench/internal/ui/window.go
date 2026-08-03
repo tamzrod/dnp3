@@ -296,7 +296,7 @@ func (w *MainWindow) updateUI(state *controller.AppState) {
 		w.iinBinding.Set(fmt.Sprintf("0x%02X%02X", state.LastResponse.IIN[0], state.LastResponse.IIN[1]))
 		// Update both data panels for compatibility
 		w.dataPanel.Update(state.LastResponse)
-		w.dataTablePanel.Update(state.LastResponse)
+		w.dataTablePanel.Update(state.LastResponse, state.LastResponse.Timestamp)
 	}
 
 	// Update all panels based on connection state

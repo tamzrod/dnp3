@@ -4,6 +4,7 @@ package panels
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -48,7 +49,8 @@ type DataPoint struct {
 	Type        PointType
 	Value       string
 	Quality     string
-	Timestamp   string
+	RXTime      string // RX Time: timestamp when response was received (always populated)
+	PointTime   string // Point Time: timestamp from DNP3 object (empty if not available)
 	Selected    bool
 	QualityGood bool
 }
@@ -115,7 +117,8 @@ func (p *DataTablePanel) createTable() {
 	p.table.SetColumnWidth(1, 40)   // Type
 	p.table.SetColumnWidth(2, 100)  // Value
 	p.table.SetColumnWidth(3, 80)   // Quality
-	p.table.SetColumnWidth(4, 150)  // Time
+	p.table.SetColumnWidth(4, 100)  // RX Time
+	p.table.SetColumnWidth(5, 100)  // Point Time
 
 	// Show header row with column names
 	p.table.ShowHeaderRow = true
@@ -125,8 +128,8 @@ func (p *DataTablePanel) createTable() {
 func (p *DataTablePanel) tableLength() (int, int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	// +1 for header row, 5 columns
-	return len(p.points) + 1, 5
+	// +1 for header row, 6 columns
+	return len(p.points) + 1, 6
 }
 
 // updateCell updates a table cell with data.
@@ -137,7 +140,7 @@ func (p *DataTablePanel) updateCell(id widget.TableCellID, cell fyne.CanvasObjec
 	label := cell.(*widget.Label)
 	label.TextStyle = fyne.TextStyle{}
 
-	headers := []string{"Index", "Type", "Value", "Quality", "Time"}
+	headers := []string{"Index", "Type", "Value", "Quality", "RX Time", "Point Time"}
 
 	if id.Row == 0 {
 		// Header row
@@ -166,7 +169,14 @@ func (p *DataTablePanel) updateCell(id widget.TableCellID, cell fyne.CanvasObjec
 	case 3:
 		label.SetText(point.Quality)
 	case 4:
-		label.SetText(point.Timestamp)
+		label.SetText(point.RXTime)
+	case 5:
+		// Point Time: display "-" if empty
+		if point.PointTime == "" {
+			label.SetText("-")
+		} else {
+			label.SetText(point.PointTime)
+		}
 	}
 }
 
@@ -193,7 +203,8 @@ func (p *DataTablePanel) Container() *fyne.Container {
 }
 
 // Update updates the table with new response data.
-func (p *DataTablePanel) Update(resp *session.Response) {
+// rxTime is the timestamp when the response was received (RX Time).
+func (p *DataTablePanel) Update(resp *session.Response, rxTime time.Time) {
 	if resp == nil {
 		return
 	}
@@ -203,6 +214,9 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 
 	p.points = make([]DataPoint, 0)
 
+	// Format RX Time for display (time only, HH:MM:SS)
+	rxTimeStr := rxTime.Format("15:04:05")
+
 	// Add binary inputs
 	for _, bi := range resp.BinaryInputs {
 		dp := DataPoint{
@@ -211,9 +225,10 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 			Value:       boolToString(bi.Value),
 			Quality:     bi.Quality.String(),
 			QualityGood: bi.Quality.IsGood(),
+			RXTime:      rxTimeStr,
 		}
-		if bi.Time != nil {
-			dp.Timestamp = bi.Time.String()
+		if bi.Time != nil && !bi.Time.IsNull() {
+			dp.PointTime = bi.Time.Time().Format("15:04:05")
 		}
 		p.points = append(p.points, dp)
 	}
@@ -226,9 +241,10 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 			Value:       fmt.Sprintf("%.2f", ai.Value),
 			Quality:     ai.Quality.String(),
 			QualityGood: ai.Quality.IsGood(),
+			RXTime:      rxTimeStr,
 		}
-		if ai.Time != nil {
-			dp.Timestamp = ai.Time.String()
+		if ai.Time != nil && !ai.Time.IsNull() {
+			dp.PointTime = ai.Time.Time().Format("15:04:05")
 		}
 		p.points = append(p.points, dp)
 	}
@@ -241,9 +257,10 @@ func (p *DataTablePanel) Update(resp *session.Response) {
 			Value:       fmt.Sprintf("%d", c.Value),
 			Quality:     c.Quality.String(),
 			QualityGood: c.Quality.IsGood(),
+			RXTime:      rxTimeStr,
 		}
-		if c.Time != nil {
-			dp.Timestamp = c.Time.String()
+		if c.Time != nil && !c.Time.IsNull() {
+			dp.PointTime = c.Time.Time().Format("15:04:05")
 		}
 		p.points = append(p.points, dp)
 	}

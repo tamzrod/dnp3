@@ -199,7 +199,7 @@ func (w *MasterWindow) updateUI(state *masterctrl.State) {
 	// Update IIN and data table panel
 	if state.LastResponse != nil {
 		w.iinBinding.Set(fmt.Sprintf("0x%02X%02X", state.LastResponse.IIN[0], state.LastResponse.IIN[1]))
-		w.dataTablePanel.Update(state.LastResponse)
+		w.dataTablePanel.Update(state.LastResponse, state.LastResponse.Timestamp)
 	}
 
 	// Update connection panel
