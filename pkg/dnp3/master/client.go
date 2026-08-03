@@ -556,7 +556,8 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 			continue
 		}
 
-		for i := 0; i < int(count) && offset+5 <= len(data); i++ {
+		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
+		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
@@ -624,7 +625,8 @@ func parseCounters(data []byte) []*types.Counter {
 			continue
 		}
 
-		for i := 0; i < int(count) && offset+5 <= len(data); i++ {
+		// Need at least 7 bytes per point for variation 1 (32-bit counter with flags)
+		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
@@ -737,7 +739,8 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 			continue
 		}
 
-		for i := 0; i < int(count) && offset+6 <= len(data); i++ {
+		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
+		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
