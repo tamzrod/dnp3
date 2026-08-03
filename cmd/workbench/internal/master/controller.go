@@ -341,7 +341,7 @@ func (c *Controller) doRandomOperate() {
 			Variation:         1,
 			Index:             index,
 			Value:             value,
-			SelectThenOperate: true,
+			SelectThenOperate: false, // Use DirectOperate for reliability
 		}
 		
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -369,7 +369,7 @@ func (c *Controller) doRandomOperate() {
 			Variation:         1,
 			Index:             index,
 			Value:             value,
-			SelectThenOperate: true,
+			SelectThenOperate: false, // Use DirectOperate for reliability
 		}
 		
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

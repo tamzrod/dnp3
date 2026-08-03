@@ -56,9 +56,12 @@ func main() {
 		setupOutstation(app, *address, *port)
 	}
 
-	// Handle quit
+	// Handle quit - clear terminal and restore cursor
 	app.OnQuit = func() {
 		app.LogInfo("Shutting down...")
+		// Clear screen and show cursor on exit
+		os.Stdout.WriteString(tui.ClearScreen)
+		os.Stdout.WriteString(tui.ShowCursor)
 	}
 
 	// Run the application
