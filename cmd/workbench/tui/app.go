@@ -359,7 +359,7 @@ func (a *App) drawTable() {
 	a.dataMu.RUnlock()
 	
 	// Only update table if data changed
-	changed := a.Table.SetRowsIfChanged(currentRows)
+	_ = a.Table.SetRowsIfChanged(currentRows)
 	
 	// Always draw, but only update rows if needed
 	a.Table.DrawSimple(s, tableBounds.Top+2)
