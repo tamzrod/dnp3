@@ -266,7 +266,17 @@ func (c *Controller) handleAutoWrite() {
 			if !enabled {
 				continue // Wait for enable signal
 			}
-			// Random interval between 1-3 seconds
+			// When auto-write is enabled, also enable auto-poll to read data every second
+			c.setAutoPollEnabled(true)
+			// Signal to auto-poll handler to start reading
+			select {
+			case c.autoPollCh <- true:
+				c.logger.Info("Auto-poll enabled for data display during auto-write")
+			default:
+				// Channel full, auto-poll already signaled
+			}
+			
+			// Random interval between 1-3 seconds for writes
 			interval := time.Duration(1+rand.Intn(3)) * time.Second
 			ticker := time.NewTicker(interval)
 			
@@ -279,6 +289,12 @@ func (c *Controller) handleAutoWrite() {
 				case enabled := <-c.autoWriteCh:
 					ticker.Stop()
 					if !enabled {
+						// Disable auto-poll when auto-write is disabled
+						c.setAutoPollEnabled(false)
+						select {
+						case c.autoPollCh <- false:
+						default:
+						}
 						// Exit to outer loop to wait for next enable
 						break autoWriteLoop
 					}
