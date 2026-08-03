@@ -13,11 +13,12 @@ func TestSBOSelectThenOperate(t *testing.T) {
 	ost.Initialize()
 	ost.Start()
 
-	// Create a SELECT request
+	// Create a SELECT request with full CROB data (11 bytes: Code, Count, OnTime, OffTime, Status)
 	selectReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01}, // Group 12, Var 1, index 0
+		// Group 12, Var 1, Qualifier 0, Count 1, Index 0, CROB data (11 bytes)
+		Data: []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	// Process SELECT
@@ -38,7 +39,8 @@ func TestSBOSelectThenOperate(t *testing.T) {
 	operateReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 2},
 		FuncCode: al.FuncOperate,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01}, // Same as select
+		// Same as select - Group 12, Var 1, Qualifier 0, Count 1, Index 0, CROB data
+		Data: []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	// Process OPERATE
@@ -66,7 +68,7 @@ func TestSBOOperateWithoutSelect(t *testing.T) {
 	operateReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncOperate,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
+		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	// Process OPERATE - should fail
@@ -91,11 +93,11 @@ func TestSBOSelectTimeout(t *testing.T) {
 	ost.Initialize()
 	ost.Start()
 
-	// Create a SELECT request
+	// Create a SELECT request with full CROB data
 	selectReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
+		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	// Process SELECT
@@ -111,7 +113,7 @@ func TestSBOSelectTimeout(t *testing.T) {
 	operateReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 2},
 		FuncCode: al.FuncOperate,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
+		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	_, err = ost.ProcessRequest(operateReq)
@@ -129,11 +131,11 @@ func TestSBOClearPendingSelects(t *testing.T) {
 	ost.Initialize()
 	ost.Start()
 
-	// Create a SELECT request
+	// Create a SELECT request with full CROB data
 	selectReq := &al.APDU{
 		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
-		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
+		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
 	ost.ProcessRequest(selectReq)
 

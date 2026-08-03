@@ -367,7 +367,8 @@ func (h *internalDataHandler) FreezeCounters(clear bool) error {
 // Converts internal CROB to public ControlOutput and delegates to commandHandler.
 func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.CROB) error {
 	if h.commandHandler == nil {
-		return nil // No handler registered, ignore command
+		log.Printf("ERROR: WriteBinaryOutput called but commandHandler is nil (index=%d, code=%d)", index, crob.Code)
+		return fmt.Errorf("no command handler registered")
 	}
 
 	// Convert CROB to binary control output
@@ -382,9 +383,11 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		value = false
 	}
 
+	log.Printf("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
+
 	cmd := &types.ControlOutput{
-		Group:     12, // Binary Output
-		Variation: 1,  // CROB
+		Group:      12, // Binary Output
+		Variation:  1, // CROB
 		Index:     index,
 		Value:     &types.BinaryCommandValue{Value: value},
 		CommandType: types.SelectThenOperate,
@@ -393,7 +396,12 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		OffTime:   crob.OffTime,
 	}
 
-	_, err := h.commandHandler.HandleBinaryCommand(cmd)
+	status, err := h.commandHandler.HandleBinaryCommand(cmd)
+	if err != nil {
+		log.Printf("WriteBinaryOutput ERROR: %v", err)
+	} else if status != nil {
+		log.Printf("WriteBinaryOutput result: status=%d", *status)
+	}
 	return err
 }
 
@@ -401,7 +409,8 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 // Converts internal value to public ControlOutput and delegates to commandHandler.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
 	if h.commandHandler == nil {
-		return nil // No handler registered, ignore command
+		log.Printf("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
+		return fmt.Errorf("no command handler registered")
 	}
 
 	// Convert interface{} to float64
@@ -423,6 +432,8 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 		floatValue = 0
 	}
 
+	log.Printf("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
+
 	cmd := &types.ControlOutput{
 		Group:        41, // Analog Output
 		Variation:   variation,
@@ -431,7 +442,12 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 		CommandType: types.SelectThenOperate,
 	}
 
-	_, err := h.commandHandler.HandleAnalogCommand(cmd)
+	status, err := h.commandHandler.HandleAnalogCommand(cmd)
+	if err != nil {
+		log.Printf("WriteAnalogOutput ERROR: %v", err)
+	} else if status != nil {
+		log.Printf("WriteAnalogOutput result: status=%d", *status)
+	}
 	return err
 }
 

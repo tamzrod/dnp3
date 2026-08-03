@@ -1538,9 +1538,15 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	delete(o.pendingSelects, index)
 	o.selectMu.Unlock()
 
-	// Execute the actual control operation
-	// In a real implementation, this would call the data handler to perform the action
-	// For now, we just return success
+	// Execute the actual control operation using the stored select value
+	// Call the DataWriter if the data handler implements it
+	if dh, ok := o.data.(DataWriter); ok {
+		err := o.executeControl(dh, group, variation, index, pending.Value)
+		if err != nil {
+			o.iin.ParamUnavail = true
+			return nil, err
+		}
+	}
 
 	resp := &al.APDU{
 		Control: al.AppControl{
@@ -1558,6 +1564,32 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 // handleDirectOperate handles DIRECT OPERATE requests.
 func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
+	// Parse the object header from request data
+	if len(req.Data) < 5 {
+		return nil, ErrInvalidRequest
+	}
+
+	group := req.Data[0]
+	variation := req.Data[1]
+	
+	// Extract index and value from data (after 4-byte header)
+	dataIdx := 4
+	if dataIdx+2 > len(req.Data) {
+		return nil, ErrInvalidRequest
+	}
+	index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
+	value := make([]byte, len(req.Data)-dataIdx-2)
+	copy(value, req.Data[dataIdx+2:])
+
+	// Execute the control operation directly
+	if dh, ok := o.data.(DataWriter); ok {
+		err := o.executeControl(dh, group, variation, index, value)
+		if err != nil {
+			o.iin.ParamUnavail = true
+			return nil, err
+		}
+	}
+
 	resp := &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
@@ -1570,6 +1602,65 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		Data:     nil,
 	}
 	return resp, nil
+}
+
+// executeControl executes a control operation by parsing the value and calling the DataWriter.
+func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte) error {
+	switch group {
+	case 12: // CROB (Control Relay Output Block)
+		if len(value) < 11 {
+			return ErrInvalidRequest
+		}
+		crob := CROB{
+			Code:   value[0],
+			Count:  value[1],
+			OnTime: uint32(value[2])<<24 | uint32(value[3])<<16 | uint32(value[4])<<8 | uint32(value[5]),
+			OffTime: uint32(value[6])<<24 | uint32(value[7])<<16 | uint32(value[8])<<8 | uint32(value[9]),
+			Status: value[10],
+		}
+		return dh.WriteBinaryOutput(index, &crob)
+
+	case 41, 42, 43, 44: // Analog outputs
+		// Parse analog value based on variation
+		var val interface{}
+		switch variation {
+		case 1, 5: // 16-bit signed
+			if len(value) < 2 {
+				return ErrInvalidRequest
+			}
+			val = int16(value[0])<<8 | int16(value[1])
+		case 2, 6: // 16-bit unsigned
+			if len(value) < 2 {
+				return ErrInvalidRequest
+			}
+			val = uint16(value[0])<<8 | uint16(value[1])
+		case 3, 7: // 32-bit signed
+			if len(value) < 4 {
+				return ErrInvalidRequest
+			}
+			val = int32(value[0])<<24 | int32(value[1])<<16 | int32(value[2])<<8 | int32(value[3])
+		case 4, 8: // 32-bit unsigned
+			if len(value) < 4 {
+				return ErrInvalidRequest
+			}
+			val = uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
+		case 9, 10: // 32-bit float
+			if len(value) < 4 {
+				return ErrInvalidRequest
+			}
+			bits := uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
+			val = float64(math.Float32frombits(bits))
+		default:
+			// Try 16-bit unsigned as default
+			if len(value) >= 2 {
+				val = uint16(value[0])<<8 | uint16(value[1])
+			}
+		}
+		return dh.WriteAnalogOutput(index, val, variation)
+
+	default:
+		return ErrInvalidRequest
+	}
 }
 
 // handleDirectOperateNoResp handles DIRECT OPERATE NO RESPONSE requests.

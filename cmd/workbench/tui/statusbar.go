@@ -100,7 +100,7 @@ func (s *StatusBar) Draw(scr *Screen, width int) {
 	// When disabled: dim (not shown)
 	// In Outstation mode: do not show these indicators
 	autoStatus := ""
-	if s.Mode == "master" {
+	if s.Mode == "MASTER" {
 		autoX := width / 2
 		if s.AutoRead {
 			autoStatus += "[AutoR]"

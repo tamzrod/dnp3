@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -296,8 +297,8 @@ func (a *App) toggleMode() {
 		a.Log.Info("Switched to Master mode")
 	}
 	
-	// Update status
-	a.Status.Mode = string(a.Mode)
+	// Update status (always uppercase for consistency)
+	a.Status.Mode = strings.ToUpper(string(a.Mode))
 	
 	// Clear data table
 	a.Table.Clear()
@@ -356,19 +357,15 @@ func (a *App) drawTable() {
 	tableBounds := a.Layout.TableBounds()
 	s.PrintStyled(tableBounds.Top, 2, "DATA POINTS", "cyan", "bold")
 
-	// Draw table - use smart update to avoid flicker
+	// Draw table - update internal state if data changed
 	a.dataMu.RLock()
 	currentRows := a.dataRows
 	a.dataMu.RUnlock()
 	
-	// Only update table if data changed
-	dataChanged := a.Table.SetRowsIfChanged(currentRows)
-	
-	// Only redraw table content if data actually changed
-	// This significantly reduces flicker during auto-write
-	if dataChanged {
-		a.Table.DrawSimple(s, tableBounds.Top+2)
-	}
+	// Always redraw table - FillRect cleared this region, must restore content
+	// SetRowsIfChanged updates internal state only if different
+	a.Table.SetRowsIfChanged(currentRows)
+	a.Table.DrawSimple(s, tableBounds.Top+2)
 }
 
 // drawLog draws the log panel.
