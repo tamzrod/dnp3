@@ -82,14 +82,28 @@ func NewApp(mode Mode) *App {
 	// Set up table
 	tableBounds := layout.TableBounds()
 	app.Table = NewTable(tableBounds)
-	app.Table.SetColumns([]Column{
-		{Title: "Type", Width: 5},
-		{Title: "Index", Width: 5},
-		{Title: "Value", Width: 12},
-		{Title: "Quality", Width: 9},
-		{Title: "RX Time", Width: 10},
-		{Title: "Point Time", Width: 10},
-	})
+
+	// Set columns based on mode
+	if mode == ModeMaster {
+		// Master has RX Time and Point Time columns
+		app.Table.SetColumns([]Column{
+			{Title: "Type", Width: 5},
+			{Title: "Index", Width: 5},
+			{Title: "Value", Width: 12},
+			{Title: "Quality", Width: 9},
+			{Title: "RX Time", Width: 10},
+			{Title: "Point Time", Width: 10},
+		})
+	} else {
+		// Outstation has single Time column
+		app.Table.SetColumns([]Column{
+			{Title: "Type", Width: 5},
+			{Title: "Index", Width: 5},
+			{Title: "Value", Width: 12},
+			{Title: "Quality", Width: 9},
+			{Title: "Time", Width: 10},
+		})
+	}
 
 	// Set mode in status bar
 	if mode == ModeMaster {

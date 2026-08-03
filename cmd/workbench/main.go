@@ -386,31 +386,31 @@ func formatTimestamp(ts *types.Timestamp, respTime time.Time) string {
 	return "—"
 }
 
+// formatTimestampSimple formats a timestamp for display (outstation mode).
+// Returns "-" if the timestamp is nil or null.
+func formatTimestampSimple(ts *types.Timestamp) string {
+	if ts != nil && !ts.IsNull() {
+		return ts.Time().Format("15:04:05")
+	}
+	return "-"
+}
+
 // updateOutstationData updates the TUI with controller state (Outstation mode).
 func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	// Build data rows from simulator
 	var rows []tui.Row
 
-	// For outstation, RX Time is current time (we're generating the data)
-	now := time.Now()
-	rxTimeStr := now.Format("15:04:05")
-
-	// Get BO/AO timestamps from simulator (tracks last change time)
-	boTimestamps := ctrl.GetBinaryOutputTimestamps()
-	aoTimestamps := ctrl.GetAnalogOutputTimestamps()
-
 	binary := ctrl.GetBinaryInputs()
 	for _, bi := range binary {
 		quality := qualityString(bi.Quality)
-		// Point Time: only show if timestamp is available
-		pointTimeStr := formatPointTime(bi.Time)
+		// Use formatTimestamp to display point's timestamp
+		timeStr := formatTimestampSimple(bi.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"BI",
 			fmt.Sprintf("%d", bi.Index),
 			fmt.Sprintf("%v", bi.Value),
 			quality,
-			rxTimeStr,
-			pointTimeStr,
+			timeStr,
 		}})
 	}
 
@@ -418,33 +418,25 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	binaryOut := ctrl.GetBinaryOutputs()
 	for _, bo := range binaryOut {
 		quality := qualityString(bo.Quality)
-		// BO Point Time: from simulator timestamp if available
-		pointTimeStr := "-"
-		if tsPtr := boTimestamps[bo.Index]; tsPtr != nil && !tsPtr.IsNull() {
-			pointTimeStr = tsPtr.Time().Format("15:04:05.000")
-		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"BO",
 			fmt.Sprintf("%d", bo.Index),
 			fmt.Sprintf("%v", bo.Value),
 			quality,
-			rxTimeStr,
-			pointTimeStr,
+			"-",
 		}})
 	}
 
 	analog := ctrl.GetAnalogInputs()
 	for _, ai := range analog {
 		quality := qualityString(ai.Quality)
-		// Point Time: only show if timestamp is available
-		pointTimeStr := formatPointTime(ai.Time)
+		timeStr := formatTimestampSimple(ai.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"AI",
 			fmt.Sprintf("%d", ai.Index),
 			fmt.Sprintf("%.2f", ai.Value),
 			quality,
-			rxTimeStr,
-			pointTimeStr,
+			timeStr,
 		}})
 	}
 
@@ -452,33 +444,25 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	analogOut := ctrl.GetAnalogOutputs()
 	for _, ao := range analogOut {
 		quality := qualityString(ao.Quality)
-		// AO Point Time: from simulator timestamp if available
-		pointTimeStr := "-"
-		if tsPtr := aoTimestamps[ao.Index]; tsPtr != nil && !tsPtr.IsNull() {
-			pointTimeStr = tsPtr.Time().Format("15:04:05.000")
-		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"AO",
 			fmt.Sprintf("%d", ao.Index),
 			fmt.Sprintf("%.2f", ao.Value),
 			quality,
-			rxTimeStr,
-			pointTimeStr,
+			"-",
 		}})
 	}
 
 	counters := ctrl.GetCounters()
 	for _, c := range counters {
 		quality := qualityString(c.Quality)
-		// Point Time: only show if timestamp is available
-		pointTimeStr := formatPointTime(c.Time)
+		timeStr := formatTimestampSimple(c.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"CTR",
 			fmt.Sprintf("%d", c.Index),
 			fmt.Sprintf("%d", c.Value),
 			quality,
-			rxTimeStr,
-			pointTimeStr,
+			timeStr,
 		}})
 	}
 
