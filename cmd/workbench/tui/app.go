@@ -308,10 +308,13 @@ func (a *App) toggleMode() {
 func (a *App) draw() {
 	s := a.Screen
 
-	// Clear screen
-	s.Clear()
+	// Clear only the main content area (between header and footer) to reduce flicker
+	// Don't clear the entire screen - just the dynamic content region
+	mainBounds := a.Layout.MainBounds()
+	s.FillRect(mainBounds.Top, mainBounds.Left, mainBounds.Right-mainBounds.Left+1, 
+		mainBounds.Bottom-mainBounds.Top+1, " ", "", "")
 
-	// Draw header
+	// Draw header (clears and redraws)
 	a.drawHeader()
 
 	// Draw table
@@ -359,10 +362,13 @@ func (a *App) drawTable() {
 	a.dataMu.RUnlock()
 	
 	// Only update table if data changed
-	_ = a.Table.SetRowsIfChanged(currentRows)
+	dataChanged := a.Table.SetRowsIfChanged(currentRows)
 	
-	// Always draw, but only update rows if needed
-	a.Table.DrawSimple(s, tableBounds.Top+2)
+	// Only redraw table content if data actually changed
+	// This significantly reduces flicker during auto-write
+	if dataChanged {
+		a.Table.DrawSimple(s, tableBounds.Top+2)
+	}
 }
 
 // drawLog draws the log panel.

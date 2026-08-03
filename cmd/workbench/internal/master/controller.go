@@ -134,9 +134,11 @@ func (c *Controller) EnableAutoWrite(enabled bool) {
 	}
 	
 	// Signal to auto-write handler
+	// Use non-blocking send with buffered channel; if full, handler already has latest state
 	select {
 	case c.autoWriteCh <- enabled:
 	default:
+		// Channel full, handler already has latest state - this is fine
 	}
 }
 
@@ -262,12 +264,13 @@ func (c *Controller) handleAutoWrite() {
 			return
 		case enabled := <-c.autoWriteCh:
 			if !enabled {
-				continue
+				continue // Wait for enable signal
 			}
 			// Random interval between 1-3 seconds
 			interval := time.Duration(1+rand.Intn(3)) * time.Second
 			ticker := time.NewTicker(interval)
 			
+			autoWriteLoop:
 			for {
 				select {
 				case <-c.autoPollCtx.Done():
@@ -276,7 +279,8 @@ func (c *Controller) handleAutoWrite() {
 				case enabled := <-c.autoWriteCh:
 					ticker.Stop()
 					if !enabled {
-						goto exitAutoWrite
+						// Exit to outer loop to wait for next enable
+						break autoWriteLoop
 					}
 					// Restart with new random interval
 					interval = time.Duration(1+rand.Intn(3)) * time.Second
@@ -293,7 +297,6 @@ func (c *Controller) handleAutoWrite() {
 					}
 				}
 			}
-		exitAutoWrite:
 		}
 	}
 }

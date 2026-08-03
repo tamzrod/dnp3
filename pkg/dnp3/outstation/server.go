@@ -265,7 +265,8 @@ type UnsolicitedHandler interface {
 
 // internalDataHandler adapts public DataHandler to internal/outstation.DataHandler
 type internalDataHandler struct {
-	publicHandler DataHandler
+	publicHandler   DataHandler
+	commandHandler CommandHandler
 }
 
 func (h *internalDataHandler) GetBinaryInputs() []outstation.BinaryInput {
@@ -360,6 +361,78 @@ func (h *internalDataHandler) GetFrozenCounters() []outstation.Counter {
 
 func (h *internalDataHandler) FreezeCounters(clear bool) error {
 	return h.publicHandler.FreezeCounters(clear)
+}
+
+// WriteBinaryOutput handles writing a binary output (CROB) from the master.
+// Converts internal CROB to public ControlOutput and delegates to commandHandler.
+func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.CROB) error {
+	if h.commandHandler == nil {
+		return nil // No handler registered, ignore command
+	}
+
+	// Convert CROB to binary control output
+	// CROB codes: 1=NUL, 2=CLOSE(ON), 3=OPEN(OFF), 4=TRIP, 5=PULSE_ON, 6=PULSE_OFF, 7=LATCH_ON, 8=LATCH_OFF
+	var value bool
+	switch crob.Code {
+	case 2, 4, 5, 7: // CLOSE, TRIP, PULSE_ON, LATCH_ON
+		value = true
+	case 1, 3, 6, 8: // NUL, OPEN, PULSE_OFF, LATCH_OFF
+		value = false
+	default:
+		value = false
+	}
+
+	cmd := &types.ControlOutput{
+		Group:     12, // Binary Output
+		Variation: 1,  // CROB
+		Index:     index,
+		Value:     &types.BinaryCommandValue{Value: value},
+		CommandType: types.SelectThenOperate,
+		Count:     crob.Count,
+		OnTime:    crob.OnTime,
+		OffTime:   crob.OffTime,
+	}
+
+	_, err := h.commandHandler.HandleBinaryCommand(cmd)
+	return err
+}
+
+// WriteAnalogOutput handles writing an analog output from the master.
+// Converts internal value to public ControlOutput and delegates to commandHandler.
+func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
+	if h.commandHandler == nil {
+		return nil // No handler registered, ignore command
+	}
+
+	// Convert interface{} to float64
+	var floatValue float64
+	switch v := value.(type) {
+	case int16:
+		floatValue = float64(v)
+	case uint16:
+		floatValue = float64(v)
+	case int32:
+		floatValue = float64(v)
+	case uint32:
+		floatValue = float64(v)
+	case float32:
+		floatValue = float64(v)
+	case float64:
+		floatValue = v
+	default:
+		floatValue = 0
+	}
+
+	cmd := &types.ControlOutput{
+		Group:        41, // Analog Output
+		Variation:   variation,
+		Index:       index,
+		Value:       &types.AnalogCommandValue{Value: floatValue},
+		CommandType: types.SelectThenOperate,
+	}
+
+	_, err := h.commandHandler.HandleAnalogCommand(cmd)
+	return err
 }
 
 // DefaultDataHandler is a simple data handler that returns empty data
@@ -555,7 +628,10 @@ func (s *server) handleConnection(conn net.Conn) {
 	inst := outstation.NewOutstation(internalConfig)
 	inst.SetTransport(t)
 	inst.Initialize()
-	inst.SetDataHandler(&internalDataHandler{publicHandler: s.dataHandler})
+	inst.SetDataHandler(&internalDataHandler{
+		publicHandler:   s.dataHandler,
+		commandHandler: s.commandHandler,
+	})
 	inst.Start()
 
 	instance := &outstationInstance{
@@ -637,7 +713,8 @@ func (s *server) SetDataHandler(handler DataHandler) {
 	s.connectionsMu.Lock()
 	for _, inst := range s.connections {
 		inst.outstation.SetDataHandler(&internalDataHandler{
-			publicHandler: handler,
+			publicHandler:   handler,
+			commandHandler: s.commandHandler,
 		})
 	}
 	s.connectionsMu.Unlock()

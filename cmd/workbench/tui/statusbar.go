@@ -7,7 +7,7 @@ import (
 
 // StatusBar represents the status bar at the bottom of the screen.
 type StatusBar struct {
-	Mode        string
+	Mode        string // "Master" or "Outstation"
 	Connection  string
 	Address     string
 	IIN         string
@@ -86,26 +86,35 @@ func (s *StatusBar) Draw(scr *Screen, width int) {
 	// Draw background
 	scr.DrawHeader(y-1, strings.Repeat(" ", width), "black", "white")
 
-	// Draw status
-	scr.Print(y-1, 2, status)
+	// Draw status with color based on connection state
+	connColor := "white" // default
+	if s.Error != "" {
+		connColor = "red"
+	} else if strings.Contains(s.Connection, "Connected") || strings.Contains(s.Connection, "connected") {
+		connColor = "green"
+	}
+	scr.PrintStyled(y-1, 2, status, connColor)
 
-	// Draw AutoRead/AutoWrite status in the middle area
+	// Draw AutoRead/AutoWrite status in the middle area (Master mode only)
 	// When enabled: bold + bright green
 	// When disabled: dim (not shown)
+	// In Outstation mode: do not show these indicators
 	autoStatus := ""
-	autoX := width / 2
-	if s.AutoRead {
-		autoStatus += "[AutoR]"
-	}
-	if s.AutoRead && s.AutoWrite {
-		autoStatus += " "
-	}
-	if s.AutoWrite {
-		autoStatus += "[AutoW]"
-	}
-	if autoStatus != "" {
-		// Use bold + bright green when enabled
-		scr.PrintStyled(y-1, autoX-len(autoStatus)/2, autoStatus, "green", "bold")
+	if s.Mode == "master" {
+		autoX := width / 2
+		if s.AutoRead {
+			autoStatus += "[AutoR]"
+		}
+		if s.AutoRead && s.AutoWrite {
+			autoStatus += " "
+		}
+		if s.AutoWrite {
+			autoStatus += "[AutoW]"
+		}
+		if autoStatus != "" {
+			// Use bold + bright green when enabled
+			scr.PrintStyled(y-1, autoX-len(autoStatus)/2, autoStatus, "green", "bold")
+		}
 	}
 
 	// Draw error if present
