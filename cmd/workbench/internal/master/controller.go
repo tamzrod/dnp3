@@ -353,7 +353,11 @@ func (c *Controller) doRandomOperate() {
 			return
 		}
 		
+		// Handle operate response (logs the operate result)
 		c.handleResponse(opResp)
+		
+		// Now read data to update the UI with current values
+		c.doAutoRead()
 	} else {
 		// Analog Output operate
 		index := uint16(rand.Intn(aoCount))
@@ -381,7 +385,11 @@ func (c *Controller) doRandomOperate() {
 			return
 		}
 		
+		// Handle operate response (logs the operate result)
 		c.handleResponse(opResp)
+		
+		// Now read data to update the UI with current values
+		c.doAutoRead()
 	}
 }
 
