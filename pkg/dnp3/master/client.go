@@ -859,8 +859,19 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	// Translate command
 	selectThenOperate := command.CommandType == types.SelectThenOperate
 
+	// Extract raw value from CommandValue interface
+	var rawValue interface{}
+	switch v := command.Value.(type) {
+	case *types.BinaryCommandValue:
+		rawValue = v.Value // bool
+	case *types.AnalogCommandValue:
+		rawValue = v.Value // float64
+	default:
+		rawValue = command.Value
+	}
+
 	// Perform operate through internal master
-	if err := internal.Operate(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, command.Value); err != nil {
+	if err := internal.Operate(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue); err != nil {
 		return nil, fmt.Errorf("operate failed: %w", err)
 	}
 

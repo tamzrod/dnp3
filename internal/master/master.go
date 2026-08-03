@@ -9,6 +9,7 @@ package master
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -900,11 +901,22 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			byte(bits >> 8), byte(bits & 0xFF),
 		}
 
+	case float64:
+		// Convert float64 to float32 for Group 41 variation 1 (32-bit float)
+		f32 := float32(v)
+		bits := float32ToUint32Bits(f32)
+		valueBytes = []byte{
+			byte(bits >> 24), byte(bits >> 16),
+			byte(bits >> 8), byte(bits & 0xFF),
+		}
+
 	}
 
 	
 	data := append(prefix, indexBytes...)
 	data = append(data, valueBytes...)
+
+	log.Printf("buildControlRequest: funcCode=%d group=%d var=%d index=%d valueBytes=%v (hex=%x)", funcCode, group, variation, index, valueBytes, valueBytes)
 	
 	return buildRequest(0, funcCode, data)
 }
