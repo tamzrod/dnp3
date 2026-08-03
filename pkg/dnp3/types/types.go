@@ -7,7 +7,10 @@
 // guaranteed to be stable across versions.
 package types
 
-import "time"
+import (
+	"encoding/binary"
+	"time"
+)
 
 // QualityFlags represents data quality indicators for DNP3 data points.
 // These flags indicate the health and validity of a data sample.
@@ -257,6 +260,28 @@ func (t *Timestamp) String() string {
 		return "null"
 	}
 	return t.Time().Format(time.RFC3339)
+}
+
+// NewTimestampFromDNP3 creates a Timestamp from 8-byte DNP3 time format
+func NewTimestampFromDNP3(timeBytes [8]byte) *Timestamp {
+	// DNP3 time is 2 x 4-byte longs: first is the relative time, second is absolute
+	// For simplicity, we use the first 8 bytes as a single uint64
+	value := binary.BigEndian.Uint64(timeBytes[:])
+	return &Timestamp{Value: value}
+}
+
+// NewTimestamp creates a Timestamp from a time.Time
+func NewTimestamp(t time.Time) *Timestamp {
+	return &Timestamp{
+		Value: uint64(t.Sub(DNP3Epoch).Milliseconds()),
+	}
+}
+
+// ToDNP3Time converts the timestamp to 8-byte DNP3 time format
+func (t *Timestamp) ToDNP3Time() [8]byte {
+	var result [8]byte
+	binary.BigEndian.PutUint64(result[:], t.Value)
+	return result
 }
 
 // joinStrings is a helper function to join strings

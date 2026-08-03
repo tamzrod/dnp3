@@ -31,6 +31,9 @@ func debugLog(format string, v ...interface{}) {
 	}
 }
 
+// DNP3Epoch is the DNP3 time epoch (2000-01-01 00:00:00 UTC)
+var DNP3Epoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // State represents the outstation's operational state.
 type State int
 
@@ -123,6 +126,7 @@ type PendingSelect struct {
 type BinaryInput struct {
 	Value   bool  // Current value (true=on, false=off)
 	Quality uint8 // Quality flags
+	Time    uint64 // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
 }
 
 // Quality flags for binary inputs
@@ -137,6 +141,7 @@ const (
 type AnalogInput struct {
 	Value   float64 // Current value
 	Quality uint8   // Quality flags
+	Time    uint64  // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
 }
 
 // AnalogQuality flags
@@ -152,6 +157,7 @@ const (
 type Counter struct {
 	Value   uint32 // Current count
 	Quality uint8  // Quality flags
+	Time    uint64 // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
 }
 
 // CounterQuality flags
@@ -1052,21 +1058,21 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 		switch group {
 		case 0: // Null qualifier - all data
 			result = append(result, o.buildAllStaticData()...)
-		case 1: // Binary Input
+		case 1: // Binary Input (static - no timestamp)
 			result = append(result, o.buildBinaryInputData(variation)...)
-		case 2: // Binary Input Event
-			result = append(result, o.buildBinaryInputData(variation)...)
-		case 10: // Binary Output
+		case 2: // Binary Input Event (with timestamp)
+			result = append(result, o.buildBinaryInputEventData(variation)...)
+		case 10: // Binary Output (static - no timestamp)
 			result = append(result, o.buildBinaryOutputData(variation)...)
-		case 20: // Counter
+		case 20: // Counter (static - no timestamp)
 			result = append(result, o.buildCounterData(variation)...)
-		case 21: // Counter Event
-			result = append(result, o.buildCounterData(variation)...)
-		case 30: // Analog Input
+		case 21: // Counter Event (with timestamp)
+			result = append(result, o.buildCounterEventData(variation)...)
+		case 30: // Analog Input (static - no timestamp)
 			result = append(result, o.buildAnalogInputData(variation)...)
-		case 31: // Analog Input Event
-			result = append(result, o.buildAnalogInputData(variation)...)
-		case 40: // Analog Output
+		case 31: // Analog Input Event (with timestamp)
+			result = append(result, o.buildAnalogInputEventData(variation)...)
+		case 40: // Analog Output (static - no timestamp)
 			result = append(result, o.buildAnalogOutputData(variation)...)
 		case 60: // Class data
 			result = append(result, o.buildAllStaticData()...)
@@ -1114,18 +1120,61 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 
 		// Value based on variation
 		switch variation {
-		case 1: // Binary Input with flags
+		case 1: // Binary Input with flags (no timestamp for static)
 			val := byte(0)
 			if bi.Value {
 				val = 0x80
 			}
 			result = append(result, val|bi.Quality)
-		case 2: // Binary Input without flags
+		case 2: // Binary Input without flags (no timestamp for static)
 			if bi.Value {
 				result = append(result, 0x01)
 			} else {
 				result = append(result, 0x00)
 			}
+		}
+	}
+
+	return result
+}
+
+// buildBinaryInputEventData builds binary input event data with timestamps.
+func (o *Outstation) buildBinaryInputEventData(variation uint8) []byte {
+	var result []byte
+	data := o.data.GetBinaryInputs()
+
+	if len(data) == 0 {
+		return result
+	}
+
+	// Object header for event data
+	result = append(result, 2)               // Group 2 (Binary Input Event)
+	result = append(result, variation)      // Variation
+	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, byte(len(data))) // Count
+
+	for i, bi := range data {
+		// Index (2 bytes, big-endian)
+		result = append(result, byte(i>>8), byte(i&0xFF))
+
+		switch variation {
+		case 1: // Binary Input Event with time (8 bytes)
+			val := byte(0)
+			if bi.Value {
+				val = 0x80
+			}
+			result = append(result, val|bi.Quality)
+			// Time - 8 bytes (big-endian uint64)
+			timeValue := bi.Time
+			if timeValue == 0 {
+				// Use current time if not set
+				timeValue = uint64(time.Now().Sub(DNP3Epoch).Milliseconds())
+			}
+			result = append(result,
+				byte(timeValue>>56), byte(timeValue>>48),
+				byte(timeValue>>40), byte(timeValue>>32),
+				byte(timeValue>>24), byte(timeValue>>16),
+				byte(timeValue>>8), byte(timeValue))
 		}
 	}
 
@@ -1214,6 +1263,89 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 			result = append(result,
 				byte(c.Value>>24), byte(c.Value>>16),
 				byte(c.Value>>8), byte(c.Value))
+		}
+	}
+
+	return result
+}
+
+// buildAnalogInputEventData builds analog input event data with timestamps.
+func (o *Outstation) buildAnalogInputEventData(variation uint8) []byte {
+	var result []byte
+	data := o.data.GetAnalogInputs()
+
+	if len(data) == 0 {
+		return result
+	}
+
+	// Object header for event data
+	result = append(result, 31)              // Group 31 (Analog Input Event)
+	result = append(result, variation)      // Variation
+	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, byte(len(data))) // Count
+
+	for i, ai := range data {
+		// Index (2 bytes, big-endian)
+		result = append(result, byte(i>>8), byte(i&0xFF))
+
+		switch variation {
+		case 1: // Analog Input Event with time - 32-bit float
+			bits := float64ToUint32Bits(ai.Value)
+			result = append(result,
+				byte(bits>>24), byte(bits>>16),
+				byte(bits>>8), byte(bits))
+			result = append(result, ai.Quality)
+			// Time - 8 bytes (big-endian uint64)
+			timeValue := ai.Time
+			if timeValue == 0 {
+				timeValue = uint64(time.Now().Sub(DNP3Epoch).Milliseconds())
+			}
+			result = append(result,
+				byte(timeValue>>56), byte(timeValue>>48),
+				byte(timeValue>>40), byte(timeValue>>32),
+				byte(timeValue>>24), byte(timeValue>>16),
+				byte(timeValue>>8), byte(timeValue))
+		}
+	}
+
+	return result
+}
+
+// buildCounterEventData builds counter event data with timestamps.
+func (o *Outstation) buildCounterEventData(variation uint8) []byte {
+	var result []byte
+	data := o.data.GetCounters()
+
+	if len(data) == 0 {
+		return result
+	}
+
+	// Object header for event data
+	result = append(result, 21)              // Group 21 (Counter Event)
+	result = append(result, variation)      // Variation
+	result = append(result, 0x00)           // Qualifier: index
+	result = append(result, byte(len(data))) // Count
+
+	for i, c := range data {
+		// Index (2 bytes, big-endian)
+		result = append(result, byte(i>>8), byte(i&0xFF))
+
+		switch variation {
+		case 1: // Counter Event with time - 32-bit counter
+			result = append(result,
+				byte(c.Value>>24), byte(c.Value>>16),
+				byte(c.Value>>8), byte(c.Value))
+			result = append(result, c.Quality)
+			// Time - 8 bytes (big-endian uint64)
+			timeValue := c.Time
+			if timeValue == 0 {
+				timeValue = uint64(time.Now().Sub(DNP3Epoch).Milliseconds())
+			}
+			result = append(result,
+				byte(timeValue>>56), byte(timeValue>>48),
+				byte(timeValue>>40), byte(timeValue>>32),
+				byte(timeValue>>24), byte(timeValue>>16),
+				byte(timeValue>>8), byte(timeValue))
 		}
 	}
 

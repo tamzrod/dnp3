@@ -239,7 +239,12 @@ func (c *Controller) doAutoRead() {
 	
 	cmd := &session.ReadCommand{
 		Groups: []types.GroupRequest{
-			{Group: 60, Variation: 1}, // All static data (Class 0)
+			// Request event variations to get timestamps (Point Time)
+			{Group: 2, Variation: 1},  // Binary Input Event with time
+			{Group: 31, Variation: 1}, // Analog Input Event with time
+			{Group: 21, Variation: 1}, // Counter Event with time
+			{Group: 10, Variation: 1}, // Binary Output (static)
+			{Group: 40, Variation: 1}, // Analog Output (static)
 		},
 	}
 	

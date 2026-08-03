@@ -481,7 +481,7 @@ func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
 	}
 }
 
-// parseBinaryInputs parses binary input data from response
+// parseBinaryInputs parses binary input data from response (Group 1 and Group 2)
 func parseBinaryInputs(data []byte) []*types.BinaryInput {
 	var result []*types.BinaryInput
 	offset := 0
@@ -497,37 +497,58 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 		count := data[offset+3]
 		offset += 4
 
-		if group != 1 { // Group 1 = Binary Input
-			// Skip past this group's data using correct group/variation sizing
+		// Group 1 = Binary Input (static), Group 2 = Binary Input Event (with timestamp)
+		if group != 1 && group != 2 {
 			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
-		for i := 0; i < int(count) && offset+3 <= len(data); i++ {
+		for i := 0; i < int(count); i++ {
+			if offset+2 > len(data) {
+				break
+			}
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value bool
 			var quality types.QualityFlags
+			var timestamp *types.Timestamp
 
 			switch variation {
 			case 1: // With flags
+				if offset >= len(data) {
+					break
+				}
 				val := data[offset]
 				value = (val & 0x80) != 0
-				quality = types.QualityFlags(val & 0x7F) // Mask out state bit, keep quality flags
+				quality = types.QualityFlags(val & 0x7F)
 				offset++
 			case 2: // Without flags
+				if offset >= len(data) {
+					break
+				}
 				value = data[offset] != 0
 				quality = types.QualityOnline
 				offset++
 			default:
-				offset++
+				if offset < len(data) {
+					offset++
+				}
+			}
+
+			// Group 2 (Binary Input Event) has timestamp after flags
+			if group == 2 && offset+8 <= len(data) {
+				var timeBytes [8]byte
+				copy(timeBytes[:], data[offset:offset+8])
+				offset += 8
+				timestamp = types.NewTimestampFromDNP3(timeBytes)
 			}
 
 			result = append(result, &types.BinaryInput{
 				Index:   index,
 				Value:   value,
 				Quality: quality,
+				Time:    timestamp,
 			})
 		}
 	}
@@ -535,7 +556,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 	return result
 }
 
-// parseAnalogInputs parses analog input data from response
+// parseAnalogInputs parses analog input data from response (Group 30 and Group 31)
 func parseAnalogInputs(data []byte) []*types.AnalogInput {
 	var result []*types.AnalogInput
 	offset := 0
@@ -551,52 +572,79 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		count := data[offset+3]
 		offset += 4
 
-		if group != 30 { // Group 30 = Analog Input
-			// Skip past this group's data
+		// Group 30 = Analog Input (static), Group 31 = Analog Input Event (with timestamp)
+		if group != 30 && group != 31 {
 			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
-		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
+		for i := 0; i < int(count); i++ {
+			if offset+2 > len(data) {
+				break
+			}
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value float64
 			var quality types.QualityFlags
+			var timestamp *types.Timestamp
 
 			switch variation {
 			case 1: // 32-bit float with flags
+				if offset+5 > len(data) {
+					break
+				}
 				bits := binary.BigEndian.Uint32(data[offset : offset+4])
 				value = float64(math.Float32frombits(bits))
 				offset += 4
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 2: // 16-bit integer with flags
+				if offset+3 > len(data) {
+					break
+				}
 				val := int16(binary.BigEndian.Uint16(data[offset:offset+2]))
 				value = float64(val)
 				offset += 2
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 3: // 32-bit integer with flags
+				if offset+5 > len(data) {
+					break
+				}
 				val := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
 				value = float64(val)
 				offset += 4
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 5: // 32-bit float without flags
+				if offset+4 > len(data) {
+					break
+				}
 				bits := binary.BigEndian.Uint32(data[offset : offset+4])
 				value = float64(math.Float32frombits(bits))
 				offset += 4
 				quality = types.QualityOnline
 			default:
-				offset += 5
+				if offset < len(data) {
+					offset++
+				}
+			}
+
+			// Group 31 (Analog Input Event) has 8-byte timestamp after flags
+			if group == 31 && offset+8 <= len(data) {
+				var timeBytes [8]byte
+				copy(timeBytes[:], data[offset:offset+8])
+				offset += 8
+				timestamp = types.NewTimestampFromDNP3(timeBytes)
 			}
 
 			result = append(result, &types.AnalogInput{
 				Index:   index,
 				Value:   value,
 				Quality: quality,
+				Time:    timestamp,
 			})
 		}
 	}
@@ -604,7 +652,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 	return result
 }
 
-// parseCounters parses counter data from response
+// parseCounters parses counter data from response (Group 20 and Group 21)
 func parseCounters(data []byte) []*types.Counter {
 	var result []*types.Counter
 	offset := 0
@@ -620,43 +668,67 @@ func parseCounters(data []byte) []*types.Counter {
 		count := data[offset+3]
 		offset += 4
 
-		if group != 20 { // Group 20 = Counter
-			// Skip past this group's data
+		// Group 20 = Counter (static), Group 21 = Counter Event (with timestamp)
+		if group != 20 && group != 21 {
 			offset = skipGroupData(offset, data, group, variation, count)
 			continue
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit counter with flags)
-		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
+		for i := 0; i < int(count); i++ {
+			if offset+2 > len(data) {
+				break
+			}
 			index := binary.BigEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value uint32
 			var quality types.QualityFlags
+			var timestamp *types.Timestamp
 
 			switch variation {
 			case 1: // 32-bit with flags
+				if offset+5 > len(data) {
+					break
+				}
 				value = binary.BigEndian.Uint32(data[offset : offset+4])
 				offset += 4
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 5: // 16-bit with flags
+				if offset+3 > len(data) {
+					break
+				}
 				value = uint32(binary.BigEndian.Uint16(data[offset:offset+2]))
 				offset += 2
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 6: // 32-bit without flags
+				if offset+4 > len(data) {
+					break
+				}
 				value = binary.BigEndian.Uint32(data[offset : offset+4])
 				offset += 4
 				quality = types.QualityOnline
 			default:
-				offset += 5
+				if offset < len(data) {
+					offset++
+				}
+			}
+
+			// Group 21 (Counter Event) has 8-byte timestamp after flags
+			if group == 21 && offset+8 <= len(data) {
+				var timeBytes [8]byte
+				copy(timeBytes[:], data[offset:offset+8])
+				offset += 8
+				timestamp = types.NewTimestampFromDNP3(timeBytes)
 			}
 
 			result = append(result, &types.Counter{
 				Index:   index,
 				Value:   value,
 				Quality: quality,
+				Time:    timestamp,
 			})
 		}
 	}

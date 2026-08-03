@@ -285,9 +285,16 @@ func (h *internalDataHandler) GetBinaryInputs() []outstation.BinaryInput {
 	}
 	internal := make([]outstation.BinaryInput, len(public))
 	for i, bi := range public {
+		var timeValue uint64
+		if bi.Time != nil && !bi.Time.IsNull() {
+			// Convert types.Timestamp to uint64 DNP3 time
+			// DNP3 time is milliseconds since 2000-01-01
+			timeValue = bi.Time.Value
+		}
 		internal[i] = outstation.BinaryInput{
 			Value:   bi.Value,
 			Quality: uint8(bi.Quality),
+			Time:    timeValue,
 		}
 	}
 	return internal
@@ -300,9 +307,14 @@ func (h *internalDataHandler) GetAnalogInputs() []outstation.AnalogInput {
 	}
 	internal := make([]outstation.AnalogInput, len(public))
 	for i, ai := range public {
+		var timeValue uint64
+		if ai.Time != nil && !ai.Time.IsNull() {
+			timeValue = ai.Time.Value
+		}
 		internal[i] = outstation.AnalogInput{
 			Value:   ai.Value,
 			Quality: uint8(ai.Quality),
+			Time:    timeValue,
 		}
 	}
 	return internal
@@ -315,9 +327,14 @@ func (h *internalDataHandler) GetCounters() []outstation.Counter {
 	}
 	internal := make([]outstation.Counter, len(public))
 	for i, c := range public {
+		var timeValue uint64
+		if c.Time != nil && !c.Time.IsNull() {
+			timeValue = c.Time.Value
+		}
 		internal[i] = outstation.Counter{
 			Value:   c.Value,
 			Quality: uint8(c.Quality),
+			Time:    timeValue,
 		}
 	}
 	return internal
