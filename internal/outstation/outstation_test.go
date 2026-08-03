@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"dnp3/internal/al"
+	"dnp3/internal/outstation/events"
 )
 
 // TestSBOSelectThenOperate tests the SBO select-then-operate flow.
@@ -153,11 +154,11 @@ func TestSBOClearPendingSelects(t *testing.T) {
 
 // TestEventQueueAdd tests adding events to the queue.
 func TestEventQueueAdd(t *testing.T) {
-	queue := NewEventQueue(100)
+	queue := events.NewEventQueue(100)
 
 	// Add an event
-	event := Event{
-		Class:   Class1,
+	event := events.Event{
+		Class:   events.Class1,
 		Group:   2,
 		Index:   0,
 		Value:   []byte{0x01},
@@ -165,8 +166,8 @@ func TestEventQueueAdd(t *testing.T) {
 		Time:    time.Now(),
 	}
 
-	if !queue.Add(event) {
-		t.Error("Expected Add to succeed")
+	if !queue.Push(event) {
+		t.Error("Expected Push to succeed")
 	}
 
 	if queue.Count() != 1 {
@@ -176,24 +177,24 @@ func TestEventQueueAdd(t *testing.T) {
 
 // TestEventQueueOverflow tests buffer overflow behavior.
 func TestEventQueueOverflow(t *testing.T) {
-	queue := NewEventQueue(6) // Small buffer for testing
+	queue := events.NewEventQueue(6) // Small buffer for testing
 
 	// Fill the buffer
 	for i := 0; i < 3; i++ {
-		event := Event{
-			Class:   Class1,
+		event := events.Event{
+			Class:   events.Class1,
 			Group:   2,
 			Index:   uint16(i),
 			Value:   []byte{byte(i)},
 			Quality: BinaryQualityOnline,
 			Time:    time.Now(),
 		}
-		queue.Add(event)
+		queue.Push(event)
 	}
 
 	// Next add should fail
-	event := Event{
-		Class:   Class1,
+	event := events.Event{
+		Class:   events.Class1,
 		Group:   2,
 		Index:   99,
 		Value:   []byte{0x01},
@@ -201,8 +202,8 @@ func TestEventQueueOverflow(t *testing.T) {
 		Time:    time.Now(),
 	}
 
-	if queue.Add(event) {
-		t.Error("Expected Add to fail on full buffer")
+	if queue.Push(event) {
+		t.Error("Expected Push to fail on full buffer")
 	}
 
 	// IsFull should return true
@@ -213,19 +214,19 @@ func TestEventQueueOverflow(t *testing.T) {
 
 // TestEventQueueClear tests clearing events.
 func TestEventQueueClear(t *testing.T) {
-	queue := NewEventQueue(100)
+	queue := events.NewEventQueue(100)
 
 	// Add some events
 	for i := 0; i < 3; i++ {
-		event := Event{
-			Class:   Class1,
+		event := events.Event{
+			Class:   events.Class1,
 			Group:   2,
 			Index:   uint16(i),
 			Value:   []byte{byte(i)},
 			Quality: BinaryQualityOnline,
 			Time:    time.Now(),
 		}
-		queue.Add(event)
+		queue.Push(event)
 	}
 
 	if queue.Count() != 3 {
@@ -251,7 +252,7 @@ func TestGenerateEvent(t *testing.T) {
 	ost.Start()
 
 	// Generate an event
-	if !ost.GenerateEvent(Class1, 2, 0, []byte{0x01}, BinaryQualityOnline) {
+	if !ost.GenerateEvent(events.Class1, 2, 0, []byte{0x01}, BinaryQualityOnline) {
 		t.Error("Expected GenerateEvent to succeed")
 	}
 
@@ -261,7 +262,7 @@ func TestGenerateEvent(t *testing.T) {
 
 	// Generate more events to fill buffer (15 total, 5 per class)
 	for i := 1; i < 15; i++ {
-		ost.GenerateEvent(Class1, 2, uint16(i), []byte{byte(i)}, BinaryQualityOnline)
+		ost.GenerateEvent(events.Class1, 2, uint16(i), []byte{byte(i)}, BinaryQualityOnline)
 	}
 
 	// Check IIN is set when buffer is full
@@ -278,8 +279,8 @@ func TestClearEvents(t *testing.T) {
 	ost.Start()
 
 	// Generate some events
-	ost.GenerateEvent(Class1, 2, 0, []byte{0x01}, BinaryQualityOnline)
-	ost.GenerateEvent(Class2, 32, 0, []byte{0x02}, AnalogQualityOnline)
+	ost.GenerateEvent(events.Class1, 2, 0, []byte{0x01}, BinaryQualityOnline)
+	ost.GenerateEvent(events.Class2, 32, 0, []byte{0x02}, AnalogQualityOnline)
 
 	if ost.EventCount() != 2 {
 		t.Fatalf("EventCount = %d, want 2", ost.EventCount())
@@ -450,7 +451,7 @@ func TestCleanup(t *testing.T) {
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
 	}
 	ost.ProcessRequest(selectReq)
-	ost.GenerateEvent(Class1, 2, 0, []byte{0x01}, BinaryQualityOnline)
+	ost.GenerateEvent(events.Class1, 2, 0, []byte{0x01}, BinaryQualityOnline)
 
 	// Verify state exists
 	if ost.PendingSelectCount() != 1 {

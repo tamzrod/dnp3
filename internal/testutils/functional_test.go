@@ -10,6 +10,7 @@ import (
 	"dnp3/internal/al"
 	"dnp3/internal/master"
 	"dnp3/internal/outstation"
+	"dnp3/internal/outstation/events"
 )
 
 // TestResult holds the result of a test.
@@ -622,7 +623,7 @@ func TestEventGeneration(t *testing.T) {
 	o.Start()
 
 	// Generate events
-	added := o.GenerateEvent(outstation.Class1, 2, 0, []byte{0x01}, outstation.BinaryQualityOnline)
+	added := o.GenerateEvent(events.Class1, 2, 0, []byte{0x01}, outstation.BinaryQualityOnline)
 	if !added {
 		t.Error("Expected event to be added")
 	}
@@ -633,7 +634,7 @@ func TestEventGeneration(t *testing.T) {
 
 	// Generate more events
 	for i := 1; i < 10; i++ {
-		o.GenerateEvent(outstation.Class1, 2, uint16(i), []byte{byte(i)}, outstation.BinaryQualityOnline)
+		o.GenerateEvent(events.Class1, 2, uint16(i), []byte{byte(i)}, outstation.BinaryQualityOnline)
 	}
 
 	// Check buffer overflow
@@ -659,7 +660,7 @@ func TestEventBufferOverflow(t *testing.T) {
 
 	// Fill the buffer
 	for i := 0; i < 20; i++ {
-		o.GenerateEvent(outstation.Class1, 2, uint16(i), []byte{byte(i)}, outstation.BinaryQualityOnline)
+		o.GenerateEvent(events.Class1, 2, uint16(i), []byte{byte(i)}, outstation.BinaryQualityOnline)
 	}
 
 	// Eventually buffer should indicate full via IIN
@@ -943,11 +944,11 @@ func TestManyEvents(t *testing.T) {
 
 	// Generate many events
 	for i := 0; i < 100; i++ {
-		class := outstation.Class1
+		class := events.Class1
 		if i%3 == 0 {
-			class = outstation.Class2
+			class = events.Class2
 		} else if i%3 == 1 {
-			class = outstation.Class3
+			class = events.Class3
 		}
 		o.GenerateEvent(class, 2, uint16(i), []byte{byte(i % 256)}, outstation.BinaryQualityOnline)
 	}

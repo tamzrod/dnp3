@@ -18,6 +18,7 @@ import (
 
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
+	eventspkg "dnp3/internal/outstation/events"
 	"dnp3/internal/tl"
 )
 
@@ -178,112 +179,6 @@ type BinaryOutput struct {
 type AnalogOutput struct {
 	Value   float64 // Current output value
 	Quality uint8   // Quality flags
-}
-
-// EventClass represents the priority class of an event.
-type EventClass int
-
-const (
-	Class1 EventClass = iota // Highest priority
-	Class2
-	Class3
-)
-
-// Event represents a DNP3 event.
-type Event struct {
-	Class   EventClass
-	Group   uint8
-	Index   uint16
-	Value   []byte
-	Quality uint8
-	Time    time.Time
-}
-
-// EventQueue manages event buffers for outstation.
-type EventQueue struct {
-	mu      sync.Mutex
-	buffers map[EventClass][]Event
-	maxSize int
-}
-
-// NewEventQueue creates a new event queue with the specified maximum size.
-func NewEventQueue(maxSize int) *EventQueue {
-	return &EventQueue{
-		buffers: map[EventClass][]Event{
-			Class1: make([]Event, 0, maxSize/3),
-			Class2: make([]Event, 0, maxSize/3),
-			Class3: make([]Event, 0, maxSize/3),
-		},
-		maxSize: maxSize,
-	}
-}
-
-// Add adds an event to the queue.
-func (q *EventQueue) Add(event Event) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	classEvents := q.buffers[event.Class]
-	if len(classEvents) >= q.maxSize/3 {
-		return false // Buffer full for this class
-	}
-
-	q.buffers[event.Class] = append(classEvents, event)
-	return true
-}
-
-// Clear removes all events.
-func (q *EventQueue) Clear() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	for class := range q.buffers {
-		q.buffers[class] = q.buffers[class][:0]
-	}
-}
-
-// ClearClass removes all events of a specific class.
-func (q *EventQueue) ClearClass(class EventClass) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.buffers[class] = q.buffers[class][:0]
-}
-
-// GetAll returns all events.
-func (q *EventQueue) GetAll() []Event {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	var all []Event
-	for _, events := range q.buffers {
-		all = append(all, events...)
-	}
-	return all
-}
-
-// Count returns the total number of events.
-func (q *EventQueue) Count() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	count := 0
-	for _, events := range q.buffers {
-		count += len(events)
-	}
-	return count
-}
-
-// IsFull returns true if any event class buffer is full.
-func (q *EventQueue) IsFull() bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	for _, events := range q.buffers {
-		if len(events) >= q.maxSize/3 {
-			return true
-		}
-	}
-	return false
 }
 
 // DefaultDataHandler provides default mock data for testing.
@@ -500,8 +395,9 @@ type Outstation struct {
 	// SBO state tracking
 	pendingSelects map[uint16]*PendingSelect // Index -> PendingSelect
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
-	// Event queue
-	eventQueue *EventQueue
+	// Event subsystem
+	eventEngine *eventspkg.EventEngine
+	eventQueue  *eventspkg.EventQueue
 }
 
 // NewOutstation creates a new Outstation.
@@ -509,6 +405,12 @@ func NewOutstation(config *Config) *Outstation {
 	if config == nil {
 		config = DefaultConfig()
 	}
+
+	// Initialize event subsystem
+	eventConfig := eventspkg.NewEventConfig()
+	eventEngine := eventspkg.NewEventEngine(eventConfig, config.MaxEventBuffers)
+	eventQueue := eventspkg.NewEventQueue(config.MaxEventBuffers)
+
 	return &Outstation{
 		config:         config,
 		state:          StateDown,
@@ -517,7 +419,8 @@ func NewOutstation(config *Config) *Outstation {
 		fragmenter:      tl.NewFragmenter(),
 		reassembler:    tl.NewReassembler(),
 		pendingSelects: make(map[uint16]*PendingSelect),
-		eventQueue:    NewEventQueue(config.MaxEventBuffers),
+		eventEngine:    eventEngine,
+		eventQueue:     eventQueue,
 	}
 }
 
@@ -679,8 +582,8 @@ func (c *ResponseCache) Clear() {
 
 // GenerateEvent adds a new event to the event queue.
 // Returns false if the event was not added due to buffer overflow.
-func (o *Outstation) GenerateEvent(class EventClass, group uint8, index uint16, value []byte, quality uint8) bool {
-	event := Event{
+func (o *Outstation) GenerateEvent(class eventspkg.EventClass, group uint8, index uint16, value []byte, quality uint8) bool {
+	event := eventspkg.Event{
 		Class:   class,
 		Group:   group,
 		Index:   index,
@@ -689,7 +592,7 @@ func (o *Outstation) GenerateEvent(class EventClass, group uint8, index uint16, 
 		Time:    time.Now(),
 	}
 
-	added := o.eventQueue.Add(event)
+	added := o.eventQueue.Push(event)
 
 	// Update IIN if buffer is full
 	if o.eventQueue.IsFull() {
@@ -720,8 +623,13 @@ func (o *Outstation) HasEvents() bool {
 }
 
 // GetEvents returns all events in the queue.
-func (o *Outstation) GetEvents() []Event {
+func (o *Outstation) GetEvents() []eventspkg.Event {
 	return o.eventQueue.GetAll()
+}
+
+// EventEngine returns the event engine for configuration.
+func (o *Outstation) EventEngine() *eventspkg.EventEngine {
+	return o.eventEngine
 }
 
 // Run starts the outstation's main loop.
@@ -1076,6 +984,8 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildAnalogOutputData(variation)...)
 		case 60: // Class data
 			result = append(result, o.buildAllStaticData()...)
+		case 70: // All events (Class 1/2/3)
+			result = append(result, o.buildAllEvents()...)
 		}
 
 		offset += 4
@@ -1097,6 +1007,19 @@ func (o *Outstation) buildAllStaticData() []byte {
 	result = append(result, o.buildBinaryOutputData(1)...)
 	result = append(result, o.buildAnalogOutputData(1)...)
 	return result
+}
+
+// buildAllEvents builds all events from the event queue using the event builder.
+func (o *Outstation) buildAllEvents() []byte {
+	// Get events from the event engine
+	events := o.eventEngine.GetEvents()
+	if len(events) == 0 {
+		return nil
+	}
+
+	// Use the event builder to encode events
+	builder := eventspkg.NewEventBuilder()
+	return builder.BuildEventObjects(events)
 }
 
 // buildBinaryInputData builds binary input data.
