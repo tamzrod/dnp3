@@ -83,11 +83,12 @@ func NewApp(mode Mode) *App {
 	tableBounds := layout.TableBounds()
 	app.Table = NewTable(tableBounds)
 	app.Table.SetColumns([]Column{
-		{Title: "Type", Width: 6},
-		{Title: "Index", Width: 6},
+		{Title: "Type", Width: 5},
+		{Title: "Index", Width: 5},
 		{Title: "Value", Width: 12},
-		{Title: "Quality", Width: 10},
-		{Title: "Timestamp", Width: 12},
+		{Title: "Quality", Width: 9},
+		{Title: "RX Time", Width: 10},
+		{Title: "Point Time", Width: 10},
 	})
 
 	// Set mode in status bar

@@ -287,67 +287,72 @@ func updateData(app *tui.App, state *masterctrl.State) {
 				len(resp.BinaryOutputs), len(resp.AnalogOutputs)))
 		}
 
+		// RX Time is when the response was received (always same for all points)
+		rxTimeStr := respTime.Format("15:04:05")
+
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
-			ts := formatTimestamp(bi.Time, respTime)
+			// Point Time: only show if timestamp is available
+			pointTimeStr := formatPointTime(bi.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BI",
 				fmt.Sprintf("%d", bi.Index),
 				fmt.Sprintf("%v", bi.Value),
 				quality,
-				ts,
+				rxTimeStr,
+				pointTimeStr,
 			}})
 		}
 
-		// Add Binary Outputs - BO/AO don't have timestamps from device, show RX time
+		// Add Binary Outputs - BO doesn't have Point Time in DNP3 objects
 		for _, bo := range resp.BinaryOutputs {
 			quality := qualityString(bo.Quality)
-			// BO has no timestamp from device - show receive time
-			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BO",
 				fmt.Sprintf("%d", bo.Index),
 				fmt.Sprintf("%v", bo.Value),
 				quality,
-				ts,
+				rxTimeStr,
+				"-", // BO has no Point Time in DNP3 objects
 			}})
 		}
 
 		for _, ai := range resp.AnalogInputs {
 			quality := qualityString(ai.Quality)
-			ts := formatTimestamp(ai.Time, respTime)
+			pointTimeStr := formatPointTime(ai.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AI",
 				fmt.Sprintf("%d", ai.Index),
 				fmt.Sprintf("%.2f", ai.Value),
 				quality,
-				ts,
+				rxTimeStr,
+				pointTimeStr,
 			}})
 		}
 
-		// Add Analog Outputs - AO doesn't have timestamp from device, show RX time
+		// Add Analog Outputs - AO doesn't have Point Time in DNP3 objects
 		for _, ao := range resp.AnalogOutputs {
 			quality := qualityString(ao.Quality)
-			// AO has no timestamp from device - show receive time
-			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AO",
 				fmt.Sprintf("%d", ao.Index),
 				fmt.Sprintf("%.2f", ao.Value),
 				quality,
-				ts,
+				rxTimeStr,
+				"-", // AO has no Point Time in DNP3 objects
 			}})
 		}
 
 		for _, c := range resp.Counters {
 			quality := qualityString(c.Quality)
-			ts := formatTimestamp(c.Time, respTime)
+			pointTimeStr := formatPointTime(c.Time)
 			rows = append(rows, tui.Row{Cells: []string{
 				"CTR",
 				fmt.Sprintf("%d", c.Index),
 				fmt.Sprintf("%d", c.Value),
 				quality,
-				ts,
+				rxTimeStr,
+				pointTimeStr,
 			}})
 		}
 	}
@@ -356,6 +361,15 @@ func updateData(app *tui.App, state *masterctrl.State) {
 	if app.UpdateDataIfChanged(rows) {
 		app.SignalRedraw()
 	}
+}
+
+// formatPointTime formats a timestamp from a DNP3 object.
+// Returns "-" if the timestamp is nil or null.
+func formatPointTime(ts *types.Timestamp) string {
+	if ts != nil && !ts.IsNull() {
+		return ts.Time().Format("15:04:05.000")
+	}
+	return "-"
 }
 
 // formatTimestamp formats a timestamp for display.
@@ -377,6 +391,10 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	// Build data rows from simulator
 	var rows []tui.Row
 
+	// For outstation, RX Time is current time (we're generating the data)
+	now := time.Now()
+	rxTimeStr := now.Format("15:04:05")
+
 	// Get BO/AO timestamps from simulator (tracks last change time)
 	boTimestamps := ctrl.GetBinaryOutputTimestamps()
 	aoTimestamps := ctrl.GetAnalogOutputTimestamps()
@@ -384,17 +402,15 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	binary := ctrl.GetBinaryInputs()
 	for _, bi := range binary {
 		quality := qualityString(bi.Quality)
-		// BI timestamp: only show if value changed (timestamp not null)
-		ts := "—"
-		if bi.Time != nil && !bi.Time.IsNull() {
-			ts = bi.Time.Time().Format("15:04:05.000")
-		}
+		// Point Time: only show if timestamp is available
+		pointTimeStr := formatPointTime(bi.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"BI",
 			fmt.Sprintf("%d", bi.Index),
 			fmt.Sprintf("%v", bi.Value),
 			quality,
-			ts,
+			rxTimeStr,
+			pointTimeStr,
 		}})
 	}
 
@@ -402,34 +418,33 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	binaryOut := ctrl.GetBinaryOutputs()
 	for _, bo := range binaryOut {
 		quality := qualityString(bo.Quality)
-		// BO timestamp: only show if value has ever changed
-		ts := "—"
+		// BO Point Time: from simulator timestamp if available
+		pointTimeStr := "-"
 		if tsPtr := boTimestamps[bo.Index]; tsPtr != nil && !tsPtr.IsNull() {
-			ts = tsPtr.Time().Format("15:04:05.000")
+			pointTimeStr = tsPtr.Time().Format("15:04:05.000")
 		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"BO",
 			fmt.Sprintf("%d", bo.Index),
 			fmt.Sprintf("%v", bo.Value),
 			quality,
-			ts,
+			rxTimeStr,
+			pointTimeStr,
 		}})
 	}
 
 	analog := ctrl.GetAnalogInputs()
 	for _, ai := range analog {
 		quality := qualityString(ai.Quality)
-		// AI timestamp: only show if value changed (timestamp not null)
-		ts := "—"
-		if ai.Time != nil && !ai.Time.IsNull() {
-			ts = ai.Time.Time().Format("15:04:05.000")
-		}
+		// Point Time: only show if timestamp is available
+		pointTimeStr := formatPointTime(ai.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"AI",
 			fmt.Sprintf("%d", ai.Index),
 			fmt.Sprintf("%.2f", ai.Value),
 			quality,
-			ts,
+			rxTimeStr,
+			pointTimeStr,
 		}})
 	}
 
@@ -437,34 +452,33 @@ func updateOutstationData(app *tui.App, ctrl *outstationctrl.Controller) {
 	analogOut := ctrl.GetAnalogOutputs()
 	for _, ao := range analogOut {
 		quality := qualityString(ao.Quality)
-		// AO timestamp: only show if value has ever changed
-		ts := "—"
+		// AO Point Time: from simulator timestamp if available
+		pointTimeStr := "-"
 		if tsPtr := aoTimestamps[ao.Index]; tsPtr != nil && !tsPtr.IsNull() {
-			ts = tsPtr.Time().Format("15:04:05.000")
+			pointTimeStr = tsPtr.Time().Format("15:04:05.000")
 		}
 		rows = append(rows, tui.Row{Cells: []string{
 			"AO",
 			fmt.Sprintf("%d", ao.Index),
 			fmt.Sprintf("%.2f", ao.Value),
 			quality,
-			ts,
+			rxTimeStr,
+			pointTimeStr,
 		}})
 	}
 
 	counters := ctrl.GetCounters()
 	for _, c := range counters {
 		quality := qualityString(c.Quality)
-		// CTR timestamp: always shows (counters always change)
-		ts := "—"
-		if c.Time != nil && !c.Time.IsNull() {
-			ts = c.Time.Time().Format("15:04:05.000")
-		}
+		// Point Time: only show if timestamp is available
+		pointTimeStr := formatPointTime(c.Time)
 		rows = append(rows, tui.Row{Cells: []string{
 			"CTR",
 			fmt.Sprintf("%d", c.Index),
 			fmt.Sprintf("%d", c.Value),
 			quality,
-			ts,
+			rxTimeStr,
+			pointTimeStr,
 		}})
 	}
 
