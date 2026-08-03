@@ -181,12 +181,13 @@ type BinaryOutputSimulation struct {
 }
 
 // NewBinaryOutputSimulation creates a new binary output simulation
+// Note: Time is nil initially - only set when value changes via a command
 func NewBinaryOutputSimulation(index uint16, initialValue bool) *BinaryOutputSimulation {
 	return &BinaryOutputSimulation{
 		Index:   index,
 		Value:   initialValue,
 		Quality: types.QualityOnline,
-		Time:    (&types.Timestamp{}).Now(),
+		Time:    nil, // Will be set to Now() only when value actually changes
 	}
 }
 
@@ -215,6 +216,7 @@ type AnalogOutputSimulation struct {
 }
 
 // NewAnalogOutputSimulation creates a new analog output simulation
+// Note: Time is nil initially - only set when value changes via a command
 func NewAnalogOutputSimulation(index uint16, initialValue, minValue, maxValue float64) *AnalogOutputSimulation {
 	return &AnalogOutputSimulation{
 		Index:    index,
@@ -222,7 +224,7 @@ func NewAnalogOutputSimulation(index uint16, initialValue, minValue, maxValue fl
 		MinValue: minValue,
 		MaxValue: maxValue,
 		Quality:  types.QualityOnline,
-		Time:     (&types.Timestamp{}).Now(),
+		Time:     nil, // Will be set to Now() only when value actually changes
 	}
 }
 
@@ -509,28 +511,36 @@ func (s *Simulator) GetAnalogOutputTimestamps() map[uint16]*types.Timestamp {
 }
 
 // SetBinaryOutput manually sets a binary output value (for control operations)
+// Updates timestamp only when value actually changes
 func (s *Simulator) SetBinaryOutput(index uint16, value bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, bo := range s.BinaryOutputs {
 		if bo.Index == index {
-			bo.Value = value
-			bo.Time = (&types.Timestamp{}).Now()
+			// Only update timestamp if value actually changed
+			if bo.Value != value {
+				bo.Value = value
+				bo.Time = (&types.Timestamp{}).Now()
+			}
 			return
 		}
 	}
 }
 
 // SetAnalogOutput manually sets an analog output value (for control operations)
+// Updates timestamp only when value actually changes
 func (s *Simulator) SetAnalogOutput(index uint16, value float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, ao := range s.AnalogOutputs {
 		if ao.Index == index {
-			ao.Value = value
-			ao.Time = (&types.Timestamp{}).Now()
+			// Only update timestamp if value actually changed
+			if ao.Value != value {
+				ao.Value = value
+				ao.Time = (&types.Timestamp{}).Now()
+			}
 			return
 		}
 	}

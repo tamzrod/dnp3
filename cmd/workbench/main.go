@@ -21,99 +21,11 @@ import (
 
 // Global state for data updates
 var (
-	updateMu        sync.RWMutex
-	updateCh        chan struct{}
-	masterTSTracker = newMasterTimestampTracker()
+	updateMu sync.RWMutex
+	updateCh chan struct{}
 )
 
-// masterTimestampTracker tracks stable timestamps for Master mode BO/AO display.
-// Avoids updating displayed timestamp on every poll when values haven't changed.
-type masterTimestampTracker struct {
-	boValues     map[uint16]interface{}
-	aoValues     map[uint16]interface{}
-	boTimestamps map[uint16]time.Time
-	aoTimestamps map[uint16]time.Time
-	mu           sync.RWMutex
-}
 
-func newMasterTimestampTracker() *masterTimestampTracker {
-	return &masterTimestampTracker{
-		boValues:     make(map[uint16]interface{}),
-		aoValues:     make(map[uint16]interface{}),
-		boTimestamps: make(map[uint16]time.Time),
-		aoTimestamps: make(map[uint16]time.Time),
-	}
-}
-
-// GetBOTimestamp returns the last time BO value changed, or zero time if never.
-func (t *masterTimestampTracker) GetBOTimestamp(index uint16) time.Time {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.boTimestamps[index]
-}
-
-// GetAOTimestamp returns the last time AO value changed, or zero time if never.
-func (t *masterTimestampTracker) GetAOTimestamp(index uint16) time.Time {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.aoTimestamps[index]
-}
-
-// Update checks if values changed and updates timestamps accordingly.
-func (t *masterTimestampTracker) Update(boValues, aoValues map[uint16]interface{}, respTime time.Time) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Update BO timestamps only when value changes
-	for index, value := range boValues {
-		prevValue, prevExists := t.boValues[index]
-		if !prevExists || !valuesEqual(prevValue, value) {
-			t.boValues[index] = value
-			t.boTimestamps[index] = respTime
-		}
-	}
-
-	// Update AO timestamps only when value changes
-	for index, value := range aoValues {
-		prevValue, prevExists := t.aoValues[index]
-		if !prevExists || !valuesEqual(prevValue, value) {
-			t.aoValues[index] = value
-			t.aoTimestamps[index] = respTime
-		}
-	}
-}
-
-// valuesEqual compares two values for equality.
-func valuesEqual(a, b interface{}) bool {
-	switch av := a.(type) {
-	case bool:
-		if bv, ok := b.(bool); ok {
-			return av == bv
-		}
-	case float64:
-		switch bv := b.(type) {
-		case float64:
-			return av == bv
-		case float32:
-			return float64(bv) == av
-		}
-	case float32:
-		if bv, ok := b.(float32); ok {
-			return av == bv
-		}
-	}
-	return false
-}
-
-// Reset clears all timestamps (on disconnect)
-func (t *masterTimestampTracker) Reset() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.boValues = make(map[uint16]interface{})
-	t.aoValues = make(map[uint16]interface{})
-	t.boTimestamps = make(map[uint16]time.Time)
-	t.aoTimestamps = make(map[uint16]time.Time)
-}
 
 func main() {
 	// Parse command-line flags
@@ -207,8 +119,6 @@ func setupMaster(app *tui.App, address string, port int) {
 		// Update TUI status
 		app.SetAutoRead(false)
 		app.SetAutoWrite(false)
-		// Reset timestamp tracker for next connection
-		masterTSTracker.Reset()
 	}
 
 	// Read class callback
@@ -363,10 +273,6 @@ func updateData(app *tui.App, state *masterctrl.State) {
 		resp := state.LastResponse
 		respTime := resp.Timestamp
 
-		// Build value maps for timestamp tracking
-		boValues := make(map[uint16]interface{})
-		aoValues := make(map[uint16]interface{})
-
 		for _, bi := range resp.BinaryInputs {
 			quality := qualityString(bi.Quality)
 			ts := formatTimestamp(bi.Time, respTime)
@@ -379,13 +285,11 @@ func updateData(app *tui.App, state *masterctrl.State) {
 			}})
 		}
 
-		// Add Binary Outputs - use stable timestamp tracker
+		// Add Binary Outputs - BO/AO don't have timestamps from device, show RX time
 		for _, bo := range resp.BinaryOutputs {
 			quality := qualityString(bo.Quality)
-			boValues[bo.Index] = bo.Value
-			// Use stable timestamp (only changes when value changes)
-			stableTS := masterTSTracker.GetBOTimestamp(bo.Index)
-			ts := formatStableTimestamp(stableTS)
+			// BO has no timestamp from device - show receive time
+			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"BO",
 				fmt.Sprintf("%d", bo.Index),
@@ -407,13 +311,11 @@ func updateData(app *tui.App, state *masterctrl.State) {
 			}})
 		}
 
-		// Add Analog Outputs - use stable timestamp tracker
+		// Add Analog Outputs - AO doesn't have timestamp from device, show RX time
 		for _, ao := range resp.AnalogOutputs {
 			quality := qualityString(ao.Quality)
-			aoValues[ao.Index] = ao.Value
-			// Use stable timestamp (only changes when value changes)
-			stableTS := masterTSTracker.GetAOTimestamp(ao.Index)
-			ts := formatStableTimestamp(stableTS)
+			// AO has no timestamp from device - show receive time
+			ts := formatTimestamp(nil, respTime)
 			rows = append(rows, tui.Row{Cells: []string{
 				"AO",
 				fmt.Sprintf("%d", ao.Index),
@@ -434,9 +336,6 @@ func updateData(app *tui.App, state *masterctrl.State) {
 				ts,
 			}})
 		}
-
-		// Update timestamp tracker with current values and response time
-		masterTSTracker.Update(boValues, aoValues, respTime)
 	}
 
 	// Use UpdateDataIfChanged and SignalRedraw to avoid flicker
@@ -457,15 +356,6 @@ func formatTimestamp(ts *types.Timestamp, respTime time.Time) string {
 		return "RX " + respTime.Format("15:04:05")
 	}
 	return "—"
-}
-
-// formatStableTimestamp formats a stable timestamp for Master mode BO/AO display.
-// Only shows timestamp when value has actually changed, otherwise "—".
-func formatStableTimestamp(ts time.Time) string {
-	if ts.IsZero() {
-		return "—"
-	}
-	return ts.Format("15:04:05")
 }
 
 // updateOutstationData updates the TUI with controller state (Outstation mode).

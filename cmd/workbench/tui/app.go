@@ -154,9 +154,10 @@ func (a *App) Run() error {
 			}
 			return nil
 		case <-a.redrawCh:
-			// Data changed - redraw
-			a.drawTable()
-			a.Screen.Flush()
+			// Data changed - redraw only if data actually changed
+			if a.drawTable() {
+				a.Screen.Flush()
+			}
 		case <-ticker.C:
 			// Periodic redraw for status bar (time, etc.)
 			a.draw()
@@ -362,8 +363,9 @@ func (a *App) drawHeader() {
 	s.DrawSeparator(2, "─")
 }
 
-// drawTable draws the data table.
-func (a *App) drawTable() {
+// drawTable draws the data table only if data has changed.
+// Returns true if the table was redrawn.
+func (a *App) drawTable() bool {
 	s := a.Screen
 
 	// Draw table title
@@ -375,9 +377,12 @@ func (a *App) drawTable() {
 	currentRows := a.dataRows
 	a.dataMu.RUnlock()
 	
-	// Update table data and redraw
-	a.Table.SetRowsIfChanged(currentRows)
-	a.Table.DrawSimple(s, tableBounds.Top+2)
+	// Only redraw if rows actually changed
+	if a.Table.SetRowsIfChanged(currentRows) {
+		a.Table.DrawSimple(s, tableBounds.Top+2)
+		return true
+	}
+	return false
 }
 
 // drawLog draws the log panel.
