@@ -870,46 +870,154 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
 
 	
-	// Value encoding depends on type
+	// Value encoding depends on group and type
 	var valueBytes []byte
-	switch v := value.(type) {
-	case bool:
-		if v {
-			valueBytes = []byte{0x01}
-
-		} else {
-			valueBytes = []byte{0x00}
-
+	
+	switch group {
+	case 12:
+		// CROB (Control Relay Output Block) - 11 bytes
+		// Format: code(1), count(1), onTime(4), offTime(4), status(1)
+		var code uint8
+		var count uint8 = 1
+		var onTime uint32 = 0
+		var offTime uint32 = 0
+		var status uint8 = 0
+		
+		switch v := value.(type) {
+		case bool:
+			if v {
+				code = 1 // Latch On
+			} else {
+				code = 2 // Latch Off
+			}
+		case uint8:
+			code = v
+		case uint16:
+			code = uint8(v)
+		default:
+			log.Printf("buildControlRequest: ERROR - unsupported CROB value type %T", value)
+			return nil
 		}
-
-	case uint8:
-		valueBytes = []byte{v}
-
-	case uint16:
-		valueBytes = []byte{byte(v >> 8), byte(v & 0xFF)}
-
-	case uint32:
+		
 		valueBytes = []byte{
-			byte(v >> 24), byte(v >> 16),
-			byte(v >> 8), byte(v & 0xFF),
+			code,          // Control code
+			count,         // Count
+			byte(onTime >> 24), byte(onTime >> 16), byte(onTime >> 8), byte(onTime), // On time
+			byte(offTime >> 24), byte(offTime >> 16), byte(offTime >> 8), byte(offTime), // Off time
+			status,        // Status
 		}
-
-	case float32:
-		bits := float32ToUint32Bits(v)
-		valueBytes = []byte{
-			byte(bits >> 24), byte(bits >> 16),
-			byte(bits >> 8), byte(bits & 0xFF),
+		
+		if len(valueBytes) != 11 {
+			log.Printf("buildControlRequest: ERROR - CROB should be 11 bytes, got %d", len(valueBytes))
+			return nil
 		}
-
-	case float64:
-		// Convert float64 to float32 for Group 41 variation 1 (32-bit float)
-		f32 := float32(v)
-		bits := float32ToUint32Bits(f32)
-		valueBytes = []byte{
-			byte(bits >> 24), byte(bits >> 16),
-			byte(bits >> 8), byte(bits & 0xFF),
+		
+	case 41, 42, 43, 44:
+		// Analog Output - encoding must match variation
+		switch variation {
+		case 1, 5: // 16-bit signed int
+			var intVal int16
+			switch v := value.(type) {
+			case float64:
+				intVal = int16(v)
+			case float32:
+				intVal = int16(v)
+			case int16:
+				intVal = v
+			case int32:
+				intVal = int16(v)
+			case int64:
+				intVal = int16(v)
+			default:
+				log.Printf("buildControlRequest: ERROR - unsupported int16 value type %T", value)
+				return nil
+			}
+			valueBytes = []byte{byte(intVal >> 8), byte(intVal)}
+			
+		case 2, 6: // 16-bit unsigned int
+			var uintVal uint16
+			switch v := value.(type) {
+			case float64:
+				uintVal = uint16(v)
+			case float32:
+				uintVal = uint16(v)
+			case uint16:
+				uintVal = v
+			case uint32:
+				uintVal = uint16(v)
+			case int16:
+				uintVal = uint16(v)
+			default:
+				log.Printf("buildControlRequest: ERROR - unsupported uint16 value type %T", value)
+				return nil
+			}
+			valueBytes = []byte{byte(uintVal >> 8), byte(uintVal)}
+			
+		case 3, 7: // 32-bit signed int
+			var intVal int32
+			switch v := value.(type) {
+			case float64:
+				intVal = int32(v)
+			case float32:
+				intVal = int32(v)
+			case int32:
+				intVal = v
+			case int16:
+				intVal = int32(v)
+			default:
+				log.Printf("buildControlRequest: ERROR - unsupported int32 value type %T", value)
+				return nil
+			}
+			valueBytes = []byte{
+				byte(intVal >> 24), byte(intVal >> 16),
+				byte(intVal >> 8), byte(intVal),
+			}
+			
+		case 4, 8: // 32-bit unsigned int
+			var uintVal uint32
+			switch v := value.(type) {
+			case float64:
+				uintVal = uint32(v)
+			case float32:
+				uintVal = uint32(v)
+			case uint32:
+				uintVal = v
+			case uint16:
+				uintVal = uint32(v)
+			default:
+				log.Printf("buildControlRequest: ERROR - unsupported uint32 value type %T", value)
+				return nil
+			}
+			valueBytes = []byte{
+				byte(uintVal >> 24), byte(uintVal >> 16),
+				byte(uintVal >> 8), byte(uintVal),
+			}
+			
+		case 9, 10: // 32-bit float
+			var floatVal float32
+			switch v := value.(type) {
+			case float64:
+				floatVal = float32(v)
+			case float32:
+				floatVal = v
+			default:
+				log.Printf("buildControlRequest: ERROR - unsupported float32 value type %T", value)
+				return nil
+			}
+			bits := float32ToUint32Bits(floatVal)
+			valueBytes = []byte{
+				byte(bits >> 24), byte(bits >> 16),
+				byte(bits >> 8), byte(bits),
+			}
+			
+		default:
+			log.Printf("buildControlRequest: ERROR - unsupported AO variation %d", variation)
+			return nil
 		}
-
+		
+	default:
+		log.Printf("buildControlRequest: ERROR - unsupported group %d", group)
+		return nil
 	}
 
 	

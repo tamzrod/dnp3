@@ -366,7 +366,7 @@ func (c *Controller) doRandomOperate() {
 		
 		cmd := &session.OperateCommand{
 			Group:             41, // Analog Output
-			Variation:         1,
+			Variation:         9,  // Variation 9 = 32-bit float (matches float64 encoding)
 			Index:             index,
 			Value:             value,
 			SelectThenOperate: false, // Use DirectOperate for reliability
