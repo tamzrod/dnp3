@@ -307,14 +307,6 @@ func (a *App) toggleMode() {
 
 // draw redraws the entire screen.
 func (a *App) draw() {
-	s := a.Screen
-
-	// Clear only the main content area (between header and footer) to reduce flicker
-	// Don't clear the entire screen - just the dynamic content region
-	mainBounds := a.Layout.MainBounds()
-	s.FillRect(mainBounds.Top, mainBounds.Left, mainBounds.Right-mainBounds.Left+1, 
-		mainBounds.Bottom-mainBounds.Top+1, " ", "", "")
-
 	// Draw header (clears and redraws)
 	a.drawHeader()
 
@@ -362,8 +354,7 @@ func (a *App) drawTable() {
 	currentRows := a.dataRows
 	a.dataMu.RUnlock()
 	
-	// Always redraw table - FillRect cleared this region, must restore content
-	// SetRowsIfChanged updates internal state only if different
+	// Update table data and redraw
 	a.Table.SetRowsIfChanged(currentRows)
 	a.Table.DrawSimple(s, tableBounds.Top+2)
 }
@@ -380,7 +371,7 @@ func (a *App) drawLog() {
 	a.Log.DrawSimple(s, logBounds.Top+2, logBounds.Bottom-logBounds.Top)
 }
 
-// drawFooter draws the footer/controls.
+// drawFooter draws the footer/controls with active state styling.
 func (a *App) drawFooter() {
 	s := a.Screen
 	height := s.height
@@ -388,32 +379,58 @@ func (a *App) drawFooter() {
 	// Draw separator
 	s.DrawSeparator(height-1, "─")
 
-	// Build controls based on mode
-	var controls []string
-	
-	// Common controls for both modes
-	controls = []string{
-		"[s]tart",
-		"[x]stop",
-		"[↑↓] nav",
-		"[l]og",
-		"[h]elp",
-		"[q]uit",
-	}
-	
-	// Master-only controls: auto-rd, auto-wr, simulation mode
-	if a.Mode == ModeMaster {
-		controls = append([]string{
-			"[r]ead",
-			"[a]uto-rd",
-			"[w]auto-wr",
-			"[m]sim",
-		}, controls...)
+	// Determine active states
+	isConnected := a.Status.Connection == "Connected"
+	isListening := a.Status.Connection == "Listening" || a.Status.Connection == "Connected"
+
+	// Track x position for styled controls
+	x := 1
+
+	// Helper to print styled control
+	printControl := func(key, label string, active bool) {
+		if x > 1 {
+			s.Print(height, x, " │ ")
+			x += 4
+		}
+		style := "white"
+		if active {
+			style = "green"
+		}
+		s.PrintStyled(height, x, "["+key+"]", style, "")
+		x += 3
+		s.PrintStyled(height, x, label, style, "")
+		x += len(label)
 	}
 
-	// Draw controls
-	ctrlStr := " " + joinControls(controls) + " "
-	s.Print(height, 1, ctrlStr)
+	// Draw start/stop with active state
+	if isConnected || isListening {
+		printControl("s", "tart", true)
+	} else {
+		printControl("s", "tart", false)
+	}
+
+	// Master-only controls
+	if a.Mode == ModeMaster {
+		printControl("r", "ead", false)
+
+		// Auto-read - active when enabled
+		autoReadActive := a.Status.AutoRead
+		printControl("a", "uto-rd", autoReadActive)
+
+		// Auto-write - active when enabled
+		autoWriteActive := a.Status.AutoWrite
+		printControl("w", "uto-wr", autoWriteActive)
+
+		// Simulation mode - would need separate tracking
+		printControl("m", "sim", false)
+	}
+
+	// Common controls
+	printControl("x", "stop", false)
+	printControl("↑↓", " nav", false)
+	printControl("l", "og", false)
+	printControl("h", "elp", false)
+	printControl("q", "uit", false)
 }
 
 // joinControls joins control strings with separator.
