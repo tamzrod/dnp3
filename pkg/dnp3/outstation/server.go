@@ -32,8 +32,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -42,6 +42,15 @@ import (
 	"dnp3/pkg/dnp3/types"
 	"dnp3/pkg/transport"
 )
+
+// debugControls enables debug logging. Set DNP3_DEBUG=1 environment variable to enable.
+var debugControls = os.Getenv("DNP3_DEBUG") == "1"
+
+func debugLog(format string, v ...interface{}) {
+	if debugControls {
+		fmt.Printf(format+"\n", v...)
+	}
+}
 
 // Server represents a DNP3 Outstation server.
 // The server listens for connections from Masters and responds to their requests.
@@ -367,7 +376,7 @@ func (h *internalDataHandler) FreezeCounters(clear bool) error {
 // Converts internal CROB to public ControlOutput and delegates to commandHandler.
 func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.CROB) error {
 	if h.commandHandler == nil {
-		log.Printf("ERROR: WriteBinaryOutput called but commandHandler is nil (index=%d, code=%d)", index, crob.Code)
+		debugLog("ERROR: WriteBinaryOutput called but commandHandler is nil (index=%d, code=%d)", index, crob.Code)
 		return fmt.Errorf("no command handler registered")
 	}
 
@@ -383,7 +392,7 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		value = false
 	}
 
-	log.Printf("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
+	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
 
 	cmd := &types.ControlOutput{
 		Group:      12, // Binary Output
@@ -398,9 +407,9 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)
 	if err != nil {
-		log.Printf("WriteBinaryOutput ERROR: %v", err)
+		debugLog("WriteBinaryOutput ERROR: %v", err)
 	} else if status != nil {
-		log.Printf("WriteBinaryOutput result: status=%d", *status)
+		debugLog("WriteBinaryOutput result: status=%d", *status)
 	}
 	return err
 }
@@ -409,7 +418,7 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 // Converts internal value to public ControlOutput and delegates to commandHandler.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
 	if h.commandHandler == nil {
-		log.Printf("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
+		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
 		return fmt.Errorf("no command handler registered")
 	}
 
@@ -432,7 +441,7 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 		floatValue = 0
 	}
 
-	log.Printf("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
+	debugLog("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
 
 	cmd := &types.ControlOutput{
 		Group:        41, // Analog Output
@@ -444,9 +453,9 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 
 	status, err := h.commandHandler.HandleAnalogCommand(cmd)
 	if err != nil {
-		log.Printf("WriteAnalogOutput ERROR: %v", err)
+		debugLog("WriteAnalogOutput ERROR: %v", err)
 	} else if status != nil {
-		log.Printf("WriteAnalogOutput result: status=%d", *status)
+		debugLog("WriteAnalogOutput result: status=%d", *status)
 	}
 	return err
 }
@@ -571,7 +580,7 @@ func (s *server) Start(ctx context.Context) error {
 	}
 	s.listener = listener
 
-	log.Printf("DNP3 Outstation listening on %s", addr)
+	debugLog("DNP3 Outstation listening on %s", addr)
 
 	// Create context for managing connections
 	s.runCtx, s.runCancel = context.WithCancel(context.Background())
@@ -588,7 +597,7 @@ func (s *server) acceptLoop() {
 	for {
 		select {
 		case <-s.runCtx.Done():
-			log.Printf("Accept loop shutting down")
+			debugLog("Accept loop shutting down")
 			return
 		default:
 			// Set accept deadline
@@ -605,7 +614,7 @@ func (s *server) acceptLoop() {
 					return
 				}
 				// Log other errors but continue
-				log.Printf("Accept error: %v", err)
+				debugLog("Accept error: %v", err)
 				continue
 			}
 
@@ -660,7 +669,7 @@ func (s *server) handleConnection(conn net.Conn) {
 	s.connections[connID] = instance
 	s.connectionsMu.Unlock()
 
-	log.Printf("Connection %d accepted from %s", connID, conn.RemoteAddr())
+	debugLog("Connection %d accepted from %s", connID, conn.RemoteAddr())
 
 	// Run the outstation (this blocks until connection closes)
 	inst.Run()
@@ -671,7 +680,7 @@ func (s *server) handleConnection(conn net.Conn) {
 	s.connectionsMu.Unlock()
 
 	conn.Close()
-	log.Printf("Connection %d closed", connID)
+	debugLog("Connection %d closed", connID)
 }
 
 // Stop implements Server.Stop
@@ -693,7 +702,7 @@ func (s *server) Stop(ctx context.Context) error {
 	// Close all active connections
 	s.connectionsMu.Lock()
 	for id, inst := range s.connections {
-		log.Printf("Closing connection %d", id)
+		debugLog("Closing connection %d", id)
 		inst.outstation.Stop()
 		inst.transport.Close()
 	}
