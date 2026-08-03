@@ -11,8 +11,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -20,6 +20,16 @@ import (
 	"dnp3/internal/dll/frame"
 	"dnp3/internal/tl"
 )
+
+// debugControls enables debug logging for control operations (group 12, 41-44).
+// Set DNP3_DEBUG=1 environment variable to enable.
+var debugControls = os.Getenv("DNP3_DEBUG") == "1"
+
+func debugLog(format string, v ...interface{}) {
+	if debugControls {
+		fmt.Printf(format+"\n", v...)
+	}
+}
 
 // State represents the outstation's operational state.
 type State int
@@ -1462,10 +1472,10 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 		return nil, ErrInvalidRequest
 	}
 	index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
-	value := make([]byte, len(req.Data)-dataIdx-2)
-	copy(value, req.Data[dataIdx+2:])
+	data := make([]byte, len(req.Data)-dataIdx-2)
+	copy(data, req.Data[dataIdx+2:])
 
-	log.Printf("handleSelect: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
+	debugLog("handleSelect: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(data))
 
 	// Store the pending select
 	o.selectMu.Lock()
@@ -1473,7 +1483,7 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 		Group:     group,
 		Variation: variation,
 		Index:     index,
-		Value:     value,
+		Value:     data,
 		Timestamp: time.Now(),
 	}
 	o.selectMu.Unlock()
@@ -1495,7 +1505,7 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 // handleOperate handles OPERATE requests.
 // Implements SBO: Validates that a prior SELECT was received for this point.
 func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
-	log.Printf("handleOperate: received")
+	debugLog("handleOperate: received")
 
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
@@ -1515,7 +1525,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	value := make([]byte, len(req.Data)-dataIdx-2)
 	copy(value, req.Data[dataIdx+2:])
 
-	log.Printf("handleOperate: group=%d, variation=%d, index=%d", group, variation, index)
+	debugLog("handleOperate: group=%d, variation=%d, index=%d", group, variation, index)
 
 	// Validate against pending select
 	o.selectMu.Lock()
@@ -1523,7 +1533,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	
 	if !exists {
 		o.selectMu.Unlock()
-		log.Printf("handleOperate: no pending select for index=%d", index)
+		debugLog("handleOperate: no pending select for index=%d", index)
 		return nil, ErrNoSelectPending
 	}
 
@@ -1532,7 +1542,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	if time.Since(pending.Timestamp) > timeoutDuration {
 		delete(o.pendingSelects, index)
 		o.selectMu.Unlock()
-		log.Printf("handleOperate: select timeout for index=%d", index)
+		debugLog("handleOperate: select timeout for index=%d", index)
 		return nil, ErrSelectTimeout
 	}
 
@@ -1540,7 +1550,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	if pending.Group != group || pending.Variation != variation {
 		delete(o.pendingSelects, index)
 		o.selectMu.Unlock()
-		log.Printf("handleOperate: select mismatch for index=%d", index)
+		debugLog("handleOperate: select mismatch for index=%d", index)
 		return nil, ErrSelectMismatch
 	}
 
@@ -1551,15 +1561,15 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	// Execute the actual control operation using the stored select value
 	// Call the DataWriter if the data handler implements it
 	if dh, ok := o.data.(DataWriter); ok {
-		log.Printf("handleOperate: calling executeControl for index=%d", index)
+		debugLog("handleOperate: calling executeControl for index=%d", index)
 		err := o.executeControl(dh, group, variation, index, pending.Value)
 		if err != nil {
 			o.iin.ParamUnavail = true
-			log.Printf("handleOperate: executeControl error: %v", err)
+			debugLog("handleOperate: executeControl error: %v", err)
 			return nil, err
 		}
 	} else {
-		log.Printf("handleOperate: data handler does not implement DataWriter!")
+		debugLog("handleOperate: data handler does not implement DataWriter!")
 	}
 
 	resp := &al.APDU{
@@ -1578,7 +1588,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 // handleDirectOperate handles DIRECT OPERATE requests.
 func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
-	log.Printf("handleDirectOperate: received")
+	debugLog("handleDirectOperate: received")
 
 	// Parse the object header from request data
 	if len(req.Data) < 5 {
@@ -1597,19 +1607,19 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	value := make([]byte, len(req.Data)-dataIdx-2)
 	copy(value, req.Data[dataIdx+2:])
 
-	log.Printf("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
+	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
 	// Execute the control operation directly
 	if dh, ok := o.data.(DataWriter); ok {
-		log.Printf("handleDirectOperate: calling executeControl")
+		debugLog("handleDirectOperate: calling executeControl")
 		err := o.executeControl(dh, group, variation, index, value)
 		if err != nil {
 			o.iin.ParamUnavail = true
-			log.Printf("handleDirectOperate: executeControl error: %v", err)
+			debugLog("handleDirectOperate: executeControl error: %v", err)
 			return nil, err
 		}
 	} else {
-		log.Printf("handleDirectOperate: data handler does not implement DataWriter!")
+		debugLog("handleDirectOperate: data handler does not implement DataWriter!")
 	}
 
 	resp := &al.APDU{
@@ -1628,12 +1638,12 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 
 // executeControl executes a control operation by parsing the value and calling the DataWriter.
 func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte) error {
-	log.Printf("executeControl: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
+	debugLog("executeControl: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
 	switch group {
 	case 12: // CROB (Control Relay Output Block)
 		if len(value) < 11 {
-			log.Printf("executeControl: CROB value too short, need 11 bytes got %d", len(value))
+			debugLog("executeControl: CROB value too short, need 11 bytes got %d", len(value))
 			return ErrInvalidRequest
 		}
 		crob := CROB{
@@ -1643,7 +1653,7 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			OffTime: uint32(value[6])<<24 | uint32(value[7])<<16 | uint32(value[8])<<8 | uint32(value[9]),
 			Status: value[10],
 		}
-		log.Printf("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
+		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
 
 	case 41, 42, 43, 44: // Analog outputs
@@ -1652,31 +1662,31 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 		switch variation {
 		case 1, 5: // 16-bit signed
 			if len(value) < 2 {
-				log.Printf("executeControl: AO value too short for signed16, need 2 got %d", len(value))
+				debugLog("executeControl: AO value too short for signed16, need 2 got %d", len(value))
 				return ErrInvalidRequest
 			}
 			val = int16(value[0])<<8 | int16(value[1])
 		case 2, 6: // 16-bit unsigned
 			if len(value) < 2 {
-				log.Printf("executeControl: AO value too short for unsigned16, need 2 got %d", len(value))
+				debugLog("executeControl: AO value too short for unsigned16, need 2 got %d", len(value))
 				return ErrInvalidRequest
 			}
 			val = uint16(value[0])<<8 | uint16(value[1])
 		case 3, 7: // 32-bit signed
 			if len(value) < 4 {
-				log.Printf("executeControl: AO value too short for signed32, need 4 got %d", len(value))
+				debugLog("executeControl: AO value too short for signed32, need 4 got %d", len(value))
 				return ErrInvalidRequest
 			}
 			val = int32(value[0])<<24 | int32(value[1])<<16 | int32(value[2])<<8 | int32(value[3])
 		case 4, 8: // 32-bit unsigned
 			if len(value) < 4 {
-				log.Printf("executeControl: AO value too short for unsigned32, need 4 got %d", len(value))
+				debugLog("executeControl: AO value too short for unsigned32, need 4 got %d", len(value))
 				return ErrInvalidRequest
 			}
 			val = uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
 		case 9, 10: // 32-bit float
 			if len(value) < 4 {
-				log.Printf("executeControl: AO value too short for float32, need 4 got %d", len(value))
+				debugLog("executeControl: AO value too short for float32, need 4 got %d", len(value))
 				return ErrInvalidRequest
 			}
 			bits := uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
@@ -1686,15 +1696,15 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			if len(value) >= 2 {
 				val = uint16(value[0])<<8 | uint16(value[1])
 			} else {
-				log.Printf("executeControl: AO value too short for default, need 2 got %d", len(value))
+				debugLog("executeControl: AO value too short for default, need 2 got %d", len(value))
 				return ErrInvalidRequest
 			}
 		}
-		log.Printf("executeControl: calling WriteAnalogOutput index=%d value=%v", index, val)
+		debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, val)
 		return dh.WriteAnalogOutput(index, val, variation)
 
 	default:
-		log.Printf("executeControl: unknown group %d", group)
+		debugLog("executeControl: unknown group %d", group)
 		return ErrInvalidRequest
 	}
 }

@@ -30,7 +30,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"log"
 	"fmt"
 	"math"
 	"sync"
@@ -865,17 +864,11 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	switch v := command.Value.(type) {
 	case *types.BinaryCommandValue:
 		rawValue = v.Value // bool
-		log.Printf("client.Operate: extracted BinaryCommandValue.Value=%v", v.Value)
 	case *types.AnalogCommandValue:
 		rawValue = v.Value // float64
-		log.Printf("client.Operate: extracted AnalogCommandValue.Value=%v", v.Value)
 	default:
 		rawValue = command.Value
-		log.Printf("client.Operate: WARNING - unknown Value type %T, using as-is", command.Value)
 	}
-
-	log.Printf("client.Operate: calling internal.Operate group=%d var=%d index=%d value=%v (type=%T)",
-		command.Group, command.Variation, command.Index, rawValue, rawValue)
 
 	// Perform operate through internal master
 	if err := internal.Operate(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue); err != nil {

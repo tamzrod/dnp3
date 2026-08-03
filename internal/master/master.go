@@ -9,7 +9,6 @@ package master
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"sync"
 	"time"
@@ -877,6 +876,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 	case 12:
 		// CROB (Control Relay Output Block) - 11 bytes
 		// Format: code(1), count(1), onTime(4), offTime(4), status(1)
+		// Outstation CROB codes: 2=CLOSE(on), 3=OPEN(off), 7=LATCH_ON, 8=LATCH_OFF
 		var code uint8
 		var count uint8 = 1
 		var onTime uint32 = 0
@@ -886,17 +886,16 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		switch v := value.(type) {
 		case bool:
 			if v {
-				code = 1 // Latch On
+				code = 7 // LATCH_ON → Value = true
 			} else {
-				code = 2 // Latch Off
+				code = 8 // LATCH_OFF → Value = false
 			}
 		case uint8:
 			code = v
 		case uint16:
 			code = uint8(v)
 		default:
-			log.Printf("buildControlRequest: ERROR - unsupported CROB value type %T", value)
-			return nil
+			return nil // Unsupported type
 		}
 		
 		valueBytes = []byte{
@@ -908,7 +907,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		}
 		
 		if len(valueBytes) != 11 {
-			log.Printf("buildControlRequest: ERROR - CROB should be 11 bytes, got %d", len(valueBytes))
 			return nil
 		}
 		
@@ -929,7 +927,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			case int64:
 				intVal = int16(v)
 			default:
-				log.Printf("buildControlRequest: ERROR - unsupported int16 value type %T", value)
 				return nil
 			}
 			valueBytes = []byte{byte(intVal >> 8), byte(intVal)}
@@ -948,7 +945,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			case int16:
 				uintVal = uint16(v)
 			default:
-				log.Printf("buildControlRequest: ERROR - unsupported uint16 value type %T", value)
 				return nil
 			}
 			valueBytes = []byte{byte(uintVal >> 8), byte(uintVal)}
@@ -965,7 +961,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			case int16:
 				intVal = int32(v)
 			default:
-				log.Printf("buildControlRequest: ERROR - unsupported int32 value type %T", value)
 				return nil
 			}
 			valueBytes = []byte{
@@ -985,7 +980,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			case uint16:
 				uintVal = uint32(v)
 			default:
-				log.Printf("buildControlRequest: ERROR - unsupported uint32 value type %T", value)
 				return nil
 			}
 			valueBytes = []byte{
@@ -1001,7 +995,6 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			case float32:
 				floatVal = v
 			default:
-				log.Printf("buildControlRequest: ERROR - unsupported float32 value type %T", value)
 				return nil
 			}
 			bits := float32ToUint32Bits(floatVal)
@@ -1011,20 +1004,16 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			}
 			
 		default:
-			log.Printf("buildControlRequest: ERROR - unsupported AO variation %d", variation)
 			return nil
 		}
 		
 	default:
-		log.Printf("buildControlRequest: ERROR - unsupported group %d", group)
 		return nil
 	}
 
 	
 	data := append(prefix, indexBytes...)
 	data = append(data, valueBytes...)
-
-	log.Printf("buildControlRequest: funcCode=%d group=%d var=%d index=%d valueBytes=%v (hex=%x)", funcCode, group, variation, index, valueBytes, valueBytes)
 	
 	return buildRequest(0, funcCode, data)
 }

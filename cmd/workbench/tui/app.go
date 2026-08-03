@@ -3,8 +3,10 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -112,6 +114,17 @@ func (a *App) Run() error {
 	os.Stdout.WriteString(HideCursor)
 	defer os.Stdout.WriteString(ShowCursor)
 
+	// Clear screen on exit
+	defer func() {
+		os.Stdout.WriteString(ClearScreen)
+		os.Stdout.WriteString(ShowCursor)
+	}()
+
+	// Set up signal handlers for clean exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
 	// Clear screen
 	a.Screen.Clear()
 	a.Screen.Flush()
@@ -131,6 +144,14 @@ func (a *App) Run() error {
 	for a.running {
 		select {
 		case <-a.done:
+			return nil
+		case <-sigChan:
+			// Signal received - exit cleanly
+			a.Log.Info("Exiting...")
+			a.Stop()
+			if a.OnQuit != nil {
+				a.OnQuit()
+			}
 			return nil
 		case <-a.redrawCh:
 			// Data changed - redraw
