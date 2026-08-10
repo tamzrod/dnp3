@@ -98,9 +98,7 @@ func TestProtocolStackOutstationToMaster(t *testing.T) {
 		if err != nil {
 			break
 		}
-		headerSize := 10
-		crcSize := ((len(dllDecoded.Data) + 1) / 2) * 2
-		offset += headerSize + len(dllDecoded.Data) + crcSize
+		offset += frame.EncodedSize(len(dllDecoded.Data))
 
 		tlFrag, err := tl.DecodeFragment(dllDecoded.Data)
 		if err != nil {
@@ -168,12 +166,8 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 			continue
 		}
 
-		// Calculate frame size for next iteration
-		// sync(2) + length(1) + control(1) + dest(2) + src(2) + data + crcs
-		dataLen := len(dllDec.Data)
-		numCRCs := 3 + (dataLen+1)/2
-		frameSize := 8 + dataLen + numCRCs*2
-		offset += frameSize
+		// Calculate frame size for next iteration using the DNP3 wire model.
+		offset += frame.EncodedSize(len(dllDec.Data))
 
 		// Parse TL fragment
 		tlFrag, err := tl.DecodeFragment(dllDec.Data)
@@ -229,10 +223,7 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 		}
 
 		// Calculate frame size for next iteration
-		dataLen := len(dllDec.Data)
-		numCRCs := 3 + (dataLen+1)/2
-		frameSize := 8 + dataLen + numCRCs*2
-		offset += frameSize
+		offset += frame.EncodedSize(len(dllDec.Data))
 
 		// Parse TL fragment
 		tlFrag, err := tl.DecodeFragment(dllDec.Data)

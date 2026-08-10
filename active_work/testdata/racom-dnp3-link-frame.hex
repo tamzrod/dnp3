@@ -1,0 +1,10 @@
+# Source: RACOM, Protocol DNP 3 for MORSE, section 3 Communication example
+# URL: https://www.racom.eu/eng/support/prot/dnp3/index.html
+# Published example: primary station transmitting to destination 0x0004 from
+# source 0x0003. Length 0x0B, control 0xC4, six payload octets.
+# Expected fields: dest=0x0004, src=0x0003, control=0xC4, payload_len=6.
+# Complete frame bytes, in transmission order:
+05 64 0B C4 04 00 03 00 E4 2B E5 C0 01 02 00 06 98 5C
+
+# Source also publishes the response frame:
+# 05 64 0A 44 03 00 04 00 7C AE E0 C0 81 00 00 C1 F0

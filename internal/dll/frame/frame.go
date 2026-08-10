@@ -4,10 +4,10 @@
 //   - Start bytes (0x05 0x64)
 //   - Length (1 byte)
 //   - Control byte (1 byte)
-//   - Destination address (2 bytes, big-endian)
-//   - Source address (2 bytes, big-endian)
+//   - Destination address (2 bytes, little-endian)
+//   - Source address (2 bytes, little-endian)
 //   - User data (0-292 bytes)
-//   - CRC bytes (2 bytes per 16-bit quantity)
+//   - CRC bytes (one header CRC and one CRC per 16-byte data block)
 //
 // Reference: IEEE 1815-2012 Section 5.2
 package frame
@@ -28,11 +28,11 @@ const (
 
 // Maximum frame sizes per IEEE 1815-2012
 const (
-	// MaxFrameSize is the maximum total frame size (250 data + 8 header + 131 CRC = 289, rounded to 302)
+	// MaxFrameSize is the maximum total frame size (250 data + 10 header + 32 CRC = 292).
 	// Per IEEE 1815-2012, the length field is 1 byte (max 255)
 	// Length = Control(1) + Dest(2) + Src(2) + Data
 	// Max Data = 255 - 1 - 2 - 2 = 250 bytes
-	MaxFrameSize = 302
+	MaxFrameSize = 292
 
 	// MaxDataSize is the maximum user data size (250 bytes)
 	// This fits within the 1-byte length field: 1+2+2+250 = 255
@@ -48,17 +48,21 @@ const (
 // Function codes for primary station (PRM=1)
 const (
 	FuncResetLinkStations   = 0
-	FuncResetLinkStatus     = 1
-	FuncUnsolicitedTestFunc = 2
-	FuncReturnLinkStatus    = 3
-	FuncConfirmedUserData   = 4
+	FuncTestLinkStates      = 2
+	FuncConfirmedUserData   = 3
+	FuncUnconfirmedUserData = 4
+	FuncRequestLinkStatus   = 9
+
+	// Deprecated aliases retained while callers are migrated.
+	FuncResetLinkStatus  = FuncRequestLinkStatus
+	FuncReturnLinkStatus = FuncRequestLinkStatus
 )
 
 // Function codes for secondary station (PRM=0)
 const (
-	FuncAck               = 0
-	FuncNack              = 1
-	FuncLinkStatus        = 2
+	FuncAck                = 0
+	FuncNack               = 1
+	FuncLinkStatus         = 2
 	FuncNotSupported       = 3
 	FuncConfirmedUserDataR = 4
 )
@@ -67,11 +71,11 @@ const (
 const (
 	AddrBroadcast    = 0xFFFF
 	AddrAllReset     = 0xFFFA
-	AddrUnconfigured  = 0x0000
-	AddrVirtualTerm   = 0xFFFB
-	AddrSecChannel    = 0xFFFC
-	AddrPriChannel    = 0xFFFD
-	AddrReserved      = 0xFFFE
+	AddrUnconfigured = 0x0000
+	AddrVirtualTerm  = 0xFFFB
+	AddrSecChannel   = 0xFFFC
+	AddrPriChannel   = 0xFFFD
+	AddrReserved     = 0xFFFE
 )
 
 // Frame represents a DNP3 Data Link Layer frame.
@@ -79,13 +83,13 @@ type Frame struct {
 	// Control contains the control byte fields
 	Control Control
 
-	// Destination address (big-endian)
+	// Destination address (little-endian)
 	DestAddr uint16
 
-	// Source address (big-endian)
+	// Source address (little-endian)
 	SrcAddr uint16
 
-	// User data (application layer data)
+	// User data (transport-layer data)
 	Data []byte
 }
 
@@ -113,11 +117,12 @@ type Control struct {
 // ToByte converts the Control byte to a single byte.
 //
 // DNP3 Control byte format (IEEE 1815-2012 Section 5.2):
-//   Bit 7: DIR (Direction)
-//   Bit 6: PRM (Primary)
-//   Bit 5: FCB (Frame Count Bit)
-//   Bit 4: FCV (Frame Count Bit Valid)
-//   Bits 3-0: Function Code (4 bits, primary functions 0-15)
+//
+//	Bit 7: DIR (Direction)
+//	Bit 6: PRM (Primary)
+//	Bit 5: FCB (Frame Count Bit)
+//	Bit 4: FCV (Frame Count Bit Valid)
+//	Bits 3-0: Function Code (4 bits, primary functions 0-15)
 func (c Control) ToByte() byte {
 	var b byte
 
@@ -171,22 +176,17 @@ func (c Control) IsAck() bool {
 //   - 0x05 0x64 (sync bytes)
 //   - Length (1 byte)
 //   - Control (1 byte)
-//   - Destination (2 bytes, big-endian)
-//   - Source (2 bytes, big-endian)
-//   - Data (0-292 bytes)
-//   - CRC (2 bytes per 16-bit quantity, LSB first)
+//   - Destination (2 bytes, little-endian)
+//   - Source (2 bytes, little-endian)
+//   - Data (0-250 bytes)
+//   - CRC (one for the header and one per 16-byte data block, LSB first)
 func Encode(f *Frame) ([]byte, error) {
 	// Validate data size
 	if len(f.Data) > MaxDataSize {
 		return nil, fmt.Errorf("data size %d exceeds maximum %d", len(f.Data), MaxDataSize)
 	}
 
-	// Calculate total frame size
-	// 2 (sync) + 1 (length) + 1 (control) + 2 (dest) + 2 (src) + data + CRCs
-	numCRCGroups := 1 + 1 + 1 + (len(f.Data)+1)/2 // Length+Ctrl, Dest, Src, Data pairs
-	frameSize := 2 + 1 + 1 + 2 + 2 + len(f.Data) + (numCRCGroups * 2)
-
-	buf := make([]byte, 0, frameSize)
+	buf := make([]byte, 0, EncodedSize(len(f.Data)))
 
 	// Write sync bytes
 	buf = append(buf, SyncByte1, SyncByte2)
@@ -198,35 +198,24 @@ func Encode(f *Frame) ([]byte, error) {
 	// Write control byte
 	buf = append(buf, f.Control.ToByte())
 
-	// Write destination address (big-endian)
-	buf = binary.BigEndian.AppendUint16(buf, f.DestAddr)
+	// DNP3 multi-octet link addresses are transmitted LSB first.
+	buf = binary.LittleEndian.AppendUint16(buf, f.DestAddr)
 
-	// Write source address (big-endian)
-	buf = binary.BigEndian.AppendUint16(buf, f.SrcAddr)
+	// DNP3 multi-octet link addresses are transmitted LSB first.
+	buf = binary.LittleEndian.AppendUint16(buf, f.SrcAddr)
 
-	// Write data
-	if len(f.Data) > 0 {
-		buf = append(buf, f.Data...)
-	}
+	// The link header CRC covers the complete header prefix, including sync,
+	// length, control, destination, and source.
+	buf = appendCRC16(buf, buf[0:8])
 
-	// Calculate and append CRCs
-	// CRC 1: Length + Control
-	buf = appendCRC16(buf, length, f.Control.ToByte())
-
-	// CRC 2: Destination Address (both bytes)
-	buf = appendCRC16(buf, byte(f.DestAddr>>8), byte(f.DestAddr))
-
-	// CRC 3: Source Address (both bytes)
-	buf = appendCRC16(buf, byte(f.SrcAddr>>8), byte(f.SrcAddr))
-
-	// CRC for data (2 bytes at a time)
-	for i := 0; i < len(f.Data); i += 2 {
-		var b1, b2 byte
-		b1 = f.Data[i]
-		if i+1 < len(f.Data) {
-			b2 = f.Data[i+1]
+	// Data CRCs are interleaved after each 16-octet data block.
+	for i := 0; i < len(f.Data); i += 16 {
+		end := i + 16
+		if end > len(f.Data) {
+			end = len(f.Data)
 		}
-		buf = appendCRC16(buf, b1, b2)
+		buf = append(buf, f.Data[i:end]...)
+		buf = appendCRC16(buf, f.Data[i:end])
 	}
 
 	return buf, nil
@@ -255,11 +244,9 @@ func Decode(data []byte) (*Frame, error) {
 		return nil, fmt.Errorf("invalid length: %d, minimum %d", length, expectedMinLen)
 	}
 
-	// Calculate expected total frame size
-	// CRCs cover pairs of bytes: 1 for Length+Ctrl, 1 for Dest, 1 for Src, and data pairs
+	// Calculate expected total frame size.
 	dataLen := int(length) - 1 - 2 - 2 // Length - Control - Dest - Src
-	numCRCGroups := 3 + (dataLen+1)/2   // 3 header pairs + data pairs
-	expectedSize := 2 + 1 + int(length) + (numCRCGroups * 2)
+	expectedSize := EncodedSize(dataLen)
 
 	if len(data) < expectedSize {
 		return nil, fmt.Errorf("frame too short: %d bytes, expected %d", len(data), expectedSize)
@@ -270,67 +257,31 @@ func Decode(data []byte) (*Frame, error) {
 	control.FromByte(data[offset])
 	offset++
 
-	// Read destination address (big-endian)
-	destAddr := binary.BigEndian.Uint16(data[offset : offset+2])
+	// Read destination address (LSB first).
+	destAddr := binary.LittleEndian.Uint16(data[offset : offset+2])
 	offset += 2
 
-	// Read source address (big-endian)
-	srcAddr := binary.BigEndian.Uint16(data[offset : offset+2])
+	// Read source address (LSB first).
+	srcAddr := binary.LittleEndian.Uint16(data[offset : offset+2])
 	offset += 2
 
-	// Read data
-	var frameData []byte
-	if dataLen > 0 {
-		frameData = make([]byte, dataLen)
-		copy(frameData, data[offset:offset+dataLen])
-		offset += dataLen
+	if err := validateCRCForRange(data, 0, 8, offset); err != nil {
+		return nil, fmt.Errorf("header CRC validation failed: %w", err)
 	}
+	offset += 2
 
-	// Validate CRCs
-	// CRCs are stored LSB-first at the end of the frame.
-	// Calculate the starting offset for CRCs.
-	// Frame structure: sync(2) + length(1) + control(1) + dest(2) + src(2) + data + crcs
-	// CRC count = 3 (for header) + ceil(dataLen/2) (for data pairs)
-	numCRCs := 3
-	if dataLen > 0 {
-		numCRCs += (dataLen + 1) / 2
-	}
-	crcStart := len(data) - (numCRCs * 2)
-
-	// CRC 1: Length + Control (bytes 2-3)
-	crcOffset := crcStart
-	if err := validateCRCForRange(data, 2, 4, crcOffset); err != nil {
-		return nil, fmt.Errorf("CRC validation failed for Length+Control: %v", err)
-	}
-	crcOffset += 2
-
-	// CRC 2: Destination (bytes 4-5)
-	if err := validateCRCForRange(data, 4, 6, crcOffset); err != nil {
-		return nil, fmt.Errorf("CRC validation failed for Destination: %v", err)
-	}
-	crcOffset += 2
-
-	// CRC 3: Source (bytes 6-7)
-	if err := validateCRCForRange(data, 6, 8, crcOffset); err != nil {
-		return nil, fmt.Errorf("CRC validation failed for Source: %v", err)
-	}
-	crcOffset += 2
-
-	// CRC for data (pairs of bytes)
-	for i := 0; i < len(frameData); i += 2 {
-		var pair [2]byte
-		pair[0] = frameData[i]
-		// If odd number of data bytes, do not include padding in CRC
-		// This matches the Encode behavior which only includes bytes that exist
-		if i+1 < len(frameData) {
-			pair[1] = frameData[i+1]
+	frameData := make([]byte, 0, dataLen)
+	for len(frameData) < dataLen {
+		blockLen := 16
+		if remaining := dataLen - len(frameData); remaining < blockLen {
+			blockLen = remaining
 		}
-		calculatedCRC := crc.CRC16(pair[:])
-		storedCRC := uint16(data[crcOffset]) | (uint16(data[crcOffset+1]) << 8)
-		if calculatedCRC != storedCRC {
-			return nil, fmt.Errorf("CRC validation failed for Data at offset %d", crcOffset)
+		block := data[offset : offset+blockLen]
+		if err := validateCRCForRange(data, offset, offset+blockLen, offset+blockLen); err != nil {
+			return nil, fmt.Errorf("data CRC validation failed at payload offset %d: %w", len(frameData), err)
 		}
-		crcOffset += 2
+		frameData = append(frameData, block...)
+		offset += blockLen + 2
 	}
 
 	return &Frame{
@@ -341,9 +292,14 @@ func Decode(data []byte) (*Frame, error) {
 	}, nil
 }
 
-// appendCRC16 calculates and appends CRC-16-DNP for two bytes.
-func appendCRC16(buf []byte, b1, b2 byte) []byte {
-	crcVal := crc.CRC16([]byte{b1, b2})
+// EncodedSize returns the number of octets in a complete DNP3 link frame.
+func EncodedSize(dataLen int) int {
+	return HeaderSize + dataLen + ((dataLen+15)/16)*2
+}
+
+// appendCRC16 calculates and appends CRC-16-DNP for one link-layer block.
+func appendCRC16(buf []byte, block []byte) []byte {
+	crcVal := crc.CRC16(block)
 	// CRC bytes are LSB first
 	buf = append(buf, byte(crcVal&0xFF))
 	buf = append(buf, byte(crcVal>>8))

@@ -1,0 +1,8 @@
+# Standards-derived Group 30 Variation 1 response object.
+# Variation 1 is signed 32-bit analog input with flags. Qualifier 0x07 is an
+# 8-bit count; count=1; value=1000 (E8 03 00 00, LSB first); quality=ONLINE.
+# Object bytes:
+1E 01 07 01 E8 03 00 00 01
+# Expected decoded point: index=0, value=1000, quality=ONLINE.
+# Reference: Emerson FB3000 DNP3 Protocol Specifications Manual, section 4.7:
+# https://www.emerson.com/is/content/emerson/en/final-control/documents/d301858x012_1.pdf

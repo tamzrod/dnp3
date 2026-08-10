@@ -1,0 +1,8 @@
+# Standards-derived Group 20 Variation 1 response object.
+# Variation 1 is unsigned 32-bit counter with flags. Qualifier 0x07 count=1.
+# Value=1000 (E8 03 00 00, LSB first), quality=ONLINE.
+# Object bytes:
+14 01 07 01 E8 03 00 00 01
+# Expected decoded point: index=0, value=1000, quality=ONLINE.
+# Reference: Schneider SCADAPack DNP3 static variation guide:
+# https://product-help.schneider-electric.com/RemoteOperations/Geo%20SCADA%20Expert%202023/Content/SCADAPackx70DriverGuide/SpecifytheDNP3StaticGroupandVariation.htm

@@ -2,8 +2,76 @@
 package transport
 
 import (
+	"bytes"
+	"net"
 	"testing"
 )
+
+func TestTCPReceiveGoldenFrame(t *testing.T) {
+	peer, local := net.Pipe()
+	defer peer.Close()
+	transport := NewTCPTransport(&TCPConfig{ReceiveTimeout: 1000})
+	transport.SetConn(local)
+	defer transport.Close()
+
+	want := []byte{0x05, 0x64, 0x0B, 0xC4, 0x04, 0x00, 0x03, 0x00, 0xE4, 0x2B, 0xE5, 0xC0, 0x01, 0x02, 0x00, 0x06, 0x98, 0x5C}
+	writeDone := make(chan error, 1)
+	go func() {
+		_, err := peer.Write(want)
+		peer.Close()
+		writeDone <- err
+	}()
+
+	got, err := transport.Receive()
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("received frame = %x, want %x", got, want)
+	}
+	if err := <-writeDone; err != nil {
+		t.Fatalf("write golden frame: %v", err)
+	}
+}
+
+func TestTCPReceiveConcatenatedFrames(t *testing.T) {
+	peer, local := net.Pipe()
+	defer peer.Close()
+	transport := NewTCPTransport(&TCPConfig{ReceiveTimeout: 1000})
+	transport.SetConn(local)
+	defer transport.Close()
+
+	frame := []byte{0x05, 0x64, 0x0B, 0xC4, 0x04, 0x00, 0x03, 0x00, 0xE4, 0x2B, 0xE5, 0xC0, 0x01, 0x02, 0x00, 0x06, 0x98, 0x5C}
+	want := append(append([]byte(nil), frame...), frame...)
+	go func() { _, _ = peer.Write(want); _ = peer.Close() }()
+
+	first, err := transport.Receive()
+	if err != nil { t.Fatalf("first Receive: %v", err) }
+	if !bytes.Equal(first, frame) { t.Fatalf("first frame = %x, want %x", first, frame) }
+	second, err := transport.Receive()
+	if err != nil { t.Fatalf("second Receive: %v", err) }
+	if !bytes.Equal(second, frame) { t.Fatalf("second frame = %x, want %x", second, frame) }
+}
+
+func TestTCPReceiveFragmentedWrite(t *testing.T) {
+	peer, local := net.Pipe()
+	defer peer.Close()
+	transport := NewTCPTransport(&TCPConfig{ReceiveTimeout: 1000})
+	transport.SetConn(local)
+	defer transport.Close()
+
+	want := []byte{0x05, 0x64, 0x0B, 0xC4, 0x04, 0x00, 0x03, 0x00, 0xE4, 0x2B, 0xE5, 0xC0, 0x01, 0x02, 0x00, 0x06, 0x98, 0x5C}
+	go func() {
+		_, _ = peer.Write(want[:3])
+		_, _ = peer.Write(want[3:10])
+		_, _ = peer.Write(want[10:])
+		_ = peer.Close()
+	}()
+
+	got, err := transport.Receive()
+	if err != nil { t.Fatalf("Receive: %v", err) }
+	if !bytes.Equal(got, want) { t.Fatalf("received frame = %x, want %x", got, want) }
+}
 
 // TestTCPConfig tests TCP configuration defaults.
 func TestTCPConfig(t *testing.T) {

@@ -14,7 +14,7 @@ func TestParseBinaryInputOnlineTrue(t *testing.T) {
 		0x01, // Variation 1 (with flags)
 		0x00, // Qualifier: index
 		0x01, // Count: 1
-		0x00, 0x05, // Index: 5 (big-endian)
+		0x05, 0x00, // Index: 5 (little-endian)
 		0x81, // Value: state=1 (0x80), quality=ONLINE (0x01)
 	}
 
@@ -39,6 +39,23 @@ func TestParseBinaryInputOnlineTrue(t *testing.T) {
 	}
 }
 
+func TestParseClass0PackedBinaryInputVector(t *testing.T) {
+	// External Group 1 Variation 1 vector: qualifier 0x07 (count8), one
+	// packed point with state bit set. Variation 1 is packed per the external
+	// device-profile references recorded in active_work/testdata.
+	data := []byte{0x01, 0x01, 0x07, 0x01, 0x01}
+	result := parseBinaryInputs(data)
+	if len(result) != 1 {
+		t.Fatalf("expected one packed binary input, got %d", len(result))
+	}
+	if result[0].Index != 0 || !result[0].Value {
+		t.Fatalf("decoded point = index %d value %v, want index 0 value true", result[0].Index, result[0].Value)
+	}
+	if result[0].Quality&types.QualityOnline == 0 {
+		t.Fatalf("packed point quality = %v, want ONLINE default", result[0].Quality)
+	}
+}
+
 func TestParseBinaryInputOnlineFalse(t *testing.T) {
 	// When value=false and quality=ONLINE, byte = 0x00 | 0x01 = 0x01
 	data := []byte{
@@ -46,7 +63,7 @@ func TestParseBinaryInputOnlineFalse(t *testing.T) {
 		0x01, // Variation 1 (with flags)
 		0x00, // Qualifier: index
 		0x01, // Count: 1
-		0x00, 0x03, // Index: 3
+		0x03, 0x00, // Index: 3
 		0x01, // Value: state=0, quality=ONLINE (0x00|0x01)
 	}
 
@@ -78,7 +95,7 @@ func TestParseBinaryInputOffline(t *testing.T) {
 		0x01, // Variation 1 (with flags)
 		0x00, // Qualifier: index
 		0x01, // Count: 1
-		0x00, 0x01, // Index: 1
+		0x01, 0x00, // Index: 1
 		0x80, // Value: state=1 (0x80), quality=OFFLINE (0x80) - note: OFFLINE in bit 7 conflicts with state, but parsing still works
 	}
 
@@ -114,9 +131,9 @@ func TestParseBinaryInputMultiple(t *testing.T) {
 		0x03, // Count: 3
 		0x00, 0x00, // Index 0
 		0x81, // state=1, ONLINE
-		0x00, 0x01, // Index 1
+		0x01, 0x00, // Index 1
 		0x01, // state=0, ONLINE
-		0x00, 0x02, // Index 2
+		0x02, 0x00, // Index 2
 		0x81, // state=1, ONLINE
 	}
 

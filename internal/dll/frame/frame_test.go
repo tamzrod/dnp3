@@ -2,8 +2,116 @@ package frame
 
 import (
 	"bytes"
+	"encoding/hex"
+	"os"
+	"strings"
 	"testing"
 )
+
+// TestDecodeRacomGoldenFrame proves the decoder accepts an independently
+// published DNP3 frame. It is intentionally introduced before the wire-format
+// repair and must fail against the current implementation.
+func TestDecodeRacomGoldenFrame(t *testing.T) {
+	raw, err := os.ReadFile("../../../active_work/testdata/racom-dnp3-link-frame.hex")
+	if err != nil {
+		t.Fatalf("read golden fixture: %v", err)
+	}
+
+	var fields []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields = append(fields, strings.Fields(line)...)
+	}
+	encoded, err := hex.DecodeString(strings.Join(fields, ""))
+	if err != nil {
+		t.Fatalf("decode golden fixture hex: %v", err)
+	}
+
+	decoded, err := Decode(encoded)
+	if err != nil {
+		t.Fatalf("decode published DNP3 frame: %v", err)
+	}
+	if decoded.Control.FuncCode != FuncUnconfirmedUserData {
+		t.Fatalf("function code = %d, want unconfirmed user data (4)", decoded.Control.FuncCode)
+	}
+	if decoded.DestAddr != 4 || decoded.SrcAddr != 3 {
+		t.Fatalf("addresses = %#04x -> %#04x, want 0x0003 -> 0x0004", decoded.SrcAddr, decoded.DestAddr)
+	}
+	if !bytes.Equal(decoded.Data, []byte{0xE5, 0xC0, 0x01, 0x02, 0x00, 0x06}) {
+		t.Fatalf("payload = %x, want e5c001020006", decoded.Data)
+	}
+}
+
+func TestDecodeRejectsCorruptedHeader(t *testing.T) {
+	encoded, err := hex.DecodeString("05640bc404000300e42be5c001020006985c")
+	if err != nil {
+		t.Fatalf("decode fixture literal: %v", err)
+	}
+	for i := 0; i < 8; i++ {
+		corrupt := append([]byte(nil), encoded...)
+		corrupt[i] ^= 0x01
+		if _, err := Decode(corrupt); err == nil {
+			t.Fatalf("Decode accepted corruption at header byte %d", i)
+		}
+	}
+}
+
+func TestPayloadCRCBoundaryVectors(t *testing.T) {
+	tests := []struct {
+		name       string
+		dataLen    int
+		headerCRC  uint16
+		payloadCRC []uint16
+		frameSize  int
+	}{
+		{"zero", 0, 0xDAE1, nil, 10},
+		{"one", 1, 0x49B1, []uint16{0xFFFF}, 13},
+		{"sixteen", 16, 0xA220, []uint16{0x10EC}, 28},
+		{"seventeen", 17, 0x3170, []uint16{0x10EC, 0x4D94}, 31},
+		{"two-forty-nine", 249, 0xE5D0, []uint16{0x10EC, 0x0327, 0x377A, 0x24B1, 0x5FC0, 0x4C0B, 0x7856, 0x6B9D, 0x8EB4, 0x9D7F, 0xA922, 0xBAE9, 0xC198, 0xD253, 0xE60E, 0x0BE1}, 291},
+		{"two-fifty", 250, 0x5037, []uint16{0x10EC, 0x0327, 0x377A, 0x24B1, 0x5FC0, 0x4C0B, 0x7856, 0x6B9D, 0x8EB4, 0x9D7F, 0xA922, 0xBAE9, 0xC198, 0xD253, 0xE60E, 0xA0DC}, 292},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := make([]byte, tt.dataLen)
+			for i := range payload { payload[i] = byte(i) }
+			encoded, err := Encode(&Frame{Control: Control{DIR: true, PRM: true, FuncCode: FuncUnconfirmedUserData}, DestAddr: 4, SrcAddr: 3, Data: payload})
+			if err != nil { t.Fatalf("encode: %v", err) }
+			if len(encoded) != tt.frameSize { t.Fatalf("frame size = %d, want %d", len(encoded), tt.frameSize) }
+			gotHeader := uint16(encoded[8]) | uint16(encoded[9])<<8
+			if gotHeader != tt.headerCRC { t.Fatalf("header CRC = %04X, want %04X", gotHeader, tt.headerCRC) }
+			offset := 10
+			for i, want := range tt.payloadCRC {
+				blockLen := 16
+				if remaining := tt.dataLen - i*16; remaining < blockLen { blockLen = remaining }
+				crcOffset := offset + blockLen
+				got := uint16(encoded[crcOffset]) | uint16(encoded[crcOffset+1])<<8
+				if got != want { t.Fatalf("payload CRC[%d] = %04X, want %04X", i, got, want) }
+				offset += blockLen + 2
+			}
+			decoded, err := Decode(encoded)
+			if err != nil { t.Fatalf("decode encoded vector: %v", err) }
+			if !bytes.Equal(decoded.Data, payload) { t.Fatalf("decoded payload = %x, want %x", decoded.Data, payload) }
+		})
+	}
+}
+
+func TestDecodeRejectsCorruptedPayloadBlocks(t *testing.T) {
+	payload := make([]byte, 33)
+	for i := range payload { payload[i] = byte(i) }
+	encoded, err := Encode(&Frame{Control: Control{DIR: true, PRM: true, FuncCode: FuncUnconfirmedUserData}, DestAddr: 4, SrcAddr: 3, Data: payload})
+	if err != nil { t.Fatalf("encode: %v", err) }
+	for block := 0; block < 3; block++ {
+		corrupt := append([]byte(nil), encoded...)
+		crcOffset := 10 + block*18 + 16
+		if block == 2 { crcOffset = 10 + 2*18 + 1 }
+		corrupt[crcOffset] ^= 0x01
+		if _, err := Decode(corrupt); err == nil { t.Fatalf("Decode accepted corrupted payload block %d", block) }
+	}
+}
 
 // TestEncodeDecodeResetLink tests encoding and decoding a Reset Link Stations frame.
 func TestEncodeDecodeResetLink(t *testing.T) {
@@ -167,12 +275,12 @@ func TestControlByte(t *testing.T) {
 		{
 			name:    "confirmed data with FCB",
 			control: Control{DIR: true, PRM: true, FCB: true, FCV: true, FuncCode: FuncConfirmedUserData},
-			want:    0xF4, // 1111 0100: DIR=1, PRM=1, FCB=1, FCV=1, FuncCode=4
+			want:    0xF3, // 1111 0011: DIR=1, PRM=1, FCB=1, FCV=1, FuncCode=3
 		},
 		{
 			name:    "confirmed data no FCB",
 			control: Control{DIR: true, PRM: true, FCB: false, FCV: true, FuncCode: FuncConfirmedUserData},
-			want:    0xD4, // 1101 0100: DIR=1, PRM=1, FCB=0, FCV=1, FuncCode=4
+			want:    0xD3, // 1101 0011: DIR=1, PRM=1, FCB=0, FCV=1, FuncCode=3
 		},
 	}
 
@@ -202,6 +310,51 @@ func TestControlByte(t *testing.T) {
 				t.Errorf("FuncCode round-trip = %d, want %d", parsed.FuncCode, tt.control.FuncCode)
 			}
 		})
+	}
+}
+
+func TestSecondaryFunctionCodes(t *testing.T) {
+	tests := []struct {
+		name string
+		code uint8
+		want uint8
+	}{
+		{"ack", FuncAck, 0},
+		{"nack", FuncNack, 1},
+		{"link status", FuncLinkStatus, 2},
+		{"not supported", FuncNotSupported, 3},
+		{"confirmed user data response", FuncConfirmedUserDataR, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.code != tt.want {
+				t.Fatalf("function code = %d, want %d", tt.code, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddressByteOrder(t *testing.T) {
+	f := &Frame{
+		Control:  Control{DIR: true, PRM: true, FuncCode: FuncResetLinkStations},
+		DestAddr: 0x0004,
+		SrcAddr:  0x0003,
+	}
+	encoded, err := Encode(f)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if got, want := encoded[4:8], []byte{0x04, 0x00, 0x03, 0x00}; !bytes.Equal(got, want) {
+		t.Fatalf("address bytes = %x, want %x", got, want)
+	}
+
+	// Decode the locally encoded frame to verify both address directions.
+	decoded, err := Decode(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded.DestAddr != f.DestAddr || decoded.SrcAddr != f.SrcAddr {
+		t.Fatalf("decoded addresses = %#04x -> %#04x, want %#04x -> %#04x", decoded.SrcAddr, decoded.DestAddr, f.SrcAddr, f.DestAddr)
 	}
 }
 

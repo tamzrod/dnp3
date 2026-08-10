@@ -12,7 +12,7 @@ import (
 	"math"
 	"sync"
 	"time"
-	
+
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
 	"dnp3/internal/tl"
@@ -20,9 +20,9 @@ import (
 
 // Master role constants
 const (
-	MaxOutstations = 255       // Maximum outstations per master
-	MaxRetries     = 3         // Default maximum retries
-	DefaultTimeout = 5000       // Default timeout in milliseconds
+	MaxOutstations = 255  // Maximum outstations per master
+	MaxRetries     = 3    // Default maximum retries
+	DefaultTimeout = 5000 // Default timeout in milliseconds
 )
 
 // State represents the master's operational state.
@@ -55,18 +55,17 @@ func (s State) String() string {
 	return "Unknown"
 }
 
-
 // PollType defines the type of poll.
 type PollType int
 
 const (
 	PollIntegrity PollType = iota // Read all Class 0 data
-	PollEvent                    // Read all pending events
-	PollException                // Read changed data only
-	PollClass0                   // Read Class 0 (static) data
-	PollClass1                   // Read Class 1 events
-	PollClass2                   // Read Class 2 events
-	PollClass3                   // Read Class 3 events
+	PollEvent                     // Read all pending events
+	PollException                 // Read changed data only
+	PollClass0                    // Read Class 0 (static) data
+	PollClass1                    // Read Class 1 events
+	PollClass2                    // Read Class 2 events
+	PollClass3                    // Read Class 3 events
 )
 
 // String returns the poll type name.
@@ -88,32 +87,29 @@ func (p PollType) String() string {
 	return "Unknown"
 }
 
-
 // Outstation represents a connected outstation.
 type Outstation struct {
-	ID         uint16        // Outstation address
-	Label      string        // Human-readable label
-	LastSeen   time.Time     // Last communication time
-	State      string        // Operational state
-	Unsolicited bool         // Supports unsolicited responses
-	IIN         [2]byte      // Last Internal Indication
+	ID          uint16    // Outstation address
+	Label       string    // Human-readable label
+	LastSeen    time.Time // Last communication time
+	State       string    // Operational state
+	Unsolicited bool      // Supports unsolicited responses
+	IIN         [2]byte   // Last Internal Indication
 	mu          sync.RWMutex
 }
-
 
 // NewOutstation creates a new outstation entry.
 func NewOutstation(id uint16, label string) *Outstation {
 	return &Outstation{
-		ID:         id,
-		Label:      label,
-		LastSeen:   time.Now(),
-		State:      "Unknown",
+		ID:          id,
+		Label:       label,
+		LastSeen:    time.Now(),
+		State:       "Unknown",
 		Unsolicited: false,
-		IIN:        [2]byte{0, 0},
+		IIN:         [2]byte{0, 0},
 	}
 
 }
-
 
 // UpdateIIN updates the internal indication field.
 func (o *Outstation) UpdateIIN(iin [2]byte) {
@@ -123,7 +119,6 @@ func (o *Outstation) UpdateIIN(iin [2]byte) {
 	o.LastSeen = time.Now()
 }
 
-
 // HasFlag checks if an IIN flag is set.
 func (o *Outstation) HasFlag(bit byte) bool {
 	o.mu.RLock()
@@ -131,50 +126,46 @@ func (o *Outstation) HasFlag(bit byte) bool {
 	return (o.IIN[0]&bit) != 0 || (o.IIN[1]&bit) != 0
 }
 
-
 // Master errors
 var (
-	ErrNotConnected      = errors.New("master not connected")
+	ErrNotConnected       = errors.New("master not connected")
 	ErrOutstationNotFound = errors.New("outstation not found")
-	ErrTimeout           = errors.New("operation timeout")
-	ErrMaxRetries       = errors.New("maximum retries exceeded")
-	ErrInvalidResponse   = errors.New("invalid response")
-	ErrConfirmTimeout    = errors.New("confirmation timeout")
+	ErrTimeout            = errors.New("operation timeout")
+	ErrMaxRetries         = errors.New("maximum retries exceeded")
+	ErrInvalidResponse    = errors.New("invalid response")
+	ErrConfirmTimeout     = errors.New("confirmation timeout")
 )
 
 // Config holds master configuration.
 type Config struct {
-	MasterAddress uint16   // This master's address
-	Timeout      int      // Response timeout in milliseconds
-	MaxRetries   int      // Maximum retry attempts
-	RetryDelay   int      // Delay between retries in milliseconds
+	MasterAddress uint16 // This master's address
+	Timeout       int    // Response timeout in milliseconds
+	MaxRetries    int    // Maximum retry attempts
+	RetryDelay    int    // Delay between retries in milliseconds
 }
-
 
 // DefaultConfig returns default master configuration.
 func DefaultConfig() *Config {
 	return &Config{
 		MasterAddress: 0xFFFF, // Master uses broadcast or specific address
-		Timeout:      DefaultTimeout,
-		MaxRetries:   MaxRetries,
-		RetryDelay:   100,
+		Timeout:       DefaultTimeout,
+		MaxRetries:    MaxRetries,
+		RetryDelay:    100,
 	}
 
 }
 
-
 // Master represents a DNP3 Master Station.
 type Master struct {
-	config    *Config
-	state     State
+	config      *Config
+	state       State
 	outstations map[uint16]*Outstation
-	mu        sync.RWMutex
-	transport TransportHandler
-	onError   ErrorHandler
-        fragmenter  *tl.Fragmenter   // Transport layer fragmenter
-        reassembler *tl.Reassembler // Transport layer reassembler
+	mu          sync.RWMutex
+	transport   TransportHandler
+	onError     ErrorHandler
+	fragmenter  *tl.Fragmenter  // Transport layer fragmenter
+	reassembler *tl.Reassembler // Transport layer reassembler
 }
-
 
 // TransportHandler defines the interface for sending/receiving data.
 type TransportHandler interface {
@@ -182,7 +173,6 @@ type TransportHandler interface {
 	Receive() ([]byte, error)
 	SetTimeout(ms int)
 }
-
 
 // ErrorHandler defines the callback for error notifications.
 type ErrorHandler func(err error, context string)
@@ -194,27 +184,24 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:     config,
-		state:      StateDisconnected,
+		config:      config,
+		state:       StateDisconnected,
 		outstations: make(map[uint16]*Outstation),
-		fragmenter:   tl.NewFragmenter(),
+		fragmenter:  tl.NewFragmenter(),
 		reassembler: tl.NewReassembler(),
 	}
 
 }
-
 
 // SetTransport sets the transport handler.
 func (m *Master) SetTransport(t TransportHandler) {
 	m.transport = t
 }
 
-
 // SetErrorHandler sets the error handler callback.
 func (m *Master) SetErrorHandler(h ErrorHandler) {
 	m.onError = h
 }
-
 
 // State returns the current master state.
 func (m *Master) State() State {
@@ -223,14 +210,12 @@ func (m *Master) State() State {
 	return m.state
 }
 
-
 // SetState updates the master state.
 func (m *Master) SetState(state State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.state = state
 }
-
 
 // AddOutstation registers an outstation.
 func (m *Master) AddOutstation(id uint16, label string) *Outstation {
@@ -241,14 +226,12 @@ func (m *Master) AddOutstation(id uint16, label string) *Outstation {
 	return o
 }
 
-
 // RemoveOutstation removes an outstation.
 func (m *Master) RemoveOutstation(id uint16) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.outstations, id)
 }
-
 
 // GetOutstation retrieves an outstation by ID.
 func (m *Master) GetOutstation(id uint16) (*Outstation, bool) {
@@ -258,7 +241,6 @@ func (m *Master) GetOutstation(id uint16) (*Outstation, bool) {
 	return o, ok
 }
 
-
 // OutstationCount returns the number of registered outstations.
 func (m *Master) OutstationCount() int {
 	m.mu.RLock()
@@ -266,9 +248,8 @@ func (m *Master) OutstationCount() int {
 	return len(m.outstations)
 }
 
-
 // Connect establishes connection to outstations and performs DNP3 session establishment.
-// 
+//
 // Proper DNP3 session establishment includes:
 // 1. TCP connect (handled by transport)
 // 2. Link reset (Reset Link Stations)
@@ -304,7 +285,7 @@ func (m *Master) performLinkHandshake() error {
 
 	// Wait for acknowledgment from outstation
 	// In a full implementation, we would receive and validate the ACK here
-	
+
 	// Small delay to allow outstation to process
 	time.Sleep(100 * time.Millisecond)
 
@@ -318,15 +299,15 @@ func (m *Master) sendResetLink() error {
 	for _, o := range m.outstations {
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
-				DIR:      true,                      // Master-to-Outstation
-				PRM:      true,                      // Primary station
-				FCB:      false,                     // No frame count bit for reset
-				FCV:      false,                     // FCB not valid for reset
+				DIR:      true,  // Master-to-Outstation
+				PRM:      true,  // Primary station
+				FCB:      false, // No frame count bit for reset
+				FCV:      false, // FCB not valid for reset
 				FuncCode: frame.FuncResetLinkStations,
 			},
-			DestAddr: o.ID,   // Target outstation
+			DestAddr: o.ID, // Target outstation
 			SrcAddr:  m.config.MasterAddress,
-			Data:     nil,     // Reset has no data
+			Data:     nil, // Reset has no data
 		}
 
 		encoded, err := frame.Encode(dllFrame)
@@ -337,11 +318,18 @@ func (m *Master) sendResetLink() error {
 		if err := m.transport.Send(encoded); err != nil {
 			return fmt.Errorf("failed to send reset frame: %w", err)
 		}
+
+		// The outstation acknowledges Reset Link Stations at the data-link
+		// layer. Consume that frame here so the next application request reads
+		// an application response rather than a stale handshake ACK.
+		m.transport.SetTimeout(m.config.Timeout)
+		if _, err := m.transport.Receive(); err != nil {
+			return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
+		}
 	}
 
 	return nil
 }
-
 
 // Disconnect closes connections.
 func (m *Master) Disconnect() error {
@@ -349,7 +337,6 @@ func (m *Master) Disconnect() error {
 	m.outstations = make(map[uint16]*Outstation)
 	return nil
 }
-
 
 // Initialize performs master initialization sequence.
 func (m *Master) Initialize() error {
@@ -361,35 +348,30 @@ func (m *Master) Initialize() error {
 	return nil
 }
 
-
 // Enable unsolicits on an outstation.
 func (m *Master) EnableUnsolicited(outstationID uint16) error {
 	if m.State() < StateConnected {
 		return ErrNotConnected
 	}
 
-	
 	o, ok := m.GetOutstation(outstationID)
 	if !ok {
 		return ErrOutstationNotFound
 	}
 
-	
 	// Build ENABLE_UNSOLICITED request
 	req := buildRequest(0, al.FuncEnableUnsolicited, nil)
-	
+
 	if err := m.sendWithRetry(req, outstationID); err != nil {
 		return err
 	}
 
-	
 	o.mu.Lock()
 	o.Unsolicited = true
 	o.mu.Unlock()
-	
+
 	return nil
 }
-
 
 // DisableUnsolicited disables unsolicited on an outstation.
 func (m *Master) DisableUnsolicited(outstationID uint16) error {
@@ -397,26 +379,22 @@ func (m *Master) DisableUnsolicited(outstationID uint16) error {
 		return ErrNotConnected
 	}
 
-	
 	o, ok := m.GetOutstation(outstationID)
 	if !ok {
 		return ErrOutstationNotFound
 	}
 
-	
 	req := buildRequest(0, al.FuncDisableUnsolicited, nil)
 	if err := m.sendWithRetry(req, outstationID); err != nil {
 		return err
 	}
 
-	
 	o.mu.Lock()
 	o.Unsolicited = false
 	o.mu.Unlock()
-	
+
 	return nil
 }
-
 
 // Poll performs a data poll on an outstation.
 func (m *Master) Poll(outstationID uint16, pollType PollType) error {
@@ -424,13 +402,11 @@ func (m *Master) Poll(outstationID uint16, pollType PollType) error {
 		return ErrNotConnected
 	}
 
-	
 	data := buildPollRequest(pollType)
 	req := buildRequest(0, al.FuncRead, data)
-	
+
 	return m.sendWithRetry(req, outstationID)
 }
-
 
 // Operate issues a control operation.
 func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) error {
@@ -438,9 +414,8 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 		return ErrNotConnected
 	}
 
-	
 	var req *al.APDU
-	
+
 	if selectThenOperate {
 		// SELECT
 		selectReq := m.buildControlRequest(al.FuncSelect, group, variation, index, value)
@@ -455,10 +430,8 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 		req = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
 	}
 
-	
 	return m.sendWithRetry(req, outstationID)
 }
-
 
 // TimeSync performs time synchronization with an outstation.
 func (m *Master) TimeSync(outstationID uint16) error {
@@ -466,26 +439,23 @@ func (m *Master) TimeSync(outstationID uint16) error {
 		return ErrNotConnected
 	}
 
-	
 	// Build time sync request with current time
 	now := time.Now()
 	data := encodeDNP3Time(now)
 	req := buildRequest(0, al.FuncTimeSync, data)
-	
+
 	return m.sendWithRetry(req, outstationID)
 }
-
 
 // sendWithRetry sends a request with retry logic.
 func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	var lastErr error
-	
+
 	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 
-		
 		// Send request with DNP3 protocol layers
 		data := req.Encode()
 
@@ -499,8 +469,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			// Data link layer frame
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true,                  // Master-to-Outstation
-					PRM:      true,                  // Primary station
+					DIR:      true, // Master-to-Outstation
+					PRM:      true, // Primary station
 					FuncCode: frame.FuncConfirmedUserData,
 				},
 				DestAddr: outstationID,
@@ -513,7 +483,6 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 				return err
 			}
 
-
 			if err := m.transport.Send(dllEncoded); err != nil {
 				lastErr = err
 				continue
@@ -535,7 +504,6 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			continue
 		}
 
-		
 		// Process response
 		_, err = m.processResponse(resp, outstationID)
 		if err != nil {
@@ -543,24 +511,21 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			continue
 		}
 
-		
 		return nil // Success
 	}
 
-	
 	return fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
 
 // sendWithRetryAndGetResponse sends a request with retry logic and returns the processed application layer data.
 func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
 	var lastErr error
-	
+
 	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 
-		
 		// Send request with DNP3 protocol layers
 		data := req.Encode()
 
@@ -574,8 +539,8 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			// Data link layer frame
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true,                  // Master-to-Outstation
-					PRM:      true,                  // Primary station
+					DIR:      true, // Master-to-Outstation
+					PRM:      true, // Primary station
 					FuncCode: frame.FuncConfirmedUserData,
 				},
 				DestAddr: outstationID,
@@ -587,8 +552,6 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			if err != nil {
 				return nil, err
 			}
-
-
 
 			if err := m.transport.Send(dllEncoded); err != nil {
 				lastErr = err
@@ -611,7 +574,6 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			continue
 		}
 
-		
 		// Process the response and get application layer data
 		appData, err := m.processResponse(resp, outstationID)
 		if err != nil {
@@ -623,7 +585,6 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		return appData, nil
 	}
 
-	
 	return nil, fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
 
@@ -645,28 +606,25 @@ func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID u
 // waitForConfirmation waits for an application layer confirmation.
 func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 	m.transport.SetTimeout(m.config.Timeout)
-	
+
 	for {
 		data, err := m.transport.Receive()
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrConfirmTimeout, err)
 		}
 
-		
 		// Process received bytes
 		appData, err := m.processReceivedBytes(data)
 		if err != nil {
 			continue
 		}
 
-		
 		// Decode APDU
 		apdu, err := al.Decode(appData)
 		if err != nil {
 			continue
 		}
 
-		
 		// Check if this is a confirmation
 		// A confirmation has FuncCode=0 and no IIN (empty data)
 		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) == 0 {
@@ -677,7 +635,6 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 
 		}
 
-		
 		// If we got a full response before confirmation, that's also acceptable
 		// In some implementations, the response IS the confirmation
 		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) >= 2 {
@@ -688,13 +645,11 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 
 }
 
-
 // waitForResponse waits for a response with timeout.
 func (m *Master) waitForResponse() ([]byte, error) {
 	m.transport.SetTimeout(m.config.Timeout)
 	return m.transport.Receive()
 }
-
 
 // processResponse processes a received response and returns the application layer data.
 func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, error) {
@@ -704,13 +659,11 @@ func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, erro
 		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
 
-
 	// Application layer decode
 	resp, err := al.DecodeResponse(appData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
-
 
 	// Update outstation IIN
 	o, ok := m.GetOutstation(outstationID)
@@ -718,10 +671,8 @@ func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, erro
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
-
 	return appData, nil
 }
-
 
 // processReceivedBytes processes raw TCP data through DLL and TL layers.
 // Returns the reassembled application layer data.
@@ -745,14 +696,9 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("DLL decode error at offset %d: %w", offset, err)
 		}
 
-
-		// Move past this frame
-		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes header
-		// Then data length + CRC (2 bytes per 16-bit word)
-		headerSize := 8
-		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
-		frameLen := headerSize + len(dllFrame.Data) + crcSize
-		offset += frameLen
+		// Move past this complete link frame, including the header CRC and each
+		// 16-octet payload CRC block.
+		offset += frame.EncodedSize(len(dllFrame.Data))
 
 		// Skip non-user-data frames (secondary station function codes)
 		// User data frames from outstation use FuncConfirmedUserDataR = 4 with PRM=0
@@ -769,13 +715,11 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue
 		}
 
-
 		// Extract TL fragment from frame data
 		tlData := dllFrame.Data
 		if len(tlData) == 0 {
 			continue
 		}
-
 
 		// Parse TL header using correct function name
 		tlFrag, err := tl.DecodeFragment(tlData)
@@ -783,13 +727,11 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue // Skip malformed fragments
 		}
 
-
 		// Push fragment to reassembler - returns complete message when FIN received
 		result, err := m.reassembler.Push(tlFrag)
 		if err != nil {
 			return nil, fmt.Errorf("reassembly error: %w", err)
 		}
-
 
 		if result != nil {
 			completeData = result
@@ -797,16 +739,13 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 
 	}
 
-
 	// Check if we have complete application data
 	if len(completeData) == 0 {
 		return nil, fmt.Errorf("no complete response received")
 	}
 
-
 	return completeData, nil
 }
-
 
 // buildRequest creates a request APDU.
 func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
@@ -823,7 +762,6 @@ func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
 	}
 
 }
-
 
 // buildPollRequest creates a poll request based on poll type.
 func buildPollRequest(pollType PollType) []byte {
@@ -858,20 +796,17 @@ func buildPollRequest(pollType PollType) []byte {
 
 }
 
-
 // buildControlRequest creates a control request.
 func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, index uint16, value interface{}) *al.APDU {
 	// Object prefix: Group, Variation, Qualifier (0x00 = index only), Count (1)
 	prefix := []byte{group, variation, 0x00, 0x01}
 
-	
-	// Index: 2 bytes big-endian
-	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
+	// Index: 2 bytes, least-significant byte first.
+	indexBytes := []byte{byte(index), byte(index >> 8)}
 
-	
 	// Value encoding depends on group and type
 	var valueBytes []byte
-	
+
 	switch group {
 	case 12:
 		// CROB (Control Relay Output Block) - 11 bytes
@@ -882,7 +817,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		var onTime uint32 = 0
 		var offTime uint32 = 0
 		var status uint8 = 0
-		
+
 		switch v := value.(type) {
 		case bool:
 			if v {
@@ -897,19 +832,19 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		default:
 			return nil // Unsupported type
 		}
-		
+
 		valueBytes = []byte{
-			code,          // Control code
-			count,         // Count
+			code,                                                                    // Control code
+			count,                                                                   // Count
 			byte(onTime >> 24), byte(onTime >> 16), byte(onTime >> 8), byte(onTime), // On time
 			byte(offTime >> 24), byte(offTime >> 16), byte(offTime >> 8), byte(offTime), // Off time
-			status,        // Status
+			status, // Status
 		}
-		
+
 		if len(valueBytes) != 11 {
 			return nil
 		}
-		
+
 	case 41, 42, 43, 44:
 		// Analog Output - encoding must match variation
 		switch variation {
@@ -930,7 +865,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				return nil
 			}
 			valueBytes = []byte{byte(intVal >> 8), byte(intVal)}
-			
+
 		case 2, 6: // 16-bit unsigned int
 			var uintVal uint16
 			switch v := value.(type) {
@@ -948,7 +883,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				return nil
 			}
 			valueBytes = []byte{byte(uintVal >> 8), byte(uintVal)}
-			
+
 		case 3, 7: // 32-bit signed int
 			var intVal int32
 			switch v := value.(type) {
@@ -967,7 +902,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				byte(intVal >> 24), byte(intVal >> 16),
 				byte(intVal >> 8), byte(intVal),
 			}
-			
+
 		case 4, 8: // 32-bit unsigned int
 			var uintVal uint32
 			switch v := value.(type) {
@@ -986,7 +921,7 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				byte(uintVal >> 24), byte(uintVal >> 16),
 				byte(uintVal >> 8), byte(uintVal),
 			}
-			
+
 		case 9, 10: // 32-bit float
 			var floatVal float32
 			switch v := value.(type) {
@@ -1002,28 +937,25 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				byte(bits >> 24), byte(bits >> 16),
 				byte(bits >> 8), byte(bits),
 			}
-			
+
 		default:
 			return nil
 		}
-		
+
 	default:
 		return nil
 	}
 
-	
 	data := append(prefix, indexBytes...)
 	data = append(data, valueBytes...)
-	
+
 	return buildRequest(0, funcCode, data)
 }
-
 
 // float32ToUint32Bits converts float32 to uint32 bits.
 func float32ToUint32Bits(f float32) uint32 {
 	return math.Float32bits(f)
 }
-
 
 // encodeDNP3Time encodes time.Time to DNP3 time format.
 func encodeDNP3Time(t time.Time) []byte {
@@ -1031,7 +963,7 @@ func encodeDNP3Time(t time.Time) []byte {
 	// But offset by 2000-01-01 for the "DNP3 epoch"
 	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	ms := t.Sub(epoch).Milliseconds()
-	
+
 	// DNP3 time is 2 x 4-byte integers (for different time bases)
 	// We use the primary time base
 	return []byte{
@@ -1043,18 +975,17 @@ func encodeDNP3Time(t time.Time) []byte {
 
 }
 
-
 // =============================================================================
 // WRITE OPERATIONS
 // =============================================================================
 
 // CROB represents a Control Relay Output Block (Group 12, Variation 1).
 type CROB struct {
-	Code      uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
-	Count     uint8  // Number of operation cycles
-	OnTime    uint32 // Time in ms to energize
-	OffTime   uint32 // Time in ms to de-energize
-	Status    uint8  // Qualifier code (0x00=STANDARD)
+	Code    uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
+	Count   uint8  // Number of operation cycles
+	OnTime  uint32 // Time in ms to energize
+	OffTime uint32 // Time in ms to de-energize
+	Status  uint8  // Qualifier code (0x00=STANDARD)
 }
 
 // WriteBinaryOutput writes a binary output (CROB) to an outstation.
@@ -1075,15 +1006,15 @@ func buildCROBRequest(index uint16, crob *CROB) []byte {
 	// Qualifier: 0x00 (index-only)
 	header := []byte{12, 1, 0x00, 0x01}
 
-	// Index: 2 bytes big-endian
-	indexBytes := []byte{byte(index >> 8), byte(index & 0xFF)}
+	// Index: 2 bytes, least-significant byte first.
+	indexBytes := []byte{byte(index), byte(index >> 8)}
 
 	// CROB data: Code(1) + Count(1) + OnTime(4) + OffTime(4) + Status(1)
 	data := []byte{
 		crob.Code,
 		crob.Count,
-		byte(crob.OnTime >> 24), byte(crob.OnTime >> 16), byte(crob.OnTime >> 8), byte(crob.OnTime),
-		byte(crob.OffTime >> 24), byte(crob.OffTime >> 16), byte(crob.OffTime >> 8), byte(crob.OffTime),
+		byte(crob.OnTime), byte(crob.OnTime >> 8), byte(crob.OnTime >> 16), byte(crob.OnTime >> 24),
+		byte(crob.OffTime), byte(crob.OffTime >> 8), byte(crob.OffTime >> 16), byte(crob.OffTime >> 24),
 		crob.Status,
 	}
 
@@ -1356,18 +1287,15 @@ func (m *Master) HandleUnsolicited(data []byte) error {
 		return err
 	}
 
-	
 	if !resp.Header.Control.UNS {
 		return errors.New("not an unsolicited response")
 	}
 
-	
 	// Update outstation state (we need to track this somehow)
 	// In practice, you'd have sequence number tracking to identify the source
-	
+
 	return nil
 }
-
 
 // Placeholder for al import (would be internal/al in real implementation)
 // In this file, al functions are simplified

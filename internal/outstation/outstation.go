@@ -62,15 +62,15 @@ func (s State) String() string {
 
 // Outstation errors
 var (
-	ErrNotInitialized     = errors.New("outstation not initialized")
-	ErrNotOperational    = errors.New("outstation not operational")
-	ErrInvalidRequest     = errors.New("invalid request")
-	ErrBufferFull        = errors.New("event buffer full")
-	ErrTransportNotSet   = errors.New("transport not configured")
+	ErrNotInitialized  = errors.New("outstation not initialized")
+	ErrNotOperational  = errors.New("outstation not operational")
+	ErrInvalidRequest  = errors.New("invalid request")
+	ErrBufferFull      = errors.New("event buffer full")
+	ErrTransportNotSet = errors.New("transport not configured")
 	// SBO errors
-	ErrSelectTimeout      = errors.New("select timeout - no operate received")
-	ErrNoSelectPending    = errors.New("no select pending for this point")
-	ErrSelectMismatch    = errors.New("operate does not match select")
+	ErrSelectTimeout   = errors.New("select timeout - no operate received")
+	ErrNoSelectPending = errors.New("no select pending for this point")
+	ErrSelectMismatch  = errors.New("operate does not match select")
 )
 
 // Freeze errors
@@ -115,25 +115,25 @@ func DefaultConfig() *Config {
 
 // PendingSelect represents a pending SELECT operation for SBO.
 type PendingSelect struct {
-	Group     uint8  // Object group
-	Variation uint8  // Object variation
-	Index     uint16 // Point index
-	Value     []byte // Command value
+	Group     uint8     // Object group
+	Variation uint8     // Object variation
+	Index     uint16    // Point index
+	Value     []byte    // Command value
 	Timestamp time.Time // When select was received
 }
 
 // BinaryInput represents a binary input data point.
 type BinaryInput struct {
-	Value   bool  // Current value (true=on, false=off)
-	Quality uint8 // Quality flags
+	Value   bool   // Current value (true=on, false=off)
+	Quality uint8  // Quality flags
 	Time    uint64 // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
 }
 
 // Quality flags for binary inputs
 const (
-	BinaryQualityOnline    = 0x01 // Point online
-	BinaryQualityRestart   = 0x40 // Device restarted
-	BinaryQualityCommLost  = 0x80 // Communication lost
+	BinaryQualityOnline        = 0x01 // Point online
+	BinaryQualityRestart       = 0x40 // Device restarted
+	BinaryQualityCommLost      = 0x80 // Communication lost
 	BinaryQualityDiscontinuous = 0x20 // Data discontinuous
 )
 
@@ -486,15 +486,15 @@ type RequestHandler func(req *al.APDU) (*al.APDU, error)
 
 // Outstation represents a DNP3 Outstation.
 type Outstation struct {
-	config     *Config
-	state      State
-	data       DataHandler
-	mu         sync.RWMutex
-	transport  TransportHandler
-	onRequest  RequestHandler
-	appSeq     uint8         // Application sequence number
-	unsolicited bool         // Unsolicited responses enabled
-	iin        al.IIN        // Internal Indication
+	config      *Config
+	state       State
+	data        DataHandler
+	mu          sync.RWMutex
+	transport   TransportHandler
+	onRequest   RequestHandler
+	appSeq      uint8  // Application sequence number
+	unsolicited bool   // Unsolicited responses enabled
+	iin         al.IIN // Internal Indication
 	fragmenter  *tl.Fragmenter
 	reassembler *tl.Reassembler
 	// SBO state tracking
@@ -514,10 +514,10 @@ func NewOutstation(config *Config) *Outstation {
 		state:          StateDown,
 		data:           NewDefaultDataHandler(),
 		appSeq:         0,
-		fragmenter:      tl.NewFragmenter(),
+		fragmenter:     tl.NewFragmenter(),
 		reassembler:    tl.NewReassembler(),
 		pendingSelects: make(map[uint16]*PendingSelect),
-		eventQueue:    NewEventQueue(config.MaxEventBuffers),
+		eventQueue:     NewEventQueue(config.MaxEventBuffers),
 	}
 }
 
@@ -802,7 +802,7 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 					Control: frame.Control{
 						DIR:      false, // Outstation-to-Master
 						PRM:      false, // Secondary station
-						FuncCode: frame.FuncConfirmedUserData,
+						FuncCode: frame.FuncConfirmedUserDataR,
 					},
 					DestAddr: o.config.MasterAddress,
 					SrcAddr:  o.config.OutstationAddress,
@@ -846,7 +846,7 @@ func (o *Outstation) sendConfirmation(seq uint8) {
 			Control: frame.Control{
 				DIR:      false, // Outstation-to-Master
 				PRM:      false, // Secondary station
-				FuncCode: frame.FuncConfirmedUserData,
+				FuncCode: frame.FuncConfirmedUserDataR,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,
@@ -882,12 +882,9 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 			continue
 		}
 
-		// Move past this DLL frame
-		// Header: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8 bytes
-		// Then data + CRC
-		headerSize := 8
-		crcSize := ((len(dllFrame.Data) + 1) / 2) * 2
-		offset += headerSize + len(dllFrame.Data) + crcSize
+		// Move past this complete link frame, including the header CRC and each
+		// 16-octet payload CRC block.
+		offset += frame.EncodedSize(len(dllFrame.Data))
 
 		// Skip frames not directed to us
 		if dllFrame.DestAddr != o.config.OutstationAddress {
@@ -1108,15 +1105,25 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		return result
 	}
 
-	// Object header: group, variation, qualifier (index), count - OUTSIDE loop
-	result = append(result, 1)              // Group 1
-	result = append(result, variation)     // Variation
-	result = append(result, 0x00)         // Qualifier: index
+	// Object header: group, variation, qualifier, count - OUTSIDE loop
+	result = append(result, 1)               // Group 1
+	result = append(result, variation)       // Variation
+	if variation == 1 {
+		// Variation 1 is packed binary state; qualifier 0x07 is an 8-bit
+		// point count and the values follow as packed bits.
+		result = append(result, 0x07, byte(len(data)))
+		packed := make([]byte, (len(data)+7)/8)
+		for i, bi := range data {
+			if bi.Value { packed[i/8] |= 1 << uint(i%8) }
+		}
+		return append(result, packed...)
+	}
+	result = append(result, 0x00)            // Legacy indexed qualifier
 	result = append(result, byte(len(data))) // Count
 
 	for i, bi := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
+		// Index (2 bytes, little-endian)
+		result = append(result, byte(i&0xFF), byte(i>>8))
 
 		// Value based on variation
 		switch variation {
@@ -1149,8 +1156,8 @@ func (o *Outstation) buildBinaryInputEventData(variation uint8) []byte {
 
 	// Object header for event data
 	result = append(result, 2)               // Group 2 (Binary Input Event)
-	result = append(result, variation)      // Variation
-	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, variation)       // Variation
+	result = append(result, 0x00)            // Qualifier: index
 	result = append(result, byte(len(data))) // Count
 
 	for i, bi := range data {
@@ -1191,14 +1198,24 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 30)             // Group 30
-	result = append(result, variation)      // Variation
-	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, 30)              // Group 30
+	result = append(result, variation)       // Variation
+	if variation == 1 {
+		// Variation 1 is a signed 32-bit value with flags. Qualifier 0x07
+		// carries an 8-bit count and sequential points without indexes.
+		result = append(result, 0x07, byte(len(data)))
+		for _, ai := range data {
+			value := int32(ai.Value)
+			result = append(result, byte(value), byte(value>>8), byte(value>>16), byte(value>>24), ai.Quality)
+		}
+		return result
+	}
+	result = append(result, 0x00)            // Legacy indexed qualifier
 	result = append(result, byte(len(data))) // Count
 
 	for i, ai := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
+		// Index (2 bytes, little-endian)
+		result = append(result, byte(i&0xFF), byte(i>>8))
 
 		// Value based on variation
 		switch variation {
@@ -1239,14 +1256,23 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 20)             // Group 20
-	result = append(result, variation)     // Variation
-	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, 20)              // Group 20
+	result = append(result, variation)       // Variation
+	if variation == 1 {
+		// Variation 1 is an unsigned 32-bit counter with flags. Qualifier
+		// 0x07 carries an 8-bit count and sequential points without indexes.
+		result = append(result, 0x07, byte(len(data)))
+		for _, c := range data {
+			result = append(result, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24), c.Quality)
+		}
+		return result
+	}
+	result = append(result, 0x00)            // Legacy indexed qualifier
 	result = append(result, byte(len(data))) // Count
 
 	for i, c := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
+		// Index (2 bytes, little-endian)
+		result = append(result, byte(i&0xFF), byte(i>>8))
 
 		// Value based on variation
 		switch variation {
@@ -1280,8 +1306,8 @@ func (o *Outstation) buildAnalogInputEventData(variation uint8) []byte {
 
 	// Object header for event data
 	result = append(result, 31)              // Group 31 (Analog Input Event)
-	result = append(result, variation)      // Variation
-	result = append(result, 0x00)          // Qualifier: index
+	result = append(result, variation)       // Variation
+	result = append(result, 0x00)            // Qualifier: index
 	result = append(result, byte(len(data))) // Count
 
 	for i, ai := range data {
@@ -1322,8 +1348,8 @@ func (o *Outstation) buildCounterEventData(variation uint8) []byte {
 
 	// Object header for event data
 	result = append(result, 21)              // Group 21 (Counter Event)
-	result = append(result, variation)      // Variation
-	result = append(result, 0x00)           // Qualifier: index
+	result = append(result, variation)       // Variation
+	result = append(result, 0x00)            // Qualifier: index
 	result = append(result, byte(len(data))) // Count
 
 	for i, c := range data {
@@ -1362,7 +1388,7 @@ func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 10)             // Group 10
+	result = append(result, 10)              // Group 10
 	result = append(result, variation)       // Variation
 	result = append(result, 0x00)            // Qualifier: index
 	result = append(result, byte(len(data))) // Count
@@ -1402,7 +1428,7 @@ func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
 
 	// Object header - OUTSIDE loop
 	result = append(result, 40)              // Group 40
-	result = append(result, variation)      // Variation
+	result = append(result, variation)       // Variation
 	result = append(result, 0x00)            // Qualifier: index
 	result = append(result, byte(len(data))) // Count
 
@@ -1461,7 +1487,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			return nil, ErrInvalidRequest
 		}
 
-		index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
+		index := uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8
 		dataIdx += 2
 
 		// Parse value based on group/variation
@@ -1473,11 +1499,11 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				return nil, ErrInvalidRequest
 			}
 			crob := CROB{
-				Code:   req.Data[dataIdx],
-				Count:  req.Data[dataIdx+1],
-				OnTime: uint32(req.Data[dataIdx+2])<<24 | uint32(req.Data[dataIdx+3])<<16 | uint32(req.Data[dataIdx+4])<<8 | uint32(req.Data[dataIdx+5]),
-				OffTime: uint32(req.Data[dataIdx+6])<<24 | uint32(req.Data[dataIdx+7])<<16 | uint32(req.Data[dataIdx+8])<<8 | uint32(req.Data[dataIdx+9]),
-				Status: req.Data[dataIdx+10],
+				Code:    req.Data[dataIdx],
+				Count:   req.Data[dataIdx+1],
+				OnTime:  uint32(req.Data[dataIdx+2]) | uint32(req.Data[dataIdx+3])<<8 | uint32(req.Data[dataIdx+4])<<16 | uint32(req.Data[dataIdx+5])<<24,
+				OffTime: uint32(req.Data[dataIdx+6]) | uint32(req.Data[dataIdx+7])<<8 | uint32(req.Data[dataIdx+8])<<16 | uint32(req.Data[dataIdx+9])<<24,
+				Status:  req.Data[dataIdx+10],
 			}
 			// Call the data handler to process the CROB
 			if dh, ok := o.data.(DataWriter); ok {
@@ -1597,7 +1623,7 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 	variation := req.Data[1]
 	// qualifier := req.Data[2] // Not used but part of structure
 	// count := req.Data[3]     // Not used but part of structure
-	
+
 	// Extract index and value from data (after 4-byte header)
 	dataIdx := 4
 	if dataIdx+2 > len(req.Data) {
@@ -1647,7 +1673,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 	group := req.Data[0]
 	variation := req.Data[1]
-	
+
 	// Extract index and value from data (after 4-byte header)
 	dataIdx := 4
 	if dataIdx+2 > len(req.Data) {
@@ -1662,7 +1688,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	// Validate against pending select
 	o.selectMu.Lock()
 	pending, exists := o.pendingSelects[index]
-	
+
 	if !exists {
 		o.selectMu.Unlock()
 		debugLog("handleOperate: no pending select for index=%d", index)
@@ -1729,7 +1755,7 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 
 	group := req.Data[0]
 	variation := req.Data[1]
-	
+
 	// Extract index and value from data (after 4-byte header)
 	dataIdx := 4
 	if dataIdx+2 > len(req.Data) {
@@ -1779,11 +1805,11 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			return ErrInvalidRequest
 		}
 		crob := CROB{
-			Code:   value[0],
-			Count:  value[1],
-			OnTime: uint32(value[2])<<24 | uint32(value[3])<<16 | uint32(value[4])<<8 | uint32(value[5]),
-			OffTime: uint32(value[6])<<24 | uint32(value[7])<<16 | uint32(value[8])<<8 | uint32(value[9]),
-			Status: value[10],
+			Code:    value[0],
+			Count:   value[1],
+			OnTime:  uint32(value[2]) | uint32(value[3])<<8 | uint32(value[4])<<16 | uint32(value[5])<<24,
+			OffTime: uint32(value[6]) | uint32(value[7])<<8 | uint32(value[8])<<16 | uint32(value[9])<<24,
+			Status:  value[10],
 		}
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
@@ -1971,9 +1997,9 @@ func (o *Outstation) sendLinkAck(masterAddr uint16) {
 	// ACK frame: DIR=0, PRM=0, FuncCode=0 (ACK)
 	dllFrame := &frame.Frame{
 		Control: frame.Control{
-			DIR:      false,            // Outstation-to-Master
-			PRM:      false,            // Secondary station
-			FuncCode: frame.FuncAck,   // ACK
+			DIR:      false,         // Outstation-to-Master
+			PRM:      false,         // Secondary station
+			FuncCode: frame.FuncAck, // ACK
 		},
 		DestAddr: masterAddr,
 		SrcAddr:  o.config.OutstationAddress,
@@ -2002,10 +2028,10 @@ func (o *Outstation) sendLinkStatus(masterAddr uint16) {
 	// Link Status frame: DIR=0, PRM=0, FuncCode=2 (Link Status)
 	dllFrame := &frame.Frame{
 		Control: frame.Control{
-			DIR:      false,              // Outstation-to-Master
-			PRM:      false,              // Secondary station
+			DIR:      false,                // Outstation-to-Master
+			PRM:      false,                // Secondary station
 			FuncCode: frame.FuncLinkStatus, // Link Status
-			DFC:      false,              // Data link not busy
+			DFC:      false,                // Data link not busy
 		},
 		DestAddr: masterAddr,
 		SrcAddr:  o.config.OutstationAddress,
@@ -2053,7 +2079,7 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 			Control: frame.Control{
 				DIR:      false,
 				PRM:      false,
-				FuncCode: frame.FuncConfirmedUserData,
+				FuncCode: frame.FuncConfirmedUserDataR,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,
@@ -2069,14 +2095,14 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 
 // cleanup performs resource cleanup when stopping.
 func (o *Outstation) cleanup() {
-// Clear pending selects
-o.selectMu.Lock()
-o.pendingSelects = make(map[uint16]*PendingSelect)
-o.selectMu.Unlock()
-// Clear event queue
-o.eventQueue.Clear()
-// Clear IIN
-o.mu.Lock()
-o.iin = al.IIN{}
-o.mu.Unlock()
+	// Clear pending selects
+	o.selectMu.Lock()
+	o.pendingSelects = make(map[uint16]*PendingSelect)
+	o.selectMu.Unlock()
+	// Clear event queue
+	o.eventQueue.Clear()
+	// Clear IIN
+	o.mu.Lock()
+	o.iin = al.IIN{}
+	o.mu.Unlock()
 }

@@ -311,6 +311,7 @@ func NewClient(config *Config) (Client, error) {
 		}
 		t = transport.NewTCPTransport(tcpConfig)
 	case dnp3.TLS:
+		return nil, fmt.Errorf("TLS transport is unsupported; refusing plaintext fallback")
 		// For TLS, we would need to create a TLSTransport
 		// For now, fall back to TCP
 		tcpConfig := &transport.TCPConfig{
@@ -493,7 +494,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 
 		group := data[offset]
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := data[offset+3]
 		offset += 4
 
@@ -503,11 +504,30 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 			continue
 		}
 
+		// Group 1 Variation 1 is packed binary state. Qualifier 0x07 carries
+		// an 8-bit point count followed by packed state bytes; no index or
+		// quality byte is present for each point.
+		if group == 1 && variation == 1 && qualifier == 0x07 {
+			packedBytes := (int(count) + 7) / 8
+			if offset+packedBytes > len(data) {
+				break
+			}
+			for i := 0; i < int(count); i++ {
+				result = append(result, &types.BinaryInput{
+					Index:   uint16(i),
+					Value:   data[offset+i/8]&(1<<uint(i%8)) != 0,
+					Quality: types.QualityOnline,
+				})
+			}
+			offset += packedBytes
+			continue
+		}
+
 		for i := 0; i < int(count); i++ {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value bool
@@ -568,7 +588,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 
 		group := data[offset]
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := data[offset+3]
 		offset += 4
 
@@ -578,12 +598,25 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 			continue
 		}
 
+		// Group 30 Variation 1 is a signed 32-bit value with flags. For the
+		// count qualifier (0x07), points are sequential and carry no index.
+		if group == 30 && variation == 1 && qualifier == 0x07 {
+			if offset+int(count)*5 > len(data) { break }
+			for i := 0; i < int(count); i++ {
+				value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
+				quality := types.QualityFlags(data[offset+4])
+				result = append(result, &types.AnalogInput{Index: uint16(i), Value: float64(value), Quality: quality})
+				offset += 5
+			}
+			continue
+		}
+
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
 		for i := 0; i < int(count); i++ {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value float64
@@ -664,7 +697,7 @@ func parseCounters(data []byte) []*types.Counter {
 
 		group := data[offset]
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := data[offset+3]
 		offset += 4
 
@@ -674,12 +707,25 @@ func parseCounters(data []byte) []*types.Counter {
 			continue
 		}
 
+		// Group 20 Variation 1 is an unsigned 32-bit counter with flags.
+		// Qualifier 0x07 carries sequential points without indexes.
+		if group == 20 && variation == 1 && qualifier == 0x07 {
+			if offset+int(count)*5 > len(data) { break }
+			for i := 0; i < int(count); i++ {
+				value := binary.LittleEndian.Uint32(data[offset : offset+4])
+				quality := types.QualityFlags(data[offset+4])
+				result = append(result, &types.Counter{Index: uint16(i), Value: value, Quality: quality})
+				offset += 5
+			}
+			continue
+		}
+
 		// Need at least 7 bytes per point for variation 1 (32-bit counter with flags)
 		for i := 0; i < int(count); i++ {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value uint32
@@ -967,32 +1013,12 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 
 // EnableUnsolicited implements Client.EnableUnsolicited
 func (c *client) EnableUnsolicited(ctx context.Context) error {
-	c.mu.RLock()
-	state := c.state
-	internal := c.internalMaster
-	outstationID := c.config.OutstationAddress
-	c.mu.RUnlock()
-
-	if state < dnp3.StateConnected {
-		return dnp3.ErrNotConnected
-	}
-
-	return internal.EnableUnsolicited(outstationID)
+	return fmt.Errorf("unsolicited enable is unsupported")
 }
 
 // DisableUnsolicited implements Client.DisableUnsolicited
 func (c *client) DisableUnsolicited(ctx context.Context) error {
-	c.mu.RLock()
-	state := c.state
-	internal := c.internalMaster
-	outstationID := c.config.OutstationAddress
-	c.mu.RUnlock()
-
-	if state < dnp3.StateConnected {
-		return dnp3.ErrNotConnected
-	}
-
-	return internal.DisableUnsolicited(outstationID)
+	return fmt.Errorf("unsolicited disable is unsupported")
 }
 
 // SetUnsolicitedHandler implements Client.SetUnsolicitedHandler

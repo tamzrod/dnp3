@@ -1,0 +1,18 @@
+# DNP3 payload CRC boundary vectors.
+# Header bytes for each vector are:
+#   05 64 (length=05+N) C4 04 00 03 00
+# Payload is N bytes containing the ascending pattern 00, 01, 02, ...
+# Each CRC value below is shown numerically; transmit low byte first.
+# Header CRC covers all 8 header bytes, including 05 64.
+# Payload CRC covers each payload block independently, max 16 bytes.
+#
+# N=0:   header_crc=DAE1; payload_crc_count=0; frame_bytes=10
+# N=1:   header_crc=49B1; payload_crc[0]=FFFF; frame_bytes=13
+# N=16:  header_crc=A220; payload_crc[0]=10EC; frame_bytes=28
+# N=17:  header_crc=3170; payload_crc[0]=10EC payload_crc[1]=4D94; frame_bytes=31
+# N=249: header_crc=E5D0; payload_crc[0..15]=10EC,0327,377A,24B1,5FC0,4C0B,7856,6B9D,8EB4,9D7F,A922,BAE9,C198,D253,E60E,0BE1; frame_bytes=291
+# N=250: header_crc=5037; payload_crc[0..15]=10EC,0327,377A,24B1,5FC0,4C0B,7856,6B9D,8EB4,9D7F,A922,BAE9,C198,D253,E60E,A0DC; frame_bytes=294
+#
+# Independent calculation: CRC-16/DNP, reflected polynomial 0xA6BC,
+# init=0x0000, xorout=0xFFFF. Published-frame cross-check:
+# RACOM payload E5 C0 01 02 00 06 -> numeric CRC 5C98 -> bytes 98 5C.

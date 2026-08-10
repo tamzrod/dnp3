@@ -1,0 +1,4 @@
+# DNP3 Group 12 Variation 1 CROB object payload (one indexed point).
+# qualifier=0x00, count=1, index=0x1234, code=LATCH_ON(7), count=1,
+# on-time=1000 ms, off-time=2000 ms, status=0.
+0C 01 00 01 34 12 07 01 E8 03 00 00 D0 07 00 00 00

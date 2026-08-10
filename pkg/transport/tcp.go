@@ -265,13 +265,14 @@ func (t *TCPTransport) Send(data []byte) error {
 // Returns the complete DNP3 frame including sync bytes and CRCs.
 //
 // Frame structure per IEEE 1815:
-//   Sync(2) + Length(1) + Control(1) + Dest(2) + Src(2) + Data + CRCs
+//
+//	Sync(2) + Length(1) + Control(1) + Dest(2) + Src(2) + Data + CRCs
 //
 // CRCs are 2 bytes each, covering:
 //   - Length + Control (1 pair)
 //   - Destination (1 pair)
 //   - Source (1 pair)
-//   - Data (ceil(dataLen/2) pairs)
+//   - Data (one CRC per 16-octet block)
 func (t *TCPTransport) Receive() ([]byte, error) {
 	t.mu.RLock()
 	if t.closed {
@@ -357,21 +358,18 @@ func (t *TCPTransport) Receive() ([]byte, error) {
 	// Length field includes: Control(1) + Dest(2) + Src(2) + Data
 	// NOT including the CRCs - they are calculated separately
 	frameLength := int(lengthByte[0])
-	
+
 	// Calculate data length (length - control - dest - src)
 	dataLen := frameLength - 5 // 1 + 2 + 2
 	if dataLen < 0 {
 		dataLen = 0
 	}
-	
-	// Calculate CRC bytes:
-	// - 3 header CRCs (Length+Ctrl, Dest, Src) = 6 bytes
-	// - Data CRCs = ceil(dataLen/2) pairs = 2 * ceil(dataLen/2) bytes
-	numDataCRCPairs := (dataLen + 1) / 2 // ceil division
-	crcBytes := 6 + (numDataCRCPairs * 2)
-	
-	// Total frame size: sync(2) + length(1) + rest(frameLength) + CRCs
-	totalSize := 2 + 1 + frameLength + crcBytes
+
+	// DNP3 frames have one header CRC and one CRC per 16-octet payload block.
+	crcBytes := 2 + ((dataLen+15)/16)*2
+
+	// Total frame size: sync(2) + length/control/addresses (6) + header CRC + payload blocks.
+	totalSize := 8 + crcBytes + dataLen
 
 	// Read the complete frame
 	frame := make([]byte, totalSize)

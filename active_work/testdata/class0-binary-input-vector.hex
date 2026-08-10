@@ -1,0 +1,15 @@
+# Standards-derived Class 0 response object vector.
+# Group 1 Variation 1 is the packed single-bit binary-input format.
+# Qualifier 0x07 is an 8-bit count; count=1; packed value byte=0x01 (point ON).
+# Application APDU: control=C0 (FIR|FIN, seq=0), function=RESPONSE (00),
+# IIN=0000, followed by the object header and one packed value byte.
+#
+# APDU bytes:
+C0 00 00 00 01 01 07 01 01
+#
+# Expected decoded point: index=0, value=true, quality=ONLINE/default.
+# References:
+# - Emerson FB3000 DNP3 Protocol Specifications Manual, section 4.4.1:
+#   https://www.emerson.com/is/content/emerson/en/final-control/documents/d301858x012_1.pdf
+# - Siemens DNP3 Device Profile, object qualifier table:
+#   https://support.industry.siemens.com/cs/attachments/109808769/PCS7_Telecontrol_DNP_3_Device_Profile_en.pdf
