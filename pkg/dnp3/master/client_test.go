@@ -118,6 +118,32 @@ func TestConfigValidate(t *testing.T) {
 			config: NewConfig(WithRetry(-1, 100*time.Millisecond)),
 			wantErr: true,
 		},
+		// DNP3-049: address validation.
+		{
+			name:    "reserved master address 0x0000",
+			config:  NewConfig(WithMasterAddress(0x0000)),
+			wantErr: true,
+		},
+		{
+			name:    "reserved outstation address 0x0000",
+			config:  NewConfig(WithOutstationAddress(0x0000)),
+			wantErr: true,
+		},
+		{
+			name:    "broadcast outstation address 0xFFFF",
+			config:  NewConfig(WithOutstationAddress(0xFFFF)),
+			wantErr: true,
+		},
+		{
+			name:    "broadcast master address 0xFFFF allowed (default/convention)",
+			config:  NewConfig(WithMasterAddress(0xFFFF)),
+			wantErr: false,
+		},
+		{
+			name:    "valid specific addresses",
+			config:  NewConfig(WithMasterAddress(1), WithOutstationAddress(1024)),
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -150,6 +176,10 @@ func TestNewClientRejectsInvalidConfig(t *testing.T) {
 		{"negative timeout", NewConfig(WithTimeout(-time.Second))},
 		{"negative retry count", NewConfig(WithRetry(-1, 100*time.Millisecond))},
 		{"negative retry delay", NewConfig(WithRetry(3, -time.Millisecond))},
+		// DNP3-049: invalid link-layer addresses.
+		{"reserved master address", NewConfig(WithMasterAddress(0x0000))},
+		{"reserved outstation address", NewConfig(WithOutstationAddress(0x0000))},
+		{"broadcast outstation address", NewConfig(WithOutstationAddress(0xFFFF))},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

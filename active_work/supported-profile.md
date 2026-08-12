@@ -85,22 +85,45 @@ available only after its dedicated verification task proves its behavior.
 
 ## Current Verification State
 
-No capability in this profile is verified for external interoperability yet.
-Tasks VEC-01 through API-03 establish that verification.
+The v0 MVP path below is verified by the repository's own deterministic
+loopback and unit tests (internal verification, not external
+interoperability). External interoperability (VEC-01) remains pending. Every
+"Target" capability in the disposition table now has at least one in-repo test
+reference:
+
+| Capability | Test reference | Task |
+|------------|----------------|------|
+| LSB-first wire encoding of MVP point indices/values/CROB times | `pkg/dnp3/master/object_vector_test.go`, `internal/master/control_vector_test.go`, `internal/master/master_test.go`, `test/integration/tcp_test.go` | DNP3-001 |
+| Object-header encode/decode model | `internal/al/object_header_test.go` | DNP3-002/003 |
+| Master read path (Class-0 headers, range16 qualifier) | `pkg/dnp3/master/client_test.go` (`TestBuildReadRequestGolden`), `internal/master/master_test.go` | DNP3-004/005 |
+| Link-layer handshake (reset link + link status) | `internal/dll/link/link_test.go`, `test/integration/tcp_test.go` | DNP3-006/007 |
+| `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
+| Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
+| Public `Operate` (Direct Operate G12V1 CROB) + command status | `test/integration/mvp_loopback_test.go` | DNP3-021/045 |
+| Retry / timeout / outstanding-request tracking | `internal/master/retry_policy_test.go`, `internal/master/outstanding_request_test.go` | DNP3-031/032/040 |
+| Idle-timeout keep-alive close | `internal/master/idle_monitor_test.go` | DNP3-042 |
+| Public error taxonomy + `ClassifyError` | `pkg/dnp3/error_taxonomy_test.go`, `pkg/dnp3/master/error_classification_test.go` | DNP3-043 |
+| Optional diagnostic logger hook (default silent) | `pkg/dnp3/master/logger_hook_test.go` | DNP3-044 |
+| Full MVP loopback (Connect → Integrity → Operate) against simulator | `test/integration/mvp_loopback_test.go` | DNP3-045 |
+| Master/outstation address validation | `pkg/dnp3/master/client_test.go` (`TestConfigValidate`, `TestNewClientRejectsInvalidConfig`) | DNP3-049 |
+| Client reusable after `Close` (Close → Connect again) | `test/integration/close_reuse_test.go` | DNP3-050 |
+
+No capability in this profile is verified for **external** interoperability
+yet; an independent raw capture (VEC-01) is still required for that claim.
 
 ## Object Wire-Field Inventory
 
 | Field | Required v0 encoding | Current implementation status |
 |-------|----------------------|-------------------------------|
-| Object group, variation, qualifier, count | One-octet fields | Present; requires fixture verification. |
-| Point index | Two-octet LSB-first unsigned integer | Current public parsers use big-endian; correction pending. |
-| Binary Input Variation 1 value | One packed state bit | Current parser/builders use repository-specific bit handling; fixture required. |
-| Analog Input Variation 1 value | Four-octet signed integer with one quality octet, LSB-first value order | Current parser/builders use float32/big-endian; correction pending. |
-| Counter Variation 1 value | Four-octet unsigned integer, LSB-first octet order | Current parser/builders use big-endian; correction pending. |
-| Quality flags | One octet | Present; semantic mapping requires fixture verification. |
-| CROB index | Two-octet LSB-first unsigned integer | Current control paths require fixture verification. |
-| CROB times | Four-octet unsigned integers, LSB-first octet order | Current control paths require fixture verification. |
-| IIN | Two octets in application response | Current response path requires fixture verification. |
+| Object group, variation, qualifier, count | One-octet fields | Present; verified by `internal/al/object_header_test.go` (DNP3-002/003). |
+| Point index | Two-octet LSB-first unsigned integer | LSB-first; verified by `pkg/dnp3/master/object_vector_test.go` and `internal/master/master_test.go` (DNP3-001). |
+| Binary Input Variation 1 value | One packed state bit | Present; verified by the MVP loopback in `test/integration/mvp_loopback_test.go` (DNP3-045). |
+| Analog Input Variation 1 value | Four-octet signed integer with one quality octet, LSB-first value order | LSB-first int32 + quality; verified by `pkg/dnp3/master/object_vector_test.go` and the MVP loopback (DNP3-001/045). |
+| Counter Variation 1 value | Four-octet unsigned integer, LSB-first octet order | LSB-first uint32; verified by `pkg/dnp3/master/object_vector_test.go` and the MVP loopback (DNP3-001/045). |
+| Quality flags | One octet | Present; surfaced through the MVP loopback assertions (DNP3-045). |
+| CROB index | Two-octet LSB-first unsigned integer | LSB-first; verified by `internal/master/control_vector_test.go` and the Operate loopback (DNP3-001/045). |
+| CROB times | Four-octet unsigned integers, LSB-first octet order | LSB-first; verified by `internal/master/control_vector_test.go` (DNP3-001). |
+| IIN | Two octets in application response | Present; `IntegrityPoll` response IIN equals `LastIIN()` asserted in the MVP loopback (DNP3-045). |
 
 ## Authoritative Wire References
 

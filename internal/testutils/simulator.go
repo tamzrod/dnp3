@@ -122,8 +122,17 @@ func (s *MVPOutstationSimulator) SentFrames() []*frame.Frame {
 // Listen is a no-op: the in-memory simulator has no listener.
 func (s *MVPOutstationSimulator) Listen() error { return nil }
 
-// Connect is a no-op: the in-memory simulator is always "connected".
-func (s *MVPOutstationSimulator) Connect() error { return nil }
+// Connect establishes the (simulated) transport connection. It resets any prior
+// closed state so the same simulator instance can serve a Close → Connect cycle
+// — mirroring a real outstation that accepts a fresh link session after the
+// master disconnects (DNP3-050 lifecycle testing).
+func (s *MVPOutstationSimulator) Connect() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = false
+	s.pending = s.pending[:0]
+	return nil
+}
 
 // Accept is a no-op: the in-memory simulator has no incoming connections.
 func (s *MVPOutstationSimulator) Accept() error { return nil }

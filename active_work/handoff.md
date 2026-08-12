@@ -7,13 +7,16 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-045 complete. Implementation underway.
-- Last checkpoint: DNP3-043/044/045 (error taxonomy + optional logging hooks +
-  full-MVP public loopback against the simulator). All green incl. `-race`.
-- Previous checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
+- DNP3-001 through DNP3-051 complete. Implementation underway.
+- Last checkpoint: DNP3-049/050/051 (master/outstation address validation +
+  clean reusable Close + MVP documentation lock). All green incl. `-race`.
+- Previous checkpoint: DNP3-043/044/045 (error taxonomy + optional logging
+  hooks + full-MVP public loopback against the simulator). All green incl.
+  `-race`.
+- Prior checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
   tracking + timeout/retry config validation + optional idle-timeout keep-alive
   monitor). All green incl. `-race`.
-- Prior checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
+- Earlier checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -793,9 +796,65 @@
 - Acceptance: Connect → Integrity → Operate against the simulator only;
   points and command status asserted.
 
+### DNP3-049 — Master address configuration validation
+- Commit message: `fix(api): validate master and outstation addresses`
+- `pkg/dnp3/master/client.go`: `Config.Validate()` now rejects invalid
+  link-layer addresses for the v0 single-outstation master profile:
+  - `MasterAddress == 0x0000` → reserved, rejected (broadcast 0xFFFF is allowed
+    as a master source — it is the established default/convention).
+  - `OutstationAddress == 0x0000` → reserved, rejected.
+  - `OutstationAddress == 0xFFFF` → broadcast is not a valid single-outstation
+    destination, rejected.
+  Each returns a `*dnp3.ConfigurationError` with a clear `Field`/`Message`.
+- Tests: extended `TestConfigValidate` and `TestNewClientRejectsInvalidConfig`
+  in `pkg/dnp3/master/client_test.go` with reserved/broadcast address cases and
+  a positive "broadcast master 0xFFFF allowed" case. All green.
+- Acceptance: clear error for invalid addresses; valid configs (incl. the
+  default 0xFFFF master + 1024 outstation) still accepted.
+
+### DNP3-050 — Clean resource cleanup on Close
+- Commit message: `fix(api): thorough Close cleanup`
+- `pkg/dnp3/master/client.go`: `Disconnect` (called by `Close`) now resets the
+  public application-sequence counter `c.sequence = 0` on teardown (all three
+  disconnect paths: pre-cancelled ctx, ctx-cancelled-during-teardown, and
+  successful teardown) so a reconnect starts from a clean AC-seq slate. Close
+  remains idempotent (already Disconnected → no-op → nil) and a never-connected
+  client Close is a safe no-op.
+- `internal/testutils/simulator.go`: `MVPOutstationSimulator.Connect()` now
+  resets its `closed` flag and drains `pending` so the same simulator instance
+  can serve a Close → Connect cycle — mirroring a real outstation that accepts
+  a fresh link session after the master disconnects. The internal master
+  already cleared its outstations map on `Disconnect` (DNP3-040) and supported
+  reconnect from `Disconnected`/`Error` (DNP3-032/039), so no internal-master
+  change was required.
+- Tests: `test/integration/close_reuse_test.go` —
+  `TestClientReusableAfterClose` (Connect → IntegrityPoll → Operate → Close →
+  idempotent second Close → Connect again → IntegrityPoll → Operate, all
+  against the SAME simulator/client) and `TestClientCloseNeverConnected` (Close
+  on a never-connected client is a safe no-op). All green incl. `-race`.
+- Acceptance: reusable after Close; no leaked resources; Close idempotent.
+
+### DNP3-051 — MVP documentation lock (README + SUPPORTED)
+- Commit message: `docs: lock claims to verified Master MVP`
+- `active_work/supported-profile.md`: rewrote the "Current Verification State"
+  section into a capability → test-reference matrix (every "Target"
+  capability now has an in-repo test reference, DNP3-001 through DNP3-050);
+  updated the "Object Wire-Field Inventory" status column to reflect the
+  corrected LSB-first encoding (the prior "big-endian / correction pending"
+  notes were stale post-DNP3-001) and the MVP-loopback-verified point/CROB/IIN
+  fields; clarified that verification is internal (external VEC-01 still
+  pending).
+- `README.md`: replaced the "Working Core Implementation" status block with a
+  "Verified Master MVP (v0 interoperability profile)" block that lists each
+  verified capability with a test reference, an explicit "unsupported in v0"
+  list (TLS, serial, unsolicited, SA, time sync, file transfer, SBO, out-of-
+  scope objects), and the "not yet verified" caveats (external
+  interoperability / VEC-01).
+- No code changes; no tests (docs-only task). Acceptance: docs match reality.
+
 ## Next READY Tasks
 
-- **DNP3-049** — Master address configuration validation
+- **DNP3-052** — Verification script for MVP gate
 - **DNP3-059** — Transport fragment size boundary tests
 - **DNP3-065** — Double-check DLL EncodedSize usage
 - **DNP3-072** — Master handoff.md template
@@ -803,9 +862,9 @@
 
 ## Recommended Next Task
 
-**DNP3-049 — Master address configuration validation** (prereq: none).
+**DNP3-052 — Verification script for MVP gate** (prereq: DNP3-045, done).
 
-If DNP3-049 is blocked, fall back to **DNP3-059 — Transport fragment size
+If DNP3-052 is blocked, fall back to **DNP3-059 — Transport fragment size
 boundary tests**.
 
 After completing a task:
@@ -872,13 +931,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-045
-NEXT TASK: DNP3-049 — Master address configuration validation
+COMPLETED: DNP3-001 through DNP3-051
+NEXT TASK: DNP3-052 — Verification script for MVP gate
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration + simulator).
-- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/...` — green (DNP3-043/044/045 verified).
-- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043/044/045) and is out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, then DNP3-043/044/045 (this checkpoint). All pushed to origin/main.
+- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/...` — green (DNP3-043/044/045/049/050 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..051) and is out of scope.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), then DNP3-049/050/051 (this checkpoint). All pushed to origin/main.

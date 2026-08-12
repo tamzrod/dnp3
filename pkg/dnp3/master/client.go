@@ -248,7 +248,18 @@ func NewConfig(opts ...ConfigOption) *Config {
 	return cfg
 }
 
-// Validate validates the configuration
+// Validate validates the configuration.
+//
+// DNP3-049: link-layer addresses are validated for the v0 single-outstation
+// master profile:
+//   - MasterAddress (the master's source address) must not be the reserved
+//     null address 0x0000. The broadcast address 0xFFFF is permitted as a
+//     master source (it is the established default and convention in this
+//     codebase).
+//   - OutstationAddress (the single configured destination) must not be the
+//     reserved null address 0x0000, and must not be the broadcast address
+//     0xFFFF: the MVP profile targets exactly one outstation, so a broadcast
+//     destination is inappropriate.
 func (c *Config) Validate() error {
 	if c.Timeout <= 0 {
 		return &dnp3.ConfigurationError{
@@ -272,6 +283,25 @@ func (c *Config) Validate() error {
 		return &dnp3.ConfigurationError{
 			Field:   "TLSConfig",
 			Message: "required for TLS transport",
+		}
+	}
+	// DNP3-049: address validation.
+	if c.MasterAddress == 0x0000 {
+		return &dnp3.ConfigurationError{
+			Field:   "MasterAddress",
+			Message: "0x0000 is reserved and not a valid master source address",
+		}
+	}
+	if c.OutstationAddress == 0x0000 {
+		return &dnp3.ConfigurationError{
+			Field:   "OutstationAddress",
+			Message: "0x0000 is reserved and not a valid outstation address",
+		}
+	}
+	if c.OutstationAddress == 0xFFFF {
+		return &dnp3.ConfigurationError{
+			Field:   "OutstationAddress",
+			Message: "0xFFFF broadcast is not a valid single-outstation destination",
 		}
 	}
 	return nil
@@ -594,6 +624,7 @@ func (c *client) Disconnect(ctx context.Context) error {
 		// left in an indeterminate state.
 		c.mu.Lock()
 		c.state = dnp3.StateDisconnected
+		c.sequence = 0 // DNP3-050: clean slate for a later reconnect.
 		c.mu.Unlock()
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
@@ -617,11 +648,13 @@ func (c *client) Disconnect(ctx context.Context) error {
 	case <-ctx.Done():
 		c.mu.Lock()
 		c.state = dnp3.StateDisconnected
+		c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
 		c.mu.Unlock()
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
 	case res := <-done:
 		c.mu.Lock()
 		c.state = dnp3.StateDisconnected
+		c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
 		c.mu.Unlock()
 		if res.err != nil {
 			return fmt.Errorf("disconnect failed: %w", res.err)

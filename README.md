@@ -160,26 +160,54 @@ We prioritize sustainable software over short-term development speed.
 
 ## Current Status
 
-### 🟢 Working Core Implementation
+### 🟢 Verified Master MVP (v0 interoperability profile)
 
-The repository contains a working native Go DNP3 implementation with end-to-end Master↔Outstation TCP communication verified by integration tests.
+The repository implements and internally verifies the v0 Master interoperability
+profile: one TCP master connects to one outstation, performs a Class-0 read of
+Binary Input (G1V1), Analog Input (G30V1), and Counter (G20V1), and issues one
+Direct-Operate control (G12V1 CROB). The full MVP path is exercised end-to-end
+against the deterministic in-memory simulator in
+[`test/integration/mvp_loopback_test.go`](test/integration/mvp_loopback_test.go)
+(DNP3-045), with no network I/O.
 
-**What Works**:
-- ✅ Data Link Layer (DLL) - Frame encoding/decoding, CRC16, link state machine
-- ✅ Transport Layer (TL) - Segmentation, reassembly, flow control
-- ✅ Application Layer (AL) - APDU encoding/decoding, function codes, IIN
-- ✅ Secure Authentication (SA) - Challenge handling, key management
-- ✅ Master Role - Connect, Read Class 0/1/2/3, Operate commands
-- ✅ Outstation Role - Data handling, response generation
-- ✅ TCP Transport - Listen/Accept/Send/Receive contract
-- ✅ Workbench TUI - Master and Outstation modes, auto-poll
-- ✅ Integration tests pass (12/12 capabilities verified)
+**Verified capabilities (each has an in-repo test reference — see
+[`active_work/supported-profile.md`](active_work/supported-profile.md) for the
+authoritative matrix):**
+- ✅ Data Link Layer (DLL) — frame encode/decode, CRC16, link handshake
+  (`internal/dll/link/link_test.go`)
+- ✅ Transport Layer (TL) — segmentation/reassembly, fragment sequence
+  (`internal/tl`)
+- ✅ Application Layer (AL) — APDU encode/decode, object-header model
+  (`internal/al/object_header_test.go`)
+- ✅ LSB-first wire encoding for all MVP multi-octet fields (indices, analog/
+  counter values, CROB times) — corrected and golden-verified (DNP3-001)
+- ✅ Master `Connect` / `Disconnect` / `Close` lifecycle with context
+  cancellation; client is reusable after `Close` (DNP3-050,
+  `test/integration/close_reuse_test.go`)
+- ✅ Master `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) and `Operate`
+  (Direct-Operate G12V1) with command-status reporting
+- ✅ Retry, timeout, and outstanding-request tracking; optional idle-timeout
+  keep-alive close
+- ✅ Public error taxonomy + `ClassifyError` (DNP3-043)
+- ✅ Optional diagnostic logger hook, no-op/silent by default (DNP3-044)
+- ✅ Master/outstation link-layer address validation (DNP3-049)
+- ✅ Workbench TUI — Master and Outstation modes
 
-**Known Limitations**:
-- ⚠️ Not IEEE 1815 complete (all object group variations not implemented)
-- ⚠️ Serial transport not implemented (TCP only)
-- ⚠️ TLS transport is a stub
-- ⚠️ Workbench is an engineering tool, not production SCADA
+**Explicitly unsupported in v0 (rejected by the public API until a separately
+tested profile adds them):**
+- ⛔ TLS and Serial transports (TCP only)
+- ⛔ Unsolicited responses / event delivery
+- ⛔ Secure authentication, time sync, file transfer, device attributes
+- ⛔ Restart, delay measurement, freeze operations
+- ⛔ Select-before-operate and direct-operate-no-response
+- ⛔ Object groups/variations outside G1V1, G30V1, G20V1, G12V1
+
+**Not yet verified:**
+- ⚠️ External interoperability (independent raw capture / VEC-01) is still
+  pending. All current verification is internal (deterministic fixtures and
+  the in-repo simulator loopback).
+- ⚠️ Not IEEE 1815 complete (only the v0 object subset is implemented).
+- ⚠️ Workbench is an engineering tool, not production SCADA.
 
 **Repository Statistics**:
 | Metric | Count |
