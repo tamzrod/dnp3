@@ -30,6 +30,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -137,6 +138,11 @@ type Config struct {
 	// disables idle monitoring (the default).
 	// Supported-profile: Defer — optional, not externally verified in v0.
 	IdleTimeout time.Duration
+	// Logger is the optional diagnostic sink for frame/sequence events
+	// (DNP3-044). nil means silent (the default); a non-nil Logger receives
+	// structured events from the master (send/receive/confirm/retry/state).
+	// Supported-profile: Defer — observability hook, not externally verified in v0.
+	Logger Logger
 }
 
 // DefaultConfig returns a default configuration
@@ -219,6 +225,17 @@ func WithRetry(count int, delay time.Duration) ConfigOption {
 func WithIdleTimeout(d time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.IdleTimeout = d
+	}
+}
+
+// WithLogger installs the optional diagnostic logger for frame/sequence events
+// (DNP3-044). The default is silent (no-op); pass a [Logger] to observe
+// send/receive/confirm/retry/state events from the master. The logger must be
+// safe for concurrent use.
+// Supported-profile: Defer — observability hook, not externally verified in v0.
+func WithLogger(l Logger) ConfigOption {
+	return func(c *Config) {
+		c.Logger = l
 	}
 }
 
@@ -336,6 +353,10 @@ type client struct {
 
 	// For response parsing
 	sequence uint8
+
+	// logger is the optional diagnostic sink for frame/sequence events
+	// (DNP3-044). nil means silent (the default).
+	logger Logger
 }
 
 // sendAndReceive sends a request and receives a response, returning parsed data
@@ -389,6 +410,12 @@ func NewClient(config *Config) (Client, error) {
 
 	// Set up internal master with transport
 	internal.SetTransport(&transportAdapter{Handler: t})
+	// DNP3-044: wire the optional diagnostic logger to the internal master so
+	// frame/sequence events flow through the public Logger. nil logger leaves
+	// the master silent (the default).
+	if config.Logger != nil {
+		internal.SetDiagnosticHook(diagAdapter(config.Logger))
+	}
 
 	return &client{
 		config:         config,
@@ -396,6 +423,7 @@ func NewClient(config *Config) (Client, error) {
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
+		logger:         config.Logger,
 	}, nil
 }
 
@@ -422,6 +450,10 @@ func NewClientWithTransport(config *Config, t transport.Handler) (Client, error)
 	}
 	internal := master.NewMaster(internalConfig)
 	internal.SetTransport(&transportAdapter{Handler: t})
+	// DNP3-044: wire the optional diagnostic logger (see NewClient).
+	if config.Logger != nil {
+		internal.SetDiagnosticHook(diagAdapter(config.Logger))
+	}
 
 	return &client{
 		config:         config,
@@ -429,6 +461,7 @@ func NewClientWithTransport(config *Config, t transport.Handler) (Client, error)
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
+		logger:         config.Logger,
 	}, nil
 }
 
@@ -480,8 +513,10 @@ func (c *client) Connect(ctx context.Context) error {
 		}
 		c.mu.Unlock()
 		if res.err != nil {
+			c.emitLog(LogError, "connect", "connect failed", res.err)
 			return res.err
 		}
+		c.emitLog(LogInfo, "connect", "connected", nil)
 		return nil
 	}
 }
@@ -671,7 +706,10 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 				c.state = dnp3.StateDisconnected
 				c.mu.Unlock()
 			}
-			return nil, fmt.Errorf("read failed: %w", res.err)
+			// Attach the matching public error sentinel so callers can classify
+			// the failure via dnp3.ClassifyError (DNP3-043). The internal error
+			// chain is preserved.
+			return nil, wrapInternalError("read failed", res.err)
 		}
 		respData = res.data
 	}
@@ -1385,7 +1423,10 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 				c.state = dnp3.StateDisconnected
 				c.mu.Unlock()
 			}
-			return nil, fmt.Errorf("operate failed: %w", res.err)
+			// Attach the matching public error sentinel so callers can classify
+			// the failure via dnp3.ClassifyError (DNP3-043). The internal error
+			// chain is preserved.
+			return nil, wrapInternalError("operate failed", res.err)
 		}
 		cs = res.status
 	}
@@ -1459,4 +1500,34 @@ func (c *client) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return c.Disconnect(ctx)
+}
+
+// wrapInternalError attaches the matching public error sentinel to an error
+// returned by the internal master so callers can classify it via dnp3.ClassifyError
+// without importing internal packages (DNP3-043). The internal error is preserved
+// in the chain (via %w) so existing errors.Is checks against internal sentinels
+// (e.g. ErrTransportDisconnected) keep working. Disconnects are handled by the
+// caller (state transition + ErrNotConnected); this helper only maps the
+// non-disconnect protocol classes.
+func wrapInternalError(prefix string, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case master.IsDisconnectError(err):
+		// Attach the public disconnect sentinel so callers can classify via
+		// dnp3.ClassifyError; preserve the internal sentinel (e.g.
+		// ErrTransportDisconnected) for existing errors.Is checks.
+		return fmt.Errorf("%s: %w: %w", prefix, dnp3.ErrNotConnected, err)
+	case errors.Is(err, master.ErrCRCError):
+		return fmt.Errorf("%s: %w: %w", prefix, dnp3.ErrCRC, err)
+	case errors.Is(err, master.ErrConfirmTimeout) || errors.Is(err, master.ErrTimeout):
+		return fmt.Errorf("%s: %w: %w", prefix, dnp3.ErrTimeout, err)
+	case errors.Is(err, master.ErrResponseSeqMismatch) || errors.Is(err, master.ErrConfirmSeqMismatch):
+		return fmt.Errorf("%s: %w: %w", prefix, dnp3.ErrSequenceError, err)
+	case errors.Is(err, master.ErrRequestOutstanding):
+		return fmt.Errorf("%s: %w: %w", prefix, dnp3.ErrRequestOutstanding, err)
+	default:
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
 }

@@ -149,6 +149,18 @@ var (
 	// is outside the v0 supported profile (DNP3-030): TLS transport, unsolicited
 	// responses, select-before-operate, and direct-operate-no-response.
 	ErrUnsupportedOption = errors.New("unsupported option for v0 profile")
+
+	// ErrCRC indicates a received link frame failed CRC validation (DNP3-043).
+	// A corrupted frame is transient line noise; the request is retryable. This
+	// public sentinel is attached at the API boundary when an internal CRC
+	// failure propagates out, so callers can distinguish it without importing
+	// internal packages.
+	ErrCRC = errors.New("frame CRC error")
+
+	// ErrRequestOutstanding indicates a request to the same outstation is
+	// already in flight (DNP3-040/043). A DNP3 link permits at most one
+	// outstanding master request per outstation for MVP.
+	ErrRequestOutstanding = errors.New("request already outstanding for outstation")
 )
 
 // ConfigurationError represents a configuration validation error
@@ -187,4 +199,121 @@ func NewProtocolError(funcCode uint8, iin [2]byte, description string) *Protocol
 		IIN:         iin,
 		Description: description,
 	}
+}
+
+// ErrorCode is a stable, comparable classification of a DNP3 error returned by
+// the public API (DNP3-043). It lets callers distinguish failure categories
+// without inspecting error message strings or importing internal packages.
+//
+// Use [ClassifyError] to derive the code from an error. The category reflects
+// the underlying failure source, not the operation that surfaced it: for
+// example a Read that fails because the link died reports ErrorCodeDisconnect.
+type ErrorCode int
+
+const (
+	// ErrorCodeUnknown is the fallback for errors the library does not
+	// recognize (including caller-supplied errors). Callers should treat it as
+	// "unclassified" rather than a specific failure.
+	ErrorCodeUnknown ErrorCode = iota
+	// ErrorCodeTimeout indicates a response/confirmation did not arrive within
+	// the configured timeout (DNP3-009/034).
+	ErrorCodeTimeout
+	// ErrorCodeCRC indicates a received link frame failed CRC validation
+	// (DNP3-034/043). Transient line noise; retryable.
+	ErrorCodeCRC
+	// ErrorCodeSequence indicates an application-layer sequence mismatch
+	// (confirmation or response SEQ did not match the outstanding request)
+	// (DNP3-009/010).
+	ErrorCodeSequence
+	// ErrorCodeUnsupported indicates the caller requested an object group,
+	// function, or option outside the v0 supported profile (DNP3-029/030).
+	ErrorCodeUnsupported
+	// ErrorCodeDisconnect indicates the transport/peer closed the connection
+	// (or the session was closed/idle-timed-out). The link is dead; not
+	// retryable without reconnecting (DNP3-031/042).
+	ErrorCodeDisconnect
+	// ErrorCodeConfiguration indicates an invalid configuration was supplied
+	// (DNP3-041).
+	ErrorCodeConfiguration
+	// ErrorCodeCanceled indicates the caller's context was cancelled while the
+	// operation was outstanding (SAFE-03).
+	ErrorCodeCanceled
+	// ErrorCodeBusy indicates a request to the same outstation is already in
+	// flight (DNP3-040).
+	ErrorCodeBusy
+	// ErrorCodeInvalid indicates a malformed request or response that is not
+	// covered by a more specific category.
+	ErrorCodeInvalid
+)
+
+// String returns a human-readable name for the error code.
+func (c ErrorCode) String() string {
+	switch c {
+	case ErrorCodeTimeout:
+		return "timeout"
+	case ErrorCodeCRC:
+		return "crc"
+	case ErrorCodeSequence:
+		return "sequence"
+	case ErrorCodeUnsupported:
+		return "unsupported"
+	case ErrorCodeDisconnect:
+		return "disconnect"
+	case ErrorCodeConfiguration:
+		return "configuration"
+	case ErrorCodeCanceled:
+		return "canceled"
+	case ErrorCodeBusy:
+		return "busy"
+	case ErrorCodeInvalid:
+		return "invalid"
+	default:
+		return "unknown"
+	}
+}
+
+// ClassifyError maps an error returned by the public API to its [ErrorCode]
+// category (DNP3-043). A nil error returns ErrorCodeUnknown. The classifier
+// walks the error chain with errors.Is/errors.As so wrapped errors (e.g.
+// "read failed: %w") are still recognized.
+//
+// The order is deliberate: cancellation and configuration are caller-side
+// conditions checked first; the protocol-specific classes (CRC, sequence,
+// timeout, unsupported) follow; disconnect is a terminal transport condition;
+// invalid is the catch-all for malformed responses.
+func ClassifyError(err error) ErrorCode {
+	if err == nil {
+		return ErrorCodeUnknown
+	}
+	if errors.Is(err, ErrContextCanceled) {
+		return ErrorCodeCanceled
+	}
+	var ce *ConfigurationError
+	if errors.As(err, &ce) || errors.Is(err, ErrConfiguration) {
+		return ErrorCodeConfiguration
+	}
+	if errors.Is(err, ErrUnsupportedFunction) ||
+		errors.Is(err, ErrUnsupportedGroup) ||
+		errors.Is(err, ErrUnsupportedOption) {
+		return ErrorCodeUnsupported
+	}
+	if errors.Is(err, ErrCRC) {
+		return ErrorCodeCRC
+	}
+	if errors.Is(err, ErrSequenceError) {
+		return ErrorCodeSequence
+	}
+	if errors.Is(err, ErrTimeout) {
+		return ErrorCodeTimeout
+	}
+	if errors.Is(err, ErrRequestOutstanding) {
+		return ErrorCodeBusy
+	}
+	if errors.Is(err, ErrNotConnected) || errors.Is(err, ErrClosed) {
+		return ErrorCodeDisconnect
+	}
+	if errors.Is(err, ErrInvalidRequest) || errors.Is(err, ErrInvalidResponse) {
+		return ErrorCodeInvalid
+	}
+	return ErrorCodeUnknown
 }

@@ -2,6 +2,7 @@ package testutils
 
 import (
 	"container/list"
+	"io"
 	"sync"
 	"time"
 )
@@ -134,17 +135,33 @@ func (t *MockTransport) QueueSize() int {
 
 // Errors for transport operations
 var (
-	ErrTransportClosed = &TransportError{"transport closed"}
-	ErrTimeout         = &TransportError{"receive timeout"}
+	// ErrTransportClosed is returned by a closed transport. It chains io.EOF so
+	// the master's disconnect detection (IsDisconnectError) recognizes a closed
+	// simulated peer exactly like a real TCP peer close, which surfaces io.EOF
+	// from net.Conn.Read (DNP3-043).
+	ErrTransportClosed = &TransportError{msg: "transport closed", err: io.EOF}
+	ErrTimeout         = &TransportError{"receive timeout", nil}
 )
 
 // TransportError represents a transport error.
 type TransportError struct {
 	msg string
+	// err is the optional underlying cause. When non-nil it is exposed via
+	// Unwrap so errors.Is can match it — e.g. a closed-transport error chains
+	// to io.EOF so the master's disconnect detection recognizes it (DNP3-043).
+	err error
 }
 
 func (e *TransportError) Error() string {
+	if e.err != nil {
+		return e.msg + ": " + e.err.Error()
+	}
 	return e.msg
+}
+
+// Unwrap exposes the optional underlying cause so errors.Is can match it.
+func (e *TransportError) Unwrap() error {
+	return e.err
 }
 
 // MockTransportPair creates a connected pair of transports for bidirectional communication.

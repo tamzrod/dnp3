@@ -135,17 +135,29 @@ func (m *Master) isLinkUp() bool {
 // (DNP3-039). A self-transition is a no-op success. Callers in the lifecycle
 // paths (Connect/Initialize/Disconnect/markDisconnected) use this so illegal
 // transitions surface as errors instead of silently corrupting the state.
+//
+// DNP3-044: legal transitions emit a "state" diagnostic event after the lock is
+// released (so callbacks may safely query master state); illegal transitions
+// emit a DiagError event.
 func (m *Master) transitionTo(newState State) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.state == newState {
-		return nil
+	var from State
+	{
+		m.mu.Lock()
+		from = m.state
+		if m.state == newState {
+			m.mu.Unlock()
+			return nil
+		}
+		allowed, ok := legalStateTransitions[m.state]
+		if !ok || !allowed[newState] {
+			m.mu.Unlock()
+			m.diag(DiagError, "state", SeqNA, fmt.Sprintf("illegal transition %s -> %s", from, newState), ErrIllegalStateTransition)
+			return fmt.Errorf("%w: %s -> %s", ErrIllegalStateTransition, from, newState)
+		}
+		m.state = newState
+		m.mu.Unlock()
 	}
-	allowed, ok := legalStateTransitions[m.state]
-	if !ok || !allowed[newState] {
-		return fmt.Errorf("%w: %s -> %s", ErrIllegalStateTransition, m.state, newState)
-	}
-	m.state = newState
+	m.diag(DiagInfo, "state", SeqNA, fmt.Sprintf("%s -> %s", from, newState), nil)
 	return nil
 }
 
@@ -533,6 +545,11 @@ type Master struct {
 	// objects and integrity polling are later roadmap items.
 	onDeviceRestart func(outstationID uint16)
 	onNeedTimeSync  func(outstationID uint16)
+
+	// diagHook is the optional diagnostic sink for frame/sequence events
+	// (DNP3-044). nil means silent (the default). Snapshotted under mu and
+	// invoked outside the master's own locks.
+	diagHook DiagHook
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -544,6 +561,46 @@ type TransportHandler interface {
 
 // ErrorHandler defines the callback for error notifications.
 type ErrorHandler func(err error, context string)
+
+// DiagLevel is the severity of a diagnostic event (DNP3-044).
+type DiagLevel int
+
+const (
+	// DiagInfo is for routine frame/sequence lifecycle events (send, receive,
+	// confirm, state transitions).
+	DiagInfo DiagLevel = iota
+	// DiagWarn is for recoverable anomalies (retry, sequence mismatch, NACK).
+	DiagWarn
+	// DiagError is for failures (timeout, CRC, disconnect, illegal transition).
+	DiagError
+)
+
+// DiagEvent is a structured diagnostic event emitted at frame/sequence
+// boundaries (DNP3-044). It is passed to the configured DiagHook; the hook is
+// optional and nil (silent) by default.
+type DiagEvent struct {
+	// Level is the event severity.
+	Level DiagLevel
+	// Op names the operation, e.g. "send", "receive", "confirm", "retry",
+	// "sequence", "state".
+	Op string
+	// Seq is the application-layer sequence number (0-15) for the event, or
+	// the sentinel SeqNA when not applicable.
+	Seq uint8
+	// Msg is a short human-readable description.
+	Msg string
+	// Err carries the underlying error for failure events, or nil.
+	Err error
+}
+
+// SeqNA marks a DiagEvent with no applicable sequence number.
+const SeqNA uint8 = 0xFF
+
+// DiagHook is an optional diagnostic sink invoked at frame/sequence boundaries
+// (DNP3-044). Implementations must be safe for concurrent use; the master does
+// not invoke the hook while holding its own mutex, so callbacks may safely query
+// master state.
+type DiagHook func(DiagEvent)
 
 // NewMaster creates a new Master Station.
 func NewMaster(config *Config) *Master {
@@ -592,6 +649,33 @@ func (m *Master) SetErrorHandler(h ErrorHandler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.onError = h
+}
+
+// SetDiagnosticHook installs an optional diagnostic sink for frame/sequence
+// events (DNP3-044). Pass nil to restore the default silent behavior. The hook
+// is invoked outside the master's own locks so callbacks may safely query master
+// state; callbacks must not block (the master calls them synchronously).
+func (m *Master) SetDiagnosticHook(h DiagHook) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.diagHook = h
+}
+
+// diagnosticHook snapshots the configured hook under the read lock (DNP3-044).
+// Returns nil when no hook is installed (the default), in which case callers
+// skip the event entirely.
+func (m *Master) diagnosticHook() DiagHook {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.diagHook
+}
+
+// diag emits a diagnostic event to the configured hook if one is installed
+// (DNP3-044). It is a no-op when the hook is nil, so the default is silent.
+func (m *Master) diag(level DiagLevel, op string, seq uint8, msg string, err error) {
+	if h := m.diagnosticHook(); h != nil {
+		h(DiagEvent{Level: level, Op: op, Seq: seq, Msg: msg, Err: err})
+	}
 }
 
 // SetDeviceRestartHandler sets the callback invoked when an outstation
@@ -739,11 +823,14 @@ func (m *Master) idleMonitorLoop(stop chan struct{}) {
 				// (DNP3-042 acceptance). Bypass the transition table like
 				// Disconnect since idle-close is an unconditional teardown.
 				m.mu.Lock()
+				prev := m.state
 				m.state = StateDisconnected
 				m.mu.Unlock()
 				if m.onError != nil {
 					m.onError(ErrIdleTimeout, "idle monitor closed session")
 				}
+				// DNP3-044: emit a diagnostic event for the idle-driven close.
+				m.diag(DiagError, "state", SeqNA, fmt.Sprintf("idle close %s -> Disconnected", prev), ErrIdleTimeout)
 				return
 			}
 		}
@@ -1374,24 +1461,31 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		m.advanceSequence()
 		// Successful send counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
+		// DNP3-044: emit a "send" diagnostic event with the application seq.
+		m.diag(DiagInfo, "send", seq, fmt.Sprintf("sent request to outstation %d", outstationID), nil)
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
+				m.diag(DiagWarn, "confirm", seq, "confirmation failed", err)
 				lastErr, _ = m.markDisconnected(err)
 				if !m.retryAgain(policy, &lastErr, attempt) {
 					return nil, lastErr
 				}
+				m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after confirm failure (attempt %d)", attempt), lastErr)
 				continue
 			}
+			m.diag(DiagInfo, "confirm", seq, "confirmation received", nil)
 		}
 
 		// Wait for response
 		resp, err := m.waitForResponse()
 		if err != nil {
+			m.diag(DiagWarn, "receive", seq, "response failed", err)
 			lastErr, _ = m.markDisconnected(err)
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return nil, lastErr
 			}
+			m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after receive failure (attempt %d)", attempt), lastErr)
 			continue
 		}
 
@@ -1403,11 +1497,14 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return nil, lastErr
 			}
+			m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after response error (attempt %d)", attempt), lastErr)
 			continue
 		}
 
 		// Successful response counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
+		// DNP3-044: emit a "receive" diagnostic event for the completed response.
+		m.diag(DiagInfo, "receive", seq, "response received", nil)
 		// Return the processed application layer data for the caller to decode
 		return appData, nil
 	}
@@ -1517,9 +1614,22 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 }
 
 // waitForResponse waits for a response with timeout.
+//
+// DNP3-043: a non-disconnect receive error (no response within the transport
+// timeout) is tagged with ErrTimeout so the failure is classifiable as a
+// timeout rather than an opaque transport error. A disconnect error is returned
+// unchanged so the caller's markDisconnected wraps it with ErrTransportDisconnected
+// (unchanged behavior).
 func (m *Master) waitForResponse() ([]byte, error) {
 	m.transport.SetTimeout(m.config.Timeout)
-	return m.transport.Receive()
+	data, err := m.transport.Receive()
+	if err != nil {
+		if isDisconnectError(err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrTimeout, err)
+	}
+	return data, nil
 }
 
 // markDisconnected inspects a transport error and, if it indicates the peer

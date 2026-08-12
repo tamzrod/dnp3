@@ -7,11 +7,13 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-042 complete. Implementation underway.
-- Last checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
+- DNP3-001 through DNP3-045 complete. Implementation underway.
+- Last checkpoint: DNP3-043/044/045 (error taxonomy + optional logging hooks +
+  full-MVP public loopback against the simulator). All green incl. `-race`.
+- Previous checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
   tracking + timeout/retry config validation + optional idle-timeout keep-alive
   monitor). All green incl. `-race`.
-- Previous checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
+- Prior checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -714,10 +716,85 @@
   (re-Connect stops the prior monitor). All green incl. `-race`.
 - Acceptance: state becomes Disconnected on idle close; idle tests green.
 
+### DNP3-043 — Error type taxonomy
+- Commit message: `feat(master): public error taxonomy and ClassifyError`
+- `pkg/dnp3/dnp3.go`: added the public `ErrorCode` taxonomy
+  (`ErrorCodeUnknown`, `ErrorCodeTimeout`, `ErrorCodeCRC`, `ErrorCodeSequence`,
+  `ErrorCodeDisconnect`, `ErrorCodeBusy`, `ErrorCodeUnsupported`,
+  `ErrorCodeCanceled`, `ErrorCodeConfiguration`, `ErrorCodeInvalid`) with
+  `String()`, and `ClassifyError(err) ErrorCode` which walks the wrapped error
+  chain via `errors.Is` against the public sentinels (canceled → configuration
+  → unsupported → CRC → sequence → timeout → busy → disconnect → invalid →
+  unknown). Added public sentinels `ErrCRC` and `ErrRequestOutstanding`
+  (previously only internal), plus `ErrUnsupportedOption`.
+- `pkg/dnp3/master/client.go`: added `wrapInternalError(prefix, err)` helper
+  that wraps an internal error with the matching public sentinel while
+  preserving the internal sentinel chain via `%w` (`%v` for the prefix text).
+  Wired into the `Read` and `Operate` public boundaries so surfaced failures
+  carry a classifiable public sentinel (CRC/sequence/busy/timeout/disconnect/
+  unsupported).
+- `internal/master/master.go`: `waitForResponse` now tags a non-disconnect
+  receive error with `ErrTimeout` (disconnect errors pass through unchanged so
+  `markDisconnected` wraps them with `ErrTransportDisconnected`), making a
+  no-response-within-timeout classifiable as a timeout.
+- `internal/testutils/mock_transport.go`: `TransportError` now carries an
+  optional underlying cause exposed via `Unwrap`; `ErrTransportClosed` chains
+  `io.EOF` so the master's `IsDisconnectError` recognizes a closed simulated
+  peer exactly like a real TCP peer close (which surfaces `io.EOF`).
+- Tests: `pkg/dnp3/error_taxonomy_test.go` (sentinel mapping, chain unwrap,
+  precedence, ErrorCode String); `pkg/dnp3/master/error_classification_test.go`
+  (boundary classification via transport mocks: badCRC, timeout, seqMismatch,
+  peerClose). All green incl. `-race`.
+- Acceptance: distinct public error types/codes for timeout, CRC, sequence,
+  unsupported, disconnect; `ClassifyError` recognizes them through the public
+  boundary wrapping.
+
+### DNP3-044 — Logging hooks (optional, no-op default)
+- Commit message: `feat(master): optional diagnostic logger hook`
+- `pkg/dnp3/master/logger.go` (new): public `LogLevel` (`LogInfo`/`LogWarn`/
+  `LogError`), `LogEvent` (Level/Op/Seq/Msg/Err), the `Logger` interface, a
+  `NopLogger` no-op (the default), `FuncLogger(f)` adapter, `SeqNA` sentinel,
+  and `diagAdapter` that bridges the public `Logger` to the internal
+  `master.DiagHook`.
+- `pkg/dnp3/master/client.go`: added `Config.Logger` field + `WithLogger(l)`
+  option; the `client` stores `logger` and both `NewClient` and
+  `NewClientWithTransport` install `diagAdapter(config.Logger)` on the
+  internal master (nil logger → silent). `Connect` emits a public `connect`
+  event (info on success, error on failure) via the nil-safe `emitLog` helper.
+- `internal/master/master.go`: added `DiagLevel`/`DiagEvent`/`DiagHook` types,
+  `SetDiagnosticHook`, and a nil-safe `diag(...)` helper that snapshots the
+  hook under a read lock and invokes it OUTSIDE the master's own locks (so
+  callbacks may safely query master state). `transitionTo` emits `state`
+  events (info on legal transitions, error on illegal); `sendWithRetryAndGetResponse`
+  emits `send`/`confirm`/`receive`/`retry` events with the application seq;
+  the idle monitor emits a `state` error event on idle-driven close.
+- Tests: `pkg/dnp3/master/logger_hook_test.go` — default-silent (no-logger
+  path is safe on Read and on disconnect), hook-called on Read (send+receive,
+  seq=0 on first request), hook-called on state transition (connect+state via
+  the simulator), hook-called on failure (CRC → warn/error events),
+  `NopLogger`/`FuncLogger`/`LogLevel.String` coverage. All green incl. `-race`.
+- Acceptance: optional logger, default silent (no-op), hook called for
+  frame/seq events.
+
+### DNP3-045 — Public API loopback against simulator (full MVP)
+- Commit message: `test(integration): full MVP public API loopback`
+- `test/integration/mvp_loopback_test.go` (new): a single end-to-end full-MVP
+  loopback against the deterministic in-memory simulator (no network I/O):
+  `TestPublicMVPLoopbackFullLifecycle` exercises Connect → state Active →
+  IntegrityPoll (all MVP Class-0 groups in one call) → assert 2 binary, 2
+  analog (42, -7), 2 counter (100, 7) points + IIN == LastIIN → Operate (CROB
+  DirectOperate) → assert ControlSuccess.
+  `TestPublicMVPLoopbackOperateStatus` asserts a configured `ControlBlocked`
+  outstation surfaces `ControlBlocked` through the public Operate path.
+  `TestPublicMVPLoopbackErrorClassification` closes the simulated peer and
+  asserts the next Read surfaces `dnp3.ErrNotConnected` and a non-`Unknown`
+  `ClassifyError` category (validates the DNP3-043 taxonomy end-to-end).
+- All green incl. `-race`.
+- Acceptance: Connect → Integrity → Operate against the simulator only;
+  points and command status asserted.
+
 ## Next READY Tasks
 
-- **DNP3-043** — Error type taxonomy
-- **DNP3-044** — Logging hooks
 - **DNP3-049** — Master address configuration validation
 - **DNP3-059** — Transport fragment size boundary tests
 - **DNP3-065** — Double-check DLL EncodedSize usage
@@ -726,9 +803,10 @@
 
 ## Recommended Next Task
 
-**DNP3-043 — Error type taxonomy** (prereq: none).
+**DNP3-049 — Master address configuration validation** (prereq: none).
 
-If DNP3-043 is blocked, fall back to **DNP3-044 — Logging hooks**.
+If DNP3-049 is blocked, fall back to **DNP3-059 — Transport fragment size
+boundary tests**.
 
 After completing a task:
 
@@ -794,13 +872,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-042
-NEXT TASK: DNP3-043 — Error type taxonomy
+COMPLETED: DNP3-001 through DNP3-045
+NEXT TASK: DNP3-049 — Master address configuration validation
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration + simulator).
-- `go test -race ./internal/testutils/... ./pkg/dnp3/master/... ./internal/master/... ./test/integration/...` — green (DNP3-034/035/036 verified).
-- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD) and is out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), then DNP3-034/035/036 (this checkpoint). All pushed to origin/main.
+- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/...` — green (DNP3-043/044/045 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043/044/045) and is out of scope.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, then DNP3-043/044/045 (this checkpoint). All pushed to origin/main.
