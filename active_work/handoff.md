@@ -86,10 +86,42 @@
 - Acceptance: handshake fails on invalid ACK; integration tests (real
   outstation sends valid ACK) still green.
 
+### DNP3-007 — Link-status request after reset
+- Commit message: `fix(master): link status request after reset`
+- `internal/master/master.go`: `performLinkHandshake` now issues a Request
+  Link Status (FC=9) after the Reset Link ACK and validates the secondary
+  Link Status response (FC=2) via new `sendLinkStatusRequest` +
+  `validateLinkStatusResponse`. Connect succeeds only after both exchanges.
+- Tests: `TestValidateLinkStatusResponse` covers good link status, wrong
+  FC, wrong DIR, wrong PRM, wrong source/destination address, malformed.
+- Acceptance: integration handshake (real outstation sends valid Link
+  Status) green.
+
+### DNP3-008 — Application sequence continuity
+- Commit message: `fix(master): application sequence continuity`
+- `internal/master/master.go`: added `sequence` field (0-15, mutex-guarded)
+  with `nextSequence`/`advanceSequence`/`currentSequence`. `sendWithRetry`
+  and `sendWithRetryAndGetResponse` allocate the sequence per request and
+  advance it only on successful send (no advance on send failure). Retries
+  reuse the same seq within one logical request.
+- Tests: `TestSequenceStream` (0-15 wrap), `TestSendWithRetrySequenceAdvances`
+  (observed SEQs 0,1,2), `TestSendWithRetrySequenceNoAdvanceOnSendFailure`.
+- Acceptance: observed SEQs match the expected 0-15 stream.
+
+### DNP3-009 — Confirmation wait + timeout
+- Commit message: `fix(master): confirmation timeout and matching`
+- `internal/master/master.go`: rewrote `waitForConfirmation`. A dedicated
+  confirm (FuncResponse, IIN-only) must match the request SEQ or returns
+  `ErrConfirmSeqMismatch`; a transport receive error surfaces as
+  `ErrConfirmTimeout` (caller retries). Full responses acting as confirm
+  are still accepted (strict response-seq matching deferred to DNP3-010).
+- Tests: `TestWaitForConfirmationMatchingSeq`, `TestWaitForConfirmationWrongSeq`,
+  `TestWaitForConfirmationTimeout`.
+- Acceptance: spec-required confirm (match / mismatch / timeout) behavior.
+
 ## Next READY Tasks
 
-- **DNP3-007** — Link-status request after reset  *(prereqs: DNP3-006 ✓)*
-- **DNP3-008** — Application sequence continuity
+- **DNP3-010** — Response sequence matching  *(prereqs: DNP3-008 ✓)*
 - **DNP3-011** — IIN bit semantics verification & correction
 - **DNP3-022** — Context cancellation on Connect
 - **DNP3-030** — Complete supported-profile rejection matrix
@@ -106,7 +138,7 @@
 
 ## Recommended Next Task
 
-**DNP3-007 — Link-status request after reset**
+**DNP3-010 — Response sequence matching**
 
 After completing a task:
 
@@ -162,12 +194,12 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004, DNP3-005, DNP3-006
-NEXT TASK: DNP3-007 — Link-status request after reset
+COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004, DNP3-005, DNP3-006, DNP3-007, DNP3-008, DNP3-009
+NEXT TASK: DNP3-010 — Response sequence matching
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./pkg/dnp3/master/...` — green.
-- Commit hash: 8b3c216
+- Commit hash: (pending commit — see git log after commit)

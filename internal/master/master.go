@@ -134,6 +134,7 @@ var (
 	ErrMaxRetries         = errors.New("maximum retries exceeded")
 	ErrInvalidResponse    = errors.New("invalid response")
 	ErrConfirmTimeout     = errors.New("confirmation timeout")
+	ErrConfirmSeqMismatch = errors.New("confirmation sequence mismatch")
 )
 
 // Config holds master configuration.
@@ -165,6 +166,9 @@ type Master struct {
 	onError     ErrorHandler
 	fragmenter  *tl.Fragmenter  // Transport layer fragmenter
 	reassembler *tl.Reassembler // Transport layer reassembler
+	// sequence is the application-layer sequence number (0-15). It advances
+	// by one (mod 16) for each successfully sent request (DNP3-008).
+	sequence uint8
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -276,18 +280,23 @@ func (m *Master) Connect() error {
 
 // performLinkHandshake performs the DNP3 link-layer handshake sequence.
 // This establishes the data link connection before application layer communication.
+// The sequence is:
+//  1. Reset Link Stations → secondary ACK
+//  2. Request Link Status → secondary Link Status response
+//
+// Connect succeeds only after both exchanges validate (DNP3-006/DNP3-007).
 func (m *Master) performLinkHandshake() error {
-	// Step 1: Send Reset Link Stations (Function Code 0)
-	// This tells the outstation to reset its link layer state
+	// Step 1: Send Reset Link Stations and validate the secondary ACK.
 	if err := m.sendResetLink(); err != nil {
 		return fmt.Errorf("reset link failed: %w", err)
 	}
 
-	// Wait for acknowledgment from outstation
-	// In a full implementation, we would receive and validate the ACK here
-
-	// Small delay to allow outstation to process
-	time.Sleep(100 * time.Millisecond)
+	// Step 2: Request Link Status and validate the secondary Link Status
+	// response. This confirms the link is fully established in both
+	// directions before application communication begins.
+	if err := m.sendLinkStatusRequest(); err != nil {
+		return fmt.Errorf("link status request failed: %w", err)
+	}
 
 	return nil
 }
@@ -365,6 +374,76 @@ func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
 	}
 	if f.DestAddr != masterAddr {
 		return fmt.Errorf("ACK destination address=0x%04X, expected master 0x%04X",
+			f.DestAddr, masterAddr)
+	}
+	return nil
+}
+
+// sendLinkStatusRequest issues a Request Link Status frame to each outstation
+// and validates the secondary Link Status response. This is the second phase
+// of the link handshake (DNP3-007): Connect succeeds only after a valid Link
+// Status response.
+func (m *Master) sendLinkStatusRequest() error {
+	for _, o := range m.outstations {
+		req := &frame.Frame{
+			Control: frame.Control{
+				DIR:      true, // Master-to-Outstation
+				PRM:      true, // Primary station
+				FuncCode: frame.FuncRequestLinkStatus,
+			},
+			DestAddr: o.ID,
+			SrcAddr:  m.config.MasterAddress,
+			Data:     nil,
+		}
+		encoded, err := frame.Encode(req)
+		if err != nil {
+			return fmt.Errorf("failed to encode link status request: %w", err)
+		}
+		if err := m.transport.Send(encoded); err != nil {
+			return fmt.Errorf("failed to send link status request: %w", err)
+		}
+
+		m.transport.SetTimeout(m.config.Timeout)
+		raw, err := m.transport.Receive()
+		if err != nil {
+			return fmt.Errorf("failed to receive link status response: %w", err)
+		}
+		if err := validateLinkStatusResponse(raw, o.ID, m.config.MasterAddress); err != nil {
+			return fmt.Errorf("invalid link status response: %w", err)
+		}
+	}
+	return nil
+}
+
+// validateLinkStatusResponse verifies a secondary Link Status frame received
+// in response to a Request Link Status. The response must:
+//   - be a well-formed frame (sync + header CRC validated by frame.Decode)
+//   - have DIR=0 (outstation-to-master) and PRM=0 (secondary)
+//   - carry function code Link Status (2)
+//   - be addressed from the outstation (SrcAddr) to the master (DestAddr)
+//
+// Any deviation is a spec violation and the handshake fails (DNP3-007).
+func validateLinkStatusResponse(raw []byte, outstationID, masterAddr uint16) error {
+	f, err := frame.Decode(raw)
+	if err != nil {
+		return fmt.Errorf("decode link status frame: %w", err)
+	}
+	if f.Control.DIR {
+		return fmt.Errorf("link status DIR=1, expected 0 (secondary)")
+	}
+	if f.Control.PRM {
+		return fmt.Errorf("link status PRM=1, expected 0 (secondary)")
+	}
+	if f.Control.FuncCode != frame.FuncLinkStatus {
+		return fmt.Errorf("link status function code=%d, expected %d",
+			f.Control.FuncCode, frame.FuncLinkStatus)
+	}
+	if f.SrcAddr != outstationID {
+		return fmt.Errorf("link status source address=0x%04X, expected outstation 0x%04X",
+			f.SrcAddr, outstationID)
+	}
+	if f.DestAddr != masterAddr {
+		return fmt.Errorf("link status destination address=0x%04X, expected master 0x%04X",
 			f.DestAddr, masterAddr)
 	}
 	return nil
@@ -495,12 +574,19 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 
+		// Allocate the application-layer sequence for this request attempt.
+		// Retries reuse the same sequence value within one logical request;
+		// the sequence advances only after a successful send (DNP3-008).
+		seq := m.nextSequence()
+		req.Control.Seq = seq
+
 		// Send request with DNP3 protocol layers
 		data := req.Encode()
 
 		// Transport layer fragmentation
 		fragments := m.fragmenter.Fragmentize(data)
 
+		sentOK := true
 		for _, frag := range fragments {
 			// Transport layer encode
 			tlEncoded := tl.EncodeFragment(frag)
@@ -524,13 +610,20 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 
 			if err := m.transport.Send(dllEncoded); err != nil {
 				lastErr = err
-				continue
+				sentOK = false
+				break
 			}
 
 		}
+		if !sentOK {
+			continue
+		}
+		// The request was sent successfully; advance the sequence so the
+		// next request uses the next value in the 0-15 stream (DNP3-008).
+		m.advanceSequence()
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
-			if err := m.waitForConfirmation(req.Control.Seq); err != nil {
+			if err := m.waitForConfirmation(seq); err != nil {
 				lastErr = err
 				continue
 			}
@@ -565,12 +658,19 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
 		}
 
+		// Allocate the application-layer sequence for this request attempt
+		// (DNP3-008). Retries reuse the same value; it advances only on a
+		// successful send.
+		seq := m.nextSequence()
+		req.Control.Seq = seq
+
 		// Send request with DNP3 protocol layers
 		data := req.Encode()
 
 		// Transport layer fragmentation
 		fragments := m.fragmenter.Fragmentize(data)
 
+		sentOK := true
 		for _, frag := range fragments {
 			// Transport layer encode
 			tlEncoded := tl.EncodeFragment(frag)
@@ -594,13 +694,19 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 
 			if err := m.transport.Send(dllEncoded); err != nil {
 				lastErr = err
-				continue
+				sentOK = false
+				break
 			}
 
 		}
+		if !sentOK {
+			continue
+		}
+		// Successful send; advance the sequence (DNP3-008).
+		m.advanceSequence()
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
-			if err := m.waitForConfirmation(req.Control.Seq); err != nil {
+			if err := m.waitForConfirmation(seq); err != nil {
 				lastErr = err
 				continue
 			}
@@ -642,7 +748,16 @@ func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID u
 	return m.sendWithRetryAndGetResponse(req, outstationID)
 }
 
-// waitForConfirmation waits for an application layer confirmation.
+// waitForConfirmation waits for an application-layer confirmation for a request
+// sent with the CON bit set (DNP3-009). A confirmation is an APDU with
+// FuncCode=FuncResponse. The confirmation's sequence number must match the
+// request's sequence; a mismatch is a protocol error (ErrConfirmSeqMismatch).
+// A transport receive error (timeout) is reported as ErrConfirmTimeout, which
+// the caller retries.
+//
+// In this stack a full response (FuncResponse carrying IIN+data) may arrive in
+// lieu of a dedicated confirm; such a response is accepted as the confirmation.
+// Strict response-sequence matching is the responsibility of DNP3-010.
 func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 	m.transport.SetTimeout(m.config.Timeout)
 
@@ -652,36 +767,39 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 			return fmt.Errorf("%w: %v", ErrConfirmTimeout, err)
 		}
 
-		// Process received bytes
+		// Process received bytes through DLL+TL layers.
 		appData, err := m.processReceivedBytes(data)
 		if err != nil {
+			// Malformed link/transport framing; keep waiting for a valid frame.
 			continue
 		}
 
-		// Decode APDU
+		// Application layer decode
 		apdu, err := al.Decode(appData)
 		if err != nil {
 			continue
 		}
 
-		// Check if this is a confirmation
-		// A confirmation has FuncCode=0 and no IIN (empty data)
-		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) == 0 {
-			// Sequence should match (confirms the right request)
+		// Only response APDUs act as confirmations.
+		if apdu.FuncCode != al.FuncResponse {
+			continue
+		}
+
+		// A dedicated confirm carries only the IIN (2 bytes) or is empty.
+		// A full response carries IIN + object data.
+		isDedicatedConfirm := len(apdu.Data) <= 2
+		if isDedicatedConfirm {
 			if apdu.Control.Seq == expectedSeq {
 				return nil
 			}
-
+			return fmt.Errorf("%w: got %d, expected %d",
+				ErrConfirmSeqMismatch, apdu.Control.Seq, expectedSeq)
 		}
 
-		// If we got a full response before confirmation, that's also acceptable
-		// In some implementations, the response IS the confirmation
-		if apdu.FuncCode == al.FuncResponse && len(apdu.Data) >= 2 {
-			return nil
-		}
-
+		// Full response acting as the confirmation: accept it (DNP3-010 will
+		// enforce strict sequence matching on the response path).
+		return nil
 	}
-
 }
 
 // waitForResponse waits for a response with timeout.
@@ -800,6 +918,33 @@ func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
 		Data:     data,
 	}
 
+}
+
+// nextSequence returns the current application-layer sequence number without
+// advancing it. The caller uses this value as the request's AppControl.Seq
+// and calls advanceSequence() only after the request is sent successfully
+// (DNP3-008: increment only on successful send).
+func (m *Master) nextSequence() uint8 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sequence
+}
+
+// advanceSequence advances the sequence number by one (mod 16). It is called
+// after a request has been sent successfully so the next request uses the
+// next sequence value in the 0-15 stream.
+func (m *Master) advanceSequence() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sequence = (m.sequence + 1) % 16
+}
+
+// currentSequence returns the current sequence number (alias for nextSequence
+// in read-only contexts).
+func (m *Master) currentSequence() uint8 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sequence
 }
 
 // buildPollRequest creates a poll request based on poll type.

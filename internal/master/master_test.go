@@ -1,11 +1,13 @@
 package master
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 )
 
 func TestStateString(t *testing.T) {
@@ -385,6 +387,65 @@ func TestValidateResetLinkACK(t *testing.T) {
 	}
 }
 
+// TestValidateLinkStatusResponse verifies the secondary Link Status response
+// validation for the Request Link Status handshake phase (DNP3-007).
+func TestValidateLinkStatusResponse(t *testing.T) {
+	const outstationID, masterAddr uint16 = 0x0004, 0x0003
+
+	tests := []struct {
+		name    string
+		raw     []byte
+		wantErr bool
+	}{
+		{
+			name: "good link status",
+			raw:  encodeACK(t, false, false, frame.FuncLinkStatus, masterAddr, outstationID),
+		},
+		{
+			name:    "wrong function code (ACK instead of Link Status)",
+			raw:      encodeACK(t, false, false, frame.FuncAck, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong DIR (primary direction)",
+			raw:      encodeACK(t, true, false, frame.FuncLinkStatus, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong PRM (primary station)",
+			raw:      encodeACK(t, false, true, frame.FuncLinkStatus, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong source address",
+			raw:      encodeACK(t, false, false, frame.FuncLinkStatus, masterAddr, 0x0100),
+			wantErr: true,
+		},
+		{
+			name:    "wrong destination address",
+			raw:      encodeACK(t, false, false, frame.FuncLinkStatus, 0x0200, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "malformed frame (no sync)",
+			raw:      []byte{0xC0, 0x00, 0x00, 0x00},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLinkStatusResponse(tt.raw, outstationID, masterAddr)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
+	}
+}
+
 // mockTransport implements TransportHandler for testing
 type mockTransport struct{}
 
@@ -398,3 +459,244 @@ func (t *mockTransport) Receive() ([]byte, error) {
 }
 
 func (t *mockTransport) SetTimeout(ms int) {}
+
+// seqRecorderTransport records every sent bytes and returns a canned valid
+// response so sendWithRetry completes successfully. It is used to verify the
+// application-layer sequence stream (DNP3-008).
+type seqRecorderTransport struct {
+	sent [][]byte
+	resp []byte
+}
+
+func (t *seqRecorderTransport) Send(data []byte) error {
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	t.sent = append(t.sent, cp)
+	return nil
+}
+
+func (t *seqRecorderTransport) Receive() ([]byte, error) {
+	return t.resp, nil
+}
+
+func (t *seqRecorderTransport) SetTimeout(ms int) {}
+
+// buildMinimalResponseFrame builds a valid DLL frame wrapping a TL fragment
+// wrapping a minimal APDU response (FuncResponse, empty data, Seq=0). It is
+// sufficient for sendWithRetry to complete its receive/process path.
+func buildMinimalResponseFrame(t *testing.T) []byte {
+	t.Helper()
+	apdu := &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 0},
+		FuncCode: al.FuncResponse,
+		Data:     []byte{0x00, 0x00}, // empty IIN
+	}
+	frag := tl.Fragment{FIR: true, FIN: true, Data: apdu.Encode()}
+	tlData := tl.EncodeFragment(frag)
+	dllFrame := &frame.Frame{
+		Control: frame.Control{
+			DIR:      false,
+			PRM:      false,
+			FuncCode: frame.FuncConfirmedUserDataR,
+		},
+		DestAddr: 1,
+		SrcAddr:  2,
+		Data:     tlData,
+	}
+	raw, err := frame.Encode(dllFrame)
+	if err != nil {
+		t.Fatalf("encode response frame: %v", err)
+	}
+	return raw
+}
+
+// extractRequestSeq decodes a sent DLL frame, extracts the TL fragment, decodes
+// the APDU, and returns the application-layer sequence number.
+func extractRequestSeq(t *testing.T, raw []byte) uint8 {
+	t.Helper()
+	f, err := frame.Decode(raw)
+	if err != nil {
+		t.Fatalf("decode sent frame: %v", err)
+	}
+	frag, err := tl.DecodeFragment(f.Data)
+	if err != nil {
+		t.Fatalf("decode sent TL fragment: %v", err)
+	}
+	apdu, err := al.Decode(frag.Data)
+	if err != nil {
+		t.Fatalf("decode sent APDU: %v", err)
+	}
+	return apdu.Control.Seq
+}
+
+// TestSequenceStream verifies the master's application-layer sequence number
+// advances 0-15 and wraps to 0 (DNP3-008).
+func TestSequenceStream(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	var seen []uint8
+	for i := 0; i < 17; i++ {
+		seen = append(seen, m.nextSequence())
+		m.advanceSequence()
+	}
+	want := []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0}
+	if len(seen) != len(want) {
+		t.Fatalf("len = %d, want %d", len(seen), len(want))
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("seq[%d] = %d, want %d (stream=%v)", i, seen[i], want[i], seen)
+		}
+	}
+}
+
+// TestSendWithRetrySequenceAdvances verifies sendWithRetry assigns the master's
+// sequence to the request and advances it only on successful send (DNP3-008).
+func TestSendWithRetrySequenceAdvances(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	resp := buildMinimalResponseFrame(t)
+	tr := &seqRecorderTransport{resp: resp}
+	m.SetTransport(tr)
+	m.SetState(StateInitialized)
+	m.AddOutstation(2, "RTU-1")
+
+	// Issue three requests; expect the observed SEQ stream 0,1,2.
+	for i, want := range []uint8{0, 1, 2} {
+		before := len(tr.sent)
+		req := buildRequest(0, al.FuncRead, []byte{0x00})
+		if err := m.sendWithRetry(req, 2); err != nil {
+			t.Fatalf("sendWithRetry[%d] failed: %v", i, err)
+		}
+		got := extractRequestSeq(t, tr.sent[before])
+		if got != want {
+			t.Fatalf("request %d SEQ = %d, want %d", i, got, want)
+		}
+	}
+
+	// The master's current sequence should have advanced to 3.
+	if got := m.currentSequence(); got != 3 {
+		t.Fatalf("currentSequence = %d, want 3", got)
+	}
+}
+
+// TestSendWithRetrySequenceNoAdvanceOnSendFailure verifies the sequence does NOT
+// advance when the transport send fails (DNP3-008: increment only on success).
+func TestSendWithRetrySequenceNoAdvanceOnSendFailure(t *testing.T) {
+	m := NewMaster(&Config{MasterAddress: 1, Timeout: 50, MaxRetries: 1, RetryDelay: 0})
+	resp := buildMinimalResponseFrame(t)
+	failTr := &failingSendTransport{seqRecorderTransport: seqRecorderTransport{resp: resp}}
+	m.SetTransport(failTr)
+	m.SetState(StateInitialized)
+	m.AddOutstation(2, "RTU-1")
+
+	req := buildRequest(0, al.FuncRead, []byte{0x00})
+	if err := m.sendWithRetry(req, 2); err == nil {
+		t.Fatal("expected sendWithRetry to fail when transport Send fails")
+	}
+	if got := m.currentSequence(); got != 0 {
+		t.Fatalf("currentSequence = %d, want 0 (no advance on send failure)", got)
+	}
+}
+
+// failingSendTransport wraps seqRecorderTransport but always fails Send.
+type failingSendTransport struct {
+	seqRecorderTransport
+}
+
+func (t *failingSendTransport) Send(data []byte) error {
+	return errSendFailed
+}
+
+var errSendFailed = errors.New("simulated send failure")
+
+// buildConfirmFrame builds a valid DLL+TL+APDU confirmation frame with the
+// given application sequence number. A dedicated confirm carries only the IIN
+// bytes (no object data) — used to exercise waitForConfirmation (DNP3-009).
+func buildConfirmFrame(t *testing.T, seq uint8) []byte {
+	t.Helper()
+	apdu := &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: seq},
+		FuncCode: al.FuncResponse,
+		Data:     []byte{0x00, 0x00}, // IIN only, no object data
+	}
+	frag := tl.Fragment{FIR: true, FIN: true, Data: apdu.Encode()}
+	tlData := tl.EncodeFragment(frag)
+	dllFrame := &frame.Frame{
+		Control: frame.Control{
+			DIR:      false,
+			PRM:      false,
+			FuncCode: frame.FuncConfirmedUserDataR,
+		},
+		DestAddr: 1,
+		SrcAddr:  2,
+		Data:     tlData,
+	}
+	raw, err := frame.Encode(dllFrame)
+	if err != nil {
+		t.Fatalf("encode confirm frame: %v", err)
+	}
+	return raw
+}
+
+// cannedTransport returns a fixed sequence of canned frames from Receive, one
+// per call (cycling). Send is a no-op. Used to drive waitForConfirmation.
+type cannedTransport struct {
+	frames [][]byte
+	idx    int
+}
+
+func (t *cannedTransport) Send(data []byte) error  { return nil }
+func (t *cannedTransport) SetTimeout(ms int)       {}
+func (t *cannedTransport) Receive() ([]byte, error) {
+	if t.idx >= len(t.frames) {
+		return nil, errReceiveTimeout
+	}
+	f := t.frames[t.idx]
+	t.idx++
+	return f, nil
+}
+
+var errReceiveTimeout = errors.New("receive timeout")
+
+// TestWaitForConfirmationMatchingSeq verifies a confirm with the matching
+// sequence is accepted (DNP3-009).
+func TestWaitForConfirmationMatchingSeq(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	tr := &cannedTransport{frames: [][]byte{buildConfirmFrame(t, 7)}}
+	m.SetTransport(tr)
+
+	if err := m.waitForConfirmation(7); err != nil {
+		t.Fatalf("expected confirm accepted, got %v", err)
+	}
+}
+
+// TestWaitForConfirmationWrongSeq verifies a confirm with the wrong sequence
+// is rejected with ErrConfirmSeqMismatch (DNP3-009).
+func TestWaitForConfirmationWrongSeq(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	tr := &cannedTransport{frames: [][]byte{buildConfirmFrame(t, 3)}}
+	m.SetTransport(tr)
+
+	err := m.waitForConfirmation(7)
+	if err == nil {
+		t.Fatal("expected ErrConfirmSeqMismatch, got nil")
+	}
+	if !errors.Is(err, ErrConfirmSeqMismatch) {
+		t.Fatalf("expected ErrConfirmSeqMismatch, got %v", err)
+	}
+}
+
+// TestWaitForConfirmationTimeout verifies a transport receive error is
+// surfaced as ErrConfirmTimeout (DNP3-009).
+func TestWaitForConfirmationTimeout(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	tr := &cannedTransport{frames: nil} // no frames → receive returns timeout
+	m.SetTransport(tr)
+
+	err := m.waitForConfirmation(7)
+	if err == nil {
+		t.Fatal("expected ErrConfirmTimeout, got nil")
+	}
+	if !errors.Is(err, ErrConfirmTimeout) {
+		t.Fatalf("expected ErrConfirmTimeout, got %v", err)
+	}
+}
