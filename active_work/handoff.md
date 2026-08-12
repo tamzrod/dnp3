@@ -254,4 +254,4 @@ NEXT TASK: DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)
 - `go test ./...` — all 21 packages green (including integration).
 - `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Commit hash: (pending — DNP3-010/011/012 checkpoint)
+- Commit hash: f552577 (DNP3-010/011/012 checkpoint)
