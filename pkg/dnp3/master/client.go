@@ -528,9 +528,14 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	// Wire to internal master for proper protocol handling
 	outstationID := c.config.OutstationAddress
 
-	// Build APDU using internal master for proper retry/timeout handling
-	apdu := buildReadRequest(c.sequence, request)
+	// Build APDU. The public sequence counter is guarded by c.mu so concurrent
+	// Reads do not race on it (DNP3-025). The internal master also assigns the
+	// wire sequence for retry handling.
+	c.mu.Lock()
+	seq := c.sequence
 	c.sequence = (c.sequence + 1) % 16
+	c.mu.Unlock()
+	apdu := buildReadRequest(seq, request)
 
 	// Use internal master's sendWithRetryAndGetResponse which:
 	// 1. Sends the request with retry logic

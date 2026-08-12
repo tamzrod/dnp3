@@ -246,6 +246,15 @@ func Decode(data []byte) (*Frame, error) {
 
 	// Calculate expected total frame size.
 	dataLen := int(length) - 1 - 2 - 2 // Length - Control - Dest - Src
+
+	// Reject oversize frames (DNP3-027): the data link layer caps user data at
+	// MaxDataSize (250). The 1-byte length field makes larger claims impossible,
+	// but guard explicitly so an oversize claim is a clear error rather than
+	// silently accepted.
+	if dataLen > MaxDataSize {
+		return nil, fmt.Errorf("frame too large: data length %d exceeds maximum %d", dataLen, MaxDataSize)
+	}
+
 	expectedSize := EncodedSize(dataLen)
 
 	if len(data) < expectedSize {

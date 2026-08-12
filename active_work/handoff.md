@@ -7,7 +7,7 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-024 complete. Implementation underway.
+- DNP3-001 through DNP3-027 complete. Implementation underway.
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -375,9 +375,49 @@
   `TestDisconnectAlreadyCancelledContext`, `TestDisconnectCancelledMidTeardown`.
 - Acceptance: all public entry points cancel cleanly; tests green.
 
+### DNP3-025 — Race safety for sequence & reassembly
+- Commit message: `fix(master): serialize request and reassembly state`
+- `internal/master/master.go`: added `reqMu sync.Mutex` to the `Master`
+  struct; `sendWithRetry` and `sendWithRetryAndGetResponse` acquire it for the
+  whole request path (send → receive → reassembly) so concurrent requests on the
+  same master do not race on the shared `reassembler` or interleave fragments on
+  a single link. A DNP3 link is request/response, so serializing is both safe
+  and correct. (`sequence` was already guarded by `m.mu`.)
+- `pkg/dnp3/master/client.go`: public `c.sequence` read+advance in `Read` now
+  guarded by `c.mu`.
+- Tests (new file `pkg/dnp3/master/race_test.go`):
+  `TestConcurrentReadsRaceFree` (50 concurrent Reads), `TestConcurrentOperateRaceFree`
+  (50 concurrent Operates). New `pubReadEchoTransport` (mutex-guarded SEQ echo)
+  and `buildPubReadResponse` helper.
+- Acceptance: race detector clean; full `-race` suite green.
+
+### DNP3-026 — Reject invalid CRC on receive
+- Commit message: `test(master): reject invalid CRC frames`
+- The DLL `frame.Decode` already validates header + per-block CRCs and returns
+  an error; `processReceivedBytes` surfaces it (no points). DNP3-026 locks this
+  with negative tests rather than new code.
+- Tests (new file `pkg/dnp3/master/crc_reject_test.go`):
+  `TestReadRejectsInvalidCRC`, `TestReadRejectsInvalidCRCIsNoPartial` (corrupted
+  header CRC → error, nil response, no partial points),
+  `TestALRejectsInvalidCRC` (header CRC + data-block CRC rejection at the frame
+  layer). New `badCRCTransport` and `buildPubReadResponse` (shared).
+- Acceptance: error, empty response; tests green.
+
+### DNP3-027 — Reject truncated / oversize frames
+- Commit message: `fix(master): reject truncated and oversize frames`
+- `internal/dll/frame/frame.go`: added an explicit oversize guard in `Decode`
+  (`dataLen > MaxDataSize` → error). Truncated (below `MinFrameSize`, fewer
+  bytes than claimed length) and claimed-length mismatch were already handled;
+  this adds the oversize defense-in-depth and locks all three with tests.
+- Tests (new file `internal/dll/frame/truncation_test.go`):
+  `TestDecodeRejectsTruncated` (below-min, truncated payload, no-panic on
+  garbage), `TestDecodeRejectsClaimedLengthMismatch`,
+  `TestDecodeRejectsOversize` (max 250-byte frame decodes; MaxDataSize == 250).
+- Acceptance: error, no panic; tests green.
+
 ## Next READY Tasks
 
-- **DNP3-025** — Race safety for sequence & reassembly
+- **DNP3-028** — Reject unsupported qualifiers
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
 - **DNP3-036** — Deterministic outstation simulator (MVP profile)
@@ -392,7 +432,7 @@
 
 ## Recommended Next Task
 
-**DNP3-025 — Race safety for sequence & reassembly**
+**DNP3-028 — Reject unsupported qualifiers**
 
 After completing a task:
 
@@ -448,13 +488,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-024
-NEXT TASK: DNP3-025 — Race safety for sequence & reassembly
+COMPLETED: DNP3-001 through DNP3-027
+NEXT TASK: DNP3-028 — Reject unsupported qualifiers
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration).
-- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
+- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/... ./internal/dll/frame/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024, pushed to origin/main). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), then DNP3-025/026/027 (this commit). All pushed to origin/main.

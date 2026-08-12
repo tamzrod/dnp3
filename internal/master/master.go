@@ -232,6 +232,12 @@ type Master struct {
 	// by one (mod 16) for each successfully sent request (DNP3-008).
 	sequence uint8
 
+	// reqMu serializes the request path (send → receive → reassembly) so that
+	// concurrent requests on the same master do not race on the shared
+	// reassembler or interleave fragments on a single link (DNP3-025). A DNP3
+	// link is request/response; concurrent requests are safely queued.
+	reqMu sync.Mutex
+
 	// DNP3-013 reaction hooks. Optional; invoked from processResponse when
 	// the corresponding IIN bit is set. These are stubs/logs — full time
 	// objects and integrity polling are later roadmap items.
@@ -692,6 +698,11 @@ func (m *Master) TimeSync(outstationID uint16) error {
 
 // sendWithRetry sends a request with retry logic.
 func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
+	// Serialize the request path so concurrent requests do not race on the
+	// shared reassembler or interleave fragments on a single link (DNP3-025).
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+
 	var lastErr error
 
 	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
@@ -776,6 +787,11 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 
 // sendWithRetryAndGetResponse sends a request with retry logic and returns the processed application layer data.
 func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
+	// Serialize the request path so concurrent requests do not race on the
+	// shared reassembler or interleave fragments on a single link (DNP3-025).
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+
 	var lastErr error
 
 	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
