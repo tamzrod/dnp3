@@ -36,6 +36,25 @@ var (
 	ErrInvalidFrame = errors.New("invalid DNP3 frame")
 )
 
+// IsDisconnect reports whether err indicates the peer closed the connection
+// (or the transport was otherwise closed). Used by the master to transition
+// to a disconnected/error state (DNP3-031).
+func IsDisconnect(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrClosed) {
+		return true
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	return false
+}
+
 // Handler defines the interface for sending and receiving data.
 type Handler interface {
 	// Listen starts listening for connections (server mode). Must be called before Accept().

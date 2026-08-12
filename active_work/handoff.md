@@ -7,7 +7,9 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-030 complete. Implementation underway.
+- DNP3-001 through DNP3-033 complete. Implementation underway.
+- Last checkpoint: DNP3-031/032/033 (transport disconnect detection +
+  reconnect/re-handshake + reassembly reset). All green incl. `-race`.
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -455,9 +457,53 @@
   `TestOperateAcceptsDirectOperate`, `TestUnsolicitedRejected`).
 - Acceptance: no silent fallback; matrix tests green.
 
+### DNP3-031 — Transport disconnect detection
+- Commit message: `feat(master): detect transport disconnect and transition state`
+- `pkg/transport/tcp.go`: added exported `IsDisconnect(err)` helper (matches
+  `ErrClosed`, `io.EOF`/`io.ErrUnexpectedEOF`, `net.ErrClosed`).
+- `internal/master/master.go`: added `ErrTransportDisconnected` sentinel and
+  exported `IsDisconnectError`. New `markDisconnected(err)` helper wraps a
+  transport close as `ErrTransportDisconnected` and sets `StateError`.
+  `sendWithRetry` and `sendWithRetryAndGetResponse` now break the retry loop on
+  a disconnect (no point retrying a dead link) at the Send, confirm, and
+  receive sites; `waitForConfirmation` returns `ErrTransportDisconnected`
+  (not `ErrConfirmTimeout`) on a peer close.
+- `pkg/dnp3/master/client.go`: `Read` and `Operate` set the public client state
+  to `StateDisconnected` when the result error is a transport disconnect, so a
+  subsequent call fails fast with `ErrNotConnected`.
+- Tests: new `pkg/dnp3/master/disconnect_test.go` —
+  `TestReadDetectsTransportDisconnect`, `TestOperateDetectsTransportDisconnect`,
+  `TestReadAfterDisconnectReturnsNotConnected` (peer-close transport returns
+  `io.EOF`).
+- Acceptance: peer close surfaces as disconnect; state transitions to
+  Disconnected; no retry storm on a dead link.
+
+### DNP3-032 — Reconnect + re-handshake
+- Commit message: `feat(master): reconnect and re-handshake`
+- `internal/master/master.go`: `Connect` now calls `resetForReconnect()` before
+  `performLinkHandshake()`. New `resetForReconnect()` clears TL state
+  (`reassembler.Reset()`, `fragmenter.Reset()`) so a reconnect after a
+  mid-session drop re-handshakes (Reset Link Stations + Request Link Status)
+  from a clean slate.
+- The public `client.Connect` gate already permits reconnect after
+  DNP3-031 sets state Disconnected; `AddOutstation` overwrites cleanly.
+- Tests: new `internal/master/reconnect_test.go` —
+  `TestReconnectReHandshakes` (drop mid-session, recover, re-handshake →
+  Active), `TestResetForReconnectClearsTLState`.
+- Acceptance: subsequent Read/Operate succeeds after a reconnect.
+
+### DNP3-033 — Clear reassembly on reconnect
+- Commit message: `fix(tl): reset reassembler on session restart`
+- Implementation shared with DNP3-032 (`resetForReconnect` invoked by `Connect`).
+- Tests: new `internal/master/reassembly_reset_test.go` —
+  `TestReassemblerNoCrossSessionPollution` (partial FIR-only fragment from a
+  dropped session does not leak into the next session's reassembled message),
+  `TestResetForReconnectResetsFragmenter` (outgoing fragment Seq restarts at 0).
+- Acceptance: no cross-session reassembly pollution.
+
 ## Next READY Tasks
 
-- **DNP3-031** — Transport disconnect detection
+- **DNP3-034** — Retry policy refinement (distinct handling for timeout vs NACK vs CRC error)
 - **DNP3-036** — Deterministic outstation simulator (MVP profile)
 - **DNP3-041** — Timeout configuration validation
 - **DNP3-043** — Error type taxonomy
@@ -470,7 +516,7 @@
 
 ## Recommended Next Task
 
-**DNP3-031 — Transport disconnect detection**
+**DNP3-034 — Retry policy refinement**
 
 After completing a task:
 
@@ -526,13 +572,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-030
-NEXT TASK: DNP3-031 — Transport disconnect detection
+COMPLETED: DNP3-001 through DNP3-033
+NEXT TASK: DNP3-034 — Retry policy refinement
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration).
-- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/... ./internal/dll/frame/... ./internal/al/...` — green.
-- Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), then DNP3-028/029/030 (this commit). All pushed to origin/main.
+- `go test -race ./...` — all packages green (DNP3-031/032/033 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD) and is out of scope.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), then DNP3-031/032/033 (this commit). All pushed to origin/main.

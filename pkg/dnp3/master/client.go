@@ -562,6 +562,14 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
 	case res := <-done:
 		if res.err != nil {
+			// If the transport disconnected, reflect that in the public state so
+			// a subsequent Read returns ErrNotConnected rather than retrying a
+			// dead link (DNP3-031).
+			if master.IsDisconnectError(res.err) {
+				c.mu.Lock()
+				c.state = dnp3.StateDisconnected
+				c.mu.Unlock()
+			}
 			return nil, fmt.Errorf("read failed: %w", res.err)
 		}
 		respData = res.data
@@ -1234,6 +1242,14 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
 	case res := <-done:
 		if res.err != nil {
+			// If the transport disconnected, reflect that in the public state so
+			// a subsequent Operate returns ErrNotConnected rather than retrying
+			// a dead link (DNP3-031).
+			if master.IsDisconnectError(res.err) {
+				c.mu.Lock()
+				c.state = dnp3.StateDisconnected
+				c.mu.Unlock()
+			}
 			return nil, fmt.Errorf("operate failed: %w", res.err)
 		}
 		cs = res.status

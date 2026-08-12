@@ -9,7 +9,9 @@ package master
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"net"
 	"sync"
 	"time"
 
@@ -197,7 +199,35 @@ var (
 	ErrConfirmTimeout      = errors.New("confirmation timeout")
 	ErrConfirmSeqMismatch  = errors.New("confirmation sequence mismatch")
 	ErrResponseSeqMismatch = errors.New("response sequence mismatch")
+
+	// ErrTransportDisconnected indicates the transport reported the peer closed
+	// the connection (or the transport was closed). The master transitions to
+	// StateError when this is observed (DNP3-031).
+	ErrTransportDisconnected = errors.New("transport disconnected")
 )
+
+// IsDisconnectError reports whether err indicates a transport/peer disconnect.
+// It matches the canonical transport-close sentinels (io.EOF,
+// io.ErrUnexpectedEOF, net.ErrClosed) so a real TCP transport's peer-close
+// surfaces as a disconnect regardless of how it was wrapped (DNP3-031).
+func IsDisconnectError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrTransportDisconnected) {
+		return true
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	return false
+}
+
+// isDisconnectError is the internal alias used within this package.
+func isDisconnectError(err error) bool { return IsDisconnectError(err) }
 
 // Config holds master configuration.
 type Config struct {
@@ -362,6 +392,11 @@ func (m *Master) Connect() error {
 
 	m.SetState(StateConnecting)
 
+	// Clear TL/sequence state left over from any previous session so a reconnect
+	// after a mid-session drop re-handshakes from a clean slate (DNP3-032). This
+	// discards stale reassembly buffers and resets the fragment sequence.
+	m.resetForReconnect()
+
 	// Perform DNP3 link-layer session establishment
 	if err := m.performLinkHandshake(); err != nil {
 		m.SetState(StateError)
@@ -371,6 +406,18 @@ func (m *Master) Connect() error {
 	m.SetState(StateConnected)
 	m.SetState(StateActive)
 	return nil
+}
+
+// resetForReconnect clears transport-layer and link-layer state that would
+// otherwise leak across sessions after a disconnect (DNP3-032). It is safe to
+// call on a fresh master (no-op) and on one mid-session.
+func (m *Master) resetForReconnect() {
+	if m.reassembler != nil {
+		m.reassembler.Reset()
+	}
+	if m.fragmenter != nil {
+		m.fragmenter.Reset()
+	}
 }
 
 // performLinkHandshake performs the DNP3 link-layer handshake sequence.
@@ -745,13 +792,18 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			}
 
 			if err := m.transport.Send(dllEncoded); err != nil {
-				lastErr = err
+				lastErr, _ = m.markDisconnected(err)
 				sentOK = false
 				break
 			}
 
 		}
 		if !sentOK {
+			// If the transport disconnected, stop retrying — the link is dead
+			// (DNP3-031).
+			if isDisconnectError(lastErr) {
+				return lastErr
+			}
 			continue
 		}
 		// The request was sent successfully; advance the sequence so the
@@ -760,7 +812,10 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
-				lastErr = err
+				lastErr, _ = m.markDisconnected(err)
+				if isDisconnectError(lastErr) {
+					return lastErr
+				}
 				continue
 			}
 		}
@@ -768,7 +823,10 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		// Wait for response
 		resp, err := m.waitForResponse()
 		if err != nil {
-			lastErr = err
+			lastErr, _ = m.markDisconnected(err)
+			if isDisconnectError(lastErr) {
+				return lastErr
+			}
 			continue
 		}
 
@@ -834,13 +892,18 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			}
 
 			if err := m.transport.Send(dllEncoded); err != nil {
-				lastErr = err
+				lastErr, _ = m.markDisconnected(err)
 				sentOK = false
 				break
 			}
 
 		}
 		if !sentOK {
+			// If the transport disconnected, stop retrying — the link is dead
+			// (DNP3-031).
+			if isDisconnectError(lastErr) {
+				return nil, lastErr
+			}
 			continue
 		}
 		// Successful send; advance the sequence (DNP3-008).
@@ -848,7 +911,10 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
-				lastErr = err
+				lastErr, _ = m.markDisconnected(err)
+				if isDisconnectError(lastErr) {
+					return nil, lastErr
+				}
 				continue
 			}
 		}
@@ -856,7 +922,10 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// Wait for response
 		resp, err := m.waitForResponse()
 		if err != nil {
-			lastErr = err
+			lastErr, _ = m.markDisconnected(err)
+			if isDisconnectError(lastErr) {
+				return nil, lastErr
+			}
 			continue
 		}
 
@@ -906,6 +975,10 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 	for {
 		data, err := m.transport.Receive()
 		if err != nil {
+			// A peer close is a disconnect, not a confirm timeout (DNP3-031).
+			if isDisconnectError(err) {
+				return fmt.Errorf("%w: %v", ErrTransportDisconnected, err)
+			}
 			return fmt.Errorf("%w: %v", ErrConfirmTimeout, err)
 		}
 
@@ -948,6 +1021,19 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 func (m *Master) waitForResponse() ([]byte, error) {
 	m.transport.SetTimeout(m.config.Timeout)
 	return m.transport.Receive()
+}
+
+// markDisconnected inspects a transport error and, if it indicates the peer
+// closed the connection, transitions the master to StateError and wraps the
+// error with ErrTransportDisconnected so callers can detect the disconnect
+// (DNP3-031). Retrying a dead link is pointless, so callers should break the
+// retry loop when this returns true.
+func (m *Master) markDisconnected(err error) (wrapped error, disconnected bool) {
+	if !isDisconnectError(err) {
+		return err, false
+	}
+	m.SetState(StateError)
+	return fmt.Errorf("%w: %v", ErrTransportDisconnected, err), true
 }
 
 // processResponse processes a received response and returns the application
