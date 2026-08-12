@@ -130,6 +130,19 @@ The Master MVP acceptance gate was run on this commit via
 remains pending). The gate is reproducible: any session may re-run
 `./scripts/verify-mvp.sh` to confirm.
 
+## External Residuals
+
+These residuals block external use of the v0 profile. Each has a resolving
+MEXT task; the list is authoritative so agents need not read git history.
+
+| ID | Residual | Impact | Resolving task(s) |
+|----|----------|--------|-------------------|
+| R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. | External control path fails. | MEXT-012, MEXT-013 |
+| R2 | CROB control-code values may be a 1..8 enum rather than the IEEE 1815 bitfield. Real IEDs may reject or misinterpret them. | Real IEDs may reject/misinterpret control. | MEXT-010, MEXT-011 |
+| R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` uses a per-group workaround. Fragile versus real multi-header responses. | Fragile vs real multi-header responses. | MEXT-014, MEXT-015 |
+| R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
+| R5 | Marketing/docs risk of over-claiming; consumers may assume production-ready. | Consumers assume production-ready. | MEXT-005, MEXT-034, MEXT-035 |
+
 ## Object Wire-Field Inventory
 
 | Field | Required v0 encoding | Current implementation status |
