@@ -207,6 +207,11 @@ type Outstation struct {
 	// appropriate follow-up action (integrity poll / time-sync).
 	needsIntegrity bool // DeviceRestart IIN received → re-integrity required
 	needsTimeSync  bool // NeedTime IIN received → time sync required
+
+	// DNP3-057: primary-side Frame Count Bit for confirmed user data on this
+	// link. Toggles after each confirmed-data transaction; reset to false by a
+	// Reset Link Stations exchange.
+	fcb bool
 }
 
 // NewOutstation creates a new outstation entry.
@@ -284,6 +289,32 @@ func (o *Outstation) markNeedTimeSync() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.needsTimeSync = true
+}
+
+// takeFCB returns the current primary-side Frame Count Bit for this link
+// (DNP3-057). It is read (not toggled) so the caller can set FCB/FCV on the
+// outgoing confirmed-data frame; toggle with advanceFCB once the transaction
+// is committed.
+func (o *Outstation) takeFCB() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.fcb
+}
+
+// advanceFCB toggles the primary-side FCB after a confirmed-data transaction
+// (DNP3-057).
+func (o *Outstation) advanceFCB() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.fcb = !o.fcb
+}
+
+// resetFCB clears the primary-side FCB to its post-reset value (false), called
+// after a Reset Link Stations exchange (DNP3-057).
+func (o *Outstation) resetFCB() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.fcb = false
 }
 
 // HasFlag checks if an IIN flag is set.
@@ -861,6 +892,24 @@ func (m *Master) GetOutstation(id uint16) (*Outstation, bool) {
 	return o, ok
 }
 
+// outstationFCB returns the primary-side Frame Count Bit for the link to
+// outstationID (DNP3-057). Returns false if the outstation is unknown (the
+// FCB is best-effort; an unknown peer will fail later validation anyway).
+func (m *Master) outstationFCB(id uint16) bool {
+	if o, ok := m.GetOutstation(id); ok {
+		return o.takeFCB()
+	}
+	return false
+}
+
+// advanceOutstationFCB toggles the primary-side FCB for outstationID after a
+// committed confirmed-data transaction (DNP3-057).
+func (m *Master) advanceOutstationFCB(id uint16) {
+	if o, ok := m.GetOutstation(id); ok {
+		o.advanceFCB()
+	}
+}
+
 // OutstationCount returns the number of registered outstations.
 func (m *Master) OutstationCount() int {
 	m.mu.RLock()
@@ -992,6 +1041,9 @@ func (m *Master) sendResetLink() error {
 		if err := validateResetLinkACK(raw, o.ID, m.config.MasterAddress); err != nil {
 			return fmt.Errorf("invalid reset link ACK: %w", err)
 		}
+		// DNP3-057: a Reset Link Stations exchange resets the primary-side FCB
+		// to its post-reset value (false) for this link.
+		o.resetFCB()
 	}
 
 	return nil
@@ -1305,16 +1357,22 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		// Transport layer fragmentation
 		fragments := m.fragmenter.Fragmentize(data)
 
+		// DNP3-057: capture the primary-side FCB once per logical request;
+		// retries reuse the same value and the bit advances only on success.
+		fcb := m.outstationFCB(outstationID)
+
 		sentOK := true
 		for _, frag := range fragments {
 			// Transport layer encode
 			tlEncoded := tl.EncodeFragment(frag)
 
-			// Data link layer frame
+			// Data link layer frame (DNP3-057: set FCB + FCV on confirmed data)
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true, // Master-to-Outstation
-					PRM:      true, // Primary station
+					DIR:      true,  // Master-to-Outstation
+					PRM:      true,  // Primary station
+					FCB:      fcb,
+					FCV:      true,
 					FuncCode: frame.FuncConfirmedUserData,
 				},
 				DestAddr: outstationID,
@@ -1380,6 +1438,9 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 
 		// Successful response counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
+		// DNP3-057: the confirmed-data transaction committed; toggle the FCB
+		// for the next transaction. Retries of a failed attempt keep the same FCB.
+		m.advanceOutstationFCB(outstationID)
 		return nil // Success
 	}
 }
@@ -1420,16 +1481,22 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// Transport layer fragmentation
 		fragments := m.fragmenter.Fragmentize(data)
 
+		// DNP3-057: capture the primary-side FCB once per logical request;
+		// retries reuse the same value and the bit advances only on success.
+		fcb := m.outstationFCB(outstationID)
+
 		sentOK := true
 		for _, frag := range fragments {
 			// Transport layer encode
 			tlEncoded := tl.EncodeFragment(frag)
 
-			// Data link layer frame
+			// Data link layer frame (DNP3-057: set FCB + FCV on confirmed data)
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true, // Master-to-Outstation
-					PRM:      true, // Primary station
+					DIR:      true,  // Master-to-Outstation
+					PRM:      true,  // Primary station
+					FCB:      fcb,
+					FCV:      true,
 					FuncCode: frame.FuncConfirmedUserData,
 				},
 				DestAddr: outstationID,
@@ -1503,6 +1570,10 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 
 		// Successful response counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
+		// DNP3-057: the confirmed-data transaction committed (send + optional
+		// confirmation + response all succeeded); toggle the FCB for the next
+		// transaction. Retries of a failed attempt keep the same FCB.
+		m.advanceOutstationFCB(outstationID)
 		// DNP3-044: emit a "receive" diagnostic event for the completed response.
 		m.diag(DiagInfo, "receive", seq, "response received", nil)
 		// Return the processed application layer data for the caller to decode
@@ -1682,10 +1753,55 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
+	// DNP3-054: if the outstation's response requested an application-layer
+	// confirmation (CON=1), the master must send a confirm APDU — same sequence,
+	// FuncCode 0 (Confirm), CON=0 — before processing the response data. The
+	// confirm is sent as unconfirmed user data so it does not require a
+	// link-layer ACK and cannot desync the ping-pong request/response path.
+	if resp.Header.Control.CON {
+		if err := m.sendApplicationConfirm(resp.Header.Control.Seq, outstationID); err != nil {
+			return nil, fmt.Errorf("send application confirm: %w", err)
+		}
+	}
+
 	// DNP3-013: react to critical IIN bits.
 	m.reactToIIN(outstationID, resp.IIN, o)
 
 	return appData, nil
+}
+
+// sendApplicationConfirm sends a DNP3 application-layer confirmation (DNP3-054)
+// to outstationID for the response carrying seq. The confirm is a single
+// FIR|FIN APDU with FuncCode 0 (Confirm) and CON=0, sent as unconfirmed user
+// data (no link-layer ACK expected).
+func (m *Master) sendApplicationConfirm(seq uint8, outstationID uint16) error {
+	confirm := al.NewConfirm(seq)
+	data := confirm.Encode()
+	fragments := m.fragmenter.Fragmentize(data)
+	for _, frag := range fragments {
+		tlEncoded := tl.EncodeFragment(frag)
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      true,  // Master-to-Outstation
+				PRM:      true,  // Primary station
+				FuncCode: frame.FuncUnconfirmedUserData,
+			},
+			DestAddr: outstationID,
+			SrcAddr:  m.config.MasterAddress,
+			Data:     tlEncoded,
+		}
+		encoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			return err
+		}
+		if err := m.transport.Send(encoded); err != nil {
+			lastErr, _ := m.markDisconnected(err)
+			return lastErr
+		}
+	}
+	m.recordActivity()
+	m.diag(DiagInfo, "confirm", seq, "sent application confirm for CON response", nil)
+	return nil
 }
 
 // reactToIIN applies the minimal required Master reaction to received IIN

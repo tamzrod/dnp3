@@ -107,9 +107,28 @@ reference:
 | Full MVP loopback (Connect → Integrity → Operate) against simulator | `test/integration/mvp_loopback_test.go` | DNP3-045 |
 | Master/outstation address validation | `pkg/dnp3/master/client_test.go` (`TestConfigValidate`, `TestNewClientRejectsInvalidConfig`) | DNP3-049 |
 | Client reusable after `Close` (Close → Connect again) | `test/integration/close_reuse_test.go` | DNP3-050 |
+| Auto-integrity re-poll on DeviceRestart IIN (opt-in) | `test/integration/auto_integrity_test.go` | DNP3-053 |
+| Transport fragment-size boundaries (0/249/250) | `internal/tl/boundary_test.go` | DNP3-059 |
+| MVP acceptance gate (single command) | `scripts/verify-mvp.sh` | DNP3-052/056 |
 
 No capability in this profile is verified for **external** interoperability
 yet; an independent raw capture (VEC-01) is still required for that claim.
+
+### MVP Acceptance Gate Record (DNP3-056)
+
+The Master MVP acceptance gate was run on this commit via
+`./scripts/verify-mvp.sh` and passed:
+
+- `go build ./...` — OK
+- `go vet` (MVP packages, excluding the pre-existing out-of-scope
+  `internal/outstation` unreachable-code note) — OK
+- `go test -count=1` (MVP unit + integration) — all OK
+- `go test -race -count=1` (MVP race-relevant packages) — all OK
+- `verify-mvp.sh` exit code: 0
+
+**MVP COMPLETE** (internal verification; external VEC-01 interoperability
+remains pending). The gate is reproducible: any session may re-run
+`./scripts/verify-mvp.sh` to confirm.
 
 ## Object Wire-Field Inventory
 

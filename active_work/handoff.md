@@ -7,11 +7,15 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-053, DNP3-059 complete. Implementation underway.
-- Last completed: DNP3-059 (TL fragment-size boundary vectors). Previous:
-  DNP3-053 (auto-integrity after DeviceRestart IIN). Previous: DNP3-052 (MVP
-  verification script). These three form checkpoint **052/053/059** (this
-  commit). All green incl. `-race`; `verify-mvp.sh` exit 0.
+- **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
+- DNP3-001 through DNP3-057, DNP3-059 complete. Post-MVP hardening underway.
+- Last completed: DNP3-057 (Link FCB/FCV on confirmed user data, Master
+  primary). The 3rd task of checkpoint batch 056/054/057. All three green incl.
+  `-race`; `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
+- Last checkpoint: DNP3-052/053/059 (MVP verification script + auto-integrity
+  after DeviceRestart IIN + TL fragment-size boundary vectors, commit
+  `7d236e6`, pushed to origin/main). All green incl. `-race`; `verify-mvp.sh`
+  exit 0.
 - Previous checkpoint: DNP3-049/050/051 (master/outstation address validation +
   clean reusable Close + MVP documentation lock, commit `b20d554`, pushed to
   origin/main). All green incl. `-race`.
@@ -918,15 +922,65 @@
   full `go test -race ./...` green; `verify-mvp.sh` exit 0.
   Acceptance: "No off-by-one" — met.
 
+### DNP3-056 — Final MVP acceptance gate
+- Commit message: `test: Master MVP acceptance gate passed`
+- Ran `./scripts/verify-mvp.sh` on a clean tree: build OK, vet OK (MVP
+  packages), unit+integration OK, race OK, exit 0. Recorded in
+  `active_work/supported-profile.md` under a new "MVP Acceptance Gate Record
+  (DNP3-056)" subsection, plus capability rows for DNP3-052 (gate script),
+  DNP3-053 (auto-integrity), and DNP3-059 (TL boundaries) so the profile is
+  documented up to the gate.
+- **MVP COMPLETE** (internal verification). External VEC-01 interoperability
+  remains pending (out of MVP scope).
+- Verification: `./scripts/verify-mvp.sh` exit 0. Acceptance: "All green;
+  profile documented" — met. **Stop condition: Gate green → MVP COMPLETE.**
+
+### DNP3-054 — Confirm generation for CON responses (Master side)
+- Commit message: `feat(master): application confirm for CON responses`
+- `internal/master/master.go`: added `sendApplicationConfirm(seq, outstationID)`
+  (~line 1706) that emits `al.NewConfirm(seq)` wrapped in a
+  `FuncUnconfirmedUserData` link frame (PRM=1, no FCB/FCV — confirm is
+  unconfirmed user data). Called from `processResponse()` (~line 1690) when
+  `resp.Header.Control.CON` is true, BEFORE the response data is processed, so
+  the outstation is released promptly.
+- `internal/master/app_confirm_test.go` (new): `conResponseTransport` mock
+  returns a CON=1 response; `TestSendsApplicationConfirmOnCONResponse` asserts
+  the master emitted an APDU with `FuncConfirm` and the matching application
+  seq; `TestNoApplicationConfirmWhenCONClear` asserts a CON=0 response does NOT
+  trigger a confirm (guards over-fire). Built via `NewMaster(&Config{...})`
+  (no `SetMasterAddress`).
+- Verification: `go test ./internal/master/ -run 'TestSendsApplicationConfirm|TestNoApplicationConfirmWhenCONClear'`
+  green; full `go test ./...` green; `verify-mvp.sh` exit 0.
+  Acceptance: "Master sends confirm on CON=1 response" — met.
+
+### DNP3-057 — Link FCB/FCV handling (Master primary)
+- Commit message: `feat(dll/master): FCB/FCV on confirmed user data`
+- `internal/master/master.go`: added a per-outstation primary-side FCB state
+  (`Outstation.fcb` + thread-safe `takeFCB`/`advanceFCB`/`resetFCB`) and master
+  helpers `outstationFCB(id)`/`advanceOutstationFCB(id)`. Both confirmed-user-
+  data send sites (`sendWithRetry`, `sendWithRetryAndGetResponse`) now set
+  `FCB=<current>` and `FCV=true` on the link control. The FCB is captured once
+  per logical request (retries reuse the same value) and advances ONLY when
+  the transaction fully commits (send + optional confirmation + response all
+  succeed) — placed on the success-return path, not after the bare send. A
+  Reset Link Stations exchange (`sendResetLink`) resets the FCB to false.
+- `internal/master/fcb_test.go` (new):
+  `TestFCBTogglesAcrossConfirmedData` — 4 transactions produce the FCB pattern
+  0,1,0,1 with FCV=1 on every frame; `TestFCBResetAfterResetLink` — FCB returns
+  to false after `resetFCB`; `TestFCBStableAcrossRetries` — a response
+  sequence-mismatch forces a retry and both attempts carry the SAME FCB (FCB
+  must not toggle on a failed attempt). Uses `fcbRecorderTransport` +
+  `seqMismatchThenOKTransport` mocks.
+- Verification: `go test ./internal/master/ -run TestFCB` green; full
+  `go test -race ./...` green (no regression — simulator ignores FCB/FCV, the
+  `internal/dll/link` secondary validator is exercised only by its own
+  conformance tests); `verify-mvp.sh` exit 0.
+  Acceptance: "FCB tests green / matches expected pattern" — met.
+
 ## Next READY Tasks
 
-- **DNP3-054** — Confirm generation for CON responses (Master side) (prereq
-  DNP3-009, done)
 - **DNP3-055** — Session isolation for multiple outstations (basic) (prereq
   DNP3-040, done)
-- **DNP3-056** — Final MVP acceptance gate (prereqs DNP3-045/051/052, done) —
-  **MVP COMPLETE marker**; run verify-mvp.sh and record.
-- **DNP3-057** — Link FCB/FCV handling (Master primary) (prereq DNP3-007, done)
 - **DNP3-058** — Secondary NACK handling (prereq DNP3-006, done)
 - **DNP3-065** — Double-check DLL EncodedSize usage
 - **DNP3-072** — Master handoff.md template
@@ -934,14 +988,14 @@
 
 ## Recommended Next Task
 
-**DNP3-056 — Final MVP acceptance gate** (prereqs met). This is the MVP
-completion marker: run `./scripts/verify-mvp.sh` (already green), confirm the
-supported-profile + README reflect verified state (DNP3-051 done), record the
-gate result in handoff, and mark **MVP COMPLETE**. Low-risk, closes the MVP.
+**DNP3-055 — Session isolation for multiple outstations (basic)** (prereq
+DNP3-040, done). Basic session isolation when the master talks to multiple
+outstations.
 
-If DNP3-056 is deferred (e.g. awaiting auditor sign-off), continue with
-**DNP3-054 — Confirm generation for CON responses** or **DNP3-057 — Link
-FCB/FCV handling**.
+If blocked, fall back to **DNP3-058 — Secondary NACK handling**.
+
+> **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
+> post-MVP robustness/correctness hardening; continue per roadmap.
 
 After completing a task:
 
@@ -1007,16 +1061,16 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-053, DNP3-059
-NEXT TASK: DNP3-056 — Final MVP acceptance gate (MVP COMPLETE marker)
+COMPLETED: DNP3-001 through DNP3-057, DNP3-059 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-055 — Session isolation for multiple outstations (basic)
 ```
 
 ## Test Status
 
 - `./scripts/verify-mvp.sh` — exit 0 (build + vet + unit/integration + race).
   The DNP3-052 MVP gate; re-run as the single pre-merge command. Green as of
-  checkpoint 052/053/059.
+  checkpoint 056/054/057.
 - `go test ./...` — all packages green (including integration + simulator).
-- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059 verified).
-- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..059) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), DNP3-049/050/051 (`b20d554`), then DNP3-052/053/059 (this checkpoint). All pushed to origin/main.
+- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059/054/057 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..057) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), DNP3-049/050/051 (`b20d554`), DNP3-052/053/059 (`7d236e6`), then DNP3-056/054/057 (this checkpoint). All pushed to origin/main.
