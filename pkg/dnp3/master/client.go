@@ -54,51 +54,82 @@ type Client interface {
 	// State returns the current connection state
 	State() dnp3.ConnectionState
 
-	// Read issues a read request to the outstation
+	// Read issues a read request to the outstation.
+	// Supported-profile: Target — Class-0 static Groups 1.1, 30.1, and 20.1
+	// only; other groups are rejected with ErrUnsupportedGroup (DNP3-029).
 	Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error)
+
+	// IntegrityPoll issues a Class-0 integrity poll — a Read of all MVP-supported
+	// static groups (Binary Input G1, Counter G20, Analog Input G30) in one
+	// request — and returns the same ReadResponse shape as Read. It is a
+	// convenience around Read for the common "read everything" case (DNP3-037).
+	// Supported-profile: Target (convenience over Target Read groups).
+	IntegrityPoll(ctx context.Context) (*ReadResponse, error)
 
 	// LastIIN returns the most recent Internal Indications received from the
 	// configured outstation. The same value is carried on each ReadResponse;
 	// this accessor exposes the master's stored copy (DNP3-012).
+	// Supported-profile: Target.
 	LastIIN() [2]byte
 
-	// Operate issues a control command to the outstation
+	// Operate issues a control command to the outstation.
+	// Supported-profile: Target for DirectOperate (Group 12 Variation 1 only);
+	// Reject for SelectThenOperate and DirectOperateNoResponse (DNP3-030).
 	Operate(ctx context.Context, command *types.ControlOutput) (*OperateResponse, error)
 
-	// EnableUnsolicited enables unsolicited responses from the outstation
+	// EnableUnsolicited enables unsolicited responses from the outstation.
+	// Supported-profile: Reject — no unsolicited delivery path in v0.
 	EnableUnsolicited(ctx context.Context) error
 
-	// DisableUnsolicited disables unsolicited responses
+	// DisableUnsolicited disables unsolicited responses.
+	// Supported-profile: Reject — no unsolicited delivery path in v0.
 	DisableUnsolicited(ctx context.Context) error
 
-	// SetUnsolicitedHandler sets the handler for unsolicited responses
+	// SetUnsolicitedHandler sets the handler for unsolicited responses.
+	// Supported-profile: Reject — no unsolicited delivery path in v0.
 	SetUnsolicitedHandler(handler UnsolicitedHandler)
 
-	// Close gracefully shuts down the client
+	// Close gracefully shuts down the client.
+	// Supported-profile: Target (one connection lifecycle).
 	Close() error
 }
 
-// Config holds Master client configuration
+// Config holds Master client configuration.
+//
+// Each field/option carries a supported-profile disposition (see
+// active_work/supported-profile.md): Target (in the v0 path and externally
+// verified later), Reject (returns a clear unsupported error until a later
+// profile), or Defer (present but not yet externally verified).
 type Config struct {
-	// MasterAddress is this master's DNP3 address
+	// MasterAddress is this master's DNP3 address.
+	// Supported-profile: Target — one configured master address.
 	MasterAddress uint16
-	// OutstationAddress is the target outstation's DNP3 address
+	// OutstationAddress is the target outstation's DNP3 address.
+	// Supported-profile: Target — one configured outstation address.
 	OutstationAddress uint16
-	// TransportType specifies TCP or TLS
+	// TransportType specifies TCP or TLS.
+	// Supported-profile: Target for TCP; Reject for TLS (WithTLS).
 	TransportType dnp3.TransportType
-	// Address is the network address (IP or hostname)
+	// Address is the network address (IP or hostname).
+	// Supported-profile: Target (TCP peer address).
 	Address string
-	// Port is the network port
+	// Port is the network port.
+	// Supported-profile: Target (TCP peer port).
 	Port int
-	// TLSConfig is the TLS configuration (required for TLS transport)
+	// TLSConfig is the TLS configuration (required for TLS transport).
+	// Supported-profile: Reject — no TLS listener in v0; WithTLS is rejected.
 	TLSConfig *tls.Config
-	// Timeout is the response timeout
+	// Timeout is the response timeout.
+	// Supported-profile: Defer — requires lifecycle/timeout verification.
 	Timeout time.Duration
-	// RetryCount is the maximum number of retries
+	// RetryCount is the maximum number of retries.
+	// Supported-profile: Defer — requires lifecycle/timeout verification.
 	RetryCount int
-	// RetryDelay is the delay between retries
+	// RetryDelay is the delay between retries.
+	// Supported-profile: Defer — requires lifecycle/timeout verification.
 	RetryDelay time.Duration
-	// KeepAliveInterval is the keep-alive interval
+	// KeepAliveInterval is the keep-alive interval.
+	// Supported-profile: Defer — not externally verified in v0.
 	KeepAliveInterval time.Duration
 }
 
@@ -120,21 +151,25 @@ func DefaultConfig() *Config {
 // ConfigOption is a functional option for configuring the client
 type ConfigOption func(*Config)
 
-// WithMasterAddress sets the master address
+// WithMasterAddress sets the master address.
+// Supported-profile: Target — one configured master address.
 func WithMasterAddress(addr uint16) ConfigOption {
 	return func(c *Config) {
 		c.MasterAddress = addr
 	}
 }
 
-// WithOutstationAddress sets the outstation address
+// WithOutstationAddress sets the outstation address.
+// Supported-profile: Target — one configured outstation address.
 func WithOutstationAddress(addr uint16) ConfigOption {
 	return func(c *Config) {
 		c.OutstationAddress = addr
 	}
 }
 
-// WithTransport sets the transport type and network address
+// WithTransport sets the transport type and network address.
+// Supported-profile: Target for TCP (one TCP peer); Reject for TLS — use of
+// dnp3.TLS here is rejected at NewClient until a later profile (see WithTLS).
 func WithTransport(t dnp3.TransportType, address string, port int) ConfigOption {
 	return func(c *Config) {
 		c.TransportType = t
@@ -143,7 +178,9 @@ func WithTransport(t dnp3.TransportType, address string, port int) ConfigOption 
 	}
 }
 
-// WithTLS sets the TLS configuration
+// WithTLS sets the TLS configuration.
+// Supported-profile: Reject — no TLS listener in v0; NewClient returns
+// ErrUnsupportedOption for TLS until a later profile.
 func WithTLS(config *tls.Config) ConfigOption {
 	return func(c *Config) {
 		c.TLSConfig = config
@@ -151,14 +188,16 @@ func WithTLS(config *tls.Config) ConfigOption {
 	}
 }
 
-// WithTimeout sets the response timeout
+// WithTimeout sets the response timeout.
+// Supported-profile: Defer — requires lifecycle/timeout verification.
 func WithTimeout(timeout time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.Timeout = timeout
 	}
 }
 
-// WithRetry sets the retry count and delay
+// WithRetry sets the retry count and delay.
+// Supported-profile: Defer — requires lifecycle/timeout verification.
 func WithRetry(count int, delay time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.RetryCount = count
@@ -639,6 +678,41 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		AnalogInputs: analogInputs,
 		Counters:     counters,
 	}, nil
+}
+
+// IntegrityPoll implements Client.IntegrityPoll. It issues a Class-0 integrity
+// poll — reading all MVP-supported static groups (Binary Input G1, Counter G20,
+// Analog Input G30) — and returns a single ReadResponse carrying the combined
+// points (DNP3-037).
+//
+// Each group is read in its own request so the v0 public parsers (which scan
+// one object header per response) populate every group completely; the merged
+// response carries exactly the points an explicit per-group Read would return.
+// If any per-group read fails, IntegrityPoll returns the error and the partial
+// response is discarded (no half-populated response is surfaced).
+func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
+	type groupRead struct {
+		group uint8
+		apply func(*ReadResponse, *ReadResponse)
+	}
+	reads := []groupRead{
+		{1, func(dst, src *ReadResponse) { dst.BinaryInputs = src.BinaryInputs }},
+		{20, func(dst, src *ReadResponse) { dst.Counters = src.Counters }},
+		{30, func(dst, src *ReadResponse) { dst.AnalogInputs = src.AnalogInputs }},
+	}
+
+	out := &ReadResponse{Timestamp: time.Now()}
+	var lastIIN [2]byte
+	for _, r := range reads {
+		resp, err := c.Read(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}))
+		if err != nil {
+			return nil, fmt.Errorf("integrity poll: read group %d: %w", r.group, err)
+		}
+		r.apply(out, resp)
+		lastIIN = resp.IIN
+	}
+	out.IIN = lastIIN
+	return out, nil
 }
 
 // LastIIN implements Client.LastIIN. It returns the master's stored copy of

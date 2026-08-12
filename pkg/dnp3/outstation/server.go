@@ -152,21 +152,24 @@ func DefaultConfig() *Config {
 // ConfigOption is a functional option for configuring the server
 type ConfigOption func(*Config)
 
-// WithAddress sets the outstation address
+// WithAddress sets the outstation address.
+// Supported-profile: Target — one configured outstation/master address pair.
 func WithAddress(addr uint16) ConfigOption {
 	return func(c *Config) {
 		c.OutstationAddress = addr
 	}
 }
 
-// WithMasterAddress sets the expected master address
+// WithMasterAddress sets the expected master address.
+// Supported-profile: Target — one configured outstation/master address pair.
 func WithMasterAddress(addr uint16) ConfigOption {
 	return func(c *Config) {
 		c.MasterAddress = addr
 	}
 }
 
-// WithTransport sets the transport type, address, and port
+// WithTransport sets the transport type, address, and port.
+// Supported-profile: Target for TCP (TCP listener only); Reject for TLS.
 func WithTransport(t dnp3.TransportType, address string, port int) ConfigOption {
 	return func(c *Config) {
 		c.TransportType = t
@@ -175,7 +178,8 @@ func WithTransport(t dnp3.TransportType, address string, port int) ConfigOption 
 	}
 }
 
-// WithTLS sets the TLS configuration
+// WithTLS sets the TLS configuration.
+// Supported-profile: Reject — no TLS listener in v0.
 func WithTLS(config *tls.Config) ConfigOption {
 	return func(c *Config) {
 		c.TLSConfig = config
@@ -183,14 +187,16 @@ func WithTLS(config *tls.Config) ConfigOption {
 	}
 }
 
-// WithMaxFragmentSize sets the maximum fragment size
+// WithMaxFragmentSize sets the maximum fragment size.
+// Supported-profile: Defer — must be reconciled with tested fragmentation limits.
 func WithMaxFragmentSize(size int) ConfigOption {
 	return func(c *Config) {
 		c.MaxFragmentSize = size
 	}
 }
 
-// WithUnsolicitedMode enables unsolicited responses
+// WithUnsolicitedMode enables unsolicited responses.
+// Supported-profile: Reject — no unsolicited delivery path in v0.
 func WithUnsolicitedMode(enabled bool) ConfigOption {
 	return func(c *Config) {
 		c.UnsolicitedMode = enabled
@@ -577,7 +583,8 @@ func NewServer(config *Config) (Server, error) {
 	}, nil
 }
 
-// Start implements Server.Start
+// Start implements Server.Start.
+// Supported-profile: Target — one TCP listener lifecycle.
 func (s *server) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -700,7 +707,8 @@ func (s *server) handleConnection(conn net.Conn) {
 	debugLog("Connection %d closed", connID)
 }
 
-// Stop implements Server.Stop
+// Stop implements Server.Stop.
+// Supported-profile: Target — one TCP listener lifecycle.
 func (s *server) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -742,7 +750,8 @@ func (s *server) State() ServerState {
 	return s.state
 }
 
-// SetDataHandler implements Server.SetDataHandler
+// SetDataHandler implements Server.SetDataHandler.
+// Supported-profile: Target — static Groups 1.1, 30.1, and 20.1 only.
 func (s *server) SetDataHandler(handler DataHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -769,21 +778,24 @@ func (s *server) ActiveConnections() int {
 	return len(s.connections)
 }
 
-// SetCommandHandler implements Server.SetCommandHandler
+// SetCommandHandler implements Server.SetCommandHandler.
+// Supported-profile: Target — Direct Group 12 Variation 1 control only.
 func (s *server) SetCommandHandler(handler CommandHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.commandHandler = handler
 }
 
-// SetUnsolicitedHandler implements Server.SetUnsolicitedHandler
+// SetUnsolicitedHandler implements Server.SetUnsolicitedHandler.
+// Supported-profile: Reject — no unsolicited delivery path in v0.
 func (s *server) SetUnsolicitedHandler(handler UnsolicitedHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.unsolicitedHandler = handler
 }
 
-// Close implements Server.Close
+// Close implements Server.Close.
+// Supported-profile: Target — one TCP listener lifecycle.
 func (s *server) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

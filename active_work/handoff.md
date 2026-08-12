@@ -7,10 +7,11 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-036 complete. Implementation underway.
-- Last checkpoint: DNP3-034/035/036 (retry policy by error class + restrict
-  ReadResponse to MVP types + deterministic outstation simulator). All green
-  incl. `-race`.
+- DNP3-001 through DNP3-039 complete. Implementation underway.
+- Last checkpoint: DNP3-037/038/039 (IntegrityPoll convenience method +
+  supported-profile code annotations + master state machine formalization).
+  All green incl. `-race`.
+- Previous checkpoint: DNP3-034/035/036 (commit 4484498, pushed to origin/main).
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -571,9 +572,78 @@
 - Acceptance: public loopback green against simulator only (no real outstation
   process / no TCP).
 
+### DNP3-037 — Integrity poll convenience method
+- Commit message: `feat(api): add IntegrityPoll convenience method`
+- `pkg/dnp3/master/client.go`: added `IntegrityPoll(ctx context.Context) (*ReadResponse, error)`
+  to the public `Client` interface and the `client` struct. Issues a separate
+  per-group Read for each MVP-supported Class-0 group (G1.1, G30.1, G20.1) and
+  merges the results, instead of a single multi-group read. This sidesteps the
+  known `skipGroupData` parser limitation (DNP3-035 discovery) where a single
+  response carrying multiple MVP headers can lose points.
+- Tests: new `pkg/dnp3/master/integrity_poll_test.go` —
+  `TestIntegrityPollMatchesExplicitReads` (IntegrityPoll returns the same data
+  as explicit per-group Reads against the simulator),
+  `TestIntegrityPollNotConnected` (returns ErrNotConnected before Connect).
+- Acceptance: IntegrityPoll returns merged MVP Class-0 data; tests green.
+
+### DNP3-038 — Document supported-profile in code comments
+- Commit message: `docs: annotate supported-profile dispositions`
+- Annotated every public surface with Target/Reject/Defer dispositions
+  (referencing `active_work/supported-profile.md`):
+  - `pkg/dnp3/master/client.go`: `Config` fields and all `With*` option
+    functions; `Client` interface methods (Read, IntegrityPoll, Operate,
+    EnableUnsolicited, DisableUnsolicited, SetUnsolicitedHandler, Close).
+  - `pkg/dnp3/types/commands.go`: `CommandType` constants, `NewBinaryControl`
+    (Target, G12V1 only), `NewAnalogControl` (Reject), `NewPulseControl`
+    (Reject), `NewReadRequest`, and the `ReadAllStatic`/`ReadAllEvents`/
+    `ReadBinaryInputs`/`ReadAnalogInputs`/`ReadCounters` convenience vars.
+  - `pkg/dnp3/outstation/server.go`: `With*` options (WithAddress, WithMasterAddress,
+    WithTransport, WithTLS, WithMaxFragmentSize, WithUnsolicitedMode) and
+    `Start`/`Stop`/`Close`/`SetDataHandler`/`SetCommandHandler`/
+    `SetUnsolicitedHandler` methods.
+- Doc-only change; no behavior. Build + full suite green.
+- Acceptance: supported-profile dispositions documented in code.
+
+### DNP3-039 — Master state machine formalization
+- Commit message: `refactor(master): formalize state machine transitions`
+- `internal/master/master.go`:
+  - Added a state-machine doc comment (legal-transition diagram) on `State`.
+  - Added `legalStateTransitions` table encoding every allowed (from -> to)
+    transition.
+  - Added `transitionTo(newState)` which validates against the table and returns
+    the new `ErrIllegalStateTransition` sentinel on an illegal move; a
+    self-transition is an idempotent no-op.
+  - Added `isOperational()` (only StateInitialized/StateActive qualify) and
+    `isLinkUp()` (Connected/Initialized/Active) guards.
+  - Replaced the legacy `State() < StateInitialized` / `State() < StateConnected`
+    numeric-ordinal guards on all operation methods (Poll, Operate,
+    OperateWithStatus, TimeSync, WriteBinary/AnalogOutput, Read* family,
+    Enable/DisableUnsolicited) with `isOperational()` / `isLinkUp()`.
+  - **Key bug fix:** `StateError` has iota ordinal 5 (> StateActive 4), so the
+    legacy `< StateInitialized` guard silently let operations through on a dead
+    link. `isOperational()` explicitly excludes StateError, so operations on a
+    dead link now correctly return ErrNotConnected.
+  - `Connect()` now rejects a Connect from any state other than Disconnected or
+    Error (e.g., a concurrent Connect while Connecting) with
+    ErrIllegalStateTransition, instead of silently overwriting state; a failed
+    handshake lands in StateError (not Disconnected) via the table.
+  - `Initialize()` uses `transitionTo(StateInitialized)` (legal only from
+    Connected/Active).
+  - `Disconnect()` remains the unconditional teardown path (forces Disconnected
+    from any state).
+  - `markDisconnected()` uses `transitionTo(StateError)`.
+  - `SetState()` retained as a documented escape hatch for tests/recovery.
+- Tests: new `internal/master/state_machine_test.go` —
+  `TestStateTransitionTableLegal`, `TestStateTransitionTableIllegal`,
+  `TestStateTransitionSelfIsNoOp`, `TestOperationsRejectedInErrorState`
+  (the central regression), `TestOperationsRejectedWhenDisconnected`,
+  `TestOperationsAcceptedInOperationalStates`, `TestConnectRejectsFromConnecting`,
+  `TestConnectReconnectFromError`. All green incl. `-race`.
+- Acceptance: no silent illegal transitions; state transition table tests green.
+
 ## Next READY Tasks
 
-- **DNP3-037** — Integrity poll convenience method
+- **DNP3-040** — Request outstanding tracking (prereq DNP3-010)
 - **DNP3-041** — Timeout configuration validation
 - **DNP3-043** — Error type taxonomy
 - **DNP3-044** — Logging hooks
@@ -585,7 +655,10 @@
 
 ## Recommended Next Task
 
-**DNP3-037 — Integrity poll convenience method**
+**DNP3-040 — Request outstanding tracking** (prereq DNP3-010 satisfied).
+
+If DNP3-040 has an unsatisfied prerequisite or is blocked, fall back to
+**DNP3-041 — Timeout configuration validation**.
 
 After completing a task:
 
@@ -631,6 +704,16 @@ go test ./test/integration/...
   start/stop (7-byte header), 0x27 = 16-bit count (5-byte header).
 - `ObjectHeader.EncodedSize()` returns the header+range byte count (excludes
   per-point object data). Use it to advance offsets when scanning response data.
+- **DNP3-039 discovery (bug fixed):** `StateError` has iota ordinal 5, higher
+  than `StateActive` (4). The legacy operation guards used
+  `State() < StateInitialized` (ordinal 3), so a master in `StateError`
+  (dead link) silently satisfied the readiness gate and operations were
+  attempted on a dead link. Formalized to an explicit `isOperational()` allow-
+  list (Initialized/Active only).
+- **DNP3-037 workaround:** IntegrityPoll issues per-group reads rather than one
+  multi-group read because the legacy `skipGroupData` response parser
+  (DNP3-035 discovery) can lose points when a single response carries multiple
+  MVP headers. Tracked for a later parser-robustness task.
 
 ## MVP Gate
 
@@ -641,8 +724,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-036
-NEXT TASK: DNP3-037 — Integrity poll convenience method
+COMPLETED: DNP3-001 through DNP3-039
+NEXT TASK: DNP3-040 — Request outstanding tracking
 ```
 
 ## Test Status

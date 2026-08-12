@@ -29,6 +29,23 @@ const (
 )
 
 // State represents the master's operational state.
+//
+// State machine (DNP3-039). Legal transitions:
+//
+//	Disconnected ──Connect()──▶ Connecting
+//	Connecting ──handshake ok──▶ Connected ─▶ Active
+//	Connecting ──handshake fail──▶ Error
+//	Connecting ──abort──▶ Disconnected
+//	Connected/Active ──Initialize()──▶ Initialized
+//	Connected/Active/Initialized ──transport disconnect──▶ Error
+//	any ──Disconnect()──▶ Disconnected
+//	Error ──Connect() (reconnect)──▶ Connecting
+//
+// StateError is a terminal-but-recoverable state: the only legal way out is a
+// fresh Connect (re-handshake) or Disconnect. Operations are rejected in every
+// non-operational state (Disconnected, Connecting, Connected, Error) — in
+// particular StateError must NOT silently satisfy an operation readiness gate
+// even though its iota ordinal is higher than StateActive.
 type State int
 
 const (
@@ -56,6 +73,80 @@ func (s State) String() string {
 	}
 
 	return "Unknown"
+}
+
+// legalStateTransitions encodes the allowed (from -> to) state transitions
+// (DNP3-039). A self-transition (from == to) is always allowed (idempotent).
+var legalStateTransitions = map[State]map[State]bool{
+	StateDisconnected: {StateConnecting: true},
+	StateConnecting: {
+		StateConnected:    true,
+		StateError:        true,
+		StateDisconnected: true,
+	},
+	StateConnected: {
+		StateActive:       true,
+		StateInitialized:  true,
+		StateError:        true,
+		StateDisconnected: true,
+	},
+	StateActive: {
+		StateInitialized:  true,
+		StateError:        true,
+		StateDisconnected: true,
+	},
+	StateInitialized: {
+		StateError:        true,
+		StateDisconnected: true,
+		StateActive:       true,
+	},
+	StateError: {
+		StateConnecting:   true, // reconnect
+		StateDisconnected:  true,
+	},
+}
+
+// isOperational reports whether the master is in a state that permits
+// application-layer operations (Read/Poll/Operate/Write/TimeSync). Only
+// StateInitialized and StateActive qualify; StateError is explicitly excluded
+// even though its ordinal exceeds StateActive (DNP3-039).
+func (m *Master) isOperational() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.state == StateInitialized || m.state == StateActive
+}
+
+// isLinkUp reports whether the link layer is established (Connected,
+// Initialized, or Active). Connecting, Disconnected, and Error are excluded
+// (DNP3-039): a half-open or dead link must not silently satisfy a guard that
+// assumes the link is up.
+func (m *Master) isLinkUp() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	switch m.state {
+	case StateConnected, StateInitialized, StateActive:
+		return true
+	}
+	return false
+}
+
+// transitionTo moves the master to newState if the transition is legal per
+// legalStateTransitions, returning ErrIllegalStateTransition otherwise
+// (DNP3-039). A self-transition is a no-op success. Callers in the lifecycle
+// paths (Connect/Initialize/Disconnect/markDisconnected) use this so illegal
+// transitions surface as errors instead of silently corrupting the state.
+func (m *Master) transitionTo(newState State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state == newState {
+		return nil
+	}
+	allowed, ok := legalStateTransitions[m.state]
+	if !ok || !allowed[newState] {
+		return fmt.Errorf("%w: %s -> %s", ErrIllegalStateTransition, m.state, newState)
+	}
+	m.state = newState
+	return nil
 }
 
 // PollType defines the type of poll.
@@ -200,6 +291,11 @@ var (
 	ErrConfirmTimeout      = errors.New("confirmation timeout")
 	ErrConfirmSeqMismatch  = errors.New("confirmation sequence mismatch")
 	ErrResponseSeqMismatch = errors.New("response sequence mismatch")
+
+	// ErrIllegalStateTransition indicates a lifecycle method attempted an
+	// undefined state transition (DNP3-039). Surfaced rather than silently
+	// overwriting the state.
+	ErrIllegalStateTransition = errors.New("illegal state transition")
 
 	// ErrTransportDisconnected indicates the transport reported the peer closed
 	// the connection (or the transport was closed). The master transitions to
@@ -487,7 +583,11 @@ func (m *Master) State() State {
 	return m.state
 }
 
-// SetState updates the master state.
+// SetState updates the master state unconditionally, bypassing the transition
+// table. It is retained as an escape hatch for tests and recovery paths that
+// must force a state (e.g., simulating a mid-session drop). Lifecycle code
+// uses transitionTo instead so illegal transitions surface as errors
+// (DNP3-039).
 func (m *Master) SetState(state State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -538,7 +638,17 @@ func (m *Master) Connect() error {
 		return errors.New("transport not configured")
 	}
 
-	m.SetState(StateConnecting)
+	// DNP3-039: Connect may only begin from Disconnected or Error (reconnect).
+	// Any other state (e.g., a concurrent Connect while Connecting, or an
+	// already-active session) is an illegal transition and surfaces an error
+	// rather than silently overwriting the state.
+	cur := m.State()
+	if cur != StateDisconnected && cur != StateError {
+		return fmt.Errorf("%w: %s -> Connecting", ErrIllegalStateTransition, cur)
+	}
+	if err := m.transitionTo(StateConnecting); err != nil {
+		return err
+	}
 
 	// Clear TL/sequence state left over from any previous session so a reconnect
 	// after a mid-session drop re-handshakes from a clean slate (DNP3-032). This
@@ -547,12 +657,19 @@ func (m *Master) Connect() error {
 
 	// Perform DNP3 link-layer session establishment
 	if err := m.performLinkHandshake(); err != nil {
-		m.SetState(StateError)
+		// DNP3-039: a failed handshake lands in StateError, not Disconnected, so
+		// the caller does not mistake a half-open session for a clean slate.
+		_ = m.transitionTo(StateError)
 		return fmt.Errorf("link handshake failed: %w", err)
 	}
 
-	m.SetState(StateConnected)
-	m.SetState(StateActive)
+	// DNP3-039: handshake success moves Connecting -> Connected -> Active.
+	if err := m.transitionTo(StateConnected); err != nil {
+		return err
+	}
+	if err := m.transitionTo(StateActive); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -740,25 +857,35 @@ func validateLinkStatusResponse(raw []byte, outstationID, masterAddr uint16) err
 }
 
 // Disconnect closes connections.
+//
+// DNP3-039: Disconnect is a legal terminal transition from any state (the
+// master tears down unconditionally); the state moves to Disconnected and
+// registered outstations are dropped.
 func (m *Master) Disconnect() error {
-	m.SetState(StateDisconnected)
+	// Force the terminal Disconnected transition from any state: Disconnect is
+	// the unconditional teardown path, so it bypasses the transition table.
+	m.mu.Lock()
+	m.state = StateDisconnected
+	m.mu.Unlock()
 	m.outstations = make(map[uint16]*Outstation)
 	return nil
 }
 
 // Initialize performs master initialization sequence.
+//
+// DNP3-039: Initialize is legal only from Connected or Active (the link is up
+// but application readiness has not been confirmed). It transitions to
+// Initialized, which (with Active) is one of the two operational states.
 func (m *Master) Initialize() error {
-	if m.State() != StateConnected && m.State() != StateActive {
+	if err := m.transitionTo(StateInitialized); err != nil {
 		return ErrNotConnected
 	}
-
-	m.SetState(StateInitialized)
 	return nil
 }
 
 // Enable unsolicits on an outstation.
 func (m *Master) EnableUnsolicited(outstationID uint16) error {
-	if m.State() < StateConnected {
+	if !m.isLinkUp() {
 		return ErrNotConnected
 	}
 
@@ -783,7 +910,7 @@ func (m *Master) EnableUnsolicited(outstationID uint16) error {
 
 // DisableUnsolicited disables unsolicited on an outstation.
 func (m *Master) DisableUnsolicited(outstationID uint16) error {
-	if m.State() < StateConnected {
+	if !m.isLinkUp() {
 		return ErrNotConnected
 	}
 
@@ -806,7 +933,7 @@ func (m *Master) DisableUnsolicited(outstationID uint16) error {
 
 // Poll performs a data poll on an outstation.
 func (m *Master) Poll(outstationID uint16, pollType PollType) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -818,7 +945,7 @@ func (m *Master) Poll(outstationID uint16, pollType PollType) error {
 
 // Operate issues a control operation.
 func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -847,7 +974,7 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 // status byte indicates a failure. A response with no parseable G12V1 status
 // yields CommandStatusUnknown (not success).
 func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) (CommandStatus, error) {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return CommandStatusUnknown, ErrNotConnected
 	}
 
@@ -879,7 +1006,7 @@ func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, 
 
 // TimeSync performs time synchronization with an outstation.
 func (m *Master) TimeSync(outstationID uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -1220,7 +1347,10 @@ func (m *Master) markDisconnected(err error) (wrapped error, disconnected bool) 
 	if !isDisconnectError(err) {
 		return err, false
 	}
-	m.SetState(StateError)
+	// DNP3-039: a transport disconnect lands in StateError via the transition
+	// table. Self-transition (already Error) is a no-op; an illegal source
+	// state is forced to Error regardless, since the link is demonstrably dead.
+	_ = m.transitionTo(StateError)
 	return fmt.Errorf("%w: %v", ErrTransportDisconnected, err), true
 }
 
@@ -1839,7 +1969,7 @@ func objectLayout(group, variation, qualifier uint8) (pointSize int, hasIndexPre
 
 // WriteBinaryOutput writes a binary output (CROB) to an outstation.
 func (m *Master) WriteBinaryOutput(outstationID uint16, index uint16, crob *CROB) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -1872,7 +2002,7 @@ func buildCROBRequest(index uint16, crob *CROB) []byte {
 
 // WriteAnalogOutput writes an analog output to an outstation.
 func (m *Master) WriteAnalogOutput(outstationID uint16, index uint16, value interface{}, variation uint8) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2040,7 +2170,7 @@ func reflectValue(v interface{}) int64 {
 
 // ReadBinaryInputs reads binary inputs from an outstation.
 func (m *Master) ReadBinaryInputs(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2053,7 +2183,7 @@ func (m *Master) ReadBinaryInputs(outstationID uint16, start, stop uint16) error
 
 // ReadDoubleBinaryInputs reads double-bit binary inputs from an outstation.
 func (m *Master) ReadDoubleBinaryInputs(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2066,7 +2196,7 @@ func (m *Master) ReadDoubleBinaryInputs(outstationID uint16, start, stop uint16)
 
 // ReadAnalogInputs reads analog inputs from an outstation.
 func (m *Master) ReadAnalogInputs(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2079,7 +2209,7 @@ func (m *Master) ReadAnalogInputs(outstationID uint16, start, stop uint16) error
 
 // ReadCounters reads counters from an outstation.
 func (m *Master) ReadCounters(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2092,7 +2222,7 @@ func (m *Master) ReadCounters(outstationID uint16, start, stop uint16) error {
 
 // ReadFrozenCounters reads frozen counters from an outstation.
 func (m *Master) ReadFrozenCounters(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2105,7 +2235,7 @@ func (m *Master) ReadFrozenCounters(outstationID uint16, start, stop uint16) err
 
 // ReadBinaryOutputStatus reads binary output status from an outstation.
 func (m *Master) ReadBinaryOutputStatus(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
@@ -2118,7 +2248,7 @@ func (m *Master) ReadBinaryOutputStatus(outstationID uint16, start, stop uint16)
 
 // ReadAnalogOutputStatus reads analog output status from an outstation.
 func (m *Master) ReadAnalogOutputStatus(outstationID uint16, start, stop uint16) error {
-	if m.State() < StateInitialized {
+	if !m.isOperational() {
 		return ErrNotConnected
 	}
 

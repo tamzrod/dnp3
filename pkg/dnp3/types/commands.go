@@ -1,18 +1,28 @@
 package types
 
-// CommandType represents the type of control command
+// CommandType represents the type of control command.
+//
+// Supported-profile dispositions (see active_work/supported-profile.md):
+// DirectOperate is Target (Group 12 Variation 1 only); SelectThenOperate,
+// DirectOperateNoResponse, SelectAndOperateOnce, and SelectAndOperateMany are
+// Reject (not part of v0).
 type CommandType int
 
 const (
-	// SelectThenOperate uses the select-before-operate pattern
+	// SelectThenOperate uses the select-before-operate pattern.
+	// Supported-profile: Reject.
 	SelectThenOperate CommandType = iota
-	// DirectOperate sends the command directly without select
+	// DirectOperate sends the command directly without select.
+	// Supported-profile: Target (Group 12 Variation 1 only).
 	DirectOperate
-	// DirectOperateNoResponse sends the command with no response expected
+	// DirectOperateNoResponse sends the command with no response expected.
+	// Supported-profile: Reject.
 	DirectOperateNoResponse
-	// SelectAndOperateOnce same as select then operate but only operates once
+	// SelectAndOperateOnce same as select then operate but only operates once.
+	// Supported-profile: Reject.
 	SelectAndOperateOnce
-	// SelectAndOperateMany selects and operates multiple times
+	// SelectAndOperateMany selects and operates multiple times.
+	// Supported-profile: Reject.
 	SelectAndOperateMany
 )
 
@@ -152,7 +162,9 @@ const (
 	QualifierRange16 QualifierCode = 0x18
 )
 
-// NewBinaryControl creates a new binary control command
+// NewBinaryControl creates a new binary control command (Group 12 Variation 1).
+// Supported-profile: Target with CommandType DirectOperate (Group 12 Variation 1
+// only); other command types are Reject.
 func NewBinaryControl(index uint16, value bool, cmdType CommandType) *ControlOutput {
 	return &ControlOutput{
 		Group:       12, // Group 12 = Binary Output
@@ -163,7 +175,9 @@ func NewBinaryControl(index uint16, value bool, cmdType CommandType) *ControlOut
 	}
 }
 
-// NewAnalogControl creates a new analog control command
+// NewAnalogControl creates a new analog control command (Group 41).
+// Supported-profile: Reject — Group 41 and related analog-output variations are
+// out of scope for v0.
 func NewAnalogControl(index uint16, value float64, cmdType CommandType) *ControlOutput {
 	return &ControlOutput{
 		Group:       41, // Group 41 = Analog Output
@@ -174,7 +188,8 @@ func NewAnalogControl(index uint16, value float64, cmdType CommandType) *Control
 	}
 }
 
-// NewPulseControl creates a new pulse control command
+// NewPulseControl creates a new pulse control command (Group 12 Variation 3).
+// Supported-profile: Reject — the pulse control profile is out of scope for v0.
 func NewPulseControl(index uint16, onTime, offTime uint32, cmdType CommandType) *ControlOutput {
 	return &ControlOutput{
 		Group:       12, // Group 12 = Binary Output
@@ -193,36 +208,47 @@ type ReadRequest struct {
 	Groups []GroupRequest
 }
 
-// NewReadRequest creates a new read request for specified groups
+// NewReadRequest creates a new read request for specified groups.
+// Supported-profile: Target for Groups 1.1, 30.1, and 20.1; other groups are
+// rejected by the master's group allow-list (DNP3-029).
 func NewReadRequest(groups ...GroupRequest) *ReadRequest {
 	return &ReadRequest{
 		Groups: groups,
 	}
 }
 
-// Common group requests for convenience
+// Common group requests for convenience.
+//
+// Each carries a supported-profile disposition (see
+// active_work/supported-profile.md).
 var (
-	// ReadAllStatic reads all static data (Class 0)
+	// ReadAllStatic reads all static data (Class 0).
+	// Supported-profile: Defer — its variation-zero requests require
+	// object-selection verification.
 	ReadAllStatic = []GroupRequest{
 		{Group: 1, Variation: 0},  // Binary Inputs
 		{Group: 30, Variation: 0}, // Analog Inputs
 		{Group: 20, Variation: 0}, // Counters
 	}
-	// ReadAllEvents reads all event data
+	// ReadAllEvents reads all event data.
+	// Supported-profile: Reject — event objects are out of scope for v0.
 	ReadAllEvents = []GroupRequest{
 		{Group: 2, Variation: 0},  // Binary Input Events
 		{Group: 32, Variation: 0}, // Analog Input Events
 		{Group: 22, Variation: 0}, // Counter Events
 	}
-	// ReadBinaryInputs reads binary inputs
+	// ReadBinaryInputs reads binary inputs (Group 1 Variation 1).
+	// Supported-profile: Target.
 	ReadBinaryInputs = []GroupRequest{
 		{Group: 1, Variation: 1}, // Binary Input with flags
 	}
-	// ReadAnalogInputs reads analog inputs
+	// ReadAnalogInputs reads analog inputs (Group 30 Variation 1).
+	// Supported-profile: Target.
 	ReadAnalogInputs = []GroupRequest{
 		{Group: 30, Variation: 1}, // Analog Input with flags (32-bit float)
 	}
-	// ReadCounters reads counters
+	// ReadCounters reads counters (Group 20 Variation 1).
+	// Supported-profile: Target.
 	ReadCounters = []GroupRequest{
 		{Group: 20, Variation: 1}, // 32-bit Counter with flags
 	}
