@@ -8,11 +8,14 @@
 
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
-- DNP3-001 through DNP3-057, DNP3-059 complete. Post-MVP hardening underway.
-- Last completed: DNP3-057 (Link FCB/FCV on confirmed user data, Master
-  primary). The 3rd task of checkpoint batch 056/054/057. All three green incl.
+- DNP3-001 through DNP3-058, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
+- Last completed: DNP3-065 (DLL EncodedSize audit + concatenated-frames
+  tests). The 3rd task of checkpoint batch 055/058/065. All three green incl.
   `-race`; `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
-- Last checkpoint: DNP3-052/053/059 (MVP verification script + auto-integrity
+- Last checkpoint: DNP3-056/054/057 (MVP acceptance gate + master CON confirm +
+  link FCB/FCV, commit `21fd8db`, pushed to origin/main). All green incl.
+  `-race`; `verify-mvp.sh` exit 0.
+- Previous checkpoint: DNP3-052/053/059 (MVP verification script + auto-integrity
   after DeviceRestart IIN + TL fragment-size boundary vectors, commit
   `7d236e6`, pushed to origin/main). All green incl. `-race`; `verify-mvp.sh`
   exit 0.
@@ -977,22 +980,94 @@
   conformance tests); `verify-mvp.sh` exit 0.
   Acceptance: "FCB tests green / matches expected pattern" — met.
 
+### DNP3-055 — Session isolation for multiple outstations (basic)
+- Commit message: `feat(master): per-outstation request state`
+- `internal/master/master.go`: moved the application-layer sequence number
+  from a single global `Master.sequence` field to a per-outstation `Outstation.seq`
+  field (each outstation owns an independent 0-15 stream). Added `Outstation.takeSeq()`
+  / `advanceSeq()` accessors (thread-safe). Converted `Master.nextSequence`,
+  `advanceSequence`, and `currentSequence` to take an `outstationID uint16`
+  (read/write the outstation's seq; 0 for an unknown outstation). Updated the
+  two confirmed-user-data send sites (`sendWithRetry`, `sendWithRetryAndGetResponse`)
+  to pass `outstationID`. The per-outstation outstanding-request map (DNP3-040)
+  and the shared reassembler (reset per response under reqMu, so no fragment
+  cross-talk) already isolated the other request state.
+- `internal/master/session_isolation_test.go` (new):
+  `TestSessionIsolationNoCrossTalk` — interleaves requests to outstations 2 and 3;
+  outstation 2's stream is 0,1,2 undisturbed by outstation 3's 0,1 stream, and
+  the final per-outstation currentSequence values are independent (2→3, 3→1).
+  `TestSessionIsolationOutstationSeqWrap` — drives outstation 2 through 16 sends
+  (seq wraps to 0) while outstation 3 stays 0 (no cross-talk).
+- Updated `TestSequenceStream`, `TestSendWithRetrySequenceAdvances`, and
+  `TestSendWithRetrySequenceNoAdvanceOnSendFailure` to the per-outstation accessor
+  signatures.
+- Verification: `go test ./internal/master/ -run 'TestSessionIsolation|TestSequenceStream|TestSendWithRetrySequence'`
+  green; full `go test ./...` green; `verify-mvp.sh` exit 0.
+  Acceptance: "No cross-talk" — met.
+
+### DNP3-058 — Secondary NACK handling
+- Commit message: `feat(master): handle link-layer NACK`
+- `internal/master/master.go`:
+  - `validateResetLinkACK` now detects a secondary NACK (PRM=0, FuncNack) in
+    response to Reset Link Stations and returns `ErrLinkNACK` (distinct from a
+    generic ACK function-code error) so the handshake retry policy applies.
+  - `sendResetLink` wraps the send/receive/validate cycle in a retry loop that
+    consults `retryAgain` (the NACK policy: `NACKRetries`/`NACKDelay`); non-NACK
+    failures fail immediately.
+  - The data path already surfaced NACKs as `ErrLinkNACK` (DNP3-034) and the
+    `sendWithRetry` loop already retried them via `ClassNACK` → `NACKRetries`;
+    DNP3-058 extends the same "treat NACK as failure; retry or error" behavior
+    to the link handshake.
+- `internal/master/nack_test.go` (new):
+  `TestNACKRetriedThenFails` — always-NACKed request retried exactly
+  `NACKRetries` times, then errors wrapping `ErrLinkNACK`;
+  `TestNACKRetriedThenRecovers` — one NACK then a valid response succeeds;
+  `TestResetLinkNACKRetriedThenFails` — always-NACKed reset link retried exactly
+  `NACKRetries` times, then errors wrapping `ErrLinkNACK`;
+  `TestResetLinkNACKThenACK` — one NACK then a valid ACK succeeds.
+- Verification: `go test ./internal/master/ -run 'TestNACK|TestResetLinkNACK'`
+  green; full `go test ./...` green; `verify-mvp.sh` exit 0.
+  Acceptance: "Defined behavior" — met.
+
+### DNP3-065 — Double-check DLL EncodedSize usage everywhere
+- Commit message: `fix: consistent EncodedSize usage on receive`
+- Audit: the two DLL receive loops that advance an offset over concatenated
+  frames — `Master.processReceivedBytes` (`internal/master/master.go:1923`) and
+  the outstation receive loop (`internal/outstation/outstation.go:887`) — both
+  advance by `frame.EncodedSize(len(dllFrame.Data))`, which equals
+  `HeaderSize + dataLen + 2*ceil(dataLen/16)` (header + header CRC + per-16-byte
+  data-block CRCs). No over/under-read. The `pkg/dnp3/master/client.go`
+  `offset +=` sites are application-layer object parsing (post-reassembly), not
+  DLL frame advancement, and are out of scope.
+- `internal/master/dll_encodedsize_test.go` (new):
+  `TestEncodedSizeMatchesEncodedLength` — for dataLen in {0,1,2,15,16,17,31,32,
+  33,100,249}, `frame.EncodedSize(dataLen) == len(frame.Encode(...))` (the
+  precise no-over/under-read invariant: the offset advancement equals the
+  actual wire length);
+  `TestConcatenatedFramesConsumedExactly` — two concatenated DLL frames (a
+  multi-fragment response FIR+non-FIN then non-FIR+FIN) reassemble to the full
+  payload and the per-frame `EncodedSize` values sum to the buffer length;
+  `TestConcatenatedThreeFramesConsumedExactly` — three concatenated frames
+  (FIR, mid, FIN) reassemble in order and the `EncodedSize` sum equals the
+  buffer length.
+- Verification: `go test ./internal/master/ -run 'TestEncodedSizeMatchesEncodedLength|TestConcatenated'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "No over/under-read" — met.
+
 ## Next READY Tasks
 
-- **DNP3-055** — Session isolation for multiple outstations (basic) (prereq
-  DNP3-040, done)
-- **DNP3-058** — Secondary NACK handling (prereq DNP3-006, done)
-- **DNP3-065** — Double-check DLL EncodedSize usage
+- **DNP3-066** — Confirm timeout distinct from response timeout (prereq
+  DNP3-009, done)
 - **DNP3-072** — Master handoff.md template
 - **DNP3-080, 084, 085, 087, 088, 098** (Outstation-side READY tasks)
 
 ## Recommended Next Task
 
-**DNP3-055 — Session isolation for multiple outstations (basic)** (prereq
-DNP3-040, done). Basic session isolation when the master talks to multiple
-outstations.
+**DNP3-066 — Confirm timeout distinct from response timeout** (prereq
+DNP3-009, done). Separate the application-confirm timeout from the response
+timeout (distinct config or documented relation).
 
-If blocked, fall back to **DNP3-058 — Secondary NACK handling**.
+If blocked, fall back to **DNP3-072 — Master handoff.md template**.
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1061,16 +1136,16 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-057, DNP3-059 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-055 — Session isolation for multiple outstations (basic)
+COMPLETED: DNP3-001 through DNP3-058, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-066 — Confirm timeout distinct from response timeout
 ```
 
 ## Test Status
 
 - `./scripts/verify-mvp.sh` — exit 0 (build + vet + unit/integration + race).
   The DNP3-052 MVP gate; re-run as the single pre-merge command. Green as of
-  checkpoint 056/054/057.
+  checkpoint 055/058/065.
 - `go test ./...` — all packages green (including integration + simulator).
-- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059/054/057 verified).
-- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..057) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), DNP3-049/050/051 (`b20d554`), DNP3-052/053/059 (`7d236e6`), then DNP3-056/054/057 (this checkpoint). All pushed to origin/main.
+- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059/054/057/055/058/065 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..065) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), DNP3-049/050/051 (`b20d554`), DNP3-052/053/059 (`7d236e6`), DNP3-056/054/057 (`21fd8db`), then DNP3-055/058/065 (this checkpoint). All pushed to origin/main.

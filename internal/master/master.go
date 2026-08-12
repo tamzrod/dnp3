@@ -212,6 +212,12 @@ type Outstation struct {
 	// link. Toggles after each confirmed-data transaction; reset to false by a
 	// Reset Link Stations exchange.
 	fcb bool
+
+	// DNP3-055: per-outstation application-layer sequence number (0-15). Each
+	// outstation has an independent seq stream so interleaved operations on
+	// multiple outstations do not cross-talk. Advances only on a successful
+	// send (DNP3-008).
+	seq uint8
 }
 
 // NewOutstation creates a new outstation entry.
@@ -315,6 +321,22 @@ func (o *Outstation) resetFCB() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.fcb = false
+}
+
+// takeSeq returns the current application-layer sequence number for this
+// outstation (DNP3-055). Read-only; advance with advanceSeq.
+func (o *Outstation) takeSeq() uint8 {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.seq
+}
+
+// advanceSeq advances this outstation's sequence by one (mod 16) after a
+// successful send (DNP3-005 / DNP3-008).
+func (o *Outstation) advanceSeq() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.seq = (o.seq + 1) % 16
 }
 
 // HasFlag checks if an IIN flag is set.
@@ -537,9 +559,6 @@ type Master struct {
 	onError     ErrorHandler
 	fragmenter  *tl.Fragmenter  // Transport layer fragmenter
 	reassembler *tl.Reassembler // Transport layer reassembler
-	// sequence is the application-layer sequence number (0-15). It advances
-	// by one (mod 16) for each successfully sent request (DNP3-008).
-	sequence uint8
 
 	// reqMu serializes the request path (send → receive → reassembly) so that
 	// concurrent requests on the same master do not race on the shared
@@ -1003,6 +1022,11 @@ func (m *Master) performLinkHandshake() error {
 }
 
 // sendResetLink sends a Reset Link Stations frame to initialize the link layer.
+//
+// DNP3-058: a secondary NACK in response to Reset Link Stations is treated as
+// a retryable failure (the link is alive but rejected the frame). The
+// handshake is retried up to the NACK retry budget from the master's
+// RetryPolicy; non-NACK failures fail immediately.
 func (m *Master) sendResetLink() error {
 	// Build Reset Link Stations frame (no data needed)
 	// This tells the outstation to clear buffers and reset the FCB counter
@@ -1025,25 +1049,39 @@ func (m *Master) sendResetLink() error {
 			return fmt.Errorf("failed to encode reset frame: %w", err)
 		}
 
-		if err := m.transport.Send(encoded); err != nil {
-			return fmt.Errorf("failed to send reset frame: %w", err)
-		}
+		policy := m.RetryPolicy()
+		var lastErr error
+		attempt := 0
+		for {
+			attempt++
+			if err := m.transport.Send(encoded); err != nil {
+				// A transport send failure is not retryable here (the link is
+				// likely dead); surface it directly.
+				return fmt.Errorf("failed to send reset frame: %w", err)
+			}
 
-		// The outstation acknowledges Reset Link Stations at the data-link
-		// layer. Consume and validate that frame here so the next application
-		// request reads an application response rather than a stale or invalid
-		// handshake ACK.
-		m.transport.SetTimeout(m.config.Timeout)
-		raw, err := m.transport.Receive()
-		if err != nil {
-			return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
+			// The outstation acknowledges Reset Link Stations at the data-link
+			// layer. Consume and validate that frame here so the next application
+			// request reads an application response rather than a stale or invalid
+			// handshake ACK.
+			m.transport.SetTimeout(m.config.Timeout)
+			raw, err := m.transport.Receive()
+			if err != nil {
+				return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
+			}
+			if err := validateResetLinkACK(raw, o.ID, m.config.MasterAddress); err != nil {
+				lastErr = fmt.Errorf("invalid reset link ACK: %w", err)
+				// DNP3-058: only a link-layer NACK is retryable for the handshake.
+				if !m.retryAgain(policy, &lastErr, attempt) {
+					return lastErr
+				}
+				continue
+			}
+			// DNP3-057: a Reset Link Stations exchange resets the primary-side FCB
+			// to its post-reset value (false) for this link.
+			o.resetFCB()
+			break
 		}
-		if err := validateResetLinkACK(raw, o.ID, m.config.MasterAddress); err != nil {
-			return fmt.Errorf("invalid reset link ACK: %w", err)
-		}
-		// DNP3-057: a Reset Link Stations exchange resets the primary-side FCB
-		// to its post-reset value (false) for this link.
-		o.resetFCB()
 	}
 
 	return nil
@@ -1057,6 +1095,10 @@ func (m *Master) sendResetLink() error {
 //   - be addressed from the outstation (SrcAddr) to the master (DestAddr)
 //
 // Any deviation is a spec violation and the handshake fails (DNP3-006).
+//
+// DNP3-058: a secondary NACK (PRM=0, FuncNack) in response to Reset Link
+// Stations is surfaced distinctly as ErrLinkNACK so the caller can apply the
+// NACK retry policy rather than treating it as a generic malformed-ACK failure.
 func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
 	f, err := frame.Decode(raw)
 	if err != nil {
@@ -1067,6 +1109,12 @@ func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
 	}
 	if f.Control.PRM {
 		return fmt.Errorf("ACK PRM=1, expected 0 (secondary)")
+	}
+	// DNP3-058: a secondary NACK means the outstation rejected the Reset Link
+	// Stations frame (busy/out-of-sequence). Classify it as a link-layer NACK
+	// so the handshake retry policy applies.
+	if f.Control.FuncCode == frame.FuncNack {
+		return fmt.Errorf("%w (reset link rejected, src=0x%04X)", ErrLinkNACK, f.SrcAddr)
 	}
 	if f.Control.FuncCode != frame.FuncAck {
 		return fmt.Errorf("ACK function code=%d, expected %d (ACK)",
@@ -1348,7 +1396,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		// Allocate the application-layer sequence for this request attempt.
 		// Retries reuse the same sequence value within one logical request;
 		// the sequence advances only after a successful send (DNP3-008).
-		seq := m.nextSequence()
+		seq := m.nextSequence(outstationID)
 		req.Control.Seq = seq
 
 		// Send request with DNP3 protocol layers
@@ -1402,7 +1450,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		}
 		// The request was sent successfully; advance the sequence so the
 		// next request uses the next value in the 0-15 stream (DNP3-008).
-		m.advanceSequence()
+		m.advanceSequence(outstationID)
 		// Successful send counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
 		// If CON bit is set, wait for confirmation first
@@ -1472,7 +1520,7 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// Allocate the application-layer sequence for this request attempt
 		// (DNP3-008). Retries reuse the same value; it advances only on a
 		// successful send.
-		seq := m.nextSequence()
+		seq := m.nextSequence(outstationID)
 		req.Control.Seq = seq
 
 		// Send request with DNP3 protocol layers
@@ -1525,7 +1573,7 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			continue
 		}
 		// Successful send; advance the sequence (DNP3-008).
-		m.advanceSequence()
+		m.advanceSequence(outstationID)
 		// Successful send counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
 		// DNP3-044: emit a "send" diagnostic event with the application seq.
@@ -1956,31 +2004,31 @@ func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
 
 }
 
-// nextSequence returns the current application-layer sequence number without
-// advancing it. The caller uses this value as the request's AppControl.Seq
-// and calls advanceSequence() only after the request is sent successfully
-// (DNP3-008: increment only on successful send).
-func (m *Master) nextSequence() uint8 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.sequence
+// nextSequence returns the current application-layer sequence number for
+// outstationID without advancing it (DNP3-005 / DNP3-008). Each outstation
+// owns an independent 0-15 stream so operations on multiple outstations do not
+// cross-talk (DNP3-055). Returns 0 for an unknown outstation.
+func (m *Master) nextSequence(outstationID uint16) uint8 {
+	if o, ok := m.GetOutstation(outstationID); ok {
+		return o.takeSeq()
+	}
+	return 0
 }
 
-// advanceSequence advances the sequence number by one (mod 16). It is called
-// after a request has been sent successfully so the next request uses the
-// next sequence value in the 0-15 stream.
-func (m *Master) advanceSequence() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.sequence = (m.sequence + 1) % 16
+// advanceSequence advances the outstationID sequence number by one (mod 16).
+// Called after a request has been sent successfully so the next request to the
+// same outstation uses the next value in its 0-15 stream (DNP3-008). No-op for
+// an unknown outstation.
+func (m *Master) advanceSequence(outstationID uint16) {
+	if o, ok := m.GetOutstation(outstationID); ok {
+		o.advanceSeq()
+	}
 }
 
-// currentSequence returns the current sequence number (alias for nextSequence
-// in read-only contexts).
-func (m *Master) currentSequence() uint8 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.sequence
+// currentSequence returns the current sequence number for outstationID
+// (read-only alias of nextSequence).
+func (m *Master) currentSequence(outstationID uint16) uint8 {
+	return m.nextSequence(outstationID)
 }
 
 // buildPollRequest creates a poll request based on poll type.

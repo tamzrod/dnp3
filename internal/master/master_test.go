@@ -697,13 +697,15 @@ func extractRequestSeq(t *testing.T, raw []byte) uint8 {
 }
 
 // TestSequenceStream verifies the master's application-layer sequence number
-// advances 0-15 and wraps to 0 (DNP3-008).
+// advances 0-15 and wraps to 0 (DNP3-008). Each outstation has its own stream
+// (DNP3-055); this exercises outstation 2's stream.
 func TestSequenceStream(t *testing.T) {
 	m := NewMaster(DefaultConfig())
+	m.AddOutstation(2, "RTU-1")
 	var seen []uint8
 	for i := 0; i < 17; i++ {
-		seen = append(seen, m.nextSequence())
-		m.advanceSequence()
+		seen = append(seen, m.nextSequence(2))
+		m.advanceSequence(2)
 	}
 	want := []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0}
 	if len(seen) != len(want) {
@@ -739,8 +741,8 @@ func TestSendWithRetrySequenceAdvances(t *testing.T) {
 		}
 	}
 
-	// The master's current sequence should have advanced to 3.
-	if got := m.currentSequence(); got != 3 {
+	// Outstation 2's sequence should have advanced to 3 (DNP3-055: per-outstation).
+	if got := m.currentSequence(2); got != 3 {
 		t.Fatalf("currentSequence = %d, want 3", got)
 	}
 }
@@ -759,7 +761,7 @@ func TestSendWithRetrySequenceNoAdvanceOnSendFailure(t *testing.T) {
 	if err := m.sendWithRetry(req, 2); err == nil {
 		t.Fatal("expected sendWithRetry to fail when transport Send fails")
 	}
-	if got := m.currentSequence(); got != 0 {
+	if got := m.currentSequence(2); got != 0 {
 		t.Fatalf("currentSequence = %d, want 0 (no advance on send failure)", got)
 	}
 }
