@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-015 — IntegrityPoll single multi-header path
-- **Last checkpoint commit:** `5ffff47` (MEXT-012/014/016 checkpoint) — pushed to origin/main; MEXT-015 commit pending
+- **Last checkpoint commit:** `f581db5` (MEXT-015 — IntegrityPoll single multi-header path) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-013
 - **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-015). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
