@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-018 — Application SEQ + CON on solicited path audit
-- **Last checkpoint commit:** `100d95c` (MEXT-017 — Link handshake external frame vectors) — pushed to origin/main; MEXT-018 commit pending
+- **Last checkpoint commit:** `37bf9d8` (MEXT-018 — Application SEQ + CON on solicited path audit) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-019
 - **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-018). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
