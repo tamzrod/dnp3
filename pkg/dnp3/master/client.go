@@ -60,10 +60,12 @@ type Client interface {
 	// only; other groups are rejected with ErrUnsupportedGroup (DNP3-029).
 	Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error)
 
-	// IntegrityPoll issues a Class-0 integrity poll — a Read of all MVP-supported
-	// static groups (Binary Input G1, Counter G20, Analog Input G30) in one
-	// request — and returns the same ReadResponse shape as Read. It is a
-	// convenience around Read for the common "read everything" case (DNP3-037).
+	// IntegrityPoll issues a Class-0 integrity poll — a single Read of all
+	// MVP-supported static groups (Binary Input G1, Counter G20, Analog Input
+	// G30) in one multi-group request — and returns the same ReadResponse shape
+	// as Read. It is a convenience around Read for the common "read everything"
+	// case (DNP3-037). Since MEXT-015 the primary path is one multi-header
+	// exchange, with a per-group fallback for peers that reject it.
 	// Supported-profile: Target (convenience over Target Read groups).
 	IntegrityPoll(ctx context.Context) (*ReadResponse, error)
 
@@ -810,11 +812,12 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 // Analog Input G30) — and returns a single ReadResponse carrying the combined
 // points (DNP3-037).
 //
-// Each group is read in its own request so the v0 public parsers (which scan
-// one object header per response) populate every group completely; the merged
-// response carries exactly the points an explicit per-group Read would return.
-// If any per-group read fails, IntegrityPoll returns the error and the partial
-// response is discarded (no half-populated response is surfaced).
+// Since MEXT-015 the primary path is a single Class-0 multi-group Read: one
+// request carrying G1/G20/G30 all-objects headers, answered by one
+// multi-object-header response. The MEXT-014 qualifier-aware parsers populate
+// every group from that single exchange without point loss. A per-group
+// fallback is retained for peers that cannot satisfy a single multi-group
+// Class-0 read (error on the primary exchange); see runIntegrityPoll.
 func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 	resp, err := c.runIntegrityPoll(ctx)
 	if err != nil {
@@ -825,10 +828,19 @@ func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 
 // runIntegrityPoll is the shared Class-0 integrity implementation used by both
 // IntegrityPoll and the DNP3-053 auto-integrity-on-restart path. It reads the
-// MVP static groups (Binary Input G1, Counter G20, Analog Input G30) and merges
-// them into a single ReadResponse (DNP3-037). Each group is read in its own
-// request so the v0 public parsers (which scan one object header per response)
-// populate every group completely.
+// MVP static groups (Binary Input G1, Counter G20, Analog Input G30) and
+// returns a single ReadResponse carrying their combined points (DNP3-037).
+//
+// Primary path (MEXT-015): one Class-0 multi-group Read carrying G1/G20/G30
+// all-objects headers. A conformant outstation answers with a single
+// multi-object-header response; the MEXT-014 qualifier-aware parsers populate
+// every group from that one exchange. This removes the prior per-group
+// workaround as the primary path while keeping a documented fallback.
+//
+// Fallback: if the primary exchange errors (e.g. a peer that rejects a
+// multi-group Class-0 read or returns a transport-level failure), the groups
+// are re-read one at a time so a conformant-but-single-group outstation still
+// yields the full set. The fallback's per-group error, if any, is surfaced.
 func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 	// DNP3-053: mark an integrity poll in flight so the Reads it issues do not
 	// themselves trigger a nested auto-integrity-on-restart poll (which would
@@ -843,6 +855,24 @@ func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 		c.mu.Unlock()
 	}()
 
+	// Primary: single Class-0 multi-group read (MEXT-015).
+	resp, err := c.Read(ctx, types.NewReadRequest(
+		types.GroupRequest{Group: 1, Variation: 0},
+		types.GroupRequest{Group: 20, Variation: 0},
+		types.GroupRequest{Group: 30, Variation: 0},
+	))
+	if err == nil {
+		return resp, nil
+	}
+	// Fallback: per-group reads for peers that cannot satisfy a single
+	// multi-group Class-0 exchange (MEXT-015).
+	return c.integrityPollPerGroup(ctx)
+}
+
+// integrityPollPerGroup is the MEXT-015 fallback: each MVP static group is read
+// in its own request and merged into one ReadResponse. It is used only when the
+// primary single multi-group Class-0 read errors.
+func (c *client) integrityPollPerGroup(ctx context.Context) (*ReadResponse, error) {
 	type groupRead struct {
 		group uint8
 		apply func(*ReadResponse, *ReadResponse)

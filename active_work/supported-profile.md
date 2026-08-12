@@ -99,7 +99,8 @@ reference:
 | Request qualifier allow-list (0x06 all-objects / 0x00 index8 / 0x28 range16 / 0x07 count8) | `internal/master/qualifier_golden_test.go`, `internal/al/object_header_test.go` (`TestEncodeObjectHeaderUnsupportedQualifier`) | MEXT-016 |
 | Link-layer handshake (reset link + link status) | `internal/dll/link/link_test.go`, `test/integration/tcp_test.go` | DNP3-006/007 |
 | `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
-| Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
+| Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `pkg/dnp3/master/integrity_poll_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
+| `IntegrityPoll` single multi-header exchange + per-group fallback (MEXT-015) | `pkg/dnp3/master/integrity_poll_test.go` (`TestIntegrityPollSingleMultiHeaderExchange`, `TestIntegrityPollFallbackPerGroup`) | MEXT-015 |
 | Public `Operate` (Direct Operate G12V1 CROB) + command status | `test/integration/mvp_loopback_test.go` | DNP3-021/045 |
 | Retry / timeout / outstanding-request tracking | `internal/master/retry_policy_test.go`, `internal/master/outstanding_request_test.go` | DNP3-031/032/040 |
 | Idle-timeout keep-alive close | `internal/master/idle_monitor_test.go` | DNP3-042 |
@@ -140,7 +141,7 @@ MEXT task; the list is authoritative so agents need not read git history.
 |----|----------|--------|-------------------|
 | R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. **Parse-side resolved by MEXT-012** (IIN-only response with clear IIN now treated as success; error IIN never success; truncated G12V1 never success). Real-TCP proof pending MEXT-013. | Resolved (parse). Real-TCP proof pending. | MEXT-012 ✅, MEXT-013 |
 | R2 | CROB control-code values were a 1..8 enum rather than the IEEE 1815 bitfield. **Resolved by MEXT-010/011** (constants now 0x01/0x02/0x04/0x08/0x10/0x80; outstation + goldens updated). | Resolved. Real IEDs receive spec-correct codes. | MEXT-010, MEXT-011 ✅ |
-| R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` uses a per-group workaround. Fragile versus real multi-header responses. **Parse-side resolved by MEXT-014** (`skipGroupData` is now qualifier-aware; G1+G20+G30 in one APDU parsed without point loss). The per-group `IntegrityPoll` workaround remains as primary until MEXT-015. | Resolved (parse). Workaround removal pending MEXT-015. | MEXT-014 ✅, MEXT-015 |
+| R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` used a per-group workaround. Fragile versus real multi-header responses. **Resolved by MEXT-014/015** — `skipGroupData` is qualifier-aware (G1+G20+G30 in one APDU parsed without point loss), and `IntegrityPoll` now uses a single Class-0 multi-group read as the primary path (one exchange returns the full set), with a per-group fallback for peers that reject the multi-group exchange. | Resolved. | MEXT-014 ✅, MEXT-015 ✅ |
 | R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
 | R5 | Marketing/docs risk of over-claiming; consumers may assume production-ready. | Consumers assume production-ready. | MEXT-005, MEXT-034, MEXT-035 |
 
