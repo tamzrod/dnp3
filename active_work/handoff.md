@@ -457,4 +457,4 @@ NEXT TASK: DNP3-025 — Race safety for sequence & reassembly
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), then DNP3-022/023/024 (this commit). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024, pushed to origin/main). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).
