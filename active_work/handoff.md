@@ -170,4 +170,4 @@ NEXT TASK: DNP3-007 — Link-status request after reset
 
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./pkg/dnp3/master/...` — green.
-- Commit hash: (pending commit — see git log after commit)
+- Commit hash: 8b3c216
