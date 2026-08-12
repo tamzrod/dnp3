@@ -18,6 +18,7 @@ This directory contains utility scripts for development, testing, and maintenanc
 ### Testing
 
 - [x] `verify-mvp.sh` - Run the DNP3 MVP verification gate (build + vet + unit/integration + race; exit 0 on a clean tree). See [DNP3-052](../active_work/DNP3_MASTER_ROADMAP.md).
+- [x] `verify-external-mvp.sh` - Run the DNP3 **external** MVP verification gate (MEXT-021). Two tiers: Tier 1 internal real-TCP loopback tests (build + real-TCP transport tests); Tier 2 external/third-party (VEC-01) proof, **fail-closed** until genuine external interop proof lands (MEXT-022/MEXT-033). Exit 0 only when both tiers pass. Set `ALLOW_NO_EXTERNAL=1` to run Tier 1 only (does NOT satisfy the external claim). See [MEXT-021](../active_work/MEXT_MASTER_ROADMAP.md).
 - [x] `run-conformance.sh` - Run the DLL/TL/AL layer conformance suites (plain + race; exit 0 on green). CI-runnable conformance gate. See [DNP3-098](../active_work/DNP3_MASTER_ROADMAP.md).
 - [ ] `test-conformance.sh` - Run conformance tests (alias of `run-conformance.sh`)
 - [ ] `test-interop.sh` - Run interoperability tests
