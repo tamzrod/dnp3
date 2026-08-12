@@ -536,7 +536,22 @@ type Config struct {
 	// Disconnected if no activity (send or receive) is observed for this long.
 	// Zero or negative disables idle monitoring (the default).
 	IdleTimeout int
+	// ConfirmTimeout is the application-layer confirm timeout in milliseconds
+	// (DNP3-066). This is the time the master waits for a confirm APDU
+	// (FuncResponse) after sending a request with the CON bit set (DNP3-009),
+	// which is distinct from the general response Timeout used on the
+	// request/response path. Per IEEE 1815 the confirm timeout is typically
+	// shorter than the full response timeout: a confirm is a small dedicated
+	// reply, whereas the response Timeout must allow for the outstation to
+	// gather and serialize object data. When non-positive, the confirm path
+	// falls back to Timeout (the documented backward-compatible relation).
+	ConfirmTimeout int
 }
+
+// DefaultConfirmTimeout is the default application-layer confirm timeout in
+// milliseconds (DNP3-066). It is intentionally shorter than DefaultTimeout:
+// a confirm is a small dedicated reply, not a full object response.
+const DefaultConfirmTimeout = 2000
 
 // DefaultConfig returns default master configuration.
 func DefaultConfig() *Config {
@@ -545,6 +560,7 @@ func DefaultConfig() *Config {
 		Timeout:       DefaultTimeout,
 		MaxRetries:    MaxRetries,
 		RetryDelay:    100,
+		ConfirmTimeout: DefaultConfirmTimeout,
 	}
 
 }
@@ -576,6 +592,10 @@ type Master struct {
 	// idleTimeout is the configured keep-alive/idle threshold (DNP3-042). A
 	// non-positive value disables idle monitoring.
 	idleTimeout time.Duration
+	// confirmTimeout is the resolved application-layer confirm timeout
+	// (DNP3-066): ConfirmTimeout when positive, else Timeout. Used by
+	// waitForConfirmation; distinct from the response Timeout.
+	confirmTimeout time.Duration
 	// lastActivity is the time of the last successful send or receive, updated
 	// under mu. Read by the idle monitor.
 	lastActivity time.Time
@@ -667,7 +687,21 @@ func NewMaster(config *Config) *Master {
 		retryPolicy:   DefaultRetryPolicy(config),
 		outstanding:   make(map[uint16]struct{}),
 		idleTimeout:   time.Duration(config.IdleTimeout) * time.Millisecond,
+		confirmTimeout: confirmTimeoutFromConfig(config),
 	}
+}
+
+// confirmTimeoutFromConfig resolves the application-layer confirm timeout
+// (DNP3-066): Config.ConfirmTimeout (ms) when positive, else Config.Timeout
+// (the documented backward-compatible relation).
+func confirmTimeoutFromConfig(config *Config) time.Duration {
+	if config != nil && config.ConfirmTimeout > 0 {
+		return time.Duration(config.ConfirmTimeout) * time.Millisecond
+	}
+	if config != nil && config.Timeout > 0 {
+		return time.Duration(config.Timeout) * time.Millisecond
+	}
+	return time.Duration(DefaultTimeout) * time.Millisecond
 }
 
 // SetRetryPolicy overrides the default retry table (DNP3-034). Passing nil
@@ -1685,7 +1719,10 @@ func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID u
 // lieu of a dedicated confirm; such a response is accepted as the confirmation.
 // Strict response-sequence matching is the responsibility of DNP3-010.
 func (m *Master) waitForConfirmation(expectedSeq uint8) error {
-	m.transport.SetTimeout(m.config.Timeout)
+	// DNP3-066: the confirm timeout is distinct from the response timeout. A
+	// confirm is a small dedicated reply, so it typically uses a shorter
+	// budget than a full object response.
+	m.transport.SetTimeout(int(m.confirmTimeout / time.Millisecond))
 
 	for {
 		data, err := m.transport.Receive()

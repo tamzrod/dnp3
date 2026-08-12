@@ -8,11 +8,14 @@
 
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
-- DNP3-001 through DNP3-058, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
-- Last completed: DNP3-065 (DLL EncodedSize audit + concatenated-frames
-  tests). The 3rd task of checkpoint batch 055/058/065. All three green incl.
-  `-race`; `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
-- Last checkpoint: DNP3-056/054/057 (MVP acceptance gate + master CON confirm +
+- DNP3-001 through DNP3-068, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
+- Last completed: DNP3-068 (Master restart after Close). The 3rd task of
+  checkpoint batch 066/067/068. All three green incl. `-race`;
+  `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
+- Last checkpoint: DNP3-055/058/065 (per-outstation seq + link NACK + DLL
+  EncodedSize audit, commit `38c1145`, pushed to origin/main). All green incl.
+  `-race`; `verify-mvp.sh` exit 0.
+- Previous checkpoint: DNP3-056/054/057 (MVP acceptance gate + master CON confirm +
   link FCB/FCV, commit `21fd8db`, pushed to origin/main). All green incl.
   `-race`; `verify-mvp.sh` exit 0.
 - Previous checkpoint: DNP3-052/053/059 (MVP verification script + auto-integrity
@@ -1054,20 +1057,93 @@
   green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
   exit 0. Acceptance: "No over/under-read" — met.
 
+### DNP3-066 — Confirm timeout distinct from response timeout (DONE)
+- Spec nuance: the application-layer confirm timeout (master waits for a
+  confirm APDU after sending a CON request, DNP3-009) is distinct from the
+  general response timeout. Per IEEE 1815 the confirm timeout is typically
+  shorter than the full response timeout.
+- `internal/master/master.go`: added `Config.ConfirmTimeout int` (ms) with a
+  documented relation (non-positive falls back to `Timeout`); added
+  `DefaultConfirmTimeout = 2000` ms (shorter than `DefaultTimeout = 5000`);
+  added resolved `Master.confirmTimeout time.Duration` populated in
+  `NewMaster` via `confirmTimeoutFromConfig`; `waitForConfirmation` now sets
+  `m.transport.SetTimeout(int(m.confirmTimeout/ms))` instead of
+  `m.config.Timeout`. The response path (`waitForResponse`/`sendWithRetry`)
+  is unchanged and still uses `Config.Timeout`.
+- `internal/master/confirm_timeout_test.go` (new, 5 tests):
+  `TestDefaultConfirmTimeoutDistinctFromResponse` — default ConfirmTimeout is
+  a distinct, shorter value than Timeout;
+  `TestConfirmTimeoutFallsBackToResponseTimeout` — ConfirmTimeout<=0 falls
+  back to Timeout (documented backward-compatible relation);
+  `TestConfirmTimeoutUsedOnConfirmPath` — waitForConfirmation applies
+  ConfirmTimeout (1234), not Timeout (9000), to the transport;
+  `TestResponseTimeoutUsedOnResponsePath` — the response path applies Timeout
+  (9000), not ConfirmTimeout (1234);
+  `TestConfirmTimeoutSurfacesErrConfirmTimeout` — a confirm-path timeout still
+  surfaces `ErrConfirmTimeout`.
+- Verification: `go test ./internal/master/ -run 'TestDefaultConfirmTimeout|TestConfirmTimeout|TestResponseTimeout'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "Behavior documented + tested" — met.
+
+### DNP3-067 — Unsupported variation explicit error messages (DONE)
+- The v0-profile read reject path returned a generic
+  `ErrUnsupportedGroup: group %d variation %d`. Made the error descriptive by
+  naming the object group (human-readable) and the variation so diagnostics
+  are actionable.
+- `internal/al/group_names.go` (new): `GroupName(group uint8) string` table
+  for common DNP3 groups (1=binary input, 20=counter, 30=analog input,
+  13=control relay output block, 60=class data objects, …; "unknown" for
+  unrecognized); `VariationName(group, variation)` for known pairs (G1/G30/
+  G20 variations and G13); `DescribeObject(group, variation)` returns
+  `group G (name), variation V [(vlabel)]` for diagnostic messages.
+- `pkg/dnp3/master/client.go`: the reject site now returns
+  `fmt.Errorf("%w: %s", dnp3.ErrUnsupportedGroup, al.DescribeObject(...))`.
+  The sentinel (`ErrUnsupportedGroup`) is preserved, so `errors.Is` still
+  works; only the message text is enriched.
+- `internal/al/group_names_test.go` (new): `TestGroupNameKnown`,
+  `TestGroupNameUnknown`, `TestDescribeObjectNamesGroupAndVariation`.
+- `pkg/dnp3/master/group_names_test.go` (new):
+  `TestUnsupportedGroupErrorMessageNamesGroupVariation` — for 9 reject cases
+  (G2/10/13/21/40/60, G1-bad-var, G30-bad-var, G255-unknown) the error names
+  the group (human-readable), the variation, and the word "group".
+- Verification: `go test ./internal/al/ ./pkg/dnp3/master/ -run 'TestGroupName|TestDescribeObject|TestUnsupportedGroupErrorMessage'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "Clear" — met.
+
+### DNP3-068 — Master restart after Close (DONE)
+- Lifecycle correctness: after `Close` of a client, a new `NewClient` must be
+  fully independent — no global/package state from the previous client
+  (public AC sequence, internal master instance, per-outstation sequence)
+  leaks into the new client.
+- No code change was required: `NewClient` already constructs a fresh
+  `master.NewMaster` + fresh `client{sequence:0, handlers:[]}` per call, and
+  there is no package-level mutable state in `pkg/dnp3` (only error sentinels
+  and the const `DNP3Epoch`). `Close→Disconnect` resets the closed client's
+  state/sequence and closes its transport; it cannot affect a different
+  client instance. This task is a verification/lock-in test.
+- `pkg/dnp3/master/restart_after_close_test.go` (new):
+  `TestMasterRestartAfterCloseIndependent` — client A connects, does a Read
+  (advances A's public seq to 1 + per-outstation seq), then `Close()`; client
+  B is a fresh `NewClient` with a fresh transport; B's first Read must carry
+  AC seq 0 (proving A's advanced sequence did not leak), B's public sequence
+  starts from 0, and after A.Close, B remains Connected and a second Read on
+  B still succeeds (B owns its own transport + master).
+- Verification: `go test ./pkg/dnp3/master/ -run 'TestMasterRestartAfterCloseIndependent'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "Independent" — met.
+
 ## Next READY Tasks
 
-- **DNP3-066** — Confirm timeout distinct from response timeout (prereq
-  DNP3-009, done)
 - **DNP3-072** — Master handoff.md template
 - **DNP3-080, 084, 085, 087, 088, 098** (Outstation-side READY tasks)
 
 ## Recommended Next Task
 
-**DNP3-066 — Confirm timeout distinct from response timeout** (prereq
-DNP3-009, done). Separate the application-confirm timeout from the response
-timeout (distinct config or documented relation).
+**DNP3-072 — Master handoff.md template** (no prereq). Standardize the
+handoff.md layout used across sessions.
 
-If blocked, fall back to **DNP3-072 — Master handoff.md template**.
+If blocked, fall back to an outstation-side READY task
+(**DNP3-080/084/085/087/088/098**).
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1136,15 +1212,15 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-058, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-066 — Confirm timeout distinct from response timeout
+COMPLETED: DNP3-001 through DNP3-068, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-072 — Master handoff.md template
 ```
 
 ## Test Status
 
 - `./scripts/verify-mvp.sh` — exit 0 (build + vet + unit/integration + race).
   The DNP3-052 MVP gate; re-run as the single pre-merge command. Green as of
-  checkpoint 055/058/065.
+  checkpoint 066/067/068.
 - `go test ./...` — all packages green (including integration + simulator).
 - `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059/054/057/055/058/065 verified).
 - Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..065) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.

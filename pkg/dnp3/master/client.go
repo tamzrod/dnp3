@@ -707,7 +707,7 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	// before any wire traffic is generated.
 	for _, g := range request.Groups {
 		if !isSupportedReadGroup(g.Group, g.Variation) {
-			return nil, fmt.Errorf("%w: group %d variation %d", dnp3.ErrUnsupportedGroup, g.Group, g.Variation)
+			return nil, fmt.Errorf("%w: %s", dnp3.ErrUnsupportedGroup, al.DescribeObject(g.Group, g.Variation))
 		}
 	}
 
