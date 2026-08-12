@@ -490,15 +490,15 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset+4 > len(data) {
+		h, consumed, err := al.DecodeObjectHeader(data, offset)
+		if err != nil {
 			break
 		}
-
-		group := data[offset]
-		variation := data[offset+1]
-		qualifier := data[offset+2]
-		count := data[offset+3]
-		offset += 4
+		offset += consumed
+		group := h.Group
+		variation := h.Variation
+		qualifier := h.Qualifier
+		count := uint8(h.Count)
 
 		// Group 1 = Binary Input (static), Group 2 = Binary Input Event (with timestamp)
 		if group != 1 && group != 2 {
@@ -509,7 +509,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 		// Group 1 Variation 1 is packed binary state. Qualifier 0x07 carries
 		// an 8-bit point count followed by packed state bytes; no index or
 		// quality byte is present for each point.
-		if group == 1 && variation == 1 && qualifier == 0x07 {
+		if group == 1 && variation == 1 && qualifier == al.QualCount8 {
 			packedBytes := (int(count) + 7) / 8
 			if offset+packedBytes > len(data) {
 				break
@@ -584,15 +584,15 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset+4 > len(data) {
+		h, consumed, err := al.DecodeObjectHeader(data, offset)
+		if err != nil {
 			break
 		}
-
-		group := data[offset]
-		variation := data[offset+1]
-		qualifier := data[offset+2]
-		count := data[offset+3]
-		offset += 4
+		offset += consumed
+		group := h.Group
+		variation := h.Variation
+		qualifier := h.Qualifier
+		count := uint8(h.Count)
 
 		// Group 30 = Analog Input (static), Group 31 = Analog Input Event (with timestamp)
 		if group != 30 && group != 31 {
@@ -602,7 +602,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 
 		// Group 30 Variation 1 is a signed 32-bit value with flags. For the
 		// count qualifier (0x07), points are sequential and carry no index.
-		if group == 30 && variation == 1 && qualifier == 0x07 {
+		if group == 30 && variation == 1 && qualifier == al.QualCount8 {
 			if offset+int(count)*5 > len(data) { break }
 			for i := 0; i < int(count); i++ {
 				value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
@@ -693,15 +693,15 @@ func parseCounters(data []byte) []*types.Counter {
 	offset := 0
 
 	for offset < len(data) {
-		if offset+4 > len(data) {
+		h, consumed, err := al.DecodeObjectHeader(data, offset)
+		if err != nil {
 			break
 		}
-
-		group := data[offset]
-		variation := data[offset+1]
-		qualifier := data[offset+2]
-		count := data[offset+3]
-		offset += 4
+		offset += consumed
+		group := h.Group
+		variation := h.Variation
+		qualifier := h.Qualifier
+		count := uint8(h.Count)
 
 		// Group 20 = Counter (static), Group 21 = Counter Event (with timestamp)
 		if group != 20 && group != 21 {
@@ -711,7 +711,7 @@ func parseCounters(data []byte) []*types.Counter {
 
 		// Group 20 Variation 1 is an unsigned 32-bit counter with flags.
 		// Qualifier 0x07 carries sequential points without indexes.
-		if group == 20 && variation == 1 && qualifier == 0x07 {
+		if group == 20 && variation == 1 && qualifier == al.QualCount8 {
 			if offset+int(count)*5 > len(data) { break }
 			for i := 0; i < int(count); i++ {
 				value := binary.LittleEndian.Uint32(data[offset : offset+4])
@@ -790,15 +790,15 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset+4 > len(data) {
+		h, consumed, err := al.DecodeObjectHeader(data, offset)
+		if err != nil {
 			break
 		}
-
-		group := data[offset]
-		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
-		count := data[offset+3]
-		offset += 4
+		offset += consumed
+		group := h.Group
+		variation := h.Variation
+		_ = h.Qualifier
+		count := uint8(h.Count)
 
 		if group != 10 { // Group 10 = Binary Output
 			// Skip past this group's data
@@ -844,15 +844,15 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 	offset := 0
 
 	for offset < len(data) {
-		if offset+4 > len(data) {
+		h, consumed, err := al.DecodeObjectHeader(data, offset)
+		if err != nil {
 			break
 		}
-
-		group := data[offset]
-		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
-		count := data[offset+3]
-		offset += 4
+		offset += consumed
+		group := h.Group
+		variation := h.Variation
+		_ = h.Qualifier
+		count := uint8(h.Count)
 
 		if group != 40 { // Group 40 = Analog Output
 			// Skip past this group's data

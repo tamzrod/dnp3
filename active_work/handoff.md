@@ -64,10 +64,31 @@
   emits the `0x28` range16 header LSB-first.
 - Acceptance: generated request headers match golden; loopback green.
 
+### DNP3-005 — Wire Master response parse to object-header model
+- Commit message: `refactor(master): object-header based response parse`
+- `pkg/dnp3/master/client.go`: `parseBinaryInputs`, `parseAnalogInputs`,
+  `parseCounters`, `parseBinaryOutputs`, `parseAnalogOutputs` now decode
+  each object header via `al.DecodeObjectHeader` instead of ad-hoc byte
+  reads. Point parsing logic is unchanged.
+- Acceptance: same points returned as before; golden Class-0 response
+  vectors and loopback/integration all green.
+
+### DNP3-006 — Link handshake ACK validation
+- Commit message: `fix(master): validate link-layer ACK`
+- `internal/master/master.go`: `sendResetLink` now decodes the secondary
+  ACK frame and validates it via new `validateResetLinkACK`. The ACK must
+  be a well-formed frame (sync + CRC via `frame.Decode`), DIR=0, PRM=0,
+  function code ACK (0), SrcAddr=outstation, DestAddr=master. Any
+  deviation fails the handshake.
+- Tests: `TestValidateResetLinkACK` covers good ACK, bad FC (NACK),
+  wrong DIR, wrong PRM, wrong source address, wrong destination address,
+  and malformed frame (no sync).
+- Acceptance: handshake fails on invalid ACK; integration tests (real
+  outstation sends valid ACK) still green.
+
 ## Next READY Tasks
 
-- **DNP3-005** — Wire Master response parse to object-header model  *(prereqs: DNP3-003 ✓, DNP3-004 ✓)*
-- **DNP3-006** — Link handshake ACK validation
+- **DNP3-007** — Link-status request after reset  *(prereqs: DNP3-006 ✓)*
 - **DNP3-008** — Application sequence continuity
 - **DNP3-011** — IIN bit semantics verification & correction
 - **DNP3-022** — Context cancellation on Connect
@@ -85,7 +106,7 @@
 
 ## Recommended Next Task
 
-**DNP3-005 — Wire Master response parse to object-header model**
+**DNP3-007 — Link-status request after reset**
 
 After completing a task:
 
@@ -141,8 +162,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004
-NEXT TASK: DNP3-005 — Wire Master response parse to object-header model
+COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004, DNP3-005, DNP3-006
+NEXT TASK: DNP3-007 — Link-status request after reset
 ```
 
 ## Test Status

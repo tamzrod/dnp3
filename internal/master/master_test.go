@@ -3,8 +3,9 @@ package master
 import (
 	"testing"
 	"time"
-	
+
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
 )
 
 func TestStateString(t *testing.T) {
@@ -307,6 +308,80 @@ func TestReadRangeQualifierLSB(t *testing.T) {
 	want := []byte{0x01, 0x01, 0x28, 0x34, 0x12, 0x78, 0x56}
 	if string(got) != string(want) {
 		t.Fatalf("buildReadRangeRequest = % X, want % X", got, want)
+	}
+}
+
+// encodeACK builds a raw link frame for a secondary ACK with the given fields.
+func encodeACK(t *testing.T, dir, prm bool, fc uint8, dest, src uint16) []byte {
+	t.Helper()
+	f := &frame.Frame{
+		Control:  frame.Control{DIR: dir, PRM: prm, FuncCode: fc},
+		DestAddr: dest,
+		SrcAddr:  src,
+	}
+	raw, err := frame.Encode(f)
+	if err != nil {
+		t.Fatalf("encode ACK: %v", err)
+	}
+	return raw
+}
+
+// TestValidateResetLinkACK verifies the secondary ACK validation for the
+// Reset Link Stations handshake (DNP3-006).
+func TestValidateResetLinkACK(t *testing.T) {
+	const outstationID, masterAddr uint16 = 0x0004, 0x0003
+
+	tests := []struct {
+		name    string
+		raw     []byte
+		wantErr bool
+	}{
+		{
+			name: "good ACK",
+			raw:  encodeACK(t, false, false, frame.FuncAck, masterAddr, outstationID),
+		},
+		{
+			name:    "bad function code (NACK)",
+			raw:      encodeACK(t, false, false, frame.FuncNack, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong DIR (primary direction)",
+			raw:      encodeACK(t, true, false, frame.FuncAck, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong PRM (primary station)",
+			raw:      encodeACK(t, false, true, frame.FuncAck, masterAddr, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "wrong source address",
+			raw:      encodeACK(t, false, false, frame.FuncAck, masterAddr, 0x0100),
+			wantErr: true,
+		},
+		{
+			name:    "wrong destination address",
+			raw:      encodeACK(t, false, false, frame.FuncAck, 0x0200, outstationID),
+			wantErr: true,
+		},
+		{
+			name:    "malformed frame (no sync)",
+			raw:      []byte{0xC0, 0x00, 0x00, 0x00},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateResetLinkACK(tt.raw, outstationID, masterAddr)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
 	}
 }
 

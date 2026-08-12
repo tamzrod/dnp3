@@ -320,14 +320,53 @@ func (m *Master) sendResetLink() error {
 		}
 
 		// The outstation acknowledges Reset Link Stations at the data-link
-		// layer. Consume that frame here so the next application request reads
-		// an application response rather than a stale handshake ACK.
+		// layer. Consume and validate that frame here so the next application
+		// request reads an application response rather than a stale or invalid
+		// handshake ACK.
 		m.transport.SetTimeout(m.config.Timeout)
-		if _, err := m.transport.Receive(); err != nil {
+		raw, err := m.transport.Receive()
+		if err != nil {
 			return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
+		}
+		if err := validateResetLinkACK(raw, o.ID, m.config.MasterAddress); err != nil {
+			return fmt.Errorf("invalid reset link ACK: %w", err)
 		}
 	}
 
+	return nil
+}
+
+// validateResetLinkACK verifies a secondary ACK frame received in response to
+// a Reset Link Stations request. The ACK must:
+//   - be a well-formed frame (sync + header CRC validated by frame.Decode)
+//   - have DIR=0 (outstation-to-master) and PRM=0 (secondary)
+//   - carry function code ACK (0)
+//   - be addressed from the outstation (SrcAddr) to the master (DestAddr)
+//
+// Any deviation is a spec violation and the handshake fails (DNP3-006).
+func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
+	f, err := frame.Decode(raw)
+	if err != nil {
+		return fmt.Errorf("decode ACK frame: %w", err)
+	}
+	if f.Control.DIR {
+		return fmt.Errorf("ACK DIR=1, expected 0 (secondary)")
+	}
+	if f.Control.PRM {
+		return fmt.Errorf("ACK PRM=1, expected 0 (secondary)")
+	}
+	if f.Control.FuncCode != frame.FuncAck {
+		return fmt.Errorf("ACK function code=%d, expected %d (ACK)",
+			f.Control.FuncCode, frame.FuncAck)
+	}
+	if f.SrcAddr != outstationID {
+		return fmt.Errorf("ACK source address=0x%04X, expected outstation 0x%04X",
+			f.SrcAddr, outstationID)
+	}
+	if f.DestAddr != masterAddr {
+		return fmt.Errorf("ACK destination address=0x%04X, expected master 0x%04X",
+			f.DestAddr, masterAddr)
+	}
 	return nil
 }
 
