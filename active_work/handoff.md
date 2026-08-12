@@ -12,10 +12,10 @@
 - Planning complete for MEXT.
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
-- **Last completed task:** MEXT-015 — IntegrityPoll single multi-header path
-- **Last checkpoint commit:** `f581db5` (MEXT-015 — IntegrityPoll single multi-header path) — pushed to origin/main
-- **Current task:** none (idle) — next READY is MEXT-013
-- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-015). External gate after MEXT-021/033.
+- **Last completed task:** MEXT-013 — Operate real-TCP vs in-repo outstation
+- **Last checkpoint commit:** `f581db5` (MEXT-015 — IntegrityPoll single multi-header path) — pushed to origin/main; MEXT-013 commit pending
+- **Current task:** none (idle) — next READY is MEXT-017
+- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-013). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
 
 ## Completed Tasks
@@ -31,6 +31,7 @@
 - **MEXT-014** — Multi-object-header Class-0 parse harden. Fixed R3 parse side in `pkg/dnp3/master/client.go`: rewrote `skipGroupData` to be qualifier-aware (new signature `(offset, data, al.ObjectHeader)`). Added helpers `objectPointCount`, `isSequentialQualifier`, `objectIndexPrefixBytes`, `objectValueBytes`. count8/count16/range16 now skip with NO per-point index prefix; index8 (0x00) uses a 2-octet per-point index (stack convention); G1V1 packed uses ceil(n/8). Previously skipGroupData assumed a 2-octet index for ALL qualifiers, so a single APDU carrying G1+G20+G30 lost G20/G30 (offset overshoot broke the header scan). Updated 5 callers. Added `pkg/dnp3/master/multi_header_test.go` (TestReadMultiHeaderReturnsAllGroups): one APDU with G1(2pts)+G20(1pt)+G30(1pt) returns all points. Updated supported-profile.md R3 row + external-acceptance.md. The per-group `IntegrityPoll` workaround remains as primary until MEXT-015. go test ./... + verify-mvp.sh green. **R3 parse-side resolved; workaround removal pending MEXT-015.**
 - **MEXT-016** — Qualifier allow-list vs 1815 for v0 path. Locked the v0 request-side qualifier allow-list {0x06 all-objects (read/integrity), 0x00 index8 (operate/select), 0x28 range16 (ranged read), 0x07 count8 (event-class poll), 0x27 count16}. Added `internal/master/qualifier_golden_test.go`: TestPollRequestQualifierAllowList (every buildPollRequest header qualifier is in the allow-list; integrity poll golden G60V1 0x06), TestControlRequestQualifierAllowList (G12V1 control request qualifier 0x00, count 1), TestRangedReadRequestQualifierAllowList (range16 0x28, start/stop). Reject-others already enforced by `al.ObjectHeader.Encode` (ErrUnsupportedQualifier) and locked by `internal/al/object_header_test.go`. Updated supported-profile.md (request qualifier allow-list row). go test ./... + verify-mvp.sh green. **Goldens committed.**
 - **MEXT-015** — IntegrityPoll single multi-header path. Removed the per-group workaround as the primary path in `pkg/dnp3/master/client.go` `runIntegrityPoll`: the primary is now ONE Class-0 multi-group Read (G1/G20/G30 all-objects headers in a single APDU); the MEXT-014 qualifier-aware parsers populate every group from that single exchange. Retained a documented per-group fallback (`integrityPollPerGroup`) used only when the primary exchange errors (peer that rejects a multi-group Class-0 read or transport failure). Updated doc comments on `IntegrityPoll` (interface + impl). Added `pkg/dnp3/master/integrity_poll_test.go`: TestIntegrityPollSingleMultiHeaderExchange (asserts exactly ONE application request frame is sent for the poll and the full MVP set G1+G20+G30 is returned from that one exchange), TestIntegrityPollFallbackPerGroup (multi-group primary errors via seq-mismatch transport → per-group fallback returns the full set). Updated supported-profile.md (R3 row marked resolved; verification table row for the multi-header exchange + fallback) and external-acceptance.md. go test ./... + verify-mvp.sh green. **R3 resolved.**
+- **MEXT-013** — Operate real-TCP vs in-repo outstation. Proved the MEXT-012 R1 fix on a real TCP master↔outstation loopback (not the in-memory simulator). The in-repo outstation's `handleDirectOperate` returns an IIN-only response (outstation IIN bytes + no G12V1 control-status echo); before MEXT-012 this left the master with no parseable status → ControlTimeout (the DNP3-091 discovery). With MEXT-012's `resolveOperateStatus`, an IIN-only response with clear IIN is CommandStatusSuccess. Added `test/integration/operate_real_tcp_test.go`: TestOperateRealTCPSuccess (real-TCP Connect → DirectOperate CROB → ControlSuccess, not ControlTimeout; outstation-side dispatch symmetry asserted), TestOperateRealTCPBlockedStatus (rejected command → IIN.ParameterError → classified failure, never ControlSuccess/ControlTimeout). Updated outstation_side_gate_test.go discovery note (no longer claims ControlTimeout). Updated supported-profile.md (R1 row marked resolved; verification table row) and external-acceptance.md (R1 checklist item checked). go test ./... + verify-mvp.sh green. **R1 resolved (real-TCP proven). Observed response shape: IIN-only (no G12V1 echo) on success; IIN.ParameterError on rejection.**
 
 ## Current Checkpoint Batch
 
@@ -45,17 +46,17 @@
 - [x] MEXT-014 — Multi-object-header Class-0 parse harden
 - [x] MEXT-016 — Qualifier allow-list vs 1815 for v0 path
 - [x] MEXT-015 — IntegrityPoll single multi-header path
+- [x] MEXT-013 — Operate real-TCP vs in-repo outstation
 
 ## Next READY Tasks
 
-- **MEXT-013** — Operate real-TCP vs in-repo outstation (prereq MEXT-012, done) — proves R1 fix on real TCP
-- MEXT-017 — Link handshake external frame vectors (prereq MEXT-003, done)
+- **MEXT-017** — Link handshake external frame vectors (prereq MEXT-003, done)
 - MEXT-018 — Application SEQ + CON on solicited path audit (prereq MEXT-003, done)
 - MEXT-019 — IIN table freeze vs 1815 (prereq MEXT-003, done)
 
 ## Recommended Next Task
 
-**MEXT-013 — Operate real-TCP vs in-repo outstation**. Prove the MEXT-012 R1 fix on a real TCP master↔outstation path: spin up the in-repo outstation, drive a DirectOperate, and assert success without ControlTimeout even when the outstation omits the G12V1 status echo. verify-mvp.sh must stay green.
+**MEXT-017 — Link handshake external frame vectors**. Capture/golden the link-layer handshake frames (reset link + link status) against IEEE 1815 wire expectations so the external link path is locked. verify-mvp.sh must stay green.
 
 ## Test Commands (baseline)
 
@@ -79,7 +80,7 @@ go test -race ./internal/master/... ./pkg/dnp3/... ./test/integration/...
 
 - DNP3 multi-octet wire fields are **LSB-first**.
 - `frame.EncodedSize` = header + data + 2*ceil(dataLen/16) CRC bytes.
-- **R1:** Real outstation Direct-Operate may omit G12 status echo → ControlTimeout (MEXT-012/013). **Parse-side RESOLVED in MEXT-012** — IIN-only clear response now success; real-TCP proof pending MEXT-013.
+- **R1:** Real outstation Direct-Operate may omit G12 status echo → ControlTimeout (MEXT-012/013). **RESOLVED in MEXT-012/013** — IIN-only clear response now success; proven on real TCP (DirectOperate against in-repo outstation returns ControlSuccess).
 - **R2:** CROB control-code values may not match IEEE 1815 bitfield (MEXT-010/011). **RESOLVED in MEXT-011** — constants now 1815 bitfield (0x01/0x02/0x04/0x08/0x10/0x80).
 - **R3:** Multi-object-header Class-0 parse can lose points (MEXT-014/015). **RESOLVED in MEXT-014/015** — `skipGroupData` is qualifier-aware; `IntegrityPoll` now uses a single Class-0 multi-group read as primary path (one exchange returns the full set) with a per-group fallback for peers that reject the multi-group exchange.
 - **R4:** No VEC-01 external capture proof yet.
@@ -92,14 +93,14 @@ go test -race ./internal/master/... ./pkg/dnp3/... ./test/integration/...
 
 ## Next Action
 
-1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-013).
-2. Implement **MEXT-013** (Operate real-TCP vs in-repo outstation) — proves R1 fix on real TCP.
-3. Checkpoint after MEXT-013 — run go test ./... + verify-mvp.sh, commit, push.
+1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-017).
+2. Implement **MEXT-017** (Link handshake external frame vectors).
+3. Checkpoint after MEXT-017 — run go test ./... + verify-mvp.sh, commit, push.
 
 ## MVP Gate
 
 ```
 TOTAL TASKS: 40
 EXTERNAL MVP COMPLETE AT: MEXT-035
-NEXT TASK: MEXT-013 — Operate real-TCP vs in-repo outstation
+NEXT TASK: MEXT-017 — Link handshake external frame vectors
 ```

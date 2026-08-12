@@ -29,15 +29,14 @@ import (
 // direction by asserting outstation-side observables through a real
 // outstation server + master client loopback.
 //
-// Note (DNP3-091 discovery): the real outstation's DirectOperate response
-// currently carries no control-status object echo, so the master's Operate
-// reports ControlTimeout against a real outstation (the master-side
-// status==Success assertion is only verified against the simulator, which
-// sends a proper control-ack). The outstation-side dispatch itself succeeds
-// — the CommandHandler receives the CROB — which is the outstation-side
-// observable asserted here. The operate-response gap is tracked for a future
-// task and is out of scope for test symmetry. A short master timeout keeps
-// the test fast despite the master waiting for the (absent) ack.
+// Note (DNP3-091 discovery, updated by MEXT-012/013): the real outstation's
+// DirectOperate response carries no control-status object echo — it is an
+// IIN-only response. MEXT-012 taught resolveOperateStatus to treat an IIN-only
+// response with clear IIN as CommandStatusSuccess, and MEXT-013 proves that fix
+// on real TCP (see operate_real_tcp_test.go: TestOperateRealTCPSuccess asserts
+// ControlSuccess against this same outstation path). This test still asserts
+// only the outstation-side dispatch observable (the CommandHandler receives the
+// CROB); the master-side success assertion lives in operate_real_tcp_test.go.
 
 // recordingDataHandler records which MVP getters were called and serves a
 // fixed set of points so the outstation-side can be observed.
@@ -137,9 +136,8 @@ func TestOutstationSideMVPGate(t *testing.T) {
 	}
 	defer server.Stop(context.Background())
 
-	// Short master timeout: the real outstation's DirectOperate response does
-	// not carry a control-status echo (DNP3-091 discovery), so the master
-	// waits for its full timeout before reporting. Keep the test fast.
+	// Short master timeout keeps this outstation-side dispatch test fast; the
+	// master-side Operate success is covered by operate_real_tcp_test.go.
 	client, err := master.NewClient(master.NewConfig(
 		master.WithOutstationAddress(1024),
 		master.WithTransport(dnp3.TCP, "localhost", port),

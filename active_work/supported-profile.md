@@ -102,6 +102,7 @@ reference:
 | Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `pkg/dnp3/master/integrity_poll_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
 | `IntegrityPoll` single multi-header exchange + per-group fallback (MEXT-015) | `pkg/dnp3/master/integrity_poll_test.go` (`TestIntegrityPollSingleMultiHeaderExchange`, `TestIntegrityPollFallbackPerGroup`) | MEXT-015 |
 | Public `Operate` (Direct Operate G12V1 CROB) + command status | `test/integration/mvp_loopback_test.go` | DNP3-021/045 |
+| `Operate` real-TCP success + classified failure (MEXT-013) | `test/integration/operate_real_tcp_test.go` (`TestOperateRealTCPSuccess`, `TestOperateRealTCPBlockedStatus`) | MEXT-013 |
 | Retry / timeout / outstanding-request tracking | `internal/master/retry_policy_test.go`, `internal/master/outstanding_request_test.go` | DNP3-031/032/040 |
 | Idle-timeout keep-alive close | `internal/master/idle_monitor_test.go` | DNP3-042 |
 | Public error taxonomy + `ClassifyError` | `pkg/dnp3/error_taxonomy_test.go`, `pkg/dnp3/master/error_classification_test.go` | DNP3-043 |
@@ -139,7 +140,7 @@ MEXT task; the list is authoritative so agents need not read git history.
 
 | ID | Residual | Impact | Resolving task(s) |
 |----|----------|--------|-------------------|
-| R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. **Parse-side resolved by MEXT-012** (IIN-only response with clear IIN now treated as success; error IIN never success; truncated G12V1 never success). Real-TCP proof pending MEXT-013. | Resolved (parse). Real-TCP proof pending. | MEXT-012 ✅, MEXT-013 |
+| R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. **Resolved by MEXT-012/013** — MEXT-012: IIN-only response with clear IIN now treated as success (error IIN never success; truncated G12V1 never success); MEXT-013: proven on real TCP — DirectOperate against the in-repo outstation (IIN-only response, no G12V1 echo) returns ControlSuccess, not ControlTimeout. | Resolved. | MEXT-012 ✅, MEXT-013 ✅ |
 | R2 | CROB control-code values were a 1..8 enum rather than the IEEE 1815 bitfield. **Resolved by MEXT-010/011** (constants now 0x01/0x02/0x04/0x08/0x10/0x80; outstation + goldens updated). | Resolved. Real IEDs receive spec-correct codes. | MEXT-010, MEXT-011 ✅ |
 | R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` used a per-group workaround. Fragile versus real multi-header responses. **Resolved by MEXT-014/015** — `skipGroupData` is qualifier-aware (G1+G20+G30 in one APDU parsed without point loss), and `IntegrityPoll` now uses a single Class-0 multi-group read as the primary path (one exchange returns the full set), with a per-group fallback for peers that reject the multi-group exchange. | Resolved. | MEXT-014 ✅, MEXT-015 ✅ |
 | R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
