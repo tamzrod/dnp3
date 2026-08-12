@@ -96,6 +96,7 @@ reference:
 | LSB-first wire encoding of MVP point indices/values/CROB times | `pkg/dnp3/master/object_vector_test.go`, `internal/master/control_vector_test.go`, `internal/master/master_test.go`, `test/integration/tcp_test.go` | DNP3-001 |
 | Object-header encode/decode model | `internal/al/object_header_test.go` | DNP3-002/003 |
 | Master read path (Class-0 headers, range16 qualifier) | `pkg/dnp3/master/client_test.go` (`TestBuildReadRequestGolden`), `internal/master/master_test.go` | DNP3-004/005 |
+| Request qualifier allow-list (0x06 all-objects / 0x00 index8 / 0x28 range16 / 0x07 count8) | `internal/master/qualifier_golden_test.go`, `internal/al/object_header_test.go` (`TestEncodeObjectHeaderUnsupportedQualifier`) | MEXT-016 |
 | Link-layer handshake (reset link + link status) | `internal/dll/link/link_test.go`, `test/integration/tcp_test.go` | DNP3-006/007 |
 | `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
 | Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
