@@ -268,26 +268,43 @@ func (c *Config) Validate() error {
 
 // DataHandler provides data points to the outstation.
 // Implement this interface to provide your application's data to DNP3 Masters.
+//
+// v0 MVP profile (DNP3-089): only the static input groups are read by the
+// outstation — G1.1 (binary input), G30.1 (analog input), and G20.1 (counter).
+// Those three getters are the MVP-required methods and must return real data.
+//
+// The remaining methods are outside the v0 read profile (see
+// supported-profile.md: "Data handler binary/analog output status and
+// frozen-counter methods — Reject / Not read by the v0 profile"). They exist on
+// the interface for API continuity but are not read in v0; a minimal handler
+// may implement them as no-ops / returning nil. The outstation's builders
+// return an empty (object-less) payload for any group whose getter returns an
+// empty slice, so a handler that provides only the MVP input groups still
+// serves a valid Class-0 integrity response.
 type DataHandler interface {
-	// GetBinaryInputs returns binary input data points
+	// GetBinaryInputs returns binary input data points (MVP-required: G1.1).
 	GetBinaryInputs() []*types.BinaryInput
 
-	// GetAnalogInputs returns analog input data points
+	// GetAnalogInputs returns analog input data points (MVP-required: G30.1).
 	GetAnalogInputs() []*types.AnalogInput
 
-	// GetCounters returns counter data points
+	// GetCounters returns counter data points (MVP-required: G20.1).
 	GetCounters() []*types.Counter
 
-	// GetBinaryOutputs returns binary output status data points
+	// GetBinaryOutputs returns binary output status data points. Not read by
+	// the v0 profile; return nil for a minimal MVP handler.
 	GetBinaryOutputs() []*types.BinaryOutput
 
-	// GetAnalogOutputs returns analog output status data points
+	// GetAnalogOutputs returns analog output status data points. Not read by
+	// the v0 profile; return nil for a minimal MVP handler.
 	GetAnalogOutputs() []*types.AnalogOutput
 
-	// GetFrozenCounters returns frozen counter data points
+	// GetFrozenCounters returns frozen counter data points. Not read by the
+	// v0 profile; return nil for a minimal MVP handler.
 	GetFrozenCounters() []*types.Counter
 
-	// FreezeCounters freezes the counters. If clear is true, also zero the counters.
+	// FreezeCounters freezes the counters. Not read by the v0 profile; a
+	// minimal MVP handler may implement this as a no-op returning nil.
 	FreezeCounters(clear bool) error
 }
 

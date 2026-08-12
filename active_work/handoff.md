@@ -8,11 +8,15 @@
 
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
-- DNP3-001 through DNP3-088, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
-- Last completed: DNP3-087 (Outstation public API profile lock). The 3rd task
-  of checkpoint batch 084/085/087. All three green incl. `-race`;
-  `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
-- Last checkpoint: DNP3-066/067/068 (distinct confirm timeout + descriptive
+- DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
+- Last completed: DNP3-089 (Outstation data handler interface hardening). The
+  3rd task of checkpoint batch 098/095/089. All three green incl. `-race`;
+  `verify-mvp.sh` exit 0; `scripts/run-conformance.sh` exit 0. Ready to
+  commit + push this checkpoint.
+- Last checkpoint: DNP3-084/085/087 (MaxConnections + context cancellation +
+  profile lock, commit `acdaa32`, pushed to origin/main). All green incl.
+  `-race`; `verify-mvp.sh` exit 0.
+- Previous checkpoint: DNP3-066/067/068 (distinct confirm timeout + descriptive
   unsupported-object errors + clean restart after Close, commit `caad7c5`,
   pushed to origin/main). All green incl. `-race`; `verify-mvp.sh` exit 0.
 - Previous checkpoint: DNP3-056/054/057 (MVP acceptance gate + master CON confirm +
@@ -1244,18 +1248,62 @@
   TestConfigValidate'` green; `-race` green; `verify-mvp.sh` exit 0.
   Acceptance: "Clear errors" / "No silent fallback" — met.
 
+## Completed Tasks (this checkpoint batch 098/095/089)
+
+### DNP3-098 — Conformance test enablement (DONE)
+- Commit message: `test: enable existing conformance suites`
+- New `scripts/run-conformance.sh`: single CI-runnable gate that builds the
+  tree then runs the DLL/TL/AL conformance suites (plain + `-race`) and exits
+  non-zero on any failure. Supports `-plain`/`-race` flags. The suites already
+  ran under `verify-mvp.sh`; this script provides a focused, independently
+  runnable conformance gate.
+- Updated `scripts/README.md`: checked the `run-conformance.sh` box (DNP3-098).
+- Verification: `./scripts/run-conformance.sh` exit 0 (DLL/TL/AL plain + race);
+  `verify-mvp.sh` exit 0. Acceptance: "CI-runnable" — met.
+
+### DNP3-095 — Outstation example (DONE)
+- Commit message: `docs: minimal Outstation example`
+- New `examples/outstation/main.go`: minimal DNP3 outstation server using the
+  v0 MVP public API — TCP listener on `0.0.0.0:20000`, outstation address
+  `1024`, single-master (`WithMaxConnections(1)`), serves G1.1/G20.1/G30.1
+  static points, accepts G12V1 direct binary control, rejects analog control.
+  Uses `signal.NotifyContext` + `Start(ctx)`/`Stop(ctx)` for clean lifecycle.
+- New `examples/outstation/main_test.go` (build-compile lock) +
+  `examples/outstation/README.md`; updated `examples/README.md`.
+- Verification: `go build ./examples/outstation` + `go vet` + `go test
+  ./examples/outstation/` green (incl. `-race`). Acceptance: "Compiles" — met.
+
+### DNP3-089 — Outstation data handler interface hardening (DONE)
+- Commit message: `refactor(outstation): MVP data handler contract`
+- `pkg/dnp3/outstation/server.go`: documented the public `DataHandler`
+  interface per the v0 profile — MVP-required getters
+  (`GetBinaryInputs`/`GetAnalogInputs`/`GetCounters` for G1.1/G30.1/G20.1) vs
+  the non-MVP methods (`GetBinaryOutputs`/`GetAnalogOutputs`/
+  `GetFrozenCounters`/`FreezeCounters` — "Reject / Not read by the v0 profile"
+  per supported-profile.md), which a minimal handler may implement as no-ops.
+- New `pkg/dnp3/outstation/data_handler_contract_test.go`:
+  `minimalMVPDataHandler` (only MVP getters return data; others nil/no-op)
+  satisfies `DataHandler` (`var _ DataHandler = (*minimalMVPDataHandler)(nil)`)
+  and works through `SetDataHandler`; asserts non-MVP getters are nil and
+  `FreezeCounters` returns nil.
+- Verification: `go test ./pkg/dnp3/outstation/ -run 'MinimalMVPDataHandler'`
+  green (incl. `-race`); `verify-mvp.sh` exit 0. Acceptance: "Compiles with
+  minimal handler" — met.
+
 ## Next READY Tasks (pending)
 
-- **DNP3-098** — Conformance test enablement (DLL/TL/AL existing)
+- **DNP3-090** — Outstation command handler interface hardening (prereq DNP3-075, done)
+- **DNP3-091** — Outstation integration test symmetry (prereq DNP3-045, done)
+- **DNP3-097** — Shared test fixture library cleanup (prereq DNP3-036, DNP3-081)
 - Remaining roadmap tasks through DNP3-100 (see `DNP3_MASTER_ROADMAP.md`).
 
 ## Recommended Next Task
 
-**DNP3-098 — Conformance test enablement (DLL/TL/AL existing)** (no prereq).
-Enable/wire the existing DLL/TL/AL conformance tests as a persistent gate.
+**DNP3-090 — Outstation command handler interface hardening** (prereq DNP3-075
+done). CROB only for MVP; analog command rejected with a clear error.
 
-If blocked, pick the next READY outstation task from `DNP3_MASTER_ROADMAP.md`
-(through DNP3-100).
+If blocked, fall back to **DNP3-091 — Outstation integration test symmetry**
+(prereq DNP3-045 done).
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1324,8 +1372,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-088, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-098 — Conformance test enablement (DLL/TL/AL existing)
+COMPLETED: DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-090 — Outstation command handler interface hardening
 ```
 
 ## Test Status

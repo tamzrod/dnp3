@@ -18,7 +18,8 @@ This directory contains utility scripts for development, testing, and maintenanc
 ### Testing
 
 - [x] `verify-mvp.sh` - Run the DNP3 MVP verification gate (build + vet + unit/integration + race; exit 0 on a clean tree). See [DNP3-052](../active_work/DNP3_MASTER_ROADMAP.md).
-- [ ] `test-conformance.sh` - Run conformance tests
+- [x] `run-conformance.sh` - Run the DLL/TL/AL layer conformance suites (plain + race; exit 0 on green). CI-runnable conformance gate. See [DNP3-098](../active_work/DNP3_MASTER_ROADMAP.md).
+- [ ] `test-conformance.sh` - Run conformance tests (alias of `run-conformance.sh`)
 - [ ] `test-interop.sh` - Run interoperability tests
 - [ ] `test-fuzz.sh` - Run fuzzing tests
 
