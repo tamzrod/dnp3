@@ -213,6 +213,12 @@ func (a *APDU) String() string {
 //	0x04 IIN2.5 BadConfig         — bad configuration
 //	0x02 IIN2.6 Reserved2_6       — reserved, always 0
 //	0x01 IIN2.7 Reserved2_7       — reserved, always 0
+//
+// MEXT-019 FREEZE: this bit map is frozen against IEEE 1815-2012 for the
+// external v0 interop claim. The flag-to-octet/position mapping MUST NOT
+// change without an explicit spec-continuity review. The frozen table is
+// locked by internal/al/iin_freeze_test.go (named critical masks + a full
+// 16-bit round-trip).
 type IIN struct {
 	// IIN1 (octet 1) flags
 	AllStations   bool // IIN1.0 0x80 — broadcast/all-stations message received
