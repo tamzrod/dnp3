@@ -1056,8 +1056,11 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		rawValue = command.Value
 	}
 
-	// Perform operate through internal master
-	if err := internal.Operate(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue); err != nil {
+	// Perform operate through internal master and parse the per-point command
+	// status from the response (DNP3-020/021). The public response carries the
+	// real status; a failed point is never reported as ControlSuccess.
+	cs, err := internal.OperateWithStatus(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue)
+	if err != nil {
 		return nil, fmt.Errorf("operate failed: %w", err)
 	}
 
@@ -1070,9 +1073,42 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 
 	return &OperateResponse{
 		IIN:       iin,
-		Status:    types.ControlSuccess,
+		Status:    mapCommandStatus(cs),
 		Timestamp: time.Now(),
 	}, nil
+}
+
+// mapCommandStatus translates the internal master's CommandStatus to the public
+// types.ControlStatus. Unknown/unparseable statuses surface as ControlTimeout
+// (not ControlSuccess) so callers never mistake a missing status for success.
+func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
+	switch cs {
+	case master.CommandStatusSuccess:
+		return types.ControlSuccess
+	case master.CommandStatusTimeout:
+		return types.ControlTimeout
+	case master.CommandStatusNoSelect:
+		return types.ControlNoSelect
+	case master.CommandStatusBadFormat:
+		return types.ControlBadFormat
+	case master.CommandStatusNotSupported:
+		return types.ControlNotSupported
+	case master.CommandStatusAlreadyActive:
+		return types.ControlAlreadyActive
+	case master.CommandStatusBlocked:
+		return types.ControlBlocked
+	case master.CommandStatusLocal:
+		return types.ControlLocal
+	case master.CommandStatusTooMany:
+		return types.ControlTooMany
+	case master.CommandStatusNotAuthorized:
+		return types.ControlNotAuthorized
+	case master.CommandStatusAutonomous:
+		return types.ControlAutonomous
+	default:
+		// CommandStatusUnknown or any out-of-range value: never success.
+		return types.ControlTimeout
+	}
 }
 
 // EnableUnsolicited implements Client.EnableUnsolicited

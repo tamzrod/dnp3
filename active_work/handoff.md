@@ -7,7 +7,7 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-018 complete. Implementation underway.
+- DNP3-001 through DNP3-021 complete. Implementation underway.
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -269,9 +269,66 @@
   (start=5 stop=6), `TestG20V1LSBByteOrder`, `TestG20V1QualityByte`.
 - Acceptance: unsigned LSB decode + range16 + quality byte locked; suite green.
 
+### DNP3-019 — CROB G12V1 request final correctness
+- Commit message: `fix(objects): finalize CROB request encoding`
+- `internal/master/master.go`: added named `CROBCode*` constants for the
+  request encode/outstation decode (1..8 enum). `buildControlRequest` bool→
+  code mapping now uses the named constants. The G12V1 wire LAYOUT is locked:
+  header `0C 01 00 01`, 2-octet LSB index, then the 11-byte CROB value
+  (code, count, onTime LSB, offTime LSB, status). Both `buildCROBRequest`
+  (WriteBinaryOutput) and `buildControlRequest` (Operate) verified.
+- Tests: extended `internal/master/control_vector_test.go` with
+  `TestBuildCROBRequestLayout` (full 17-octet layout),
+  `TestBuildCROBRequestIndexLSBHighByte` (index 0xABCD → CD AB),
+  `TestBuildCROBRequestTimeLSBBoundary` (max-uint32 on/off times),
+  `TestBuildControlRequestCROBBoolMapping` (true→LATCH_ON, false→LATCH_OFF,
+  uint8 passthrough). Existing golden `direct-control-crob-vector.hex` pass.
+- **Discovery (cross-layer, NOT fixed here):** the repository's CROB control-
+  code VALUES use a 1..8 enum, NOT the IEEE 1815 G12V1 control-code bit field
+  (0x01 NUL, 0x02 Pulse On, 0x04 Pulse Off, 0x08 Latch On, 0x10 Latch Off,
+  0x80 Queue). This is consistent internally (master encode + outstation decode
+  both use 1..8), so loopback works, but a real external outstation would NOT
+  interpret code=7 as Latch On. The encode LAYOUT (single octet in position) is
+  correct; reconciling the code VALUES with the IEEE 1815 bit field is a
+  coordinated master+outstation+public-handler correction that should be a
+  dedicated task before external interop verification (VEC-01+). Flagged for
+  Grok/Rod.
+- Acceptance: request bytes match golden; CROB request test green.
+
+### DNP3-020 — CROB status parsing
+- Commit message: `fix(master): parse CROB command status`
+- `internal/master/master.go`: added `CommandStatus` type + constants
+  (Success=0, Timeout=1, NoSelect=2, BadFormat=3, NotSupported=4,
+  AlreadyActive=5, Blocked=6, Local=7, TooMany=8, NotAuthorized=9,
+  Autonomous=10, Unknown=0xFF). New `parseCommandStatus(data)` scans the
+  response object data for a G12V1 object and returns the per-point command
+  status byte (CTRL-01); supports the index-only (0x00), count8 (0x07), and
+  count16 (0x27) qualifiers. New `OperateWithStatus(...)` sends the request
+  via `sendWithRetryAndGetResponse`, decodes the response, and returns the
+  parsed status. A response with no parseable G12V1 status yields
+  `CommandStatusUnknown` — never success.
+- Tests (new file `internal/master/command_status_test.go`):
+  `TestParseCommandStatusVectors` (all 11 status codes), missing-object and
+  truncated-object → Unknown, `TestOperateWithStatusSuccessRejected`
+  (success + 3 rejection codes via canned status-echo transport),
+  `TestOperateWithStatusMissingObjectNotSuccess` (empty response → Unknown).
+- Acceptance: failed point ≠ CommandStatusSuccess; status tests green.
+
+### DNP3-021 — Public Operate response carries status
+- Commit message: `feat(api): expose control status on OperateResponse`
+- `pkg/dnp3/master/client.go`: public `client.Operate` now calls
+  `internal.OperateWithStatus` and translates the result to
+  `types.ControlStatus` via new `mapCommandStatus`. `OperateResponse.Status`
+  carries the real per-point command status; a failed/unknown status is never
+  reported as `ControlSuccess` (unknown → `ControlTimeout`).
+- Tests (new file `pkg/dnp3/master/operate_status_test.go`):
+  `TestPublicOperateSurfacesStatus` (success + 4 rejection codes through the
+  public `Operate` path), `TestPublicOperateMissingStatusNotSuccess` (empty
+  response → not ControlSuccess).
+- Acceptance: caller sees real status; public control test green.
+
 ## Next READY Tasks
 
-- **DNP3-019** — CROB G12V1 request final correctness  *(prereqs: DNP3-016 ✓)*
 - **DNP3-022** — Context cancellation on Connect
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
@@ -287,7 +344,7 @@
 
 ## Recommended Next Task
 
-**DNP3-019 — CROB G12V1 request final correctness**
+**DNP3-022 — Context cancellation on Connect**
 
 After completing a task:
 
@@ -343,13 +400,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-018
-NEXT TASK: DNP3-019 — CROB G12V1 request final correctness
+COMPLETED: DNP3-001 through DNP3-021
+NEXT TASK: DNP3-022 — Context cancellation on Connect
 ```
 
 ## Test Status
 
-- `go test ./...` — all 21 packages green (including integration).
-- `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
+- `go test ./...` — all packages green (including integration).
+- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commit: DNP3-016/017/018 (this commit). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), then DNP3-019/020/021 (this commit). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).

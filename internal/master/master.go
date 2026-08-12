@@ -640,6 +640,42 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 	return m.sendWithRetry(req, outstationID)
 }
 
+// OperateWithStatus performs a control operation and returns the per-point
+// command status parsed from the outstation's response (DNP3-020). Unlike
+// Operate, it reads the response and never reports success when the response
+// status byte indicates a failure. A response with no parseable G12V1 status
+// yields CommandStatusUnknown (not success).
+func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) (CommandStatus, error) {
+	if m.State() < StateInitialized {
+		return CommandStatusUnknown, ErrNotConnected
+	}
+
+	var req *al.APDU
+	if selectThenOperate {
+		selectReq := m.buildControlRequest(al.FuncSelect, group, variation, index, value)
+		if _, err := m.sendWithRetryAndGetResponse(selectReq, outstationID); err != nil {
+			return CommandStatusUnknown, err
+		}
+		req = m.buildControlRequest(al.FuncOperate, group, variation, index, value)
+	} else {
+		req = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
+	}
+	if req == nil {
+		return CommandStatusUnknown, fmt.Errorf("unsupported control value for group %d variation %d", group, variation)
+	}
+
+	appData, err := m.sendWithRetryAndGetResponse(req, outstationID)
+	if err != nil {
+		return CommandStatusUnknown, err
+	}
+
+	resp, err := al.DecodeResponse(appData)
+	if err != nil {
+		return CommandStatusUnknown, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+	}
+	return parseCommandStatus(resp.Data), nil
+}
+
 // TimeSync performs time synchronization with an outstation.
 func (m *Master) TimeSync(outstationID uint16) error {
 	if m.State() < StateInitialized {
@@ -1135,8 +1171,8 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 	switch group {
 	case 12:
 		// CROB (Control Relay Output Block) - 11 bytes
-		// Format: code(1), count(1), onTime(4), offTime(4), status(1)
-		// Outstation CROB codes: 2=CLOSE(on), 3=OPEN(off), 7=LATCH_ON, 8=LATCH_OFF
+		// Layout: code(1), count(1), onTime(4 LSB), offTime(4 LSB), status(1).
+		// Index precedes the value bytes (2 octets, LSB first).
 		var code uint8
 		var count uint8 = 1
 		var onTime uint32 = 0
@@ -1146,9 +1182,9 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		switch v := value.(type) {
 		case bool:
 			if v {
-				code = 7 // LATCH_ON → Value = true
+				code = CROBCodeLatchOn // Value = true
 			} else {
-				code = 8 // LATCH_OFF → Value = false
+				code = CROBCodeLatchOff // Value = false
 			}
 		case uint8:
 			code = v
@@ -1311,6 +1347,170 @@ type CROB struct {
 	OnTime  uint32 // Time in ms to energize
 	OffTime uint32 // Time in ms to de-energize
 	Status  uint8  // Qualifier code (0x00=STANDARD)
+}
+
+// CROB control-code values used by this implementation's request encode and
+// outstation decode. NOTE: these are a repository-internal 1..8 enum, NOT the
+// IEEE 1815 G12V1 control-code bit field (0x01 NUL, 0x02 Pulse On, 0x04 Pulse
+// Off, 0x08 Latch On, 0x10 Latch Off, 0x80 Queue). The encode LAYOUT (code as
+// a single octet at the correct position) is locked by DNP3-019; reconciling
+// the code VALUES with the IEEE 1815 bit field is a cross-layer correction
+// tracked separately (see active_work/handoff.md discoveries).
+const (
+	CROBCodeNUL      uint8 = 1
+	CROBCodeClose    uint8 = 2 // turn ON
+	CROBCodeOpen     uint8 = 3 // turn OFF
+	CROBCodeTrip     uint8 = 4
+	CROBCodePulseOn  uint8 = 5
+	CROBCodePulseOff uint8 = 6
+	CROBCodeLatchOn  uint8 = 7 // Value = true
+	CROBCodeLatchOff uint8 = 8 // Value = false
+)
+
+// CommandStatus is the per-point status code returned in a G12V1 control
+// response (IEEE 1815 "Command Status", CTRL-01). Values mirror the
+// outstation-side command-status enumeration; the master must never report
+// CommandStatusSuccess for a response whose status byte indicates otherwise.
+type CommandStatus uint8
+
+const (
+	// CommandStatusSuccess indicates the command was accepted and executed.
+	CommandStatusSuccess CommandStatus = 0
+	// CommandStatusTimeout indicates the command timed out before completion.
+	CommandStatusTimeout CommandStatus = 1
+	// CommandStatusNoSelect indicates select was not received before operate.
+	CommandStatusNoSelect CommandStatus = 2
+	// CommandStatusBadFormat indicates a malformed control object.
+	CommandStatusBadFormat CommandStatus = 3
+	// CommandStatusNotSupported indicates the command is not supported.
+	CommandStatusNotSupported CommandStatus = 4
+	// CommandStatusAlreadyActive indicates the output is already in that state.
+	CommandStatusAlreadyActive CommandStatus = 5
+	// CommandStatusBlocked indicates the output is blocked from operation.
+	CommandStatusBlocked CommandStatus = 6
+	// CommandStatusLocal indicates the output is in local control mode.
+	CommandStatusLocal CommandStatus = 7
+	// CommandStatusTooMany indicates too many commands are queued.
+	CommandStatusTooMany CommandStatus = 8
+	// CommandStatusNotAuthorized indicates the command was not authorized.
+	CommandStatusNotAuthorized CommandStatus = 9
+	// CommandStatusAutonomous indicates autonomous operation.
+	CommandStatusAutonomous CommandStatus = 10
+	// CommandStatusUnknown is the default when no parseable status is present.
+	CommandStatusUnknown CommandStatus = 0xFF
+)
+
+// parseCommandStatus scans the application-layer response data (the bytes
+// following the control/func/IIN octets) for a Group 12 Variation 1 object and
+// returns the first per-point command-status byte. A DirectOperate/Operate
+// response echoes the request's G12V1 header with the CROB status byte
+// replaced by the command status (CTRL-01). If no G12V1 object is present, or
+// the object is truncated, the status is CommandStatusUnknown — the master must
+// NOT assume success in that case.
+func parseCommandStatus(data []byte) CommandStatus {
+	offset := 0
+	for offset+4 <= len(data) {
+		group := data[offset]
+		variation := data[offset+1]
+		qualifier := data[offset+2]
+
+		if group == 12 && variation == 1 {
+			return commandStatusForQualifier(data, offset, qualifier)
+		}
+		// Skip this object header + its data to continue scanning.
+		next, ok := skipObject(data, offset, group, variation, qualifier)
+		if !ok {
+			return CommandStatusUnknown
+		}
+		offset = next
+	}
+	return CommandStatusUnknown
+}
+
+// commandStatusForQualifier reads the per-point command status byte from a G12V1
+// object at the given header offset for the given qualifier. The response CROB
+// layout mirrors the request: code(1), count(1), onTime(4), offTime(4),
+// status(1) — the status byte is the command status. For the index-only
+// qualifier (0x00) the per-point index (2 octets) precedes the CROB value.
+func commandStatusForQualifier(data []byte, offset int, qualifier uint8) CommandStatus {
+	switch qualifier {
+	case 0x00: // index-only: header(4) + index(2) + CROB(11)
+		statusIdx := offset + 4 + 2 + 10
+		if statusIdx < len(data) {
+			return CommandStatus(data[statusIdx])
+		}
+	case 0x07, 0x27: // count8/count16: header(4) [+count16(2)] + CROB(11)
+		hdrLen := 4
+		if qualifier == 0x27 {
+			hdrLen = 5
+		}
+		statusIdx := offset + hdrLen + 10
+		if statusIdx < len(data) {
+			return CommandStatus(data[statusIdx])
+		}
+	}
+	return CommandStatusUnknown
+}
+
+// skipObject advances past one object header and its payload. Returns the new
+// offset and ok=false if the object is truncated/unknown (scan aborts).
+func skipObject(data []byte, offset int, group, variation, qualifier uint8) (int, bool) {
+	// IEEE 1815 v0 object-header sizes (qualifier high nibble = prefix mode,
+	// low nibble = prefix field size):
+	//   0x06 all-objects -> 4-byte header, no payload to skip here
+	//   0x07 count8      -> 4-byte header
+	//   0x27 count16     -> 5-byte header
+	//   0x28 range16     -> 7-byte header (start/stop)
+	//   0x00 index8      -> 4-byte header, per-point 1-byte index prefix
+	// We only need accurate advancement for G12V1 (index-only, 0x00); other
+	// groups/qualifiers are best-effort.
+	pointSize, hasIndexPrefix, prefixSize := objectLayout(group, variation, qualifier)
+	if pointSize == 0 && qualifier != 0x06 {
+		return 0, false
+	}
+	switch qualifier {
+	case 0x06: // all-objects: header only
+		return offset + 4, true
+	case 0x00: // index8/count8 hybrid used by G12V1: 4-byte header + count(1)
+		count := int(data[offset+3])
+		perPoint := pointSize
+		if hasIndexPrefix {
+			perPoint += prefixSize
+		}
+		return offset + 4 + 1 + count*perPoint, true
+	case 0x07: // count8
+		count := int(data[offset+3])
+		return offset + 4 + count*pointSize, true
+	case 0x27: // count16
+		if offset+5 > len(data) {
+			return 0, false
+		}
+		count := int(data[offset+3]) | int(data[offset+4])<<8
+		return offset + 5 + count*pointSize, true
+	case 0x28: // range16
+		if offset+7 > len(data) {
+			return 0, false
+		}
+		start := int(data[offset+3]) | int(data[offset+4])<<8
+		stop := int(data[offset+5]) | int(data[offset+6])<<8
+		n := stop - start + 1
+		if n < 0 {
+			n = 0
+		}
+		return offset + 7 + n*pointSize, true
+	}
+	return 0, false
+}
+
+// objectLayout returns the per-point payload size for fixed-size object
+// variations, whether each point carries an index prefix, and the prefix size.
+func objectLayout(group, variation, qualifier uint8) (pointSize int, hasIndexPrefix bool, prefixSize int) {
+	switch {
+	case group == 12 && variation == 1:
+		return 11, qualifier == 0x00, 2 // CROB; index-only uses a 2-octet index
+	default:
+		return 0, false, 0
+	}
 }
 
 // WriteBinaryOutput writes a binary output (CROB) to an outstation.
