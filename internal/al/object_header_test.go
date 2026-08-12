@@ -2,6 +2,7 @@ package al
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -216,11 +217,44 @@ func TestDecodeObjectHeaderTruncated(t *testing.T) {
 }
 
 // TestDecodeObjectHeaderUnsupportedQualifier verifies unsupported qualifier
-// bytes return an error.
+// bytes return a clear ErrUnsupportedQualifier error and no header (DNP3-028).
+// The v0 allow-list is 0x06, 0x07, 0x00, 0x28, 0x27; everything else is rejected.
 func TestDecodeObjectHeaderUnsupportedQualifier(t *testing.T) {
-	data := []byte{0x01, 0x01, 0xFF, 0x00}
-	if _, _, err := DecodeObjectHeader(data, 0); err == nil {
-		t.Fatalf("expected error for unsupported qualifier 0xFF, got nil")
+	bad := []uint8{0x01, 0x02, 0x05, 0x08, 0x17, 0x25, 0x26, 0x29, 0xFE, 0xFF}
+	for _, q := range bad {
+		data := []byte{0x01, 0x01, q, 0x00}
+		h, n, err := DecodeObjectHeader(data, 0)
+		if err == nil {
+			t.Fatalf("qualifier 0x%02X: expected error, got nil", q)
+		}
+		if !errors.Is(err, ErrUnsupportedQualifier) {
+			t.Fatalf("qualifier 0x%02X: error = %v, want ErrUnsupportedQualifier", q, err)
+		}
+		if n != 0 {
+			t.Fatalf("qualifier 0x%02X: consumed = %d, want 0 (no data)", q, n)
+		}
+		if h != (ObjectHeader{}) {
+			t.Fatalf("qualifier 0x%02X: returned header %+v, want zero (no data)", q, h)
+		}
+	}
+}
+
+// TestEncodeObjectHeaderUnsupportedQualifier verifies Encode rejects unsupported
+// qualifiers with ErrUnsupportedQualifier (DNP3-028).
+func TestEncodeObjectHeaderUnsupportedQualifier(t *testing.T) {
+	bad := []uint8{0x01, 0x08, 0x17, 0xFE, 0xFF}
+	for _, q := range bad {
+		h := ObjectHeader{Group: 1, Variation: 1, Qualifier: q}
+		out, err := h.Encode(nil)
+		if err == nil {
+			t.Fatalf("qualifier 0x%02X: expected Encode error, got nil", q)
+		}
+		if !errors.Is(err, ErrUnsupportedQualifier) {
+			t.Fatalf("qualifier 0x%02X: error = %v, want ErrUnsupportedQualifier", q, err)
+		}
+		if out != nil {
+			t.Fatalf("qualifier 0x%02X: Encode returned data, want nil", q)
+		}
 	}
 }
 

@@ -138,6 +138,17 @@ var (
 	// ErrContextCanceled indicates the operation was aborted because the
 	// caller's context was cancelled (SAFE-03).
 	ErrContextCanceled = errors.New("context canceled")
+
+	// ErrUnsupportedGroup indicates a read request asked for an object
+	// group/variation outside the v0 supported profile (DNP3-029). The v0
+	// profile reads only Binary Input (G1), Counter (G20), and Analog Input
+	// (G30); variation 0 ("any") is accepted for these groups.
+	ErrUnsupportedGroup = errors.New("unsupported object group/variation")
+
+	// ErrUnsupportedOption indicates the caller used a public API option that
+	// is outside the v0 supported profile (DNP3-030): TLS transport, unsolicited
+	// responses, select-before-operate, and direct-operate-no-response.
+	ErrUnsupportedOption = errors.New("unsupported option for v0 profile")
 )
 
 // ConfigurationError represents a configuration validation error

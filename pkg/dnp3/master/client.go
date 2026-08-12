@@ -316,17 +316,7 @@ func NewClient(config *Config) (Client, error) {
 		}
 		t = transport.NewTCPTransport(tcpConfig)
 	case dnp3.TLS:
-		return nil, fmt.Errorf("TLS transport is unsupported; refusing plaintext fallback")
-		// For TLS, we would need to create a TLSTransport
-		// For now, fall back to TCP
-		tcpConfig := &transport.TCPConfig{
-			Address:        config.Address,
-			Port:           config.Port,
-			ConnectTimeout: int(config.Timeout.Milliseconds()),
-			ReceiveTimeout: int(config.Timeout.Milliseconds()),
-			KeepAlive:      int(config.KeepAliveInterval.Milliseconds()),
-		}
-		t = transport.NewTCPTransport(tcpConfig)
+		return nil, fmt.Errorf("%w: TLS transport", dnp3.ErrUnsupportedOption)
 	}
 
 	// Set up internal master with transport
@@ -517,6 +507,16 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		return nil, dnp3.ErrInvalidRequest
 	}
 
+	// v0 profile allow-list (DNP3-029): only Binary Input (G1), Counter (G20),
+	// and Analog Input (G30) may be read. Variation 0 ("any") is accepted for
+	// these groups; any other group/variation is rejected with a clear error
+	// before any wire traffic is generated.
+	for _, g := range request.Groups {
+		if !isSupportedReadGroup(g.Group, g.Variation) {
+			return nil, fmt.Errorf("%w: group %d variation %d", dnp3.ErrUnsupportedGroup, g.Group, g.Variation)
+		}
+	}
+
 	c.mu.RLock()
 	state := c.state
 	c.mu.RUnlock()
@@ -600,6 +600,19 @@ func (c *client) LastIIN() [2]byte {
 		return [2]byte{}
 	}
 	return outstation.GetIIN()
+}
+
+// isSupportedReadGroup reports whether a (group, variation) pair is in the v0
+// read profile (DNP3-029). The supported groups are Binary Input (G1), Counter
+// (G20), and Analog Input (G30). Variation 0 means "any" and is accepted for
+// these groups; the concrete v0 variation (1) is also accepted.
+func isSupportedReadGroup(group, variation uint8) bool {
+	switch group {
+	case 1, 20, 30:
+		return variation == 0 || variation == 1
+	default:
+		return false
+	}
 }
 
 // buildReadRequest builds an APDU for a read request
@@ -1171,8 +1184,22 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, dnp3.ErrNotConnected
 	}
 
+	// v0 profile gate (DNP3-030): only DirectOperate (with response) is
+	// supported. Select-before-operate and direct-operate-no-response are
+	// rejected with a clear error before any wire traffic.
+	switch command.CommandType {
+	case types.SelectThenOperate:
+		return nil, fmt.Errorf("%w: select-before-operate", dnp3.ErrUnsupportedOption)
+	case types.DirectOperateNoResponse:
+		return nil, fmt.Errorf("%w: direct-operate-no-response", dnp3.ErrUnsupportedOption)
+	case types.DirectOperate:
+		// supported
+	default:
+		return nil, fmt.Errorf("%w: unknown command type %d", dnp3.ErrUnsupportedOption, command.CommandType)
+	}
+
 	// Translate command
-	selectThenOperate := command.CommandType == types.SelectThenOperate
+	selectThenOperate := false // DirectOperate only in v0
 
 	// Extract raw value from CommandValue interface
 	var rawValue interface{}
@@ -1261,12 +1288,12 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 
 // EnableUnsolicited implements Client.EnableUnsolicited
 func (c *client) EnableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("unsolicited enable is unsupported")
+	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
 }
 
 // DisableUnsolicited implements Client.DisableUnsolicited
 func (c *client) DisableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("unsolicited disable is unsupported")
+	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
 }
 
 // SetUnsolicitedHandler implements Client.SetUnsolicitedHandler

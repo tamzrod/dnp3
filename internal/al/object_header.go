@@ -2,6 +2,12 @@ package al
 
 import "fmt"
 
+// ErrUnsupportedQualifier is returned by Encode/DecodeObjectHeader when an
+// object-header qualifier byte is outside the v0 allow-list (DNP3-028). The
+// supported qualifiers are: 0x06 (all-objects), 0x07 (8-bit count), 0x00
+// (8-bit index), 0x28 (16-bit range), 0x27 (16-bit count).
+var ErrUnsupportedQualifier = fmt.Errorf("al: unsupported object qualifier")
+
 // Object-header qualifier codes supported by the v0 profile.
 //
 // DNP3 wire fields are LSB-first. The object header is always
@@ -89,7 +95,7 @@ func (h ObjectHeader) Encode(dst []byte) ([]byte, error) {
 			byte(h.Count), byte(h.Count>>8),
 		), nil
 	default:
-		return dst, fmt.Errorf("al: unsupported object qualifier 0x%02X", h.Qualifier)
+		return dst, fmt.Errorf("%w: 0x%02X", ErrUnsupportedQualifier, h.Qualifier)
 	}
 }
 
@@ -148,7 +154,7 @@ func DecodeObjectHeader(data []byte, offset int) (ObjectHeader, int, error) {
 		h.Count = uint16(data[offset+3]) | uint16(data[offset+4])<<8
 		consumed = 5
 	default:
-		return ObjectHeader{}, 0, fmt.Errorf("al: unsupported object qualifier 0x%02X", h.Qualifier)
+		return ObjectHeader{}, 0, fmt.Errorf("%w: 0x%02X", ErrUnsupportedQualifier, h.Qualifier)
 	}
 
 	return h, consumed, nil

@@ -7,7 +7,7 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-027 complete. Implementation underway.
+- DNP3-001 through DNP3-030 complete. Implementation underway.
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -415,10 +415,48 @@
   `TestDecodeRejectsOversize` (max 250-byte frame decodes; MaxDataSize == 250).
 - Acceptance: error, no panic; tests green.
 
+### DNP3-028 — Reject unsupported qualifiers
+- Commit message: `fix(al): reject unsupported qualifiers`
+- `internal/al/object_header.go`: added `ErrUnsupportedQualifier` sentinel;
+  `Encode` and `DecodeObjectHeader` now wrap it (`%w`) so callers can
+  `errors.Is`. The v0 allow-list is 0x06 (all-objects), 0x07 (8-bit count),
+  0x00 (8-bit index), 0x28 (16-bit range), 0x27 (16-bit count); all other
+  qualifier bytes return a clear error and no header.
+- Tests (extended `internal/al/object_header_test.go`):
+  `TestDecodeObjectHeaderUnsupportedQualifier` (table of 0x01,0x02,0x05,0x08,
+  0x17,0x25,0x26,0x29,0xFE,0xFF → ErrUnsupportedQualifier, consumed=0, zero
+  header), `TestEncodeObjectHeaderUnsupportedQualifier`.
+- Acceptance: clear error, no data; tests green.
+
+### DNP3-029 — Reject unsupported groups/variations on read
+- Commit message: `fix(api): reject unsupported object groups for MVP`
+- `pkg/dnp3/dnp3.go`: added `ErrUnsupportedGroup` sentinel.
+- `pkg/dnp3/master/client.go`: `Read` validates each requested group against the
+  v0 read profile (G1 Binary Input, G20 Counter, G30 Analog Input; variation 0
+  "any" or 1) BEFORE any wire traffic. New `isSupportedReadGroup` helper.
+- Tests (new file `pkg/dnp3/master/group_reject_test.go`):
+  `TestReadRejectsUnsupportedGroups` (G2/G10/G13/G21/G32/G40/G60, bad
+  variations, G0/G255 → ErrUnsupportedGroup),
+  `TestReadAcceptsSupportedGroups` (G1/G20/G30 × v0/v1).
+- Acceptance: explicit error before any request; tests green.
+
+### DNP3-030 — Reject SBO / unsolicited / TLS — complete profile gate
+- Commit message: `fix(api): complete supported-profile rejection matrix`
+- `pkg/dnp3/dnp3.go`: added `ErrUnsupportedOption` sentinel.
+- `pkg/dnp3/master/client.go`: `Operate` now rejects `SelectThenOperate` and
+  `DirectOperateNoResponse` (only `DirectOperate` supported) with
+  `ErrUnsupportedOption` before any wire traffic; `selectThenOperate` is
+  hard-set to false for the v0 path. `EnableUnsolicited`/`DisableUnsolicited`
+  return `ErrUnsupportedOption` (wrapped). TLS `NewClient` returns
+  `ErrUnsupportedOption` (was a plain string error).
+- Tests: updated `safety_test.go` (`TestNewClientRejectsUnsupportedTLS` now
+  checks `errors.Is`); new file `pkg/dnp3/master/profile_reject_test.go`
+  (`TestOperateRejectsSBO`, `TestOperateRejectsDirectOperateNoResponse`,
+  `TestOperateAcceptsDirectOperate`, `TestUnsolicitedRejected`).
+- Acceptance: no silent fallback; matrix tests green.
+
 ## Next READY Tasks
 
-- **DNP3-028** — Reject unsupported qualifiers
-- **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
 - **DNP3-036** — Deterministic outstation simulator (MVP profile)
 - **DNP3-041** — Timeout configuration validation
@@ -432,7 +470,7 @@
 
 ## Recommended Next Task
 
-**DNP3-028 — Reject unsupported qualifiers**
+**DNP3-031 — Transport disconnect detection**
 
 After completing a task:
 
@@ -488,13 +526,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-027
-NEXT TASK: DNP3-028 — Reject unsupported qualifiers
+COMPLETED: DNP3-001 through DNP3-030
+NEXT TASK: DNP3-031 — Transport disconnect detection
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration).
-- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/... ./internal/dll/frame/...` — green.
+- `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/... ./internal/dll/frame/... ./internal/al/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), then DNP3-025/026/027 (this commit). All pushed to origin/main.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), then DNP3-028/029/030 (this commit). All pushed to origin/main.
