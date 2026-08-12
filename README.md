@@ -202,6 +202,17 @@ tested profile adds them):**
 - ⛔ Select-before-operate and direct-operate-no-response
 - ⛔ Object groups/variations outside G1V1, G30V1, G20V1, G12V1
 
+**External interop status (MEXT series lock):**
+- 🔒 **External interoperability is NOT claimed.** The Master is verified for
+  **internal use only** (deterministic fixtures + in-repo simulator loopback).
+- 🔒 Do not assume production-ready or third-party-interop status. An external
+  claim is blocked until **MEXT-035** passes (`./scripts/verify-external-mvp.sh`
+  exit 0, plus CROB/Operate/multi-header gates). See
+  [`active_work/MEXT_MASTER_ROADMAP.md`](active_work/MEXT_MASTER_ROADMAP.md) and
+  [`active_work/external-acceptance.md`](active_work/external-acceptance.md).
+- Known external blockers (residuals R1–R5) are listed in
+  [`active_work/supported-profile.md`](active_work/supported-profile.md).
+
 **Not yet verified:**
 - ⚠️ External interoperability (independent raw capture / VEC-01) is still
   pending. All current verification is internal (deterministic fixtures and
