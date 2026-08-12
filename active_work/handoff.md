@@ -12,10 +12,10 @@
 - Planning complete for MEXT.
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
-- **Last completed task:** MEXT-019 — IIN table freeze vs 1815
-- **Last checkpoint commit:** `94d1b22` (MEXT-019 — IIN table freeze vs 1815) — pushed to origin/main
-- **Current task:** none (idle) — next READY is MEXT-020
-- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-019). External gate after MEXT-021/033.
+- **Last completed task:** MEXT-020 — VEC-01 capture fixture format
+- **Last checkpoint commit:** `94d1b22` (MEXT-019 — IIN table freeze vs 1815) — pushed to origin/main; MEXT-020 checkpoint commit pending (3rd in batch)
+- **Current task:** none (idle) — next READY is MEXT-021
+- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-020). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
 
 ## Completed Tasks
@@ -35,6 +35,7 @@
 - **MEXT-017** — Link handshake external frame vectors. Locked the IEEE 1815 wire shape of the master's link-layer handshake request frames against external-style golden byte vectors. Added golden fixtures `active_work/testdata/link-reset-link-stations.hex` (control 0xC0, master 0x0003 → outstation 0x0004), `link-request-link-status.hex` (0xC9), `link-secondary-ack.hex` (0x00), `link-secondary-link-status.hex` (0x02), `link-secondary-nack.hex` (0x01). Added `internal/master/link_handshake_vectors_test.go`: TestLinkHandshakeRequestVectors (the master's first two emitted frames during Connect equal the golden request bytes; decode-level field assertions on control byte/func/addrs), TestLinkHandshakeRequiresBothExchanges (valid ACK + valid Link Status → Connect succeeds, state Active), TestLinkHandshakeNACKFailsConnect (NACK on reset → Connect fails, state Error; NACKRetries=0 so terminal on first NACK), TestLinkHandshakeWrongFuncOnLinkStatusFailsConnect (valid ACK then ACK-instead-of-Link-Status → Connect fails), TestLinkHandshakeMissingLinkStatusFailsConnect (transport closes after ACK, no second exchange → Connect fails), TestLinkHandshakeGoldenResponseDecode (secondary golden response fixtures decode to IEEE 1815 fields independent of the master encoder). Added a `scriptedTransport` test helper (queued responses + sent-frame recording). **Connect requires both exchanges (ACK then Link Status); any mismatch fails Connect → StateError.** go test ./... + verify-mvp.sh green.
 - **MEXT-018** — Application SEQ + CON on solicited path audit. Audited the master's solicited-path application sequence/confirm handling against IEEE 1815 for the v0 path. The unit-level invariants (SEQ stream 0-15 wrap; advance only on successful send; no advance on transport Send failure; processResponse SEQ match/mismatch → ErrResponseSeqMismatch; waitForConfirmation match/mismatch/timeout; CON=1 response triggers an application confirm) were already covered across master_test.go / app_confirm_test.go / confirm_timeout_test.go / fcb_test.go. Filled the remaining end-to-end gaps in `internal/master/seq_con_audit_test.go`: TestSolicitedCONConfirmAndResponseMatchingSeq (CON=1 request → dedicated confirm with matching SEQ → response with matching SEQ → success; SEQ advances exactly once), TestSolicitedCONConfirmWrongSeqFails (CON=1 with a wrong-SEQ dedicated confirm → ErrConfirmSeqMismatch, terminal), TestSolicitedResponseSeqMismatchFailsEndToEnd (response SEQ mismatch → ErrResponseSeqMismatch, no data surfaced), TestSolicitedRetryReusesOrAdvancesSeq (characterization: a retry after a response-SEQ mismatch carries an INCREMENTED SEQ because the master advances at send time). Added `scriptedSeqTransport`, `retryEchoSeqTransport`, and `terminalRetryPolicy` test helpers. **Discovery (ticketed, not fixed — behavior change beyond audit scope):** `sendWithRetry`/`sendWithRetryAndGetResponse` advance the application SEQ at send time (after `transport.Send` succeeds, before the response/confirm is validated), so a retry of the same logical request after a response failure uses the NEXT SEQ. The doc comment ("retries reuse the same value; it advances only on a successful send") describes send-success, not full-transaction success. IEEE 1815 is ambiguous on retry SEQ; the current behavior is internally consistent for the success path. Changing to advance only on full-transaction success is a behavior change deferred to architect decision — follow-up tracked here. go test ./... + verify-mvp.sh green.
 - **MEXT-019** — IIN table freeze vs 1815. Froze the IIN bit map in `internal/al/application.go` against IEEE 1815-2012 for the external v0 interop claim. The IIN table (flag → octet/position) was already correct and documented; added an explicit `MEXT-019 FREEZE` note to the `IIN` doc comment stating the mapping MUST NOT change without a spec-continuity review. Added `internal/al/iin_freeze_test.go`: TestIINKnownMasksFreeze (named critical masks pinned to their verified [IIN1,IIN2] bytes — all-clear, NeedTime, DeviceRestart, DeviceTrouble, AllStations+DeviceRestart, Class1+2+3 events, FuncUnknown, ObjectUnknown, ParameterError, all-IIN2-errors 0xFC, command-rejected), TestIINRoundTripAllMasks (every 16-bit mask round-trips losslessly through Bytes/SetIIN — freezes the entire table against drift), TestIINDecodeIINAllMasks (public DecodeIIN/EncodeIIN inverse for all masks), TestIINReservedBitsRoundTrip (characterizes the two reserved IIN2 bits: the encoder/decoder preserve wire bytes rather than masking reserved bits; locks current behavior so a future force-to-0 is a deliberate decision). **Table location:** `internal/al/application.go` `IIN` struct + doc comment (lines ~187-236). Existing IIN tests (TestIINBytes/SetIIN/BitPositions/DecodeIINTooShort) remain green. go test ./... + verify-mvp.sh green.
+- **MEXT-020** — VEC-01 capture fixture format. Defined the external capture fixture format for the R4 (VEC-01 / independent PCAP / third-party stack) proof. Created `active_work/testdata/external/` with: `FORMAT.md` (the `.vec` line-oriented text format — metadata `key: value` header + ordered `@ <direction> <layer>` frame records with hex bytes, optional `.pcap`/`.pcapng` sidecar, comment lines, loader rules when one is added in MEXT-022+), `README.md` (purpose, R4 risk, status — placeholder until MEXT-022/033), and `sample-vec01-placeholder.vec` (a placeholder fixture: link-handshake bytes matching the MEXT-017 goldens for master 0x0003 → outstation 0x0004, then an illustrative Class-0 G60V1 request and G1/G20/G30 response). No code/loader added this task (format documented + directory exists, per scope). go test ./... + verify-mvp.sh green. **Format spec location:** `active_work/testdata/external/FORMAT.md`.
 
 ## Current Checkpoint Batch
 
@@ -53,14 +54,15 @@
 - [x] MEXT-017 — Link handshake external frame vectors
 - [x] MEXT-018 — Application SEQ + CON on solicited path audit
 - [x] MEXT-019 — IIN table freeze vs 1815
+- [x] MEXT-020 — VEC-01 capture fixture format
 
 ## Next READY Tasks
 
-- **MEXT-020** — VEC-01 capture fixture format (Phase 2 begins; prereq MEXT-004, done)
+- **MEXT-021** — verify-external-mvp.sh skeleton (prereq MEXT-004, done)
 
 ## Recommended Next Task
 
-**MEXT-020 — VEC-01 capture fixture format**. Define the hex/PCAP-sidecar capture fixture format for external vector tests (R4) under `active_work/testdata/external/` with a sample placeholder + format docs. verify-mvp.sh must stay green.
+**MEXT-021 — verify-external-mvp.sh skeleton**. Add the external MVP gate script skeleton `scripts/verify-external-mvp.sh` (build + external TCP tests; fail-closed once tests exist) and document it in `scripts/README.md`. verify-mvp.sh must stay green.
 
 ## Test Commands (baseline)
 
@@ -97,14 +99,14 @@ go test -race ./internal/master/... ./pkg/dnp3/... ./test/integration/...
 
 ## Next Action
 
-1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-020).
-2. Implement **MEXT-020** (VEC-01 capture fixture format).
-3. Checkpoint after MEXT-020 — run go test ./... + verify-mvp.sh, commit, push.
+1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-021).
+2. Implement **MEXT-021** (verify-external-mvp.sh skeleton).
+3. Checkpoint after MEXT-021 — run go test ./... + verify-mvp.sh, commit, push.
 
 ## MVP Gate
 
 ```
 TOTAL TASKS: 40
 EXTERNAL MVP COMPLETE AT: MEXT-035
-NEXT TASK: MEXT-020 — VEC-01 capture fixture format
+NEXT TASK: MEXT-021 — verify-external-mvp.sh skeleton
 ```

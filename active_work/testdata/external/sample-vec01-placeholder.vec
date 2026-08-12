@@ -1,0 +1,36 @@
+id: VEC-01-class0-g1-g20-g30
+title: Class-0 integrity poll, G1/G20/G30, master-initiated (PLACEHOLDER)
+source: third-party outstation (placeholder — not a real capture)
+capture: synthetic-from-spec
+role: master
+master-addr: 3
+outstation-addr: 4
+pcap:
+notes: PLACEHOLDER fixture (MEXT-020). The link handshake bytes match the
+  MEXT-017 golden vectors (master 0x0003 -> outstation 0x0004). The
+  application frames below are illustrative only; replace this file with a
+  real third-party capture in MEXT-033 before claiming external interop.
+
+# --- Data-link handshake (matches active_work/testdata/link-*.hex) ---
+
+@ M->O link
+05 64 05 C0 04 00 03 00 F9 56
+
+@ O->M link
+05 64 05 00 03 00 04 00 3C 56
+
+@ M->O link
+05 64 05 C9 04 00 03 00 B6 20
+
+@ O->M link
+05 64 05 02 03 00 04 00 30 10
+
+# --- Application: Class-0 integrity request (all-objects G60V1) ---
+
+@ M->O app
+C4 01 3C 00 06
+
+# --- Application: response carrying G1/G20/G30 (illustrative) ---
+
+@ O->M app
+C4 81 00 00 01 01 07 01 01 1E 01 07 01 2A 00 00 00 01 14 01 07 01 E8 03 00 00 01
