@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-017 — Link handshake external frame vectors
-- **Last checkpoint commit:** `e8e5495` (MEXT-013 — Operate real-TCP vs in-repo outstation) — pushed to origin/main; MEXT-017 commit pending
+- **Last checkpoint commit:** `100d95c` (MEXT-017 — Link handshake external frame vectors) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-018
 - **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-017). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
