@@ -99,6 +99,8 @@ reference:
 | Request qualifier allow-list (0x06 all-objects / 0x00 index8 / 0x28 range16 / 0x07 count8) | `internal/master/qualifier_golden_test.go`, `internal/al/object_header_test.go` (`TestEncodeObjectHeaderUnsupportedQualifier`) | MEXT-016 |
 | Link-layer handshake (reset link + link status) | `internal/dll/link/link_test.go`, `test/integration/tcp_test.go` | DNP3-006/007 |
 | Link handshake external frame vectors + Connect both-exchanges requirement (MEXT-017) | `internal/master/link_handshake_vectors_test.go`, golden `active_work/testdata/link-*.hex` | MEXT-017 |
+| App-layer SEQ stream (0-15 wrap) + CON confirm + response SEQ match (solicited path) | `internal/master/master_test.go`, `internal/master/app_confirm_test.go`, `internal/master/confirm_timeout_test.go`, `internal/master/fcb_test.go` | DNP3-008/009/010/055 |
+| SEQ + CON solicited-path audit (end-to-end CON confirm+response, mismatch rejection, retry-SEQ characterization) (MEXT-018) | `internal/master/seq_con_audit_test.go` | MEXT-018 |
 | `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
 | Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `pkg/dnp3/master/integrity_poll_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
 | `IntegrityPoll` single multi-header exchange + per-group fallback (MEXT-015) | `pkg/dnp3/master/integrity_poll_test.go` (`TestIntegrityPollSingleMultiHeaderExchange`, `TestIntegrityPollFallbackPerGroup`) | MEXT-015 |
