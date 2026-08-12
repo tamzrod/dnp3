@@ -7,7 +7,7 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-021 complete. Implementation underway.
+- DNP3-001 through DNP3-024 complete. Implementation underway.
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -327,9 +327,57 @@
   response → not ControlSuccess).
 - Acceptance: caller sees real status; public control test green.
 
+### DNP3-022 — Context cancellation on Connect
+- Commit message: `fix(api): context cancellation on Connect`
+- `pkg/dnp3/dnp3.go`: added `ErrContextCanceled` sentinel.
+- `pkg/dnp3/master/client.go`: rewrote `Connect` to honor `ctx.Done()`. The
+  blocking connect steps run in a goroutine; the main path selects on
+  `ctx.Done()` vs completion. On cancellation, returns promptly with
+  `ErrContextCanceled` and tears down any partially-established connection
+  (`cleanupConnect` closes internal master + transport) so no live connection
+  remains; state reset to Disconnected. `connectBlocking` also checks ctx
+  between blocking steps so a cancellation landing between the dial and the
+  handshake is observed without waiting for the next timeout.
+- Tests (new file `pkg/dnp3/master/connect_cancel_test.go`):
+  `TestConnectAlreadyCancelledContext` (pre-cancelled ctx → prompt,
+  Disconnected), `TestConnectCancelledMidDial` (cancel while transport.Connect
+  blocks → prompt, Disconnected, transport Close()d).
+- **Note:** test mocks (`blockingTransport`, `slowCloseTransport`) make `Close`
+  idempotent because the cancel-teardown path may call `Close` more than once
+  (abort + connectBlocking error path); real `TCPTransport.Close`/`TLSTransport`
+  .Close are already idempotent.
+- Acceptance: prompt return, no live connection; tests green.
+
+### DNP3-023 — Context cancellation on Read
+- Commit message: `fix(api): context cancellation on Read`
+- `pkg/dnp3/master/client.go`: `Read` now runs
+  `SendRequestWithRetryAndGetResponse` in a goroutine and selects on
+  `ctx.Done()`. On cancellation, returns promptly with `ErrContextCanceled`
+  and a nil response — the in-flight result is discarded, so no partial points
+  leak to the caller.
+- Tests (new file `pkg/dnp3/master/read_cancel_test.go`):
+  `TestReadAlreadyCancelledContext` (pre-cancelled → prompt, nil response),
+  `TestReadCancelledMidRequest` (cancel while Receive blocks → prompt, nil
+  response, no partial points).
+- Acceptance: error + no partial points; tests green.
+
+### DNP3-024 — Context cancellation on Operate / Disconnect
+- Commit message: `fix(api): context cancellation on Operate and Disconnect`
+- `pkg/dnp3/master/client.go`: `Operate` runs `OperateWithStatus` in a
+  goroutine and selects on `ctx.Done()` (prompt `ErrContextCanceled`, nil
+  response, in-flight result discarded). `Disconnect` runs
+  internal.Disconnect + transport.Close in a goroutine and selects on
+  `ctx.Done()`; on cancellation returns `ErrContextCanceled` but still resets
+  state to Disconnected so the client is not left stuck (background teardown
+  completes best-effort).
+- Tests (new file `pkg/dnp3/master/operate_disconnect_cancel_test.go`):
+  `TestOperateAlreadyCancelledContext`, `TestOperateCancelledMidRequest`,
+  `TestDisconnectAlreadyCancelledContext`, `TestDisconnectCancelledMidTeardown`.
+- Acceptance: all public entry points cancel cleanly; tests green.
+
 ## Next READY Tasks
 
-- **DNP3-022** — Context cancellation on Connect
+- **DNP3-025** — Race safety for sequence & reassembly
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
 - **DNP3-036** — Deterministic outstation simulator (MVP profile)
@@ -344,7 +392,7 @@
 
 ## Recommended Next Task
 
-**DNP3-022 — Context cancellation on Connect**
+**DNP3-025 — Race safety for sequence & reassembly**
 
 After completing a task:
 
@@ -400,8 +448,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-021
-NEXT TASK: DNP3-022 — Context cancellation on Connect
+COMPLETED: DNP3-001 through DNP3-024
+NEXT TASK: DNP3-025 — Race safety for sequence & reassembly
 ```
 
 ## Test Status
@@ -409,4 +457,4 @@ NEXT TASK: DNP3-022 — Context cancellation on Connect
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021, pushed to origin/main). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), then DNP3-022/023/024 (this commit). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).

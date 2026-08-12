@@ -134,6 +134,10 @@ var (
 
 	// ErrSequenceError indicates a sequence number error
 	ErrSequenceError = errors.New("sequence error")
+
+	// ErrContextCanceled indicates the operation was aborted because the
+	// caller's context was cancelled (SAFE-03).
+	ErrContextCanceled = errors.New("context canceled")
 )
 
 // ConfigurationError represents a configuration validation error

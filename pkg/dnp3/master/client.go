@@ -347,58 +347,161 @@ func NewClient(config *Config) (Client, error) {
 // 1. Add outstation (needed for handshake destinations)
 // 2. Transport connect (TCP)
 // 3. Internal master connect (handshake with registered outstations)
+//
+// The caller's context is honored throughout (DNP3-022): if ctx is cancelled
+// before or during connect, Connect returns promptly with ErrContextCanceled
+// and tears down any partially-established connection so none is left live.
 func (c *client) Connect(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.state != dnp3.StateDisconnected {
-		return fmt.Errorf("already connected: %s", c.state)
+	// Already-cancelled context: fail fast before mutating state.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
+	c.mu.Lock()
+	if c.state != dnp3.StateDisconnected {
+		c.mu.Unlock()
+		return fmt.Errorf("already connected: %s", c.state)
+	}
 	c.state = dnp3.StateConnecting
+	c.mu.Unlock()
 
+	// Run the blocking connect steps on a goroutine so we can race them
+	// against ctx.Done(). The goroutine owns the transport/master for the
+	// duration of the attempt.
+	type connectResult struct{ err error }
+	done := make(chan connectResult, 1)
+	go func() {
+		done <- connectResult{err: c.connectBlocking(ctx)}
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Caller cancelled. Tear down anything the goroutine may have stood up
+		// so no live connection remains, then mark the client disconnected.
+		c.abortConnect()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case res := <-done:
+		c.mu.Lock()
+		if res.err != nil {
+			c.state = dnp3.StateError
+		} else {
+			c.state = dnp3.StateActive
+		}
+		c.mu.Unlock()
+		if res.err != nil {
+			return res.err
+		}
+		return nil
+	}
+}
+
+// connectBlocking performs the synchronous connect sequence. It checks ctx
+// between blocking steps so a cancellation that lands between the transport
+// dial and the link handshake is observed without waiting for the next timeout.
+func (c *client) connectBlocking(ctx context.Context) error {
 	// Step 1: Add outstation FIRST (needed for link handshake)
 	c.internalMaster.AddOutstation(c.config.OutstationAddress, fmt.Sprintf("outstation-%d", c.config.OutstationAddress))
 
+	if err := ctx.Err(); err != nil {
+		c.cleanupConnect()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+	}
+
 	// Step 2: Connect transport
 	if err := c.transport.Connect(); err != nil {
-		c.state = dnp3.StateError
+		c.cleanupConnect()
 		return fmt.Errorf("transport connect failed: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		c.cleanupConnect()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
 	// Step 3: Connect internal master (performs link-layer handshake)
 	if err := c.internalMaster.Connect(); err != nil {
-		c.state = dnp3.StateError
+		c.cleanupConnect()
 		return fmt.Errorf("master connect failed: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		c.cleanupConnect()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
 	// Step 4: Initialize master
 	if err := c.internalMaster.Initialize(); err != nil {
-		c.state = dnp3.StateError
+		c.cleanupConnect()
 		return fmt.Errorf("master initialize failed: %w", err)
 	}
-
-	c.state = dnp3.StateActive
 	return nil
 }
 
-// Disconnect implements Client.Disconnect
-func (c *client) Disconnect(ctx context.Context) error {
+// abortConnect is invoked when Connect observes ctx cancellation. It tears down
+// any transport/master resources the background connect may have established
+// and resets the client state to Disconnected. Best-effort: errors are ignored
+// because the caller is already returning a cancellation error.
+func (c *client) abortConnect() {
+	c.cleanupConnect()
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.state = dnp3.StateDisconnected
+	c.mu.Unlock()
+}
 
-	if c.state == dnp3.StateDisconnected {
-		return nil
+// cleanupConnect closes the internal master and transport, swallowing errors.
+// Used by the connect paths to guarantee no live connection survives a failed
+// or cancelled attempt.
+func (c *client) cleanupConnect() {
+	_ = c.internalMaster.Disconnect()
+	_ = c.transport.Close()
+}
+
+// Disconnect implements Client.Disconnect
+//
+// The caller's context is honored (DNP3-024): if ctx is cancelled before the
+// teardown completes, Disconnect returns promptly with ErrContextCanceled. The
+// client state is still reset to Disconnected so it is not left stuck in a
+// connecting/active state; the background teardown completes best-effort.
+func (c *client) Disconnect(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		// Even on a pre-cancelled context, reset state so the client is not
+		// left in an indeterminate state.
+		c.mu.Lock()
+		c.state = dnp3.StateDisconnected
+		c.mu.Unlock()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
-	// Disconnect internal master
-	_ = c.internalMaster.Disconnect()
+	c.mu.Lock()
+	if c.state == dnp3.StateDisconnected {
+		c.mu.Unlock()
+		return nil
+	}
+	c.mu.Unlock()
 
-	// Close transport
-	_ = c.transport.Close()
+	type disconnectResult struct{ err error }
+	done := make(chan disconnectResult, 1)
+	go func() {
+		_ = c.internalMaster.Disconnect()
+		err := c.transport.Close()
+		done <- disconnectResult{err: err}
+	}()
 
-	c.state = dnp3.StateDisconnected
-	return nil
+	select {
+	case <-ctx.Done():
+		c.mu.Lock()
+		c.state = dnp3.StateDisconnected
+		c.mu.Unlock()
+		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case res := <-done:
+		c.mu.Lock()
+		c.state = dnp3.StateDisconnected
+		c.mu.Unlock()
+		if res.err != nil {
+			return fmt.Errorf("disconnect failed: %w", res.err)
+		}
+		return nil
+	}
 }
 
 // State implements Client.State
@@ -433,9 +536,30 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	// 1. Sends the request with retry logic
 	// 2. Waits for and processes the response
 	// 3. Returns the processed application layer data
-	respData, err := c.internalMaster.SendRequestWithRetryAndGetResponse(apdu, outstationID)
-	if err != nil {
-		return nil, fmt.Errorf("read failed: %w", err)
+	//
+	// The caller's context is honored (DNP3-023): if ctx is cancelled while
+	// the request is outstanding, Read returns promptly with ErrContextCanceled
+	// and no partial points are surfaced to the caller.
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	done := make(chan readResult, 1)
+	go func() {
+		data, err := c.internalMaster.SendRequestWithRetryAndGetResponse(apdu, outstationID)
+		done <- readResult{data: data, err: err}
+	}()
+
+	var respData []byte
+	select {
+	case <-ctx.Done():
+		// Abandon the outstanding request; the goroutine's result is discarded.
+		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case res := <-done:
+		if res.err != nil {
+			return nil, fmt.Errorf("read failed: %w", res.err)
+		}
+		respData = res.data
 	}
 
 	// Decode response (respData is already transport/data-link decoded)
@@ -1057,11 +1181,30 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	}
 
 	// Perform operate through internal master and parse the per-point command
-	// status from the response (DNP3-020/021). The public response carries the
-	// real status; a failed point is never reported as ControlSuccess.
-	cs, err := internal.OperateWithStatus(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue)
-	if err != nil {
-		return nil, fmt.Errorf("operate failed: %w", err)
+	// status from the response (DNP3-020/021/024). The public response carries
+	// the real status; a failed point is never reported as ControlSuccess. The
+	// caller's context is honored: if ctx is cancelled while the operate is
+	// outstanding, Operate returns promptly with ErrContextCanceled and no
+	// response (the in-flight result is discarded).
+	type operateResult struct {
+		status master.CommandStatus
+		err    error
+	}
+	done := make(chan operateResult, 1)
+	go func() {
+		status, err := internal.OperateWithStatus(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue)
+		done <- operateResult{status: status, err: err}
+	}()
+
+	var cs master.CommandStatus
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case res := <-done:
+		if res.err != nil {
+			return nil, fmt.Errorf("operate failed: %w", res.err)
+		}
+		cs = res.status
 	}
 
 	// Get outstation state
