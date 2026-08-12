@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-020 — VEC-01 capture fixture format
-- **Last checkpoint commit:** `94d1b22` (MEXT-019 — IIN table freeze vs 1815) — pushed to origin/main; MEXT-020 checkpoint commit pending (3rd in batch)
+- **Last checkpoint commit:** `276bfaf` (MEXT-020 — VEC-01 capture fixture format) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-021
 - **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-020). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
