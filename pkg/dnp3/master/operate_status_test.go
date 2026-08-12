@@ -126,11 +126,12 @@ func TestPublicOperateSurfacesStatus(t *testing.T) {
 	}
 }
 
-// TestPublicOperateMissingStatusNotSuccess confirms that a response with no
-// G12V1 status byte (e.g. legacy empty DirectOperate response) is NOT surfaced
-// as ControlSuccess.
-func TestPublicOperateMissingStatusNotSuccess(t *testing.T) {
-	// Build a transport returning an IIN-only response (no G12V1 object).
+// TestPublicOperateMissingStatusIINOnlySuccess confirms that a response with
+// no G12V1 status object but a clear IIN (an IIN-only echo) IS surfaced as
+// ControlSuccess — real outstations may omit the G12V1 status echo on a valid
+// Direct-Operate success (MEXT-012, fixing R1).
+func TestPublicOperateMissingStatusIINOnlySuccess(t *testing.T) {
+	// Build a transport returning an IIN-only response (no G12V1 object, clear IIN).
 	cc := newConnectedClientWithTransport(t, &pubIINOnlyTransport{})
 	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 		Group: 12, Variation: 1, Index: 0,
@@ -140,21 +141,44 @@ func TestPublicOperateMissingStatusNotSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Operate error: %v", err)
 	}
+	if resp.Status != types.ControlSuccess {
+		t.Fatalf("IIN-only clear response status = %v, want ControlSuccess (R1 fix)", resp.Status)
+	}
+}
+
+// TestPublicOperateMissingStatusErrorIINNotSuccess confirms that an IIN-only
+// response with an error IIN bit is NOT surfaced as ControlSuccess (MEXT-012).
+func TestPublicOperateMissingStatusErrorIINNotSuccess(t *testing.T) {
+	cc := newConnectedClientWithTransport(t, &pubIINOnlyTransport{iin: al.IIN{ParameterError: true}})
+	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if err != nil {
+		t.Fatalf("Operate error: %v", err)
+	}
 	if resp.Status == types.ControlSuccess {
-		t.Fatalf("missing status byte surfaced as ControlSuccess; want non-success")
+		t.Fatalf("error IIN surfaced as ControlSuccess; want non-success")
 	}
 }
 
 // pubIINOnlyTransport echoes the SEQ with an IIN-only response (no object data).
-type pubIINOnlyTransport struct{ lastSeq uint8 }
+// With a clear IIN (default) this is an IIN-only success per MEXT-012; an error
+// IIN is a failure.
+type pubIINOnlyTransport struct {
+	lastSeq uint8
+	iin     al.IIN
+}
 
-func (t *pubIINOnlyTransport) Send(data []byte) error  { t.lastSeq = extractPubRequestSeq(data); return nil }
-func (t *pubIINOnlyTransport) SetTimeout(ms int)       {}
+func (t *pubIINOnlyTransport) Send(data []byte) error { t.lastSeq = extractPubRequestSeq(data); return nil }
+func (t *pubIINOnlyTransport) SetTimeout(ms int)      {}
 func (t *pubIINOnlyTransport) Receive() ([]byte, error) {
+	iinBytes := t.iin.Bytes()
 	apdu := &al.APDU{
 		Control:  al.AppControl{FIR: true, FIN: true, Seq: t.lastSeq},
 		FuncCode: al.FuncResponse,
-		Data:     []byte{0x00, 0x00},
+		Data:     iinBytes[:],
 	}
 	frag := tl.Fragment{FIR: true, FIN: true, Data: apdu.Encode()}
 	tlData := tl.EncodeFragment(frag)

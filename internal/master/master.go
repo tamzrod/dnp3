@@ -1383,7 +1383,78 @@ func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, 
 	if err != nil {
 		return CommandStatusUnknown, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
 	}
-	return parseCommandStatus(resp.Data), nil
+	return resolveOperateStatus(resp), nil
+}
+
+// resolveOperateStatus determines the per-point command status for a
+// DirectOperate/Operate response (MEXT-012, fixing R1). A response is a
+// success when EITHER:
+//   (a) it carries a G12V1 object whose per-point status byte is 0
+//   (CommandStatusSuccess), or
+//   (b) it carries no G12V1 object (an IIN-only echo) and the IIN has no
+//   error bits — real outstations may omit the G12V1 status echo on a valid
+//   Direct-Operate success.
+//
+// A non-zero status byte is surfaced as-is (never success). An IIN-only
+// response with error IIN is a failure (never success). A truncated G12V1
+// object is a failure (CommandStatusUnknown), never success.
+func resolveOperateStatus(resp *al.Response) CommandStatus {
+	status := parseCommandStatus(resp.Data)
+	if status != CommandStatusUnknown {
+		return status
+	}
+	// Unknown: either no G12V1 object (IIN-only) or a truncated G12V1 object.
+	if containsG12V1Header(resp.Data) {
+		// A G12V1 header was present but the status byte could not be read
+		// (truncated) — treat as a failure, never success.
+		return CommandStatusUnknown
+	}
+	// IIN-only response (no object): fall back to the IIN. A clear IIN means
+	// the outstation accepted the command (success); error IIN means it was
+	// rejected (failure, never success).
+	return commandStatusFromIIN(resp.IIN)
+}
+
+// containsG12V1Header reports whether the object data contains a Group 12
+// Variation 1 object header. It distinguishes an IIN-only response (no
+// object at all) from a truncated G12V1 response (header present but status
+// byte missing).
+func containsG12V1Header(data []byte) bool {
+	offset := 0
+	for offset+4 <= len(data) {
+		if data[offset] == 12 && data[offset+1] == 1 {
+			return true
+		}
+		next, ok := skipObject(data, offset, data[offset], data[offset+1], data[offset+2])
+		if !ok {
+			return false
+		}
+		offset = next
+	}
+	return false
+}
+
+// commandStatusFromIIN maps an IIN-only DirectOperate response to a command
+// status. A clear IIN (no error bits) is CommandStatusSuccess — the
+// outstation accepted the command without echoing a G12V1 status object.
+// Error IIN bits map to the corresponding failure status and are never success.
+func commandStatusFromIIN(iin al.IIN) CommandStatus {
+	switch {
+	case iin.FuncUnknown, iin.ObjectUnknown:
+		return CommandStatusNotSupported
+	case iin.ParameterError, iin.BadConfig:
+		return CommandStatusBadFormat
+	case iin.AlreadyExecuting:
+		return CommandStatusAlreadyActive
+	case iin.LocalControl:
+		return CommandStatusLocal
+	case iin.BufferOverflow:
+		return CommandStatusUnknown
+	default:
+		// Clear IIN (or only non-error indications such as event/class flags):
+		// the command was accepted.
+		return CommandStatusSuccess
+	}
 }
 
 // TimeSync performs time synchronization with an outstation.

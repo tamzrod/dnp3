@@ -159,12 +159,14 @@ func TestOperateWithStatusSuccessRejected(t *testing.T) {
 	}
 }
 
-// TestOperateWithStatusMissingObjectNotSuccess confirms that an outstation
-// returning no G12V1 object (e.g. legacy empty DirectOperate response) does
-// not get reported as success.
-func TestOperateWithStatusMissingObjectNotSuccess(t *testing.T) {
+// TestOperateWithStatusIINOnlyClearSuccess confirms that an outstation
+// returning an IIN-only response (no G12V1 status object) with a clear IIN is
+// reported as success — real outstations may omit the G12V1 status echo on a
+// valid Direct-Operate success (MEXT-012, fixing R1). This must NOT false-pass
+// when the IIN carries error bits (see TestOperateWithStatusIINOnlyError).
+func TestOperateWithStatusIINOnlyClearSuccess(t *testing.T) {
 	m := NewMaster(DefaultConfig())
-	// echoSeqTransport returns an IIN-only response (no G12V1 object).
+	// echoSeqTransport returns an IIN-only response with a clear IIN.
 	m.SetTransport(&echoSeqTransport{})
 	m.SetState(StateInitialized)
 
@@ -172,10 +174,123 @@ func TestOperateWithStatusMissingObjectNotSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OperateWithStatus returned error: %v", err)
 	}
+	if status != CommandStatusSuccess {
+		t.Fatalf("IIN-only clear response status = %d, want Success (R1 fix)", status)
+	}
+}
+
+// iinOnlyErrorTransport returns an IIN-only response (no G12V1 object) whose
+// IIN carries an error bit (ParameterError), exercising the MEXT-012 rule
+// that an IIN-only response with error IIN is a failure, never success.
+type iinOnlyErrorTransport struct {
+	lastSeq uint8
+	iin     al.IIN
+}
+
+func (t *iinOnlyErrorTransport) Send(data []byte) error {
+	t.lastSeq = extractRequestSeqForBuild(data)
+	return nil
+}
+
+func (t *iinOnlyErrorTransport) SetTimeout(ms int) {}
+
+func (t *iinOnlyErrorTransport) Receive() ([]byte, error) {
+	return buildResponseFrameWithIIN(t.lastSeq, t.iin), nil
+}
+
+// TestOperateWithStatusIINOnlyError confirms that an IIN-only response with an
+// error IIN bit is a failure (never success), per MEXT-012.
+func TestOperateWithStatusIINOnlyError(t *testing.T) {
+	cases := []struct {
+		name string
+		iin  al.IIN
+		want CommandStatus
+	}{
+		{"parameter_error", al.IIN{ParameterError: true}, CommandStatusBadFormat},
+		{"func_unknown", al.IIN{FuncUnknown: true}, CommandStatusNotSupported},
+		{"object_unknown", al.IIN{ObjectUnknown: true}, CommandStatusNotSupported},
+		{"local_control", al.IIN{LocalControl: true}, CommandStatusLocal},
+		{"already_executing", al.IIN{AlreadyExecuting: true}, CommandStatusAlreadyActive},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewMaster(DefaultConfig())
+			m.SetTransport(&iinOnlyErrorTransport{iin: tc.iin})
+			m.SetState(StateInitialized)
+
+			status, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
+			if err != nil {
+				t.Fatalf("OperateWithStatus returned error: %v", err)
+			}
+			if status == CommandStatusSuccess {
+				t.Fatalf("error IIN (%s) reported as success; want non-success", tc.name)
+			}
+			if status != tc.want {
+				t.Fatalf("status = %d, want %d", status, tc.want)
+			}
+		})
+	}
+}
+
+// truncatedG12V1Transport returns a response carrying a G12V1 object whose
+// CROB value is truncated (status byte missing), exercising the MEXT-012 rule
+// that a truncated G12V1 object is a failure (CommandStatusUnknown), never
+// success.
+type truncatedG12V1Transport struct {
+	lastSeq uint8
+}
+
+func (t *truncatedG12V1Transport) Send(data []byte) error {
+	t.lastSeq = extractRequestSeqForBuild(data)
+	return nil
+}
+
+func (t *truncatedG12V1Transport) SetTimeout(ms int) {}
+
+func (t *truncatedG12V1Transport) Receive() ([]byte, error) {
+	return buildTruncatedG12V1Response(t.lastSeq), nil
+}
+
+// buildTruncatedG12V1Response builds a response with a G12V1 header + index
+// but only 9 of 11 CROB bytes (the per-point status byte is missing).
+func buildTruncatedG12V1Response(seq uint8) []byte {
+	obj := []byte{
+		0x0C, 0x01, 0x00, 0x01,
+		0x34, 0x12,
+		0x08, 0x01,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, // only 7 of 9 remaining CROB bytes; status byte missing
+	}
+	apdu := &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: seq},
+		FuncCode: al.FuncResponse,
+		Data:     append([]byte{0x00, 0x00}, obj...),
+	}
+	frag := tl.Fragment{FIR: true, FIN: true, Data: apdu.Encode()}
+	tlData := tl.EncodeFragment(frag)
+	dllFrame := &frame.Frame{
+		Control:  frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
+		DestAddr: 1, SrcAddr: 2, Data: tlData,
+	}
+	raw, _ := frame.Encode(dllFrame)
+	return raw
+}
+
+// TestOperateWithStatusTruncatedNotSuccess confirms a truncated G12V1 object
+// (status byte missing) yields a failure, never success (MEXT-012).
+func TestOperateWithStatusTruncatedNotSuccess(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.SetTransport(&truncatedG12V1Transport{})
+	m.SetState(StateInitialized)
+
+	status, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
+	if err != nil {
+		t.Fatalf("OperateWithStatus returned error: %v", err)
+	}
 	if status == CommandStatusSuccess {
-		t.Fatalf("missing status byte reported as success; want non-success")
+		t.Fatalf("truncated G12V1 reported as success; want non-success")
 	}
 	if status != CommandStatusUnknown {
-		t.Fatalf("status = %d, want Unknown", status)
+		t.Fatalf("truncated status = %d, want Unknown", status)
 	}
 }
