@@ -7,8 +7,9 @@
 ## Status
 
 - Planning complete.
-- DNP3-001, DNP3-002, DNP3-003 complete. Implementation underway.
-- Go 1.22 toolchain installed at `~/go-install/go/bin/go` (not preinstalled in env).
+- DNP3-001 through DNP3-018 complete. Implementation underway.
+- Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
+  `export PATH=$HOME/go-install/go/bin:$PATH`).
 
 ## Completed Tasks
 
@@ -219,9 +220,58 @@
   G30V1 (1 point) headers are present (fragment 2 data not lost).
 - Acceptance: all points present; multi-fragment test green.
 
+### DNP3-016 — Binary Input G1V1 final correctness
+- Commit message: `fix(objects): finalize Binary Input Variation 1`
+- `pkg/dnp3/master/client.go`: G1V1 ("Binary Input - Packed Format", IEEE 1815)
+  is now parsed as packed binary state bits for every qualifier valid for the
+  packed format — count8 (0x07), count16 (0x27), all-objects (0x06), and
+  range16 (0x28). Points are packed 8 per byte (bit 0 of byte 0 = point 0),
+  carry no per-point quality byte, and are assigned ONLINE quality. The index
+  base is 0 for count/all-objects qualifiers and `Start` for range16. The
+  QualIndex8 (0x00) qualifier is not valid for packed format and still falls
+  through to the legacy per-point path.
+- New helper `packedBinaryRange` (delegates to `sequentialRange`) returns the
+  index base + point count from the header qualifier.
+- Tests: `TestG1V1PackedBoundary` (1/8/9/16 points, byte-boundary crossing,
+  range16 base 5 and base 0), `TestG1V1PackedBitOrder` (LSB-first bit
+  ordering: 0x01→point0, 0x80→point7), `TestG1V1PackedMultipleHeaders` (two
+  packed headers, independent index bases). Existing `TestParseClass0PackedBinaryInputVector`
+  remains the golden pass.
+- Acceptance: golden pass; G1 vector suite green; loopback/integration green.
+
+### DNP3-017 — Analog Input G30V1 final correctness
+- Commit message: `fix(objects): finalize Analog Input Variation 1`
+- `pkg/dnp3/master/client.go`: G30V1 (signed 32-bit value + 1-octet flags,
+  5 octets/point, sequential) is now parsed for count8/count16/all-objects
+  (index base 0) and range16 (index base = Start) via the new
+  `sequentialRange` helper. `ReadAnalogInputs` sends a range16 (0x28) request;
+  an external conformant outstation honoring that range returns sequential
+  G30V1 points from Start, which the parser now handles (previously only 0x07
+  was handled and range16 fell into the generic indexed loop, misreading a
+  2-byte index per point).
+- Tests (new file `pkg/dnp3/master/analog_input_test.go`):
+  `TestG30V1Count8Boundary` (1000 / -1 signed), `TestG30V1SignedRange`
+  (zero, MaxInt32, MinInt32, -1, -1000), `TestG30V1Range16Boundary`
+  (start=5 stop=6), `TestG30V1LSBByteOrder`, `TestG30V1QualityByte`
+  (ONLINE/RESTART/COMM_LOST).
+- Acceptance: signed LSB decode + range16 + quality byte locked; suite green.
+
+### DNP3-018 — Counter G20V1 final correctness
+- Commit message: `fix(objects): finalize Counter Variation 1`
+- `pkg/dnp3/master/client.go`: G20V1 (unsigned 32-bit counter + 1-octet
+  flags, 5 octets/point, sequential) is now parsed for count8/count16/
+  all-objects (index base 0) and range16 (index base = Start) via
+  `sequentialRange`. Same gap closed as G30V1: `ReadCounters` sends range16
+  and a conformant range response now decodes correctly.
+- Tests (new file `pkg/dnp3/master/counter_test.go`):
+  `TestG20V1Count8Boundary` (1000 / MaxUint32), `TestG20V1UnsignedRange`
+  (zero, 1000, MaxUint32, high-bit-set unsigned), `TestG20V1Range16Boundary`
+  (start=5 stop=6), `TestG20V1LSBByteOrder`, `TestG20V1QualityByte`.
+- Acceptance: unsigned LSB decode + range16 + quality byte locked; suite green.
+
 ## Next READY Tasks
 
-- **DNP3-016** — Binary Input G1V1 final correctness  *(prereqs: DNP3-015 ✓)*
+- **DNP3-019** — CROB G12V1 request final correctness  *(prereqs: DNP3-016 ✓)*
 - **DNP3-022** — Context cancellation on Connect
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
@@ -237,7 +287,7 @@
 
 ## Recommended Next Task
 
-**DNP3-016 — Binary Input G1V1 final correctness**
+**DNP3-019 — CROB G12V1 request final correctness**
 
 After completing a task:
 
@@ -293,13 +343,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-015
-NEXT TASK: DNP3-016 — Binary Input G1V1 final correctness
+COMPLETED: DNP3-001 through DNP3-018
+NEXT TASK: DNP3-019 — CROB G12V1 request final correctness
 ```
 
 ## Test Status
 
 - `go test ./...` — all 21 packages green (including integration).
-- `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./test/integration/...` — green.
+- `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Commit hash: fe37ef1 (DNP3-013/014/015 checkpoint)
+- Checkpoint commit: DNP3-016/017/018 (this commit). Previous checkpoint hash: fe37ef1 (DNP3-013/014/015).

@@ -500,6 +500,37 @@ func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
 	}
 }
 
+// packedBinaryRange returns the index base and point count for a packed
+// Group 1 Variation 1 header. ok is false for qualifiers that do not carry a
+// usable count/range (e.g. QualIndex8, which has no meaning for the packed
+// format). The packed format carries no per-point bytes, so the count comes
+// from the qualifier's count field or, for range16, from Start..Stop.
+func packedBinaryRange(h al.ObjectHeader) (base int, n int, ok bool) {
+	return sequentialRange(h)
+}
+
+// sequentialRange returns the index base and point count for a sequential
+// (no per-point index prefix) object header. count8/count16 are sequential
+// from index 0; range16 is sequential from Start through Stop; all-objects
+// yields zero points (a static-data response would normally use a count
+// qualifier instead). ok is false for QualIndex8, which carries a per-point
+// index and is therefore not sequential.
+func sequentialRange(h al.ObjectHeader) (base int, n int, ok bool) {
+	switch h.Qualifier {
+	case al.QualCount8, al.QualCount16:
+		return 0, int(h.Count), true
+	case al.QualAllObjects:
+		return 0, 0, true
+	case al.QualRange16:
+		if h.Stop < h.Start {
+			return 0, 0, false
+		}
+		return int(h.Start), int(h.Stop-h.Start) + 1, true
+	default:
+		return 0, 0, false
+	}
+}
+
 // parseBinaryInputs parses binary input data from response (Group 1 and Group 2)
 func parseBinaryInputs(data []byte) []*types.BinaryInput {
 	var result []*types.BinaryInput
@@ -513,7 +544,6 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		qualifier := h.Qualifier
 		count := uint8(h.Count)
 
 		// Group 1 = Binary Input (static), Group 2 = Binary Input Event (with timestamp)
@@ -522,23 +552,29 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 			continue
 		}
 
-		// Group 1 Variation 1 is packed binary state. Qualifier 0x07 carries
-		// an 8-bit point count followed by packed state bytes; no index or
-		// quality byte is present for each point.
-		if group == 1 && variation == 1 && qualifier == al.QualCount8 {
-			packedBytes := (int(count) + 7) / 8
-			if offset+packedBytes > len(data) {
-				break
+		// IEEE 1815: Group 1 Variation 1 is "Binary Input - Packed Format".
+		// Points are packed 8 per byte (bit 0 of byte 0 = point 0), and no
+		// per-point quality byte is carried; parsed points get ONLINE quality.
+		// The qualifier only fixes the index base: count8/count16/all-objects
+		// pack sequentially from index 0; range16 packs from Start..Stop.
+		// Qualifier 0x00 (index8) is not valid for the packed format and falls
+		// through to the per-point path below.
+		if group == 1 && variation == 1 {
+			if base, n, ok := packedBinaryRange(h); ok {
+				packedBytes := (n + 7) / 8
+				if offset+packedBytes > len(data) {
+					break
+				}
+				for i := 0; i < n; i++ {
+					result = append(result, &types.BinaryInput{
+						Index:   uint16(base + i),
+						Value:   data[offset+i/8]&(1<<uint(i%8)) != 0,
+						Quality: types.QualityOnline,
+					})
+				}
+				offset += packedBytes
+				continue
 			}
-			for i := 0; i < int(count); i++ {
-				result = append(result, &types.BinaryInput{
-					Index:   uint16(i),
-					Value:   data[offset+i/8]&(1<<uint(i%8)) != 0,
-					Quality: types.QualityOnline,
-				})
-			}
-			offset += packedBytes
-			continue
 		}
 
 		for i := 0; i < int(count); i++ {
@@ -607,7 +643,6 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		qualifier := h.Qualifier
 		count := uint8(h.Count)
 
 		// Group 30 = Analog Input (static), Group 31 = Analog Input Event (with timestamp)
@@ -616,19 +651,23 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 			continue
 		}
 
-		// Group 30 Variation 1 is a signed 32-bit value with flags. For the
-		// count qualifier (0x07), points are sequential and carry no index.
-		if group == 30 && variation == 1 && qualifier == al.QualCount8 {
-			if offset+int(count)*5 > len(data) {
-				break
+		// IEEE 1815: Group 30 Variation 1 is a signed 32-bit value with a
+		// 1-octet flags byte (5 octets per point), sequential with no
+		// per-point index. The qualifier fixes the index base: count8/count16
+		// are sequential from 0; range16 is sequential from Start.
+		if group == 30 && variation == 1 {
+			if base, n, ok := sequentialRange(h); ok {
+				if offset+n*5 > len(data) {
+					break
+				}
+				for i := 0; i < n; i++ {
+					value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
+					quality := types.QualityFlags(data[offset+4])
+					result = append(result, &types.AnalogInput{Index: uint16(base + i), Value: float64(value), Quality: quality})
+					offset += 5
+				}
+				continue
 			}
-			for i := 0; i < int(count); i++ {
-				value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
-				quality := types.QualityFlags(data[offset+4])
-				result = append(result, &types.AnalogInput{Index: uint16(i), Value: float64(value), Quality: quality})
-				offset += 5
-			}
-			continue
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
@@ -718,7 +757,6 @@ func parseCounters(data []byte) []*types.Counter {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		qualifier := h.Qualifier
 		count := uint8(h.Count)
 
 		// Group 20 = Counter (static), Group 21 = Counter Event (with timestamp)
@@ -727,19 +765,23 @@ func parseCounters(data []byte) []*types.Counter {
 			continue
 		}
 
-		// Group 20 Variation 1 is an unsigned 32-bit counter with flags.
-		// Qualifier 0x07 carries sequential points without indexes.
-		if group == 20 && variation == 1 && qualifier == al.QualCount8 {
-			if offset+int(count)*5 > len(data) {
-				break
+		// IEEE 1815: Group 20 Variation 1 is an unsigned 32-bit counter with a
+		// 1-octet flags byte (5 octets per point), sequential with no
+		// per-point index. The qualifier fixes the index base: count8/count16
+		// are sequential from 0; range16 is sequential from Start.
+		if group == 20 && variation == 1 {
+			if base, n, ok := sequentialRange(h); ok {
+				if offset+n*5 > len(data) {
+					break
+				}
+				for i := 0; i < n; i++ {
+					value := binary.LittleEndian.Uint32(data[offset : offset+4])
+					quality := types.QualityFlags(data[offset+4])
+					result = append(result, &types.Counter{Index: uint16(base + i), Value: value, Quality: quality})
+					offset += 5
+				}
+				continue
 			}
-			for i := 0; i < int(count); i++ {
-				value := binary.LittleEndian.Uint32(data[offset : offset+4])
-				quality := types.QualityFlags(data[offset+4])
-				result = append(result, &types.Counter{Index: uint16(i), Value: value, Quality: quality})
-				offset += 5
-			}
-			continue
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit counter with flags)

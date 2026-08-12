@@ -213,3 +213,155 @@ func TestBinaryInputEncodeDecodeRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+// TestG1V1PackedBoundary locks the IEEE 1815 "Binary Input - Packed Format"
+// (Group 1 Variation 1) decode across byte-boundary and qualifier cases.
+// Points are packed 8 per byte (bit 0 of byte 0 = point 0); no per-point
+// quality byte is present, so parsed quality is always ONLINE.
+func TestG1V1PackedBoundary(t *testing.T) {
+	cases := []struct {
+		name string
+		data []byte
+		want []struct {
+			index uint16
+			value bool
+		}
+	}{
+		{
+			name: "count8 single point ON",
+			// 01 01 07 01 | 01
+			data: []byte{0x01, 0x01, 0x07, 0x01, 0x01},
+			want: []struct {
+				index uint16
+				value bool
+			}{{0, true}},
+		},
+		{
+			name: "count8 eight points one full byte",
+			// 0xAA = binary 10101010, LSB-first: bit0=0,bit1=1,...,bit7=1
+			// -> 0=F,1=T,2=F,3=T,4=F,5=T,6=F,7=T
+			data: []byte{0x01, 0x01, 0x07, 0x08, 0xAA},
+			want: []struct {
+				index uint16
+				value bool
+			}{
+				{0, false}, {1, true}, {2, false}, {3, true},
+				{4, false}, {5, true}, {6, false}, {7, true},
+			},
+		},
+		{
+			name: "count8 nine points cross byte boundary",
+			// byte0=0xFF (points 0..7 ON), byte1=0x01 (point 8 ON)
+			data: []byte{0x01, 0x01, 0x07, 0x09, 0xFF, 0x01},
+			want: []struct {
+				index uint16
+				value bool
+			}{
+				{0, true}, {1, true}, {2, true}, {3, true},
+				{4, true}, {5, true}, {6, true}, {7, true}, {8, true},
+			},
+		},
+		{
+			name: "count8 sixteen points two bytes",
+			// 0x55 = 01010101, LSB-first -> 0=T,1=F,...,7=T
+			// 0xAA = 10101010, LSB-first -> 8=F,9=T,...,15=T
+			data: []byte{0x01, 0x01, 0x07, 0x10, 0x55, 0xAA},
+			want: []struct {
+				index uint16
+				value bool
+			}{
+				{0, true}, {1, false}, {2, true}, {3, false},
+				{4, true}, {5, false}, {6, true}, {7, false},
+				{8, false}, {9, true}, {10, false}, {11, true},
+				{12, false}, {13, true}, {14, false}, {15, true},
+			},
+		},
+		{
+			name: "range16 base 5 three points",
+			// 01 01 28 | start=05 00 | stop=07 00 | packed=05 (bits 0,2 set)
+			// points idx5=T, idx6=F, idx7=T
+			data: []byte{0x01, 0x01, 0x28, 0x05, 0x00, 0x07, 0x00, 0x05},
+			want: []struct {
+				index uint16
+				value bool
+			}{{5, true}, {6, false}, {7, true}},
+		},
+		{
+			name: "range16 base 0 sixteen points all ON",
+			// 01 01 28 | start=00 00 | stop=0F 00 | FF FF
+			data: []byte{0x01, 0x01, 0x28, 0x00, 0x00, 0x0F, 0x00, 0xFF, 0xFF},
+			want: []struct {
+				index uint16
+				value bool
+			}{
+				{0, true}, {1, true}, {2, true}, {3, true},
+				{4, true}, {5, true}, {6, true}, {7, true},
+				{8, true}, {9, true}, {10, true}, {11, true},
+				{12, true}, {13, true}, {14, true}, {15, true},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseBinaryInputs(tc.data)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d points, want %d", len(got), len(tc.want))
+			}
+			for i := range tc.want {
+				if got[i].Index != tc.want[i].index {
+					t.Errorf("point %d: Index = %d, want %d", i, got[i].Index, tc.want[i].index)
+				}
+				if got[i].Value != tc.want[i].value {
+					t.Errorf("point %d (idx %d): Value = %v, want %v", i, got[i].Index, got[i].Value, tc.want[i].value)
+				}
+				// Packed format carries no flags; master must default to ONLINE.
+				if got[i].Quality&types.QualityOnline == 0 {
+					t.Errorf("point %d (idx %d): Quality %v missing ONLINE", i, got[i].Index, got[i].Quality)
+				}
+			}
+		})
+	}
+}
+
+// TestG1V1PackedBitOrder verifies the LSB-first bit ordering within a byte:
+// bit 0 of byte 0 is point 0, not bit 7.
+func TestG1V1PackedBitOrder(t *testing.T) {
+	// count8=1, packed byte 0x01 -> only bit 0 set -> point 0 ON.
+	got := parseBinaryInputs([]byte{0x01, 0x01, 0x07, 0x01, 0x01})
+	if len(got) != 1 || got[0].Index != 0 || !got[0].Value {
+		t.Fatalf("0x01 must decode to point 0=true, got %+v", got)
+	}
+	// count8=8, packed byte 0x80 -> only bit 7 set -> point 7 ON, rest OFF.
+	got = parseBinaryInputs([]byte{0x01, 0x01, 0x07, 0x08, 0x80})
+	if len(got) != 8 {
+		t.Fatalf("got %d points, want 8", len(got))
+	}
+	for i, p := range got {
+		want := i == 7
+		if p.Value != want {
+			t.Errorf("point %d: Value = %v, want %v", i, p.Value, want)
+		}
+	}
+}
+
+// TestG1V1PackedMultipleHeaders verifies two packed G1V1 headers in one
+// response decode independently with correct index bases.
+func TestG1V1PackedMultipleHeaders(t *testing.T) {
+	// Header 1: count8=1, byte 0x01 -> idx0=true
+	// Header 2: range16 start=10 stop=10, byte 0x01 -> idx10=true
+	data := []byte{
+		0x01, 0x01, 0x07, 0x01, 0x01,
+		0x01, 0x01, 0x28, 0x0A, 0x00, 0x0A, 0x00, 0x01,
+	}
+	got := parseBinaryInputs(data)
+	if len(got) != 2 {
+		t.Fatalf("got %d points, want 2", len(got))
+	}
+	if got[0].Index != 0 || !got[0].Value {
+		t.Errorf("point 0: idx=%d value=%v, want idx=0 value=true", got[0].Index, got[0].Value)
+	}
+	if got[1].Index != 10 || !got[1].Value {
+		t.Errorf("point 1: idx=%d value=%v, want idx=10 value=true", got[1].Index, got[1].Value)
+	}
+}
