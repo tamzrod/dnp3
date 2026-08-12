@@ -405,30 +405,21 @@ func (d *DefaultDataHandler) WriteBinaryOutput(index uint16, crob *CROB) error {
 		d.binaryOutputs = newOutputs
 	}
 
-	// Update the binary output based on CROB command
-	// In a real implementation, this would trigger actual control action
+	// Update the binary output based on the CROB control-code bit field
+	// (IEEE 1815 G12V1, reconciled in MEXT-011).
 	switch crob.Code {
-	case 1: // NUL (no operation)
+	case 0x01: // NUL (no operation)
 		// No action
-	case 2: // CLOSE (turn ON)
+	case 0x02: // Pulse On — energize
 		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 3: // OPEN (turn OFF)
+	case 0x04: // Pulse Off — de-energize
 		d.binaryOutputs[index] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
-	case 4: // TRIP/PERMIT (toggle or pulse)
-		// Pulse on/off
+	case 0x08: // Latch On
 		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 5: // PULSE_ON
-		// Would typically pulse high then low
-		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 6: // PULSE_OFF
-		// Would typically pulse low then high
-		d.binaryOutputs[index] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
-	case 7: // LATCH_ON
-		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 8: // LATCH_OFF
+	case 0x10: // Latch Off
 		d.binaryOutputs[index] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
 	default:
-		return fmt.Errorf("unsupported CROB code: %d", crob.Code)
+		return fmt.Errorf("unsupported CROB code: 0x%02X", crob.Code)
 	}
 
 	return nil

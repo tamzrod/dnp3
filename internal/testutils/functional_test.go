@@ -1160,9 +1160,9 @@ func TestWriteCROB(t *testing.T) {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	// Write CROB
+	// Write CROB (Latch On, IEEE 1815 control-code bitfield — MEXT-011)
 	crob := &master.CROB{
-		Code:    2, // CLOSE
+		Code:    master.CROBCodeLatchOn,
 		Count:   1,
 		OnTime:  1000,
 		OffTime: 0,

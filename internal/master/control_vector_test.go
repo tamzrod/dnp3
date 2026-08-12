@@ -8,9 +8,9 @@ import (
 )
 
 func TestBuildCROBRequestGoldenVector(t *testing.T) {
-	crob := &CROB{Code: 7, Count: 1, OnTime: 1000, OffTime: 2000, Status: 0}
+	crob := &CROB{Code: CROBCodeLatchOn, Count: 1, OnTime: 1000, OffTime: 2000, Status: 0}
 	got := buildCROBRequest(0x1234, crob)
-	want, err := hex.DecodeString("0c01000134120701e8030000d007000000")
+	want, err := hex.DecodeString("0c01000134120801e8030000d007000000")
 	if err != nil { t.Fatal(err) }
 	if string(got) != string(want) {
 		t.Fatalf("CROB bytes = %X, want %X", got, want)
@@ -24,20 +24,20 @@ func TestBuildCROBRequestGoldenVector(t *testing.T) {
 func TestBuildControlRequestCROBLSB(t *testing.T) {
 	m := &Master{}
 	// buildControlRequest takes a generic value; for group 12 a bool or uint8
-	// selects the code. Use LATCH_ON (7).
-	req := m.buildControlRequest(al.FuncDirectOperate, 12, 1, 0x1234, uint8(7))
+	// selects the code. Use LATCH_ON (0x08, IEEE 1815 bitfield — MEXT-011).
+	req := m.buildControlRequest(al.FuncDirectOperate, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
 	if req == nil {
 		t.Fatalf("buildControlRequest returned nil APDU")
 	}
 	// Expected object bytes:
 	// 0C 01 00 01          header (group 12, var 1, qualifier 0x00, count 1)
 	// 34 12                index 0x1234 (LSB first)
-	// 07                   code = LATCH_ON
+	// 08                   code = LATCH_ON (IEEE 1815 0x08)
 	// 01                   count
 	// 00 00 00 00          onTime = 0 (LSB first)
 	// 00 00 00 00          offTime = 0 (LSB first)
 	// 00                   status
-	want, err := hex.DecodeString("0c01000134120701000000000000000000")
+	want, err := hex.DecodeString("0c01000134120801000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +65,8 @@ func TestBuildCROBRequestLayout(t *testing.T) {
 	if got[4] != 0x34 || got[5] != 0x12 {
 		t.Errorf("index = %X, want 34 12 (LSB first)", got[4:6])
 	}
-	// Value: code=7, count=1, onTime=1000 (E8 03 00 00), offTime=2000 (D0 07 00 00), status=0.
-	wantVal := []byte{0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0xD0, 0x07, 0x00, 0x00, 0x00}
+	// Value: code=0x08 (LATCH_ON, IEEE 1815), count=1, onTime=1000 (E8 03 00 00), offTime=2000 (D0 07 00 00), status=0.
+	wantVal := []byte{0x08, 0x01, 0xE8, 0x03, 0x00, 0x00, 0xD0, 0x07, 0x00, 0x00, 0x00}
 	if string(got[6:]) != string(wantVal) {
 		t.Errorf("value = %X, want %X", got[6:], wantVal)
 	}

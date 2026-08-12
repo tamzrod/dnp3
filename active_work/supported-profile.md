@@ -138,7 +138,7 @@ MEXT task; the list is authoritative so agents need not read git history.
 | ID | Residual | Impact | Resolving task(s) |
 |----|----------|--------|-------------------|
 | R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. | External control path fails. | MEXT-012, MEXT-013 |
-| R2 | CROB control-code values may be a 1..8 enum rather than the IEEE 1815 bitfield. Real IEDs may reject or misinterpret them. | Real IEDs may reject/misinterpret control. | MEXT-010, MEXT-011 |
+| R2 | CROB control-code values were a 1..8 enum rather than the IEEE 1815 bitfield. **Resolved by MEXT-010/011** (constants now 0x01/0x02/0x04/0x08/0x10/0x80; outstation + goldens updated). | Resolved. Real IEDs receive spec-correct codes. | MEXT-010, MEXT-011 ✅ |
 | R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` uses a per-group workaround. Fragile versus real multi-header responses. | Fragile vs real multi-header responses. | MEXT-014, MEXT-015 |
 | R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
 | R5 | Marketing/docs risk of over-claiming; consumers may assume production-ready. | Consumers assume production-ready. | MEXT-005, MEXT-034, MEXT-035 |
@@ -153,6 +153,7 @@ MEXT task; the list is authoritative so agents need not read git history.
 | Analog Input Variation 1 value | Four-octet signed integer with one quality octet, LSB-first value order | LSB-first int32 + quality; verified by `pkg/dnp3/master/object_vector_test.go` and the MVP loopback (DNP3-001/045). |
 | Counter Variation 1 value | Four-octet unsigned integer, LSB-first octet order | LSB-first uint32; verified by `pkg/dnp3/master/object_vector_test.go` and the MVP loopback (DNP3-001/045). |
 | Quality flags | One octet | Present; surfaced through the MVP loopback assertions (DNP3-045). |
+| CROB control code | One octet, IEEE 1815 bit field (0x01 NUL, 0x02 Pulse On, 0x04 Pulse Off, 0x08 Latch On, 0x10 Latch Off, 0x80 Queue) | 1815 bitfield; reconciled in MEXT-011. Goldens in `internal/master/control_vector_test.go`; outstation decode in `internal/outstation/outstation.go`. |
 | CROB index | Two-octet LSB-first unsigned integer | LSB-first; verified by `internal/master/control_vector_test.go` and the Operate loopback (DNP3-001/045). |
 | CROB times | Four-octet unsigned integers, LSB-first octet order | LSB-first; verified by `internal/master/control_vector_test.go` (DNP3-001). |
 | IIN | Two octets in application response | Present; `IntegrityPoll` response IIN equals `LastIIN()` asserted in the MVP loopback (DNP3-045). |

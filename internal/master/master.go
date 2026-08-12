@@ -2293,29 +2293,26 @@ func encodeDNP3Time(t time.Time) []byte {
 
 // CROB represents a Control Relay Output Block (Group 12, Variation 1).
 type CROB struct {
-	Code    uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
+	Code    uint8  // Control code (IEEE 1815 bit field, see CROBCode* constants)
 	Count   uint8  // Number of operation cycles
 	OnTime  uint32 // Time in ms to energize
 	OffTime uint32 // Time in ms to de-energize
 	Status  uint8  // Qualifier code (0x00=STANDARD)
 }
 
-// CROB control-code values used by this implementation's request encode and
-// outstation decode. NOTE: these are a repository-internal 1..8 enum, NOT the
-// IEEE 1815 G12V1 control-code bit field (0x01 NUL, 0x02 Pulse On, 0x04 Pulse
-// Off, 0x08 Latch On, 0x10 Latch Off, 0x80 Queue). The encode LAYOUT (code as
-// a single octet at the correct position) is locked by DNP3-019; reconciling
-// the code VALUES with the IEEE 1815 bit field is a cross-layer correction
-// tracked separately (see active_work/handoff.md discoveries).
+// CROB control-code values for the G12V1 control-code octet. These are the
+// IEEE 1815 bit-field masks (MEXT-011), not a sequential enum. Bits may be
+// combined via OR (e.g. CROBCodeLatchOn|CROBCodeQueue). The encode LAYOUT
+// (code as a single octet at byte 0 of the 11-byte CROB value) is locked by
+// DNP3-019; the values were reconciled to IEEE 1815 in MEXT-011 (see
+// active_work/crob-code-audit.md).
 const (
-	CROBCodeNUL      uint8 = 1
-	CROBCodeClose    uint8 = 2 // turn ON
-	CROBCodeOpen     uint8 = 3 // turn OFF
-	CROBCodeTrip     uint8 = 4
-	CROBCodePulseOn  uint8 = 5
-	CROBCodePulseOff uint8 = 6
-	CROBCodeLatchOn  uint8 = 7 // Value = true
-	CROBCodeLatchOff uint8 = 8 // Value = false
+	CROBCodeNUL      uint8 = 0x01 // no operation
+	CROBCodePulseOn  uint8 = 0x02 // energize for OnTime
+	CROBCodePulseOff uint8 = 0x04 // de-energize for OffTime
+	CROBCodeLatchOn  uint8 = 0x08 // set output ON  (Value = true)
+	CROBCodeLatchOff uint8 = 0x10 // set output OFF (Value = false)
+	CROBCodeQueue    uint8 = 0x80 // queue; do not execute immediately
 )
 
 // CommandStatus is the per-point status code returned in a G12V1 control

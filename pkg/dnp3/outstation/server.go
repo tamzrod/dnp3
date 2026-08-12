@@ -464,13 +464,16 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert CROB to binary control output
-	// CROB codes: 1=NUL, 2=CLOSE(ON), 3=OPEN(OFF), 4=TRIP, 5=PULSE_ON, 6=PULSE_OFF, 7=LATCH_ON, 8=LATCH_OFF
+	// Convert CROB control-code bit field (IEEE 1815 G12V1, MEXT-011) to a
+	// binary value for the public command handler.
+	// 0x02 Pulse On / 0x08 Latch On -> true
+	// 0x04 Pulse Off / 0x10 Latch Off -> false
+	// 0x01 NUL -> no-op (false); 0x80 Queue is ignored for the bool mapping.
 	var value bool
-	switch crob.Code {
-	case 2, 4, 5, 7: // CLOSE, TRIP, PULSE_ON, LATCH_ON
+	switch crob.Code & 0x1F {
+	case 0x02, 0x08: // Pulse On, Latch On
 		value = true
-	case 1, 3, 6, 8: // NUL, OPEN, PULSE_OFF, LATCH_OFF
+	case 0x01, 0x04, 0x10: // NUL, Pulse Off, Latch Off
 		value = false
 	default:
 		value = false
