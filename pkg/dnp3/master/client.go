@@ -628,7 +628,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 				if offset+5 > len(data) {
 					break
 				}
-				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				value = float64(math.Float32frombits(bits))
 				offset += 4
 				quality = types.QualityFlags(data[offset])
@@ -637,7 +637,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 				if offset+3 > len(data) {
 					break
 				}
-				val := int16(binary.BigEndian.Uint16(data[offset:offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset:offset+2]))
 				value = float64(val)
 				offset += 2
 				quality = types.QualityFlags(data[offset])
@@ -646,7 +646,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 				if offset+5 > len(data) {
 					break
 				}
-				val := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+				val := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
 				value = float64(val)
 				offset += 4
 				quality = types.QualityFlags(data[offset])
@@ -655,7 +655,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 				if offset+4 > len(data) {
 					break
 				}
-				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				value = float64(math.Float32frombits(bits))
 				offset += 4
 				quality = types.QualityOnline
@@ -737,7 +737,7 @@ func parseCounters(data []byte) []*types.Counter {
 				if offset+5 > len(data) {
 					break
 				}
-				value = binary.BigEndian.Uint32(data[offset : offset+4])
+				value = binary.LittleEndian.Uint32(data[offset : offset+4])
 				offset += 4
 				quality = types.QualityFlags(data[offset])
 				offset++
@@ -745,7 +745,7 @@ func parseCounters(data []byte) []*types.Counter {
 				if offset+3 > len(data) {
 					break
 				}
-				value = uint32(binary.BigEndian.Uint16(data[offset:offset+2]))
+				value = uint32(binary.LittleEndian.Uint16(data[offset:offset+2]))
 				offset += 2
 				quality = types.QualityFlags(data[offset])
 				offset++
@@ -753,7 +753,7 @@ func parseCounters(data []byte) []*types.Counter {
 				if offset+4 > len(data) {
 					break
 				}
-				value = binary.BigEndian.Uint32(data[offset : offset+4])
+				value = binary.LittleEndian.Uint32(data[offset : offset+4])
 				offset += 4
 				quality = types.QualityOnline
 			default:
@@ -805,7 +805,7 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 		}
 
 		for i := 0; i < int(count) && offset+3 <= len(data); i++ {
-			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value bool
@@ -860,7 +860,7 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
 		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
-			index := binary.BigEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset:offset+2])
 			offset += 2
 
 			var value float64
@@ -868,13 +868,13 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 
 			switch variation {
 			case 1: // 32-bit float with flags
-				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				value = float64(math.Float32frombits(bits))
 				offset += 4
 				quality = types.QualityFlags(data[offset])
 				offset++
 			case 2: // 16-bit int with flags
-				val := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				value = float64(val)
 				offset += 2
 				quality = types.QualityFlags(data[offset])

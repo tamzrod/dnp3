@@ -834,10 +834,10 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		}
 
 		valueBytes = []byte{
-			code,                                                                    // Control code
-			count,                                                                   // Count
-			byte(onTime >> 24), byte(onTime >> 16), byte(onTime >> 8), byte(onTime), // On time
-			byte(offTime >> 24), byte(offTime >> 16), byte(offTime >> 8), byte(offTime), // Off time
+			code,                                                                  // Control code
+			count,                                                                 // Count
+			byte(onTime), byte(onTime >> 8), byte(onTime >> 16), byte(onTime >> 24), // On time
+			byte(offTime), byte(offTime >> 8), byte(offTime >> 16), byte(offTime >> 24), // Off time
 			status, // Status
 		}
 
@@ -1196,7 +1196,7 @@ func (m *Master) ReadBinaryInputs(outstationID uint16, start, stop uint16) error
 	}
 
 	// Group 1, Variation 1 with range qualifier
-	data := []byte{1, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{1, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1209,7 +1209,7 @@ func (m *Master) ReadDoubleBinaryInputs(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 3, Variation 1 with range qualifier
-	data := []byte{3, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{3, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1222,7 +1222,7 @@ func (m *Master) ReadAnalogInputs(outstationID uint16, start, stop uint16) error
 	}
 
 	// Group 30, Variation 1 with range qualifier
-	data := []byte{30, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{30, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1235,7 +1235,7 @@ func (m *Master) ReadCounters(outstationID uint16, start, stop uint16) error {
 	}
 
 	// Group 20, Variation 1 with range qualifier
-	data := []byte{20, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{20, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1248,7 +1248,7 @@ func (m *Master) ReadFrozenCounters(outstationID uint16, start, stop uint16) err
 	}
 
 	// Group 21, Variation 1 with range qualifier
-	data := []byte{21, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{21, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1261,7 +1261,7 @@ func (m *Master) ReadBinaryOutputStatus(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 10, Variation 1 with range qualifier
-	data := []byte{10, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{10, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1274,7 +1274,7 @@ func (m *Master) ReadAnalogOutputStatus(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 40, Variation 1 with range qualifier
-	data := []byte{40, 1, 0x07, 0x00, byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	data := []byte{40, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)

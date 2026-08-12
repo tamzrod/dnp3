@@ -953,7 +953,7 @@ func parseBinaryInputResponse(data []byte) []bool {
 		offset = 2
 	}
 
-	for offset < len(data)-4 {
+	for offset+4 <= len(data) {
 		group := data[offset]
 		if group != 1 {
 			offset += 4
@@ -961,14 +961,28 @@ func parseBinaryInputResponse(data []byte) []bool {
 		}
 
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := int(data[offset+3])
 		offset += 4
+
+		// Qualifier 0x07 is an 8-bit count with sequential (no-index) packed
+		// points for G1V1. DNP3 wire fields are LSB-first.
+		if qualifier == 0x07 && variation == 1 {
+			packedBytes := (count + 7) / 8
+			if offset+packedBytes > len(data) {
+				break
+			}
+			for i := 0; i < count; i++ {
+				result = append(result, data[offset+i/8]&(1<<uint(i%8)) != 0)
+			}
+			offset += packedBytes
+			break
+		}
 
 		for i := 0; i < count && offset < len(data)-1; i++ {
 			offset += 2 // skip index
 			if variation == 1 {
-				result = append(result, data[offset] != 0)
+				result = append(result, (data[offset]&0x80) != 0)
 				offset++
 			} else if variation == 2 {
 				result = append(result, data[offset] != 0)
@@ -992,7 +1006,7 @@ func parseAnalogInputResponse(data []byte) []float64 {
 		offset = 2
 	}
 
-	for offset < len(data)-4 {
+	for offset+4 <= len(data) {
 		group := data[offset]
 		if group != 30 {
 			offset += 4
@@ -1000,18 +1014,32 @@ func parseAnalogInputResponse(data []byte) []float64 {
 		}
 
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := int(data[offset+3])
 		offset += 4
+
+		// Qualifier 0x07 carries an 8-bit count of sequential points without
+		// indexes. G30V1 is a signed 32-bit value + 1 quality octet (LSB first).
+		if qualifier == 0x07 && variation == 1 {
+			if offset+count*5 > len(data) {
+				break
+			}
+			for i := 0; i < count; i++ {
+				val := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
+				result = append(result, float64(val))
+				offset += 5
+			}
+			break
+		}
 
 		for i := 0; i < count && offset < len(data)-4; i++ {
 			offset += 2 // skip index
 			if variation == 1 { // 32-bit float with flags
-				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				result = append(result, float64(math.Float32frombits(bits)))
 				offset += 5
 			} else if variation == 2 { // 16-bit int with flags
-				val := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				result = append(result, float64(val))
 				offset += 3
 			} else {
@@ -1033,7 +1061,7 @@ func parseBinaryOutputResponse(data []byte) []bool {
 		offset = 2
 	}
 
-	for offset < len(data)-4 {
+	for offset+4 <= len(data) {
 		group := data[offset]
 		if group != 10 {
 			offset += 4
@@ -1046,7 +1074,7 @@ func parseBinaryOutputResponse(data []byte) []bool {
 		offset += 4
 
 		for i := 0; i < count && offset < len(data)-1; i++ {
-			offset += 2 // skip index
+			offset += 2 // skip index (LSB first)
 			if variation == 1 {
 				result = append(result, (data[offset]&0x80) != 0)
 				offset++
@@ -1072,7 +1100,7 @@ func parseAnalogOutputResponse(data []byte) []float64 {
 		offset = 2
 	}
 
-	for offset < len(data)-4 {
+	for offset+4 <= len(data) {
 		group := data[offset]
 		if group != 40 {
 			offset += 4
@@ -1085,13 +1113,13 @@ func parseAnalogOutputResponse(data []byte) []float64 {
 		offset += 4
 
 		for i := 0; i < count && offset < len(data)-4; i++ {
-			offset += 2 // skip index
+			offset += 2 // skip index (LSB first)
 			if variation == 1 { // 32-bit float with flags
-				bits := binary.BigEndian.Uint32(data[offset : offset+4])
+				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				result = append(result, float64(math.Float32frombits(bits)))
 				offset += 5
 			} else if variation == 2 { // 16-bit int with flags
-				val := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				result = append(result, float64(val))
 				offset += 3
 			} else {

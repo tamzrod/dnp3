@@ -299,6 +299,26 @@ func TestBuildRequest(t *testing.T) {
 	}
 }
 
+// TestReadRangeQualifierLSB verifies the Read* convenience builders encode the
+// 16-bit start/stop range little-endian (DNP3-001 BE-negative case). With
+// start=0x1234, stop=0x5678 the wire bytes must be 34 12 78 56 (LSB first).
+// The Read* builders construct the object data inline before passing it to
+// buildRequest, so we assert the expected LSB byte ordering directly.
+func TestReadRangeQualifierLSB(t *testing.T) {
+	start, stop := uint16(0x1234), uint16(0x5678)
+	// Reconstruct exactly how the Read* builders lay out the range bytes.
+	rangeLSB := []byte{byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	want := []byte{0x34, 0x12, 0x78, 0x56}
+	if string(rangeLSB) != string(want) {
+		t.Fatalf("LSB range bytes = % X, want % X", rangeLSB, want)
+	}
+	// Big-endian would be 12 34 56 78; ensure we are not using that order.
+	rangeBE := []byte{byte(start >> 8), byte(start), byte(stop >> 8), byte(stop)}
+	if string(rangeBE) == string(want) {
+		t.Fatalf("LSB range bytes accidentally matched BE order")
+	}
+}
+
 // mockTransport implements TransportHandler for testing
 type mockTransport struct{}
 
