@@ -9,8 +9,8 @@
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
 - DNP3-001 through DNP3-088, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
-- Last completed: DNP3-088 (Outstation empty event-class buffer stub). The 3rd
-  task of checkpoint batch 072/080/088. All three green incl. `-race`;
+- Last completed: DNP3-087 (Outstation public API profile lock). The 3rd task
+  of checkpoint batch 084/085/087. All three green incl. `-race`;
   `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
 - Last checkpoint: DNP3-066/067/068 (distinct confirm timeout + descriptive
   unsupported-object errors + clean restart after Close, commit `caad7c5`,
@@ -1190,19 +1190,72 @@
 
 ## Next READY Tasks
 
-- **DNP3-084** — Outstation concurrent connection rejection (MVP single)
-- **DNP3-085** — Outstation context cancellation on Start/Stop
-- **DNP3-087** — Outstation public API profile lock (prereq DNP3-030, done)
+### DNP3-084 — Outstation concurrent connection rejection (DONE)
+- Commit message: `fix(outstation): reject concurrent connections`
+- `pkg/dnp3/outstation/server.go`: added `Config.MaxConnections` (default 1,
+  MVP single-master), `WithMaxConnections(n)` option, and a `MaxConnections<1`
+  validation in `Config.Validate`. `handleConnection` now rejects (closes) any
+  connection that arrives while `MaxConnections` are already active, logging
+  `N/Max active (MVP single-master)`. Connections count is captured into a
+  local under `connectionsMu` to avoid a read-after-unlock race with
+  `shutdown`'s map reset.
+- Test `pkg/dnp3/outstation/max_connections_test.go`: default-is-1, option +
+  validation, and `TestSecondConnectionRejected` (ephemeral-port listener via
+  `WithTransport(...,0)`: first conn accepted, second conn closed by server,
+  `ActiveConnections` never exceeds the limit).
+- Verification: `go test ./pkg/dnp3/outstation/ -run 'TestMaxConnections|
+  TestWithMaxConnections|TestSecondConnectionRejected'` green; full
+  `go test ./...` + `-race` green; `verify-mvp.sh` exit 0. Acceptance: "Reject
+  a second concurrent connection" — met.
+
+### DNP3-085 — Outstation context cancellation on Start/Stop (DONE)
+- Commit message: `fix(outstation): context cancellation`
+- `pkg/dnp3/outstation/server.go`: `Start(ctx)` now derives `runCtx` from the
+  caller's ctx (so cancelling that ctx cancels the accept loop) and rejects an
+  already-cancelled ctx up front. Added an idempotent `shutdown()` (cancels
+  runCtx, closes all connections + the listener, state -> Down) called from
+  `acceptLoop`'s defer. Added `acceptDone chan struct{}` closed when the accept
+  loop fully exits; `Stop(ctx)` calls `shutdown()` and waits on `acceptDone`
+  (bounded by ctx) for a clean stop.
+- Test `pkg/dnp3/outstation/context_cancellation_test.go`:
+  `TestStartContextCancellationProducesCleanStop` (cancel Start ctx -> state
+  Down + listener closed), `TestStartAlreadyCancelledContextReturnsError`,
+  `TestStopWaitsForAcceptLoopExit`.
+- Verification: `go test ./pkg/dnp3/outstation/ -run 'TestStartContext|
+  TestStopWaitsForAcceptLoopExit'` green; `-race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "Clean stop" — met.
+
+### DNP3-087 — Outstation public API profile lock (DONE)
+- Commit message: `fix(outstation): supported-profile rejection`
+- `pkg/dnp3/outstation/server.go`: `Config.Validate` now hard-rejects
+  non-v0 options with clear `*ConfigurationError` messages naming the
+  offending field — `TransportType==TLS` ("TLS transport is not supported in
+  the v0 MVP profile (use TCP)") and `UnsolicitedMode==true` ("unsolicited
+  responses are not supported in the v0 MVP profile"). Replaces the prior
+  "TLS requires TLSConfig" check (which silently allowed TLS-with-config to
+  fall back to TCP).
+- Test `pkg/dnp3/outstation/profile_lock_test.go`: `TestSupportedProfileRejectionMatrix`
+  (valid TCP, TLS via WithTLS, TLS transport type even with config, unsolicited
+  enabled, MaxConnections zero, valid TCP + unsolicited-disabled) — each
+  rejection asserts `errors.As(*ConfigurationError)` with the correct `Field`;
+  `TestTLSDoesNotSilentlyFallBackToTCP` guards against silent TCP fallback.
+- Verification: `go test ./pkg/dnp3/outstation/ -run
+  'TestSupportedProfileRejectionMatrix|TestTLSDoesNotSilentlyFallBack|
+  TestConfigValidate'` green; `-race` green; `verify-mvp.sh` exit 0.
+  Acceptance: "Clear errors" / "No silent fallback" — met.
+
+## Next READY Tasks (pending)
+
 - **DNP3-098** — Conformance test enablement (DLL/TL/AL existing)
+- Remaining roadmap tasks through DNP3-100 (see `DNP3_MASTER_ROADMAP.md`).
 
 ## Recommended Next Task
 
-**DNP3-084 — Outstation concurrent connection rejection (MVP single)** (no
-prereq). Reject a second concurrent connection or document the single-connection
-MVP policy.
+**DNP3-098 — Conformance test enablement (DLL/TL/AL existing)** (no prereq).
+Enable/wire the existing DLL/TL/AL conformance tests as a persistent gate.
 
-If blocked, fall back to **DNP3-085 — Outstation context cancellation on
-Start/Stop** (no prereq).
+If blocked, pick the next READY outstation task from `DNP3_MASTER_ROADMAP.md`
+(through DNP3-100).
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1271,8 +1324,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-088, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-084 — Outstation concurrent connection rejection (MVP single)
+COMPLETED: DNP3-001 through DNP3-088, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-098 — Conformance test enablement (DLL/TL/AL existing)
 ```
 
 ## Test Status

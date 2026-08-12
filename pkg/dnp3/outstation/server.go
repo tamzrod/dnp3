@@ -133,6 +133,12 @@ type Config struct {
 	UnsolicitedMode bool
 	// MaxEventBuffers is the maximum event buffer size
 	MaxEventBuffers int
+	// MaxConnections is the maximum number of simultaneous master
+	// connections the outstation will serve. The v0 MVP profile is
+	// single-master: a connection that arrives while MaxConnections are
+	// already active is rejected (closed) by the server with a clear log.
+	// DNP3-084. Default 1.
+	MaxConnections int
 }
 
 // DefaultConfig returns a default configuration
@@ -146,6 +152,7 @@ func DefaultConfig() *Config {
 		MaxFragmentSize:    2048,
 		KeepAliveInterval:  30 * time.Second,
 		MaxEventBuffers:    1000,
+		MaxConnections:     1, // DNP3-084: MVP single-master profile
 	}
 }
 
@@ -203,6 +210,14 @@ func WithUnsolicitedMode(enabled bool) ConfigOption {
 	}
 }
 
+// WithMaxConnections sets the maximum simultaneous master connections.
+// The v0 MVP profile is single-master (default 1). DNP3-084.
+func WithMaxConnections(n int) ConfigOption {
+	return func(c *Config) {
+		c.MaxConnections = n
+	}
+}
+
 // NewConfig creates a new configuration with options applied
 func NewConfig(opts ...ConfigOption) *Config {
 	cfg := DefaultConfig()
@@ -226,10 +241,26 @@ func (c *Config) Validate() error {
 			Message: "must be between 1 and 65535",
 		}
 	}
-	if c.TransportType == dnp3.TLS && c.TLSConfig == nil {
+	if c.TransportType == dnp3.TLS {
+		// DNP3-087: TLS is outside the v0 MVP profile (no TLS listener).
+		// Reject with a clear error instead of silently falling back to TCP.
 		return &dnp3.ConfigurationError{
-			Field:   "TLSConfig",
-			Message: "required for TLS transport",
+			Field:   "TransportType",
+			Message: "TLS transport is not supported in the v0 MVP profile (use TCP)",
+		}
+	}
+	if c.UnsolicitedMode {
+		// DNP3-087: the v0 outstation has no unsolicited delivery path.
+		// Reject enabling unsolicited responses with a clear error.
+		return &dnp3.ConfigurationError{
+			Field:   "UnsolicitedMode",
+			Message: "unsolicited responses are not supported in the v0 MVP profile",
+		}
+	}
+	if c.MaxConnections < 1 {
+		return &dnp3.ConfigurationError{
+			Field:   "MaxConnections",
+			Message: "must be at least 1 (MVP single-master profile)",
 		}
 	}
 	return nil
@@ -553,9 +584,13 @@ type server struct {
 	connCounter uint64
 	connectionsMu sync.RWMutex
 
-	// Context for graceful shutdown
+	// Context for graceful shutdown. DNP3-085: derived from the caller's
+	// Start(ctx) context so cancelling that ctx produces a clean stop.
 	runCtx    context.Context
 	runCancel context.CancelFunc
+	// acceptDone is closed when the accept loop has fully exited and
+	// shutdown completed. Allows Stop to wait for a clean stop.
+	acceptDone chan struct{}
 }
 
 // outstationInstance represents a single master connection
@@ -585,7 +620,14 @@ func NewServer(config *Config) (Server, error) {
 
 // Start implements Server.Start.
 // Supported-profile: Target — one TCP listener lifecycle.
+// DNP3-085: the server's run context is derived from the caller's ctx, so
+// cancelling that ctx produces a clean stop (listener closed, connections
+// dropped, state -> Down).
 func (s *server) Start(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("start context already cancelled: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -606,8 +648,10 @@ func (s *server) Start(ctx context.Context) error {
 
 	debugLog("DNP3 Outstation listening on %s", addr)
 
-	// Create context for managing connections
-	s.runCtx, s.runCancel = context.WithCancel(context.Background())
+	// DNP3-085: derive the run context from the caller's ctx so cancelling
+	// the caller's ctx cancels the accept loop and triggers shutdown.
+	s.runCtx, s.runCancel = context.WithCancel(ctx)
+	s.acceptDone = make(chan struct{})
 
 	// Start accept loop in a separate goroutine
 	go s.acceptLoop()
@@ -616,12 +660,24 @@ func (s *server) Start(ctx context.Context) error {
 	return nil
 }
 
-// acceptLoop accepts incoming connections and creates outstation instances
+// acceptLoop accepts incoming connections and creates outstation instances.
+// DNP3-085: it exits when runCtx is cancelled (including via the caller's
+// Start ctx) and performs an idempotent shutdown before returning.
 func (s *server) acceptLoop() {
+	defer func() {
+		s.shutdown()
+		s.mu.Lock()
+		ch := s.acceptDone
+		s.mu.Unlock()
+		if ch != nil {
+			close(ch)
+		}
+	}()
+
 	for {
 		select {
 		case <-s.runCtx.Done():
-			debugLog("Accept loop shutting down")
+			debugLog("Accept loop shutting down (context cancelled)")
 			return
 		default:
 			// Set accept deadline
@@ -648,12 +704,61 @@ func (s *server) acceptLoop() {
 	}
 }
 
+// shutdown is idempotent: it cancels the run context, closes the listener and
+// all active connections, and transitions state to Down. Safe to call from the
+// accept loop (on context cancellation) or from Stop.
+func (s *server) shutdown() {
+	s.mu.Lock()
+	if s.state == ServerStateDown {
+		s.mu.Unlock()
+		return
+	}
+	s.state = ServerStateStopping
+	s.mu.Unlock()
+
+	// Cancel the run context so the accept loop (if still running) exits.
+	if s.runCancel != nil {
+		s.runCancel()
+	}
+
+	// Close all active connections
+	s.connectionsMu.Lock()
+	for id, inst := range s.connections {
+		debugLog("Closing connection %d", id)
+		inst.outstation.Stop()
+		inst.transport.Close()
+	}
+	s.connections = make(map[uint64]*outstationInstance)
+	s.connectionsMu.Unlock()
+
+	// Close listener
+	s.mu.Lock()
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+	s.state = ServerStateDown
+	s.mu.Unlock()
+}
+
 // handleConnection handles a single master connection
 func (s *server) handleConnection(conn net.Conn) {
 	s.connectionsMu.Lock()
+	// DNP3-084: MVP single-master profile. Reject a connection that arrives
+	// while MaxConnections are already active: close it immediately with a
+	// clear log rather than spawning a competing outstation instance.
+	active := len(s.connections)
+	if active >= s.config.MaxConnections {
+		max := s.config.MaxConnections
+		s.connectionsMu.Unlock()
+		debugLog("Connection from %s rejected: %d/%d connections active (MVP single-master)",
+			conn.RemoteAddr(), active, max)
+		_ = conn.Close()
+		return
+	}
 	s.connCounter++
 	connID := s.connCounter
-	
+
 	// Create transport for this connection
 	tcpConfig := &transport.TCPConfig{
 		Address:         "",
@@ -709,37 +814,26 @@ func (s *server) handleConnection(conn net.Conn) {
 
 // Stop implements Server.Stop.
 // Supported-profile: Target — one TCP listener lifecycle.
+// DNP3-085: triggers an idempotent shutdown and waits (up to ctx deadline) for
+// the accept loop to fully exit.
 func (s *server) Stop(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.state == ServerStateDown {
+		s.mu.Unlock()
 		return nil
 	}
+	ch := s.acceptDone
+	s.mu.Unlock()
 
-	s.state = ServerStateStopping
+	s.shutdown()
 
-	// Cancel the accept loop
-	if s.runCancel != nil {
-		s.runCancel()
+	if ch != nil {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-
-	// Close all active connections
-	s.connectionsMu.Lock()
-	for id, inst := range s.connections {
-		debugLog("Closing connection %d", id)
-		inst.outstation.Stop()
-		inst.transport.Close()
-	}
-	s.connections = make(map[uint64]*outstationInstance)
-	s.connectionsMu.Unlock()
-
-	// Close listener
-	if s.listener != nil {
-		s.listener.Close()
-	}
-
-	s.state = ServerStateDown
 	return nil
 }
 
@@ -776,6 +870,17 @@ func (s *server) ActiveConnections() int {
 	s.connectionsMu.RLock()
 	defer s.connectionsMu.RUnlock()
 	return len(s.connections)
+}
+
+// listenerAddr returns the bound listener address (nil before Start). Used by
+// in-package tests to dial an ephemeral-port listener.
+func (s *server) listenerAddr() net.Addr {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.listener == nil {
+		return nil
+	}
+	return s.listener.Addr()
 }
 
 // SetCommandHandler implements Server.SetCommandHandler.
