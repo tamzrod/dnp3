@@ -143,6 +143,15 @@ type Config struct {
 	// structured events from the master (send/receive/confirm/retry/state).
 	// Supported-profile: Defer — observability hook, not externally verified in v0.
 	Logger Logger
+	// AutoIntegrityOnRestart enables the DNP3-053 behavior: when a response
+	// carries the DeviceRestart IIN bit (IIN1.7), the master automatically
+	// issues a Class-0 integrity poll after the triggering request completes,
+	// so the outstation's post-restart static data is re-read without the
+	// caller having to poll manually. Disabled by default (opt-in). The
+	// auto-poll reuses the normal request path; it is suppressed while another
+	// auto-integrity poll is already in flight to avoid unbounded recursion.
+	// Supported-profile: Defer — optional, not externally verified in v0.
+	AutoIntegrityOnRestart bool
 }
 
 // DefaultConfig returns a default configuration
@@ -236,6 +245,16 @@ func WithIdleTimeout(d time.Duration) ConfigOption {
 func WithLogger(l Logger) ConfigOption {
 	return func(c *Config) {
 		c.Logger = l
+	}
+}
+
+// WithAutoIntegrityOnRestart enables the DNP3-053 behavior: a response carrying
+// the DeviceRestart IIN bit automatically triggers a Class-0 integrity poll
+// after the triggering request completes. See Config.AutoIntegrityOnRestart.
+// Supported-profile: Defer — optional, not externally verified in v0.
+func WithAutoIntegrityOnRestart() ConfigOption {
+	return func(c *Config) {
+		c.AutoIntegrityOnRestart = true
 	}
 }
 
@@ -387,6 +406,12 @@ type client struct {
 	// logger is the optional diagnostic sink for frame/sequence events
 	// (DNP3-044). nil means silent (the default).
 	logger Logger
+
+	// autoIntegrityActive guards the DNP3-053 auto-integrity-on-restart path
+	// against re-entrancy: while an auto integrity poll is in flight, the
+	// Reads it issues must not themselves trigger a nested auto-poll even if
+	// their responses also carry the DeviceRestart bit. Guarded by c.mu.
+	autoIntegrityActive bool
 }
 
 // sendAndReceive sends a request and receives a response, returning parsed data
@@ -761,6 +786,16 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	analogInputs := parseAnalogInputs(resp.Data)
 	counters := parseCounters(resp.Data)
 
+	// DNP3-053: if this response carried the DeviceRestart IIN bit and the
+	// caller opted into auto-integrity-on-restart, automatically perform a
+	// Class-0 integrity poll now (after the outstanding marker for this
+	// request has been released by the internal master) so the outstation's
+	// post-restart static data is re-read. The auto-poll's result is not
+	// merged into this Read's response; it refreshes the master's stored
+	// state (LastIIN / outstation IIN). Suppressed while an integrity poll is
+	// already in flight to avoid recursion.
+	c.maybeAutoIntegrityOnRestart(ctx)
+
 	return &ReadResponse{
 		IIN:          resp.IIN.Bytes(),
 		Timestamp:    time.Now(),
@@ -781,6 +816,33 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 // If any per-group read fails, IntegrityPoll returns the error and the partial
 // response is discarded (no half-populated response is surfaced).
 func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
+	resp, err := c.runIntegrityPoll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("integrity poll: %w", err)
+	}
+	return resp, nil
+}
+
+// runIntegrityPoll is the shared Class-0 integrity implementation used by both
+// IntegrityPoll and the DNP3-053 auto-integrity-on-restart path. It reads the
+// MVP static groups (Binary Input G1, Counter G20, Analog Input G30) and merges
+// them into a single ReadResponse (DNP3-037). Each group is read in its own
+// request so the v0 public parsers (which scan one object header per response)
+// populate every group completely.
+func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
+	// DNP3-053: mark an integrity poll in flight so the Reads it issues do not
+	// themselves trigger a nested auto-integrity-on-restart poll (which would
+	// recurse). This guard covers both user-initiated IntegrityPoll and the
+	// auto-poll triggered by the DeviceRestart IIN bit.
+	c.mu.Lock()
+	c.autoIntegrityActive = true
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		c.autoIntegrityActive = false
+		c.mu.Unlock()
+	}()
+
 	type groupRead struct {
 		group uint8
 		apply func(*ReadResponse, *ReadResponse)
@@ -796,13 +858,49 @@ func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 	for _, r := range reads {
 		resp, err := c.Read(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}))
 		if err != nil {
-			return nil, fmt.Errorf("integrity poll: read group %d: %w", r.group, err)
+			return nil, fmt.Errorf("read group %d: %w", r.group, err)
 		}
 		r.apply(out, resp)
 		lastIIN = resp.IIN
 	}
 	out.IIN = lastIIN
 	return out, nil
+}
+
+// maybeAutoIntegrityOnRestart implements the DNP3-053 auto-integrity policy.
+// When AutoIntegrityOnRestart is enabled and the outstation's response carried
+// the DeviceRestart IIN bit (recorded by the internal master as NeedsIntegrity),
+// it automatically issues a Class-0 integrity poll. It is a no-op when the
+// policy is disabled, when no integrity poll is pending, or when an integrity
+// poll is already in flight (preventing recursion). The auto-poll runs on the
+// caller's context; its result is intentionally discarded — the side effect is
+// refreshing the master's stored outstation state (LastIIN / IIN).
+func (c *client) maybeAutoIntegrityOnRestart(ctx context.Context) {
+	if !c.config.AutoIntegrityOnRestart {
+		return
+	}
+	c.mu.RLock()
+	active := c.autoIntegrityActive
+	c.mu.RUnlock()
+	if active {
+		return
+	}
+
+	o, ok := c.internalMaster.GetOutstation(c.config.OutstationAddress)
+	if !ok || !o.NeedsIntegrity() {
+		return
+	}
+	// Clear the pending flag before the poll so a DeviceRestart bit carried by
+	// the auto-poll's own responses (suppressed by autoIntegrityActive) does not
+	// leave a stale requirement, and so a failed auto-poll is not retried
+	// unboundedly by subsequent Reads.
+	o.ClearNeedsIntegrity()
+	c.emitLog(LogInfo, "auto-integrity", "DeviceRestart IIN → auto integrity poll", nil)
+	// Best-effort: the auto-poll is a background correctness action; its error
+	// is logged but never surfaced to the triggering Read caller.
+	if _, err := c.runIntegrityPoll(ctx); err != nil {
+		c.emitLog(LogError, "auto-integrity", "auto integrity poll failed", err)
+	}
 }
 
 // LastIIN implements Client.LastIIN. It returns the master's stored copy of

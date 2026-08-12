@@ -46,6 +46,17 @@ type MVPOutstationSimulator struct {
 	// IIN returned in every response (default all-clear).
 	iin [2]byte
 
+	// DNP3-053 test hook: a one-shot IIN applied to the next application
+	// response only, then reverted to the sticky iin above. Set with
+	// SetNextResponseIIN (consumed by the first application-layer response —
+	// link handshake responses do not touch it).
+	nextIIN [2]byte
+	hasNext bool
+
+	// DNP3-053 test hook: ordered list of application Read group numbers the
+	// simulator has handled, for asserting follow-on integrity polls.
+	readGroups []uint8
+
 	// Recorded frames the master sent (post-Decode summaries), for assertions.
 	sent []*frame.Frame
 
@@ -105,6 +116,28 @@ func (s *MVPOutstationSimulator) SetIIN(iin [2]byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.iin = iin
+}
+
+// SetNextResponseIIN sets a one-shot IIN applied to the NEXT application-layer
+// response only (DNP3-053 test hook). After that response the simulator reverts
+// to the sticky IIN set by SetIIN. Link-layer handshake responses do not
+// consume it, so the one-shot lands on the first application Read/Operate.
+func (s *MVPOutstationSimulator) SetNextResponseIIN(iin [2]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextIIN = iin
+	s.hasNext = true
+}
+
+// ReadGroups returns the ordered list of application Read group numbers the
+// simulator has handled (DNP3-053 test hook), for asserting that an integrity
+// poll followed a trigger.
+func (s *MVPOutstationSimulator) ReadGroups() []uint8 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]uint8, len(s.readGroups))
+	copy(out, s.readGroups)
+	return out
 }
 
 // SentFrames returns a snapshot of the decoded frames the master sent, in send
@@ -254,9 +287,18 @@ func (s *MVPOutstationSimulator) handleApplication(f *frame.Frame) ([]byte, erro
 	}
 
 	resp := al.NewAppResponse(seq, al.IIN{}, appData)
-	// Apply configured IIN.
+	// Apply IIN: a one-shot IIN (DNP3-053 test hook) takes precedence over the
+	// sticky IIN for this single response, then is consumed.
 	iinBytes := s.iin
+	if s.hasNext {
+		iinBytes = s.nextIIN
+		s.hasNext = false
+	}
 	resp.IIN.SetIIN(iinBytes)
+	// Record application Read groups for DNP3-053 follow-on-integrity assertions.
+	if apdu.FuncCode == al.FuncRead {
+		s.readGroups = append(s.readGroups, requestedGroups(apdu.Data)...)
+	}
 
 	tlData := tl.EncodeFragment(tl.Fragment{FIR: true, FIN: true, Data: resp.Encode()})
 	dllFrame := &frame.Frame{

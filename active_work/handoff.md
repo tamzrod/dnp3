@@ -7,13 +7,18 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-051 complete. Implementation underway.
-- Last checkpoint: DNP3-049/050/051 (master/outstation address validation +
-  clean reusable Close + MVP documentation lock). All green incl. `-race`.
-- Previous checkpoint: DNP3-043/044/045 (error taxonomy + optional logging
-  hooks + full-MVP public loopback against the simulator). All green incl.
-  `-race`.
-- Prior checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
+- DNP3-001 through DNP3-053, DNP3-059 complete. Implementation underway.
+- Last completed: DNP3-059 (TL fragment-size boundary vectors). Previous:
+  DNP3-053 (auto-integrity after DeviceRestart IIN). Previous: DNP3-052 (MVP
+  verification script). These three form checkpoint **052/053/059** (this
+  commit). All green incl. `-race`; `verify-mvp.sh` exit 0.
+- Previous checkpoint: DNP3-049/050/051 (master/outstation address validation +
+  clean reusable Close + MVP documentation lock, commit `b20d554`, pushed to
+  origin/main). All green incl. `-race`.
+- Prior checkpoint: DNP3-043/044/045 (error taxonomy + optional logging
+  hooks + full-MVP public loopback against the simulator, commit `db55d5a`).
+  All green incl. `-race`.
+- Earlier checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
   tracking + timeout/retry config validation + optional idle-timeout keep-alive
   monitor). All green incl. `-race`.
 - Earlier checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
@@ -852,20 +857,91 @@
   interoperability / VEC-01).
 - No code changes; no tests (docs-only task). Acceptance: docs match reality.
 
+### DNP3-052 — Verification script for MVP gate
+- Commit message: `test: add MVP verification script`
+- `scripts/verify-mvp.sh`: single command that builds (`go build ./...`), vets
+  the MVP packages (excluding `internal/outstation` whose pre-existing
+  unreachable-code note is out of scope), runs `-count=1` unit/integration
+  tests for the MVP packages, then `-race -count=1` on the race-relevant MVP
+  packages. Exits 0 only when every step is green. Auto-detects the Go
+  toolchain (`go` on PATH, else `~/go-install/go/bin/go`).
+- `scripts/README.md`: registered `verify-mvp.sh` under Testing.
+- Verification: ran `./scripts/verify-mvp.sh` → exit 0 (build + vet + unit +
+  race all green). Acceptance: exit 0 on clean tree — met.
+
+### DNP3-053 — IIN-triggered integrity re-poll (DeviceRestart)
+- Commit message: `feat(master): auto integrity after DeviceRestart IIN`
+- Config: new opt-in `Config.AutoIntegrityOnRestart bool` (default false) +
+  `WithAutoIntegrityOnRestart()` option. When enabled, a response carrying the
+  DeviceRestart IIN bit (IIN1.7) automatically triggers a Class-0 integrity
+  poll after the triggering Read completes (the master's outstanding-request
+  marker is already released by then, so the auto-poll does not contend).
+- `pkg/dnp3/master/client.go`:
+  - `runIntegrityPoll` helper extracted from `IntegrityPoll` (shared by both
+    the public method and the auto path). Both set `autoIntegrityActive`
+    around the loop so the Reads they issue cannot trigger a nested auto-poll
+    (recursion guard).
+  - `maybeAutoIntegrityOnRestart(ctx)` called at the end of a successful
+    `Read`: no-op unless the flag is enabled, no integrity poll is already in
+    flight, and the outstation's `NeedsIntegrity()` is set (by the internal
+    master's `reactToIIN` on DeviceRestart). Clears the pending flag, then
+    runs a best-effort integrity poll; errors are logged, never surfaced to
+    the triggering Read caller.
+- `internal/testutils/simulator.go` (test infra): `SetNextResponseIIN` one-shot
+  IIN injection (consumed by the first application response; link handshake
+  responses do not touch it) and `ReadGroups()` ordered log of handled Read
+  group numbers, for asserting follow-on integrity polls.
+- Tests: `test/integration/auto_integrity_test.go` —
+  `TestAutoIntegrityOnRestart` (DeviceRestart on trigger Read → G1,G20,G30
+  follow; LastIIN clean after), `TestAutoIntegrityOnRestartDisabled` (default
+  off → no follow-on poll), `TestAutoIntegrityOnRestartFromIntegrityPoll`
+  (recursion guard: an explicit IntegrityPoll whose first group read sees
+  DeviceRestart does NOT spawn a nested auto-poll).
+- Verification: `go test -race ./...` green; `./scripts/verify-mvp.sh` exit 0.
+  Acceptance: "Integrity follows" — met (simulator `ReadGroups` tail == [1,20,30]
+  after a DeviceRestart trigger Read).
+
+### DNP3-059 — Transport fragment size boundary tests
+- Commit message: `test(tl): fragment size boundary vectors`
+- `internal/tl/boundary_test.go` (new): locks the DNP3-059 transport-layer
+  fragment-size boundaries (exact 0 / 249 / 250 bytes, plus the adjacent
+  248 and 498/499 edges). For each size it asserts the fragment count, every
+  fragment's FIR/FIN flags and data length, the per-fragment sequence
+  numbering, and a full fragmentize → encode → decode → reassemble round-trip
+  reproducing the original payload byte-for-byte. `TestFragmentSizeBoundary-
+  EncodedRoundTrip` additionally exercises the batch `EncodedFragments` wire
+  path the master uses for 0/249/250.
+- Confirms `MaxFragmentData == 249`: 249 → 1 fragment, 250 → 2 fragments
+  (249 + 1), 498 → 2 fragments, 499 → 3 fragments, 0 → single empty FIR+FIN.
+  No off-by-one.
+- Verification: `go test ./internal/tl/ -run TestFragmentSizeBound` green;
+  full `go test -race ./...` green; `verify-mvp.sh` exit 0.
+  Acceptance: "No off-by-one" — met.
+
 ## Next READY Tasks
 
-- **DNP3-052** — Verification script for MVP gate
-- **DNP3-059** — Transport fragment size boundary tests
+- **DNP3-054** — Confirm generation for CON responses (Master side) (prereq
+  DNP3-009, done)
+- **DNP3-055** — Session isolation for multiple outstations (basic) (prereq
+  DNP3-040, done)
+- **DNP3-056** — Final MVP acceptance gate (prereqs DNP3-045/051/052, done) —
+  **MVP COMPLETE marker**; run verify-mvp.sh and record.
+- **DNP3-057** — Link FCB/FCV handling (Master primary) (prereq DNP3-007, done)
+- **DNP3-058** — Secondary NACK handling (prereq DNP3-006, done)
 - **DNP3-065** — Double-check DLL EncodedSize usage
 - **DNP3-072** — Master handoff.md template
 - **DNP3-080, 084, 085, 087, 088, 098** (Outstation-side READY tasks)
 
 ## Recommended Next Task
 
-**DNP3-052 — Verification script for MVP gate** (prereq: DNP3-045, done).
+**DNP3-056 — Final MVP acceptance gate** (prereqs met). This is the MVP
+completion marker: run `./scripts/verify-mvp.sh` (already green), confirm the
+supported-profile + README reflect verified state (DNP3-051 done), record the
+gate result in handoff, and mark **MVP COMPLETE**. Low-risk, closes the MVP.
 
-If DNP3-052 is blocked, fall back to **DNP3-059 — Transport fragment size
-boundary tests**.
+If DNP3-056 is deferred (e.g. awaiting auditor sign-off), continue with
+**DNP3-054 — Confirm generation for CON responses** or **DNP3-057 — Link
+FCB/FCV handling**.
 
 After completing a task:
 
@@ -931,13 +1007,16 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-051
-NEXT TASK: DNP3-052 — Verification script for MVP gate
+COMPLETED: DNP3-001 through DNP3-053, DNP3-059
+NEXT TASK: DNP3-056 — Final MVP acceptance gate (MVP COMPLETE marker)
 ```
 
 ## Test Status
 
+- `./scripts/verify-mvp.sh` — exit 0 (build + vet + unit/integration + race).
+  The DNP3-052 MVP gate; re-run as the single pre-merge command. Green as of
+  checkpoint 052/053/059.
 - `go test ./...` — all packages green (including integration + simulator).
-- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/...` — green (DNP3-043/044/045/049/050 verified).
-- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..051) and is out of scope.
-- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), then DNP3-049/050/051 (this checkpoint). All pushed to origin/main.
+- `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059 verified).
+- Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..059) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.
+- Checkpoint commits: `37277b3` (DNP3-016/017/018), `d45948d` (DNP3-019/020/021), `7ccd9cd` (DNP3-022/023/024), `22b1fe7` (DNP3-025/026/027), `c650a70` (DNP3-028/029/030), `ffa7908` (DNP3-031/032/033), DNP3-034/035/036, DNP3-037/038/039 (`4c4ac0f`), DNP3-040/041/042, DNP3-043/044/045 (`db55d5a`), DNP3-049/050/051 (`b20d554`), then DNP3-052/053/059 (this checkpoint). All pushed to origin/main.
