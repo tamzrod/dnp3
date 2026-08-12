@@ -764,36 +764,41 @@ func buildRequest(seq uint8, funcCode uint8, data []byte) *al.APDU {
 }
 
 // buildPollRequest creates a poll request based on poll type.
+//
+// Each poll object header is constructed via the formal al.ObjectHeader model
+// (DNP3-004). The wire bytes are preserved exactly from the prior ad-hoc
+// construction so existing golden/loopback expectations remain satisfied.
 func buildPollRequest(pollType PollType) []byte {
 	// Object headers for different poll types
+	var headers []al.ObjectHeader
 	switch pollType {
-	case PollIntegrity:
+	case PollIntegrity, PollClass0:
 		// Group 60, Variation 1 = All static data (Class 0)
-		return []byte{60, 1, 0x07, 0x00} // All data with prefix
-	case PollClass0:
-		// Group 60, Variation 1
-		return []byte{60, 1, 0x07, 0x00}
-
+		headers = []al.ObjectHeader{{Group: 60, Variation: 1, Qualifier: al.QualCount8, Count: 0}}
 	case PollClass1:
 		// Group 2, Variation 1 = Binary events
-		return []byte{2, 1, 0x07, 0x00}
-
+		headers = []al.ObjectHeader{{Group: 2, Variation: 1, Qualifier: al.QualCount8, Count: 0}}
 	case PollClass2:
 		// Group 32, Variation 1 = Analog events
-		return []byte{32, 1, 0x07, 0x00}
-
+		headers = []al.ObjectHeader{{Group: 32, Variation: 1, Qualifier: al.QualCount8, Count: 0}}
 	case PollClass3:
 		// Group 22, Variation 1 = Counter events
-		return []byte{22, 1, 0x07, 0x00}
-
+		headers = []al.ObjectHeader{{Group: 22, Variation: 1, Qualifier: al.QualCount8, Count: 0}}
 	case PollEvent:
 		// All event classes
-		return []byte{2, 1, 0x07, 0x00, 32, 1, 0x07, 0x00, 22, 1, 0x07, 0x00}
-
+		headers = []al.ObjectHeader{
+			{Group: 2, Variation: 1, Qualifier: al.QualCount8, Count: 0},
+			{Group: 32, Variation: 1, Qualifier: al.QualCount8, Count: 0},
+			{Group: 22, Variation: 1, Qualifier: al.QualCount8, Count: 0},
+		}
 	default:
 		return nil
 	}
-
+	data, err := al.EncodeObjectHeaders(nil, headers)
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 // buildControlRequest creates a control request.
@@ -1196,7 +1201,7 @@ func (m *Master) ReadBinaryInputs(outstationID uint16, start, stop uint16) error
 	}
 
 	// Group 1, Variation 1 with range qualifier
-	data := []byte{1, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(1, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1209,7 +1214,7 @@ func (m *Master) ReadDoubleBinaryInputs(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 3, Variation 1 with range qualifier
-	data := []byte{3, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(3, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1222,7 +1227,7 @@ func (m *Master) ReadAnalogInputs(outstationID uint16, start, stop uint16) error
 	}
 
 	// Group 30, Variation 1 with range qualifier
-	data := []byte{30, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(30, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1235,7 +1240,7 @@ func (m *Master) ReadCounters(outstationID uint16, start, stop uint16) error {
 	}
 
 	// Group 20, Variation 1 with range qualifier
-	data := []byte{20, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(20, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1248,7 +1253,7 @@ func (m *Master) ReadFrozenCounters(outstationID uint16, start, stop uint16) err
 	}
 
 	// Group 21, Variation 1 with range qualifier
-	data := []byte{21, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(21, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1261,7 +1266,7 @@ func (m *Master) ReadBinaryOutputStatus(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 10, Variation 1 with range qualifier
-	data := []byte{10, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(10, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
@@ -1274,10 +1279,22 @@ func (m *Master) ReadAnalogOutputStatus(outstationID uint16, start, stop uint16)
 	}
 
 	// Group 40, Variation 1 with range qualifier
-	data := []byte{40, 1, 0x07, 0x00, byte(start), byte(start >> 8), byte(stop), byte(stop >> 8)}
+	data := buildReadRangeRequest(40, 1, start, stop)
 	req := buildRequest(0, al.FuncRead, data)
 
 	return m.sendWithRetry(req, outstationID)
+}
+
+// buildReadRangeRequest builds the object-header bytes for a ranged read
+// request using the formal al.ObjectHeader model (DNP3-004). The wire bytes
+// are preserved exactly from the prior ad-hoc construction.
+func buildReadRangeRequest(group, variation uint8, start, stop uint16) []byte {
+	hdr := al.ObjectHeader{Group: group, Variation: variation, Qualifier: al.QualRange16, Start: start, Stop: stop}
+	data, err := al.EncodeObjectHeaders(nil, []al.ObjectHeader{hdr})
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 // HandleUnsolicited processes an unsolicited response from an outstation.

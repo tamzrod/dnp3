@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"dnp3/internal/al"
 	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
 )
@@ -330,5 +331,26 @@ func TestClientClose(t *testing.T) {
 	err = client.Close()
 	if err != nil {
 		t.Errorf("Close() error = %v", err)
+	}
+}
+
+// TestBuildReadRequestGolden verifies the public Read builder produces the
+// golden Class-0 request headers via the ObjectHeader model (DNP3-004).
+// Each group uses the 0x06 (all-objects) qualifier: group, variation, 0x06, 0x00.
+func TestBuildReadRequestGolden(t *testing.T) {
+	req := buildReadRequest(0, &types.ReadRequest{
+		Groups: types.ReadAllStatic,
+	})
+	// ReadAllStatic = G1V0, G30V0, G20V0, each all-objects (0x06 0x00).
+	want := []byte{
+		0x01, 0x00, 0x06, 0x00, // G1V0 all
+		0x1E, 0x00, 0x06, 0x00, // G30V0 all
+		0x14, 0x00, 0x06, 0x00, // G20V0 all
+	}
+	if string(req.Data) != string(want) {
+		t.Fatalf("buildReadRequest data = % X, want % X", req.Data, want)
+	}
+	if req.FuncCode != al.FuncRead {
+		t.Fatalf("FuncCode = %d, want %d", req.FuncCode, al.FuncRead)
 	}
 }

@@ -459,14 +459,16 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 
 // buildReadRequest builds an APDU for a read request
 func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
-	// Build object headers from request groups
+	// Build object headers from request groups using the formal ObjectHeader
+	// model. Each group is encoded with the 0x06 (all-objects) qualifier.
 	var data []byte
 	for _, group := range request.Groups {
-		data = append(data, group.Group)
-		data = append(data, group.Variation)
-		// Qualifier 0x06 = all objects of the specified group/variation
-		data = append(data, 0x06) // Qualifier: all objects
-		data = append(data, 0x00) // Range: unused for all-objects qualifier
+		h := al.ObjectHeader{
+			Group:     group.Group,
+			Variation: group.Variation,
+			Qualifier: al.QualAllObjects,
+		}
+		data, _ = h.Encode(data)
 	}
 
 	return &al.APDU{

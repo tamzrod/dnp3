@@ -49,9 +49,24 @@
   truncated rejection, unsupported-qualifier rejection, count8 LSB (golden
   G30V1 vector), range16 LSB, `ValidQualifier` coverage.
 
+### DNP3-004 — Wire Master read path to object-header model
+- Commit message: `refactor(master): use object-header model for reads`
+- `internal/master/master.go`: `buildPollRequest` now constructs poll
+  headers via `al.ObjectHeader`/`al.EncodeObjectHeaders` (preserving the
+  prior `0x07 0x00` wire bytes for Class-0/event polls). The 7 `Read*`
+  range builders now use a new `buildReadRangeRequest` helper that emits
+  the `0x28` (range16) qualifier via `al.ObjectHeader`.
+- `pkg/dnp3/master/client.go`: `buildReadRequest` now uses `al.ObjectHeader`
+  with the `0x06` (all-objects) qualifier.
+- New golden test `TestBuildReadRequestGolden` verifies the public Read
+  builder produces the expected Class-0 request bytes.
+- `TestReadRangeQualifierLSB` rewritten to verify `buildReadRangeRequest`
+  emits the `0x28` range16 header LSB-first.
+- Acceptance: generated request headers match golden; loopback green.
+
 ## Next READY Tasks
 
-- **DNP3-004** — Wire Master read path to object-header model  *(prereqs: DNP3-001 ✓, DNP3-003 ✓)*
+- **DNP3-005** — Wire Master response parse to object-header model  *(prereqs: DNP3-003 ✓, DNP3-004 ✓)*
 - **DNP3-006** — Link handshake ACK validation
 - **DNP3-008** — Application sequence continuity
 - **DNP3-011** — IIN bit semantics verification & correction
@@ -70,7 +85,7 @@
 
 ## Recommended Next Task
 
-**DNP3-004 — Wire Master read path to object-header model**
+**DNP3-005 — Wire Master response parse to object-header model**
 
 After completing a task:
 
@@ -126,12 +141,12 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001, DNP3-002, DNP3-003
-NEXT TASK: DNP3-004 — Wire Master read path to object-header model
+COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004
+NEXT TASK: DNP3-005 — Wire Master response parse to object-header model
 ```
 
 ## Test Status
 
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./pkg/dnp3/master/...` — green.
-- Commit hash: aacf3a7
+- Commit hash: (pending commit — see git log after commit)
