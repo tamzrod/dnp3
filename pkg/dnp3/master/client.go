@@ -131,6 +131,12 @@ type Config struct {
 	// KeepAliveInterval is the keep-alive interval.
 	// Supported-profile: Defer — not externally verified in v0.
 	KeepAliveInterval time.Duration
+	// IdleTimeout is the optional keep-alive/idle threshold (DNP3-042). When
+	// positive, a background monitor closes the session (state → Disconnected)
+	// if no send/receive activity is observed for this long. Zero or negative
+	// disables idle monitoring (the default).
+	// Supported-profile: Defer — optional, not externally verified in v0.
+	IdleTimeout time.Duration
 }
 
 // DefaultConfig returns a default configuration
@@ -202,6 +208,17 @@ func WithRetry(count int, delay time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.RetryCount = count
 		c.RetryDelay = delay
+	}
+}
+
+// WithIdleTimeout sets the optional idle/keep-alive threshold (DNP3-042). When
+// positive, a background monitor closes the session (state → Disconnected) if
+// no send/receive activity is observed for this long. Zero or negative disables
+// idle monitoring (the default).
+// Supported-profile: Defer — optional, not externally verified in v0.
+func WithIdleTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.IdleTimeout = d
 	}
 }
 
@@ -350,6 +367,7 @@ func NewClient(config *Config) (Client, error) {
 		Timeout:       int(config.Timeout.Milliseconds()),
 		MaxRetries:    config.RetryCount,
 		RetryDelay:    int(config.RetryDelay.Milliseconds()),
+		IdleTimeout:   int(config.IdleTimeout.Milliseconds()),
 	}
 	internal := master.NewMaster(internalConfig)
 
@@ -400,6 +418,7 @@ func NewClientWithTransport(config *Config, t transport.Handler) (Client, error)
 		Timeout:       int(config.Timeout.Milliseconds()),
 		MaxRetries:    config.RetryCount,
 		RetryDelay:    int(config.RetryDelay.Milliseconds()),
+		IdleTimeout:   int(config.IdleTimeout.Milliseconds()),
 	}
 	internal := master.NewMaster(internalConfig)
 	internal.SetTransport(&transportAdapter{Handler: t})

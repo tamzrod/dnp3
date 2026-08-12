@@ -2,6 +2,7 @@ package master
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -75,9 +76,23 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "zero timeout",
+			config: &Config{
+				Timeout: 0,
+			},
+			wantErr: true,
+		},
+		{
 			name: "negative retry count",
 			config: &Config{
 				RetryCount: -1,
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative retry delay",
+			config: &Config{
+				RetryDelay: -1,
 			},
 			wantErr: true,
 		},
@@ -88,6 +103,21 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "valid via WithTimeout zero rejected",
+			config: NewConfig(WithTimeout(0)),
+			wantErr: true,
+		},
+		{
+			name: "valid via WithRetry negative delay rejected",
+			config: NewConfig(WithRetry(3, -1)),
+			wantErr: true,
+		},
+		{
+			name: "valid via WithRetry negative count rejected",
+			config: NewConfig(WithRetry(-1, 100*time.Millisecond)),
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -95,6 +125,47 @@ func TestConfigValidate(t *testing.T) {
 			err := tt.config.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			// DNP3-041: rejected configs must surface a *ConfigurationError so
+			// callers can inspect the offending field.
+			if tt.wantErr {
+				var ce *dnp3.ConfigurationError
+				if !errors.As(err, &ce) {
+					t.Errorf("Config.Validate() error = %T, want *ConfigurationError", err)
+				}
+			}
+		})
+	}
+}
+
+// TestNewClientRejectsInvalidConfig verifies DNP3-041 acceptance: an invalid
+// config fails NewClient (returns an error and a nil Client) rather than
+// constructing a master with unsafe timeout/retry values.
+func TestNewClientRejectsInvalidConfig(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *Config
+	}{
+		{"zero timeout", NewConfig(WithTimeout(0))},
+		{"negative timeout", NewConfig(WithTimeout(-time.Second))},
+		{"negative retry count", NewConfig(WithRetry(-1, 100*time.Millisecond))},
+		{"negative retry delay", NewConfig(WithRetry(3, -time.Millisecond))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := NewClient(tc.cfg)
+			if err == nil {
+				if c != nil {
+					_ = c.Close()
+				}
+				t.Fatalf("NewClient accepted invalid config (%s)", tc.name)
+			}
+			if c != nil {
+				t.Fatalf("NewClient returned non-nil client along with error")
+			}
+			var ce *dnp3.ConfigurationError
+			if !errors.As(err, &ce) {
+				t.Errorf("NewClient error = %T, want *ConfigurationError", err)
 			}
 		})
 	}

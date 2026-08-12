@@ -312,6 +312,18 @@ var (
 	// corrupted frame is transient line noise; the request is retryable
 	// (DNP3-034).
 	ErrCRCError = errors.New("frame CRC error")
+
+	// ErrRequestOutstanding indicates a request to an outstation is already in
+	// flight on that same outstation (DNP3-040). A DNP3 link permits at most one
+	// outstanding master request per outstation for MVP; a concurrent request to
+	// the same outstation is rejected (not silently queued) so callers do not
+	// block indefinitely behind a slow peer.
+	ErrRequestOutstanding = errors.New("request already outstanding for outstation")
+
+	// ErrIdleTimeout indicates the session was idle longer than the configured
+	// IdleTimeout and the monitor closed it (DNP3-042). The master transitions to
+	// Disconnected.
+	ErrIdleTimeout = errors.New("idle timeout exceeded")
 )
 
 // RetryClass classifies a transport/protocol error to drive the retry policy
@@ -454,6 +466,11 @@ type Config struct {
 	Timeout       int    // Response timeout in milliseconds
 	MaxRetries    int    // Maximum retry attempts
 	RetryDelay    int    // Delay between retries in milliseconds
+	// IdleTimeout is the optional keep-alive/idle threshold in milliseconds
+	// (DNP3-042). When positive, a background monitor closes the session to
+	// Disconnected if no activity (send or receive) is observed for this long.
+	// Zero or negative disables idle monitoring (the default).
+	IdleTimeout int
 }
 
 // DefaultConfig returns default master configuration.
@@ -487,6 +504,25 @@ type Master struct {
 	// link is request/response; concurrent requests are safely queued.
 	reqMu sync.Mutex
 
+	// outstanding tracks per-outstation in-flight requests so a concurrent
+	// request to the SAME outstation is rejected with ErrRequestOutstanding
+	// instead of blocking behind reqMu indefinitely (DNP3-040). Different
+	// outstations still queue via reqMu. Guarded by outstandingMu.
+	outstanding   map[uint16]struct{}
+	outstandingMu  sync.Mutex
+
+	// idleTimeout is the configured keep-alive/idle threshold (DNP3-042). A
+	// non-positive value disables idle monitoring.
+	idleTimeout time.Duration
+	// lastActivity is the time of the last successful send or receive, updated
+	// under mu. Read by the idle monitor.
+	lastActivity time.Time
+	// idleStop closes to signal the idle-monitor goroutine to exit. nil when
+	// monitoring is disabled.
+	idleStop chan struct{}
+	// idleWG lets Disconnect wait for the monitor goroutine to exit.
+	idleWG sync.WaitGroup
+
 	// retryPolicy drives the per-class retry decision in sendWithRetry
 	// (DNP3-034). It is derived from the config in NewMaster and may be
 	// overridden via SetRetryPolicy.
@@ -516,14 +552,15 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:       config,
-		state:        StateDisconnected,
-		outstations:  make(map[uint16]*Outstation),
-		fragmenter:   tl.NewFragmenter(),
-		reassembler:  tl.NewReassembler(),
-		retryPolicy:  DefaultRetryPolicy(config),
+		config:        config,
+		state:         StateDisconnected,
+		outstations:   make(map[uint16]*Outstation),
+		fragmenter:    tl.NewFragmenter(),
+		reassembler:   tl.NewReassembler(),
+		retryPolicy:   DefaultRetryPolicy(config),
+		outstanding:   make(map[uint16]struct{}),
+		idleTimeout:   time.Duration(config.IdleTimeout) * time.Millisecond,
 	}
-
 }
 
 // SetRetryPolicy overrides the default retry table (DNP3-034). Passing nil
@@ -592,6 +629,125 @@ func (m *Master) SetState(state State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.state = state
+}
+
+// beginRequest marks an in-flight request for outstationID (DNP3-040). A DNP3
+// link permits at most one outstanding master request per outstation for MVP;
+// a concurrent request to the same outstation is rejected with
+// ErrRequestOutstanding rather than blocking behind reqMu. Requests to distinct
+// outstations are not rejected here (they queue via reqMu).
+func (m *Master) beginRequest(outstationID uint16) error {
+	m.outstandingMu.Lock()
+	defer m.outstandingMu.Unlock()
+	if _, ok := m.outstanding[outstationID]; ok {
+		return fmt.Errorf("%w: 0x%04X", ErrRequestOutstanding, outstationID)
+	}
+	m.outstanding[outstationID] = struct{}{}
+	return nil
+}
+
+// endRequest clears the in-flight marker for outstationID (DNP3-040). Safe to
+// call when no marker is present (idempotent).
+func (m *Master) endRequest(outstationID uint16) {
+	m.outstandingMu.Lock()
+	delete(m.outstanding, outstationID)
+	m.outstandingMu.Unlock()
+}
+
+// HasOutstandingRequest reports whether a request is currently in flight for
+// outstationID (DNP3-040). Exposed for tests and diagnostics.
+func (m *Master) HasOutstandingRequest(outstationID uint16) bool {
+	m.outstandingMu.Lock()
+	defer m.outstandingMu.Unlock()
+	_, ok := m.outstanding[outstationID]
+	return ok
+}
+
+// recordActivity stamps lastActivity to now under mu (DNP3-042). Called on
+// every successful send and receive so the idle monitor can detect a silent
+// peer.
+func (m *Master) recordActivity() {
+	m.mu.Lock()
+	m.lastActivity = time.Now()
+	m.mu.Unlock()
+}
+
+// lastActivityAt returns the last activity timestamp under mu (DNP3-042).
+func (m *Master) lastActivityAt() time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lastActivity
+}
+
+// startIdleMonitor launches the background idle monitor (DNP3-042). It is a
+// no-op when idleTimeout is non-positive. Safe to call only while holding no
+// other master locks; intended to be invoked after a successful Connect.
+func (m *Master) startIdleMonitor() {
+	if m.idleTimeout <= 0 {
+		return
+	}
+	m.mu.Lock()
+	if m.idleStop != nil {
+		// A previous monitor is still running (e.g., re-Connect); stop it first.
+		close(m.idleStop)
+		m.idleWG.Wait()
+	}
+	m.idleStop = make(chan struct{})
+	m.lastActivity = time.Now()
+	stop := m.idleStop
+	m.mu.Unlock()
+
+	m.idleWG.Add(1)
+	go m.idleMonitorLoop(stop)
+}
+
+// stopIdleMonitor signals the idle monitor to exit and waits for it (DNP3-042).
+// No-op when monitoring is disabled. Called from Disconnect.
+func (m *Master) stopIdleMonitor() {
+	m.mu.Lock()
+	stop := m.idleStop
+	m.idleStop = nil
+	m.mu.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	m.idleWG.Wait()
+}
+
+// idleMonitorLoop ticks at half the idle timeout and, if no activity has been
+// observed for the full idle timeout, transitions the session to Disconnected
+// with ErrIdleTimeout (DNP3-042). Exits when stop is closed.
+func (m *Master) idleMonitorLoop(stop chan struct{}) {
+	defer m.idleWG.Done()
+	tick := m.idleTimeout / 2
+	if tick <= 0 {
+		tick = m.idleTimeout
+	}
+	if tick <= 0 {
+		return
+	}
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			if time.Since(m.lastActivityAt()) > m.idleTimeout {
+				// Idle threshold exceeded: tear the session down to Disconnected
+				// (DNP3-042 acceptance). Bypass the transition table like
+				// Disconnect since idle-close is an unconditional teardown.
+				m.mu.Lock()
+				m.state = StateDisconnected
+				m.mu.Unlock()
+				if m.onError != nil {
+					m.onError(ErrIdleTimeout, "idle monitor closed session")
+				}
+				return
+			}
+		}
+	}
 }
 
 // AddOutstation registers an outstation.
@@ -670,6 +826,8 @@ func (m *Master) Connect() error {
 	if err := m.transitionTo(StateActive); err != nil {
 		return err
 	}
+	// DNP3-042: start the optional idle monitor (no-op when IdleTimeout <= 0).
+	m.startIdleMonitor()
 	return nil
 }
 
@@ -862,6 +1020,9 @@ func validateLinkStatusResponse(raw []byte, outstationID, masterAddr uint16) err
 // master tears down unconditionally); the state moves to Disconnected and
 // registered outstations are dropped.
 func (m *Master) Disconnect() error {
+	// DNP3-042: stop the idle monitor before tearing down so it does not race
+	// with the state reset below.
+	m.stopIdleMonitor()
 	// Force the terminal Disconnected transition from any state: Disconnect is
 	// the unconditional teardown path, so it bypasses the transition table.
 	m.mu.Lock()
@@ -1025,6 +1186,14 @@ func (m *Master) TimeSync(outstationID uint16) error {
 // taken from the master's RetryPolicy. Disconnects are never retried (the
 // link is dead — DNP3-031).
 func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
+	// DNP3-040: reject a concurrent request to the SAME outstation before
+	// blocking on reqMu so a slow peer cannot starve the caller. The marker is
+	// cleared when this request (including retries) completes.
+	if err := m.beginRequest(outstationID); err != nil {
+		return err
+	}
+	defer m.endRequest(outstationID)
+
 	// Serialize the request path so concurrent requests do not race on the
 	// shared reassembler or interleave fragments on a single link (DNP3-025).
 	m.reqMu.Lock()
@@ -1089,6 +1258,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		// The request was sent successfully; advance the sequence so the
 		// next request uses the next value in the 0-15 stream (DNP3-008).
 		m.advanceSequence()
+		// Successful send counts as link activity for the idle monitor (DNP3-042).
+		m.recordActivity()
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
@@ -1120,6 +1291,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			continue
 		}
 
+		// Successful response counts as link activity for the idle monitor (DNP3-042).
+		m.recordActivity()
 		return nil // Success
 	}
 }
@@ -1129,6 +1302,13 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 // DNP3-034: see sendWithRetry — failures are classified and the retry decision
 // is taken from the master's RetryPolicy.
 func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
+	// DNP3-040: reject a concurrent request to the SAME outstation before
+	// blocking on reqMu so a slow peer cannot starve the caller.
+	if err := m.beginRequest(outstationID); err != nil {
+		return nil, err
+	}
+	defer m.endRequest(outstationID)
+
 	// Serialize the request path so concurrent requests do not race on the
 	// shared reassembler or interleave fragments on a single link (DNP3-025).
 	m.reqMu.Lock()
@@ -1192,6 +1372,8 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		}
 		// Successful send; advance the sequence (DNP3-008).
 		m.advanceSequence()
+		// Successful send counts as link activity for the idle monitor (DNP3-042).
+		m.recordActivity()
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
@@ -1224,6 +1406,8 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			continue
 		}
 
+		// Successful response counts as link activity for the idle monitor (DNP3-042).
+		m.recordActivity()
 		// Return the processed application layer data for the caller to decode
 		return appData, nil
 	}
@@ -1351,6 +1535,8 @@ func (m *Master) markDisconnected(err error) (wrapped error, disconnected bool) 
 	// table. Self-transition (already Error) is a no-op; an illegal source
 	// state is forced to Error regardless, since the link is demonstrably dead.
 	_ = m.transitionTo(StateError)
+	// DNP3-042: the link is dead, so stop the idle monitor.
+	m.stopIdleMonitor()
 	return fmt.Errorf("%w: %v", ErrTransportDisconnected, err), true
 }
 

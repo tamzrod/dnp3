@@ -2,11 +2,13 @@ package master
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
+	"dnp3/internal/master"
 	"dnp3/internal/tl"
 	"dnp3/pkg/dnp3/types"
 )
@@ -61,6 +63,12 @@ func buildPubReadResponse(seq uint8) []byte {
 // client do not trigger the race detector. The master serializes the
 // request/reassembly path (DNP3-025) and the public sequence counter is
 // guarded by the client mutex, so concurrent Reads must be race-free.
+//
+// DNP3-040: at most one request may be outstanding per outstation at a time,
+// so concurrent same-outstation Reads are rejected with ErrRequestOutstanding
+// rather than all succeeding. This is the defined concurrency behavior and is
+// not a failure; the test verifies the race detector stays quiet and that no
+// error other than ErrRequestOutstanding is returned.
 func TestConcurrentReadsRaceFree(t *testing.T) {
 	cc := newConnectedClientWithTransport(t, &pubReadEchoTransport{})
 
@@ -74,7 +82,7 @@ func TestConcurrentReadsRaceFree(t *testing.T) {
 			_, err := cc.Read(context.Background(), &types.ReadRequest{
 				Groups: []types.GroupRequest{{Group: 1, Variation: 0}},
 			})
-			if err != nil {
+			if err != nil && !errors.Is(err, master.ErrRequestOutstanding) {
 				errs <- err
 			}
 		}()
@@ -87,6 +95,8 @@ func TestConcurrentReadsRaceFree(t *testing.T) {
 }
 
 // TestConcurrentOperateRaceFree asserts concurrent Operate calls are race-free.
+// DNP3-040: concurrent same-outstation Operates are rejected with
+// ErrRequestOutstanding (defined behavior); only that error is tolerated.
 func TestConcurrentOperateRaceFree(t *testing.T) {
 	cc := newConnectedClientWithTransport(t, &pubStatusEchoTransport{commandStatus: 0})
 
@@ -102,7 +112,7 @@ func TestConcurrentOperateRaceFree(t *testing.T) {
 				CommandType: types.DirectOperate,
 				Value:       &types.BinaryCommandValue{Value: true},
 			})
-			if err != nil {
+			if err != nil && !errors.Is(err, master.ErrRequestOutstanding) {
 				errs <- err
 			}
 		}()

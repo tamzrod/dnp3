@@ -7,11 +7,11 @@
 ## Status
 
 - Planning complete.
-- DNP3-001 through DNP3-039 complete. Implementation underway.
-- Last checkpoint: DNP3-037/038/039 (IntegrityPoll convenience method +
-  supported-profile code annotations + master state machine formalization).
-  All green incl. `-race`.
-- Previous checkpoint: DNP3-034/035/036 (commit 4484498, pushed to origin/main).
+- DNP3-001 through DNP3-042 complete. Implementation underway.
+- Last checkpoint: DNP3-040/041/042 (per-outstation outstanding-request
+  tracking + timeout/retry config validation + optional idle-timeout keep-alive
+  monitor). All green incl. `-race`.
+- Previous checkpoint: DNP3-037/038/039 (commit 4c4ac0f, pushed to origin/main).
 - Go 1.22 toolchain: reinstalled at `~/go-install/go/bin/go` (add to PATH:
   `export PATH=$HOME/go-install/go/bin:$PATH`).
 
@@ -641,10 +641,81 @@
   `TestConnectReconnectFromError`. All green incl. `-race`.
 - Acceptance: no silent illegal transitions; state transition table tests green.
 
+### DNP3-040 — Request outstanding tracking
+- Commit message: `feat(master): track outstanding request per outstation`
+- `internal/master/master.go`:
+  - Added `ErrRequestOutstanding` sentinel.
+  - Added per-outstation outstanding-request tracking: `outstanding`
+    `map[uint16]struct{}` + `outstandingMu`, with `beginRequest(id)` / `endRequest(id)`
+    / `HasOutstandingRequest(id)` helpers. `beginRequest` returns a wrapped
+    `ErrRequestOutstanding` if a request is already in flight for that same
+    outstation; `endRequest` is idempotent.
+  - `sendWithRetry` and `sendWithRetryAndGetResponse` call `beginRequest` BEFORE
+    acquiring `reqMu` (deferred `endRequest`), so a concurrent same-outstation
+    request is rejected immediately instead of blocking behind the global request
+    lock indefinitely. Different outstations still queue via `reqMu`.
+- `pkg/dnp3/master/race_test.go`: `TestConcurrentReadsRaceFree` /
+  `TestConcurrentOperateRaceFree` updated to tolerate `ErrRequestOutstanding` as
+  the defined concurrent same-outstation outcome (the race-free assertion — race
+  detector quiet — still holds); only non-`ErrRequestOutstanding` errors fail.
+- Tests: new `internal/master/outstanding_request_test.go` —
+  `TestConcurrentSameOutstationRejected` (concurrent same-outstation request
+  rejected with `ErrRequestOutstanding` without blocking; marker cleared after
+  completion; a subsequent sequential request succeeds),
+  `TestDistinctOutstationsNotRejectedByOutstandingTracking` (per-outstation
+  independence), `TestBeginRequestIdempotentGuard` (idempotent endRequest +
+  repeated begin rejected). All green incl. `-race`.
+- Acceptance: defined concurrent behavior (reject, not silent queue); no
+  corruption; concurrency tests green.
+
+### DNP3-041 — Timeout configuration validation
+- Commit message: `fix(api): validate timeout and retry config`
+- The public `Config.Validate()` (already present) rejects non-positive
+  `Timeout`, negative `RetryCount`, negative `RetryDelay`, and TLS-without-config,
+  surfacing a `*dnp3.ConfigurationError` with the offending field. `NewClient`
+  and `NewClientWithTransport` already call `Validate()` and return the error
+  (and a nil Client) before constructing a master.
+- Tests: expanded `pkg/dnp3/master/client_test.go` `TestConfigValidate` table
+  with zero-timeout, negative-RetryDelay, and `WithTimeout(0)` / `WithRetry(-1, …)`
+  / `WithRetry(3, -1)` cases; each rejection now asserts the error is a
+  `*dnp3.ConfigurationError` via `errors.As`. Added
+  `TestNewClientRejectsInvalidConfig` (DNP3-041 acceptance) verifying `NewClient`
+  returns a non-nil error AND a nil Client (no leaked resources) and a
+  `*ConfigurationError` for each invalid config.
+- Acceptance: invalid config fails NewClient; config tests green.
+
+### DNP3-042 — Keep-alive / idle detection (minimal)
+- Commit message: `feat(master): optional idle timeout`
+- `internal/master/master.go`:
+  - Added `IdleTimeout int` (ms) to internal `master.Config`; `NewMaster` derives
+    `idleTimeout time.Duration`.
+  - Added `ErrIdleTimeout` sentinel.
+  - Added `lastActivity time.Time` (under `mu`), `idleStop chan struct{}`,
+    `idleWG sync.WaitGroup` fields; `recordActivity()` / `lastActivityAt()`
+    helpers; `startIdleMonitor()` / `stopIdleMonitor()` lifecycle; and
+    `idleMonitorLoop(stop)` which ticks at `idleTimeout/2` and, when no activity
+    has been observed for the full idle timeout, transitions the session to
+    Disconnected (bypassing the transition table, like Disconnect) and reports
+    `ErrIdleTimeout` to the error handler.
+  - `Connect()` calls `startIdleMonitor()` after a successful handshake;
+    `Disconnect()` and `markDisconnected()` call `stopIdleMonitor()` so the
+    goroutine does not outlive the session. Re-Connecting stops any prior monitor
+    first (no leaked goroutines / double-close).
+  - `sendWithRetry` / `sendWithRetryAndGetResponse` call `recordActivity()` on
+    every successful send (post-`advanceSequence`) and every successful response.
+- `pkg/dnp3/master/client.go`: added public `Config.IdleTimeout` field and
+  `WithIdleTimeout(d)` option; wired into the internal `master.Config.IdleTimeout`
+  in both `NewClient` and `NewClientWithTransport`.
+- Tests: new `internal/master/idle_monitor_test.go` —
+  `TestIdleMonitorClosesSessionToDisconnected` (idle → Disconnected),
+  `TestIdleMonitorActivityPreventsClose` (periodic activity keeps state Active),
+  `TestIdleMonitorDisabledByDefault` (IdleTimeout==0 → no monitor, no close),
+  `TestIdleMonitorStopIsIdempotent`, `TestIdleMonitorRestartStopsPrevious`
+  (re-Connect stops the prior monitor). All green incl. `-race`.
+- Acceptance: state becomes Disconnected on idle close; idle tests green.
+
 ## Next READY Tasks
 
-- **DNP3-040** — Request outstanding tracking (prereq DNP3-010)
-- **DNP3-041** — Timeout configuration validation
 - **DNP3-043** — Error type taxonomy
 - **DNP3-044** — Logging hooks
 - **DNP3-049** — Master address configuration validation
@@ -655,10 +726,9 @@
 
 ## Recommended Next Task
 
-**DNP3-040 — Request outstanding tracking** (prereq DNP3-010 satisfied).
+**DNP3-043 — Error type taxonomy** (prereq: none).
 
-If DNP3-040 has an unsatisfied prerequisite or is blocked, fall back to
-**DNP3-041 — Timeout configuration validation**.
+If DNP3-043 is blocked, fall back to **DNP3-044 — Logging hooks**.
 
 After completing a task:
 
@@ -724,8 +794,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-039
-NEXT TASK: DNP3-040 — Request outstanding tracking
+COMPLETED: DNP3-001 through DNP3-042
+NEXT TASK: DNP3-043 — Error type taxonomy
 ```
 
 ## Test Status
