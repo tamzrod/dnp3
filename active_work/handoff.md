@@ -134,4 +134,4 @@ NEXT TASK: DNP3-004 — Wire Master read path to object-header model
 
 - `go test ./...` — all packages green (including integration).
 - `go test -race ./internal/master/... ./pkg/dnp3/master/...` — green.
-- Commit hash: (pending commit — see git log after commit)
+- Commit hash: aacf3a7
