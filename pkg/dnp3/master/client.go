@@ -207,21 +207,32 @@ func (c *Config) Validate() error {
 // UnsolicitedHandler is called when an unsolicited response is received
 type UnsolicitedHandler func(response *UnsolicitedResponse)
 
-// ReadResponse contains the response data from a read request
+// ReadResponse contains the response data from a read request.
+//
+// DNP3-035: the v0 MVP profile supports only the Class-0 static groups
+// Binary Input (G1), Analog Input (G30), and Counter (G20). Only those three
+// slices are populated by Read. The output-status and frozen-counter fields
+// are retained for forward compatibility with later profiles but are NOT
+// populated by the v0 Read path; callers must not rely on them being non-nil.
 type ReadResponse struct {
 	// IIN is the Internal Indication from the outstation
 	IIN [2]byte
-	// BinaryInputs contains binary input data
+	// BinaryInputs contains binary input data (Group 1, MVP-supported).
 	BinaryInputs []*types.BinaryInput
-	// AnalogInputs contains analog input data
+	// AnalogInputs contains analog input data (Group 30, MVP-supported).
 	AnalogInputs []*types.AnalogInput
-	// Counters contains counter data
+	// Counters contains counter data (Group 20, MVP-supported).
 	Counters []*types.Counter
-	// BinaryOutputs contains binary output status data
+	// BinaryOutputs contains binary output status data (Group 10). NOT
+	// populated by the v0 MVP Read path (DNP3-035); deferred to a later
+	// profile.
 	BinaryOutputs []*types.BinaryOutput
-	// AnalogOutputs contains analog output status data
+	// AnalogOutputs contains analog output status data (Group 40). NOT
+	// populated by the v0 MVP Read path (DNP3-035); deferred to a later
+	// profile.
 	AnalogOutputs []*types.AnalogOutput
-	// FrozenCounters contains frozen counter data
+	// FrozenCounters contains frozen counter data. NOT populated by the v0
+	// MVP Read path (DNP3-035); deferred to a later profile.
 	FrozenCounters []*types.FrozenCounter
 	// Timestamp is when the response was received
 	Timestamp time.Time
@@ -320,6 +331,38 @@ func NewClient(config *Config) (Client, error) {
 	}
 
 	// Set up internal master with transport
+	internal.SetTransport(&transportAdapter{Handler: t})
+
+	return &client{
+		config:         config,
+		state:          dnp3.StateDisconnected,
+		handlers:       make([]UnsolicitedHandler, 0),
+		internalMaster: internal,
+		transport:      t,
+	}, nil
+}
+
+// NewClientWithTransport creates a Master client that uses a caller-supplied
+// transport.Handler instead of a TCP/TLS connection. It is intended for tests
+// and laboratory use — e.g. driving the full public Connect → Read → Operate
+// flow against an in-memory outstation simulator (DNP3-036) with no network
+// I/O. The config's TransportType/Address/Port are ignored; Timeout/Retry
+// still apply.
+func NewClientWithTransport(config *Config, t transport.Handler) (Client, error) {
+	if t == nil {
+		return nil, fmt.Errorf("%w: transport is nil", dnp3.ErrInvalidRequest)
+	}
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
+	internalConfig := &master.Config{
+		MasterAddress: config.MasterAddress,
+		Timeout:       int(config.Timeout.Milliseconds()),
+		MaxRetries:    config.RetryCount,
+		RetryDelay:    int(config.RetryDelay.Milliseconds()),
+	}
+	internal := master.NewMaster(internalConfig)
 	internal.SetTransport(&transportAdapter{Handler: t})
 
 	return &client{
@@ -581,21 +624,20 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		return nil, fmt.Errorf("decode response failed: %w", err)
 	}
 
-	// Parse data into public types
+	// Parse data into public types. DNP3-035: only the MVP-supported Class-0
+	// static groups are surfaced (Binary Input G1, Analog Input G30, Counter
+	// G20). Output-status (G10/G40) and frozen-counter parsing is intentionally
+	// omitted from the v0 Read path; those response fields stay nil.
 	binaryInputs := parseBinaryInputs(resp.Data)
 	analogInputs := parseAnalogInputs(resp.Data)
 	counters := parseCounters(resp.Data)
-	binaryOutputs := parseBinaryOutputs(resp.Data)
-	analogOutputs := parseAnalogOutputs(resp.Data)
 
 	return &ReadResponse{
-		IIN:           resp.IIN.Bytes(),
-		Timestamp:     time.Now(),
-		BinaryInputs:  binaryInputs,
-		AnalogInputs:  analogInputs,
-		Counters:      counters,
-		BinaryOutputs: binaryOutputs,
-		AnalogOutputs: analogOutputs,
+		IIN:          resp.IIN.Bytes(),
+		Timestamp:    time.Now(),
+		BinaryInputs: binaryInputs,
+		AnalogInputs: analogInputs,
+		Counters:     counters,
 	}, nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -204,7 +205,129 @@ var (
 	// the connection (or the transport was closed). The master transitions to
 	// StateError when this is observed (DNP3-031).
 	ErrTransportDisconnected = errors.New("transport disconnected")
+
+	// ErrLinkNACK indicates the secondary station returned a link-layer NACK
+	// (function code 1) in response to a user-data frame. The link is alive
+	// but rejected the frame (e.g., busy/out-of-sequence); the request is
+	// retryable (DNP3-034).
+	ErrLinkNACK = errors.New("link-layer NACK received")
+
+	// ErrCRCError indicates a received link frame failed CRC validation. A
+	// corrupted frame is transient line noise; the request is retryable
+	// (DNP3-034).
+	ErrCRCError = errors.New("frame CRC error")
 )
+
+// RetryClass classifies a transport/protocol error to drive the retry policy
+// (DNP3-034). Each class maps to its own retry count and delay.
+type RetryClass int
+
+const (
+	// ClassTimeout is a response/confirmation timeout: no answer within the
+	// configured timeout. Retryable with the configured delay.
+	ClassTimeout RetryClass = iota
+	// ClassNACK is a link-layer NACK. The link is alive; the frame was
+	// rejected. Retryable, typically with a short delay.
+	ClassNACK
+	// ClassCRC is a corrupted received frame (CRC validation failure).
+	// Transient; retryable.
+	ClassCRC
+	// ClassDisconnect is a transport/peer disconnect. Not retryable — the
+	// link is dead.
+	ClassDisconnect
+	// ClassOther covers protocol errors that are not specifically timeout,
+	// NACK, CRC, or disconnect (e.g., sequence mismatch, invalid response).
+	// Retryable with the configured delay.
+	ClassOther
+)
+
+// classifyRetryError maps an error to its RetryClass (DNP3-034). The order
+// matters: disconnect is checked first (it is terminal), then the specific
+// link/framing classes, then timeouts, falling back to ClassOther for
+// everything else (which remains retryable to preserve prior behavior).
+func classifyRetryError(err error) RetryClass {
+	if err == nil {
+		return ClassOther
+	}
+	if isDisconnectError(err) {
+		return ClassDisconnect
+	}
+	if errors.Is(err, ErrLinkNACK) {
+		return ClassNACK
+	}
+	if errors.Is(err, ErrCRCError) {
+		return ClassCRC
+	}
+	if errors.Is(err, ErrConfirmTimeout) || errors.Is(err, ErrTimeout) {
+		return ClassTimeout
+	}
+	return ClassOther
+}
+
+// RetryPolicy holds per-class retry counts and delays (DNP3-034). A count of
+// N means the request may be attempted up to N times total for that class
+// (the initial attempt plus N-1 retries). A zero or negative count means
+// "no retry for this class" after the initial attempt fails.
+type RetryPolicy struct {
+	TimeoutRetries int
+	TimeoutDelay   time.Duration
+	NACKRetries    int
+	NACKDelay      time.Duration
+	CRCRetries     int
+	CRCDelay       time.Duration
+	OtherRetries   int
+	OtherDelay     time.Duration
+}
+
+// DefaultRetryPolicy returns the standard retry table derived from the master
+// Config (DNP3-034). All retryable classes share the configured MaxRetries and
+// RetryDelay; disconnects are not retryable (handled before the policy is
+// consulted). Per-class overrides may be set on the returned struct.
+func DefaultRetryPolicy(cfg *Config) *RetryPolicy {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+	delay := time.Duration(cfg.RetryDelay) * time.Millisecond
+	retries := cfg.MaxRetries
+	if retries < 1 {
+		retries = MaxRetries
+	}
+	return &RetryPolicy{
+		TimeoutRetries: retries,
+		TimeoutDelay:   delay,
+		NACKRetries:    retries,
+		NACKDelay:      delay,
+		CRCRetries:     retries,
+		CRCDelay:       delay,
+		OtherRetries:   retries,
+		OtherDelay:     delay,
+	}
+}
+
+// retryDecision returns whether another attempt is permitted for the given
+// class and how long to wait before it. attempt is the number of attempts
+// already made for the current request (1-based after the first attempt).
+// Disconnects are never retried (the caller must short-circuit before this).
+func (p *RetryPolicy) retryDecision(class RetryClass, attempt int) (bool, time.Duration) {
+	var limit int
+	var delay time.Duration
+	switch class {
+	case ClassTimeout:
+		limit, delay = p.TimeoutRetries, p.TimeoutDelay
+	case ClassNACK:
+		limit, delay = p.NACKRetries, p.NACKDelay
+	case ClassCRC:
+		limit, delay = p.CRCRetries, p.CRCDelay
+	case ClassDisconnect:
+		return false, 0
+	default:
+		limit, delay = p.OtherRetries, p.OtherDelay
+	}
+	if attempt >= limit {
+		return false, 0
+	}
+	return true, delay
+}
 
 // IsDisconnectError reports whether err indicates a transport/peer disconnect.
 // It matches the canonical transport-close sentinels (io.EOF,
@@ -268,6 +391,11 @@ type Master struct {
 	// link is request/response; concurrent requests are safely queued.
 	reqMu sync.Mutex
 
+	// retryPolicy drives the per-class retry decision in sendWithRetry
+	// (DNP3-034). It is derived from the config in NewMaster and may be
+	// overridden via SetRetryPolicy.
+	retryPolicy *RetryPolicy
+
 	// DNP3-013 reaction hooks. Optional; invoked from processResponse when
 	// the corresponding IIN bit is set. These are stubs/logs — full time
 	// objects and integrity polling are later roadmap items.
@@ -292,13 +420,33 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:      config,
-		state:       StateDisconnected,
-		outstations: make(map[uint16]*Outstation),
-		fragmenter:  tl.NewFragmenter(),
-		reassembler: tl.NewReassembler(),
+		config:       config,
+		state:        StateDisconnected,
+		outstations:  make(map[uint16]*Outstation),
+		fragmenter:   tl.NewFragmenter(),
+		reassembler:  tl.NewReassembler(),
+		retryPolicy:  DefaultRetryPolicy(config),
 	}
 
+}
+
+// SetRetryPolicy overrides the default retry table (DNP3-034). Passing nil
+// restores the default policy derived from the master config.
+func (m *Master) SetRetryPolicy(p *RetryPolicy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p == nil {
+		m.retryPolicy = DefaultRetryPolicy(m.config)
+		return
+	}
+	m.retryPolicy = p
+}
+
+// RetryPolicy returns the active retry policy (DNP3-034).
+func (m *Master) RetryPolicy() *RetryPolicy {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.retryPolicy
 }
 
 // SetTransport sets the transport handler.
@@ -744,18 +892,23 @@ func (m *Master) TimeSync(outstationID uint16) error {
 }
 
 // sendWithRetry sends a request with retry logic.
+//
+// DNP3-034: each failure is classified (timeout / NACK / CRC / disconnect /
+// other) and the retry decision (whether to retry and how long to wait) is
+// taken from the master's RetryPolicy. Disconnects are never retried (the
+// link is dead — DNP3-031).
 func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	// Serialize the request path so concurrent requests do not race on the
 	// shared reassembler or interleave fragments on a single link (DNP3-025).
 	m.reqMu.Lock()
 	defer m.reqMu.Unlock()
 
+	policy := m.RetryPolicy()
 	var lastErr error
+	attempt := 0
 
-	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
-		}
+	for {
+		attempt++
 
 		// Allocate the application-layer sequence for this request attempt.
 		// Retries reuse the same sequence value within one logical request;
@@ -800,8 +953,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		}
 		if !sentOK {
 			// If the transport disconnected, stop retrying — the link is dead
-			// (DNP3-031).
-			if isDisconnectError(lastErr) {
+			// (DNP3-031). Otherwise consult the retry policy (DNP3-034).
+			if !m.retryAgain(policy, &lastErr, attempt) {
 				return lastErr
 			}
 			continue
@@ -813,7 +966,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
 				lastErr, _ = m.markDisconnected(err)
-				if isDisconnectError(lastErr) {
+				if !m.retryAgain(policy, &lastErr, attempt) {
 					return lastErr
 				}
 				continue
@@ -824,7 +977,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		resp, err := m.waitForResponse()
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
-			if isDisconnectError(lastErr) {
+			if !m.retryAgain(policy, &lastErr, attempt) {
 				return lastErr
 			}
 			continue
@@ -834,28 +987,32 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		_, err = m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
+			if !m.retryAgain(policy, &lastErr, attempt) {
+				return lastErr
+			}
 			continue
 		}
 
 		return nil // Success
 	}
-
-	return fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
 }
 
 // sendWithRetryAndGetResponse sends a request with retry logic and returns the processed application layer data.
+//
+// DNP3-034: see sendWithRetry — failures are classified and the retry decision
+// is taken from the master's RetryPolicy.
 func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
 	// Serialize the request path so concurrent requests do not race on the
 	// shared reassembler or interleave fragments on a single link (DNP3-025).
 	m.reqMu.Lock()
 	defer m.reqMu.Unlock()
 
+	policy := m.RetryPolicy()
 	var lastErr error
+	attempt := 0
 
-	for attempt := 0; attempt < m.config.MaxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(m.config.RetryDelay) * time.Millisecond)
-		}
+	for {
+		attempt++
 
 		// Allocate the application-layer sequence for this request attempt
 		// (DNP3-008). Retries reuse the same value; it advances only on a
@@ -900,8 +1057,8 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		}
 		if !sentOK {
 			// If the transport disconnected, stop retrying — the link is dead
-			// (DNP3-031).
-			if isDisconnectError(lastErr) {
+			// (DNP3-031). Otherwise consult the retry policy (DNP3-034).
+			if !m.retryAgain(policy, &lastErr, attempt) {
 				return nil, lastErr
 			}
 			continue
@@ -912,7 +1069,7 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		if req.Control.CON {
 			if err := m.waitForConfirmation(seq); err != nil {
 				lastErr, _ = m.markDisconnected(err)
-				if isDisconnectError(lastErr) {
+				if !m.retryAgain(policy, &lastErr, attempt) {
 					return nil, lastErr
 				}
 				continue
@@ -923,7 +1080,7 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		resp, err := m.waitForResponse()
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
-			if isDisconnectError(lastErr) {
+			if !m.retryAgain(policy, &lastErr, attempt) {
 				return nil, lastErr
 			}
 			continue
@@ -934,14 +1091,45 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		appData, err := m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
+			if !m.retryAgain(policy, &lastErr, attempt) {
+				return nil, lastErr
+			}
 			continue
 		}
 
 		// Return the processed application layer data for the caller to decode
 		return appData, nil
 	}
+}
 
-	return nil, fmt.Errorf("%w: %v", ErrMaxRetries, lastErr)
+// retryAgain decides whether to retry the current request after a failure and,
+// if so, sleeps for the policy-mandated delay (DNP3-034). It updates *lastErr
+// in place: when the retry budget for the error's class is exhausted, *lastErr
+// is wrapped with ErrMaxRetries so the caller surfaces a clear terminal error.
+// It returns true if the caller should retry, false if it should return.
+func (m *Master) retryAgain(policy *RetryPolicy, lastErr *error, attempt int) bool {
+	if lastErr == nil || *lastErr == nil {
+		return false
+	}
+	class := classifyRetryError(*lastErr)
+	if class == ClassDisconnect {
+		return false
+	}
+	if policy == nil {
+		policy = DefaultRetryPolicy(m.config)
+	}
+	retry, delay := policy.retryDecision(class, attempt)
+	if !retry {
+		// Preserve the inner error chain (DNP3-034): the NACK/CRC/timeout
+		// sentinels must remain reachable via errors.Is after the retry budget
+		// is exhausted so callers (and auditors) can see the terminal class.
+		*lastErr = fmt.Errorf("%w: %w", ErrMaxRetries, *lastErr)
+		return false
+	}
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	return true
 }
 
 // SendRequestWithRetry sends a request with retry logic (public wrapper).
@@ -1044,13 +1232,16 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 	// Process through Data Link and Transport layers
 	appData, err := m.processReceivedBytes(data)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		// Preserve the inner error chain (DNP3-034): link-layer NACK/CRC
+		// sentinels must remain reachable via errors.Is so the retry loop can
+		// classify them.
+		return nil, fmt.Errorf("%w: %w", ErrInvalidResponse, err)
 	}
 
 	// Application layer decode
 	resp, err := al.DecodeResponse(appData)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidResponse, err)
 	}
 
 	// Validate the response sequence against the outstanding request (DNP3-010).
@@ -1105,6 +1296,13 @@ func (m *Master) reactToIIN(outstationID uint16, iin al.IIN, o *Outstation) {
 
 // processReceivedBytes processes raw TCP data through DLL and TL layers.
 // Returns the reassembled application layer data.
+//
+// DNP3-034: link-layer error classes are surfaced distinctly so the retry
+// loop can classify them:
+//   - a corrupted frame (header/data CRC validation failure) is wrapped with
+//     ErrCRCError (transient line noise; retryable);
+//   - a secondary NACK frame (PRM=0, FuncNack) is surfaced as ErrLinkNACK
+//     (the link is alive but rejected the frame; retryable).
 func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 	// Reset reassembler for new response
 	m.reassembler.Reset()
@@ -1122,12 +1320,24 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 				return completeData, nil
 			}
 
+			// DNP3-034: surface CRC validation failures as a distinct,
+			// retryable error class.
+			if isCRCError(err) {
+				return nil, fmt.Errorf("DLL decode error at offset %d: %w: %v", offset, ErrCRCError, err)
+			}
 			return nil, fmt.Errorf("DLL decode error at offset %d: %w", offset, err)
 		}
 
 		// Move past this complete link frame, including the header CRC and each
 		// 16-octet payload CRC block.
 		offset += frame.EncodedSize(len(dllFrame.Data))
+
+		// DNP3-034: a secondary link-layer NACK (PRM=0, FuncNack) means the
+		// outstation received the frame but rejected it (busy/out-of-sequence).
+		// Surface it distinctly so the retry loop can apply the NACK policy.
+		if !dllFrame.Control.PRM && dllFrame.Control.FuncCode == frame.FuncNack {
+			return nil, fmt.Errorf("%w (func=%d, src=0x%04X)", ErrLinkNACK, dllFrame.Control.FuncCode, dllFrame.SrcAddr)
+		}
 
 		// Skip non-user-data frames (secondary station function codes)
 		// User data frames from outstation use FuncConfirmedUserDataR = 4 with PRM=0
@@ -1174,6 +1384,18 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 	}
 
 	return completeData, nil
+}
+
+// isCRCError reports whether a frame.Decode error is a CRC validation failure
+// (DNP3-034). frame.Decode reports CRC failures via human-readable messages
+// rather than a typed sentinel, so the message text is matched. The match is
+// intentionally narrow ("CRC validation failed") to avoid misclassifying
+// truncation/oversize errors.
+func isCRCError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "CRC validation failed")
 }
 
 // buildRequest creates a request APDU.
