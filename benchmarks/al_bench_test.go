@@ -101,11 +101,11 @@ func BenchmarkAppControlHeader(b *testing.B) {
 // BenchmarkIINEncode measures IIN encoding
 func BenchmarkIINEncode(b *testing.B) {
 	iin := al.IIN{
-		AllStop:       true,
-		ByteOver:      true,
-		CheckFail:     true,
-		ConfigError:   true,
-		NeedsTimeSync: true,
+		AllStations:  true,
+		Class1Events: true,
+		LocalControl: true,
+		BadConfig:    true,
+		NeedTime:     true,
 	}
 
 	b.ResetTimer()

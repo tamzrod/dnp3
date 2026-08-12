@@ -81,7 +81,7 @@ bytes := req.Encode()
 
 ```go
 // Create a response with IIN
-resp := al.NewAppResponse(seq, al.IIN{Busy: true}, data)
+resp := al.NewAppResponse(seq, al.IIN{DeviceTrouble: true}, data)
 
 // Encode to bytes
 bytes := resp.Encode()

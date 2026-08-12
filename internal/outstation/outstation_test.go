@@ -15,7 +15,7 @@ func TestSBOSelectThenOperate(t *testing.T) {
 
 	// Create a SELECT request with full CROB data (11 bytes: Code, Count, OnTime, OffTime, Status)
 	selectReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
 		// Group 12, Var 1, Qualifier 0, Count 1, Index 0, CROB data (11 bytes)
 		Data: []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -37,7 +37,7 @@ func TestSBOSelectThenOperate(t *testing.T) {
 
 	// Create OPERATE request with same parameters
 	operateReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 2},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 2},
 		FuncCode: al.FuncOperate,
 		// Same as select - Group 12, Var 1, Qualifier 0, Count 1, Index 0, CROB data
 		Data: []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -66,7 +66,7 @@ func TestSBOOperateWithoutSelect(t *testing.T) {
 
 	// Create OPERATE request without prior SELECT
 	operateReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncOperate,
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
@@ -95,7 +95,7 @@ func TestSBOSelectTimeout(t *testing.T) {
 
 	// Create a SELECT request with full CROB data
 	selectReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
@@ -111,7 +111,7 @@ func TestSBOSelectTimeout(t *testing.T) {
 
 	// Create OPERATE request - should fail due to timeout
 	operateReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 2},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 2},
 		FuncCode: al.FuncOperate,
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
@@ -133,7 +133,7 @@ func TestSBOClearPendingSelects(t *testing.T) {
 
 	// Create a SELECT request with full CROB data
 	selectReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	}
@@ -266,8 +266,8 @@ func TestGenerateEvent(t *testing.T) {
 
 	// Check IIN is set when buffer is full
 	iin := ost.IIN()
-	if !iin.ByteOver {
-		t.Error("Expected IIN.ByteOver to be set when buffer is full")
+	if !iin.BufferOverflow {
+		t.Error("Expected IIN.BufferOverflow to be set when buffer is full")
 	}
 }
 
@@ -294,8 +294,8 @@ func TestClearEvents(t *testing.T) {
 
 	// Check IIN is cleared
 	iin := ost.IIN()
-	if iin.ByteOver {
-		t.Error("Expected IIN.ByteOver to be cleared after ClearEvents")
+	if iin.BufferOverflow {
+		t.Error("Expected IIN.BufferOverflow to be cleared after ClearEvents")
 	}
 }
 
@@ -375,7 +375,7 @@ func TestConfirmation(t *testing.T) {
 
 	// Create a request with CON bit set
 	req := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, CON: true, Seq: 5},
+		Control:  al.AppControl{FIR: true, FIN: true, CON: true, Seq: 5},
 		FuncCode: al.FuncRead,
 		Data:     []byte{60, 1, 0x07, 0x00},
 	}
@@ -445,7 +445,7 @@ func TestCleanup(t *testing.T) {
 
 	// Add some state
 	selectReq := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncSelect,
 		Data:     []byte{12, 1, 0x00, 0x01, 0x00, 0x00, 0x01},
 	}
@@ -472,7 +472,7 @@ func TestCleanup(t *testing.T) {
 	}
 
 	iin := ost.IIN()
-	if iin.ByteOver {
-		t.Error("Expected IIN.ByteOver to be cleared after cleanup")
+	if iin.BufferOverflow {
+		t.Error("Expected IIN.BufferOverflow to be cleared after cleanup")
 	}
 }

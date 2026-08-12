@@ -119,10 +119,61 @@
   `TestWaitForConfirmationTimeout`.
 - Acceptance: spec-required confirm (match / mismatch / timeout) behavior.
 
+### DNP3-010 — Response sequence matching
+- Commit message: `fix(master): response sequence matching`
+- `internal/master/master.go`: `processResponse` now takes `expectedSeq` and
+  rejects responses whose application SEQ does not match the outstanding
+  request (`ErrResponseSeqMismatch`, no data surfaced). Callers
+  (`sendWithRetry`, `sendWithRetryAndGetResponse`) pass the request seq.
+- `internal/outstation/outstation.go`: `ProcessRequest` now echoes the
+  request's SEQ in solicited responses (spec-compliant outstation behavior).
+- Tests: `TestProcessResponseMatchingSeq`, `TestProcessResponseMismatchSeq`,
+  `TestSendWithRetrySequenceAdvances` (rewritten to use an echo-seq mock
+  transport that returns a response matching each request's SEQ).
+- Acceptance: matching SEQ accepted; mismatch rejected with no data.
+
+### DNP3-011 — IIN bit semantics verification & correction
+- Commit message: `fix(al): correct IIN bit semantics`
+- `internal/al/application.go`: IIN struct field names/semantics corrected to
+  the verified IEEE 1815-2012 mapping (bit POSITIONS/hex masks unchanged:
+  IIN1.0=0x80 ... IIN1.7=0x01, IIN2.0=0x80 ... IIN2.7=0x01). Corrected names:
+  IIN1: AllStations, Class1Events, Class2Events, Class3Events, NeedTime,
+  LocalControl, DeviceTrouble, DeviceRestart.
+  IIN2: FuncUnknown, ObjectUnknown, ParameterError, BufferOverflow,
+  AlreadyExecuting, BadConfig, Reserved2_6, Reserved2_7.
+  Previous names (AllStop/ByteOver/Limit64K/Busy/ParamUnavail/NeedsTimeSync/
+  ConfigError/...) were a garbled, incorrect mapping.
+- `internal/outstation/outstation.go`: fixed semantic misuse — buffer-full now
+  sets `BufferOverflow` (IIN2.3, was incorrectly ByteOver=0x40=Class1Events);
+  parameter unavailable now sets `ParameterError` (IIN2.2, was incorrectly
+  ParamUnavail=0x01=DeviceRestart); generic error response now sets
+  `FuncUnknown` (IIN2.0).
+- Tests: corrected `internal/al/application_test.go` and
+  `test/conformance/al/al_test.go` to assert the verified mapping; added
+  `TestIINBitPositions` (per-bit golden). Updated `internal/outstation`,
+  `internal/testutils`, `test/integration`, `benchmarks` references.
+- Source verified: IEEE 1815-2012 §10.5.1 (via DNP Users Group device-profile
+  IIN table — Hindlepower/ATevo manual reproduces the canonical Object 80
+  bit index table).
+- Acceptance: IIN bits match verified mapping; all IIN tests green.
+
+### DNP3-012 — Master IIN storage & exposure
+- Commit message: `feat(master): expose IIN on responses`
+- `internal/master/master.go`: added thread-safe `Outstation.GetIIN() [2]byte`
+  (IIN already updated on every `processResponse`).
+- `pkg/dnp3/master/client.go`: added `LastIIN() [2]byte` to the public
+  `Client` interface + implementation (returns the master's stored IIN for
+  the configured outstation). The public `ReadResponse.IIN` already carried
+  the per-response IIN; this exposes the stored copy.
+- Tests: `TestProcessResponseStoresIIN` (internal: verifies the stored IIN
+  equals the response IIN), loopback
+  `TestPublicAPILoopbackReadAndDirectControl` asserts
+  `resp.IIN == client.LastIIN()`.
+- Acceptance: public response carries IIN; loopback asserts IIN.
+
 ## Next READY Tasks
 
-- **DNP3-010** — Response sequence matching  *(prereqs: DNP3-008 ✓)*
-- **DNP3-011** — IIN bit semantics verification & correction
+- **DNP3-013** — Basic IIN reaction (DeviceRestart / NeedTime)  *(prereqs: DNP3-012 ✓)*
 - **DNP3-022** — Context cancellation on Connect
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
@@ -138,7 +189,7 @@
 
 ## Recommended Next Task
 
-**DNP3-010 — Response sequence matching**
+**DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)**
 
 After completing a task:
 
@@ -194,12 +245,13 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001, DNP3-002, DNP3-003, DNP3-004, DNP3-005, DNP3-006, DNP3-007, DNP3-008, DNP3-009
-NEXT TASK: DNP3-010 — Response sequence matching
+COMPLETED: DNP3-001 through DNP3-012
+NEXT TASK: DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)
 ```
 
 ## Test Status
 
-- `go test ./...` — all packages green (including integration).
-- `go test -race ./internal/master/... ./pkg/dnp3/master/...` — green.
-- Commit hash: 88989ac
+- `go test ./...` — all 21 packages green (including integration).
+- `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./test/integration/...` — green.
+- Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
+- Commit hash: (pending — DNP3-010/011/012 checkpoint)

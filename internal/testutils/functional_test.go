@@ -664,8 +664,8 @@ func TestEventBufferOverflow(t *testing.T) {
 
 	// Eventually buffer should indicate full via IIN
 	iin := o.IIN()
-	// IIN.ByteOver should be set when buffer is full
-	_ = iin // Check ByteOver in real implementation
+	// IIN.BufferOverflow should be set when the event buffer is full.
+	_ = iin // Check BufferOverflow in real implementation
 }
 
 // =============================================================================

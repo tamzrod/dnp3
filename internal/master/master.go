@@ -119,6 +119,14 @@ func (o *Outstation) UpdateIIN(iin [2]byte) {
 	o.LastSeen = time.Now()
 }
 
+// GetIIN returns the last Internal Indication received from the outstation
+// (DNP3-012: master-side IIN storage & exposure).
+func (o *Outstation) GetIIN() [2]byte {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.IIN
+}
+
 // HasFlag checks if an IIN flag is set.
 func (o *Outstation) HasFlag(bit byte) bool {
 	o.mu.RLock()
@@ -128,13 +136,14 @@ func (o *Outstation) HasFlag(bit byte) bool {
 
 // Master errors
 var (
-	ErrNotConnected       = errors.New("master not connected")
-	ErrOutstationNotFound = errors.New("outstation not found")
-	ErrTimeout            = errors.New("operation timeout")
-	ErrMaxRetries         = errors.New("maximum retries exceeded")
-	ErrInvalidResponse    = errors.New("invalid response")
-	ErrConfirmTimeout     = errors.New("confirmation timeout")
-	ErrConfirmSeqMismatch = errors.New("confirmation sequence mismatch")
+	ErrNotConnected        = errors.New("master not connected")
+	ErrOutstationNotFound  = errors.New("outstation not found")
+	ErrTimeout             = errors.New("operation timeout")
+	ErrMaxRetries          = errors.New("maximum retries exceeded")
+	ErrInvalidResponse     = errors.New("invalid response")
+	ErrConfirmTimeout      = errors.New("confirmation timeout")
+	ErrConfirmSeqMismatch  = errors.New("confirmation sequence mismatch")
+	ErrResponseSeqMismatch = errors.New("response sequence mismatch")
 )
 
 // Config holds master configuration.
@@ -636,8 +645,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			continue
 		}
 
-		// Process response
-		_, err = m.processResponse(resp, outstationID)
+		// Process response; the response SEQ must match the request (DNP3-010).
+		_, err = m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
 			continue
@@ -719,8 +728,9 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			continue
 		}
 
-		// Process the response and get application layer data
-		appData, err := m.processResponse(resp, outstationID)
+		// Process the response and get application layer data; the response
+		// SEQ must match the request (DNP3-010).
+		appData, err := m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
 			continue
@@ -808,8 +818,11 @@ func (m *Master) waitForResponse() ([]byte, error) {
 	return m.transport.Receive()
 }
 
-// processResponse processes a received response and returns the application layer data.
-func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, error) {
+// processResponse processes a received response and returns the application
+// layer data. The response's application sequence number must match the
+// outstanding request's sequence (DNP3-010); a mismatch is a protocol error
+// and no points are surfaced to the caller.
+func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq uint8) ([]byte, error) {
 	// Process through Data Link and Transport layers
 	appData, err := m.processReceivedBytes(data)
 	if err != nil {
@@ -820,6 +833,12 @@ func (m *Master) processResponse(data []byte, outstationID uint16) ([]byte, erro
 	resp, err := al.DecodeResponse(appData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+	}
+
+	// Validate the response sequence against the outstanding request (DNP3-010).
+	if resp.Header.Control.Seq != expectedSeq {
+		return nil, fmt.Errorf("%w: got %d, expected %d",
+			ErrResponseSeqMismatch, resp.Header.Control.Seq, expectedSeq)
 	}
 
 	// Update outstation IIN
@@ -1023,8 +1042,8 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		}
 
 		valueBytes = []byte{
-			code,                                                                  // Control code
-			count,                                                                 // Count
+			code,                                                                    // Control code
+			count,                                                                   // Count
 			byte(onTime), byte(onTime >> 8), byte(onTime >> 16), byte(onTime >> 24), // On time
 			byte(offTime), byte(offTime >> 8), byte(offTime >> 16), byte(offTime >> 24), // Off time
 			status, // Status

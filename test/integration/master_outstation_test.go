@@ -190,8 +190,8 @@ func TestOutstationIIN(t *testing.T) {
 
 	iin := ost.IIN()
 
-	// Should have no errors initially
-	if iin.AllStop || iin.Busy || iin.ParamUnavail {
+	// Should have no error conditions set initially
+	if iin.AllStations || iin.DeviceTrouble || iin.ParameterError || iin.BufferOverflow {
 		t.Error("Expected clean IIN on startup")
 	}
 }

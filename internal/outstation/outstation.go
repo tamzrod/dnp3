@@ -694,7 +694,7 @@ func (o *Outstation) GenerateEvent(class EventClass, group uint8, index uint16, 
 	// Update IIN if buffer is full
 	if o.eventQueue.IsFull() {
 		o.mu.Lock()
-		o.iin.ByteOver = true
+		o.iin.BufferOverflow = true
 		o.mu.Unlock()
 	}
 
@@ -710,7 +710,7 @@ func (o *Outstation) EventCount() int {
 func (o *Outstation) ClearEvents() {
 	o.eventQueue.Clear()
 	o.mu.Lock()
-	o.iin.ByteOver = false
+	o.iin.BufferOverflow = false
 	o.mu.Unlock()
 }
 
@@ -994,7 +994,7 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	case al.FuncRecordCurrentTime:
 		resp, err = o.handleRecordCurrentTime(req)
 	default:
-		o.iin.ParamUnavail = true
+		o.iin.ParameterError = true
 		err = fmt.Errorf("unsupported function code: %d", req.FuncCode)
 	}
 
@@ -1009,6 +1009,13 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 			copy(newData[2:], resp.Data)
 		}
 		resp.Data = newData
+
+		// Per IEEE 1815, a solicited response echoes the application sequence
+		// number of the request it answers (DNP3-010). Override the
+		// per-handler counter value with the request's sequence.
+		if !resp.Control.UNS {
+			resp.Control.Seq = req.Control.Seq
+		}
 	}
 
 	return resp, err
@@ -1106,15 +1113,17 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 	}
 
 	// Object header: group, variation, qualifier, count - OUTSIDE loop
-	result = append(result, 1)               // Group 1
-	result = append(result, variation)       // Variation
+	result = append(result, 1)         // Group 1
+	result = append(result, variation) // Variation
 	if variation == 1 {
 		// Variation 1 is packed binary state; qualifier 0x07 is an 8-bit
 		// point count and the values follow as packed bits.
 		result = append(result, 0x07, byte(len(data)))
 		packed := make([]byte, (len(data)+7)/8)
 		for i, bi := range data {
-			if bi.Value { packed[i/8] |= 1 << uint(i%8) }
+			if bi.Value {
+				packed[i/8] |= 1 << uint(i%8)
+			}
 		}
 		return append(result, packed...)
 	}
@@ -1198,8 +1207,8 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 30)              // Group 30
-	result = append(result, variation)       // Variation
+	result = append(result, 30)        // Group 30
+	result = append(result, variation) // Variation
 	if variation == 1 {
 		// Variation 1 is a signed 32-bit value with flags. Qualifier 0x07
 		// carries an 8-bit count and sequential points without indexes.
@@ -1256,8 +1265,8 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 20)              // Group 20
-	result = append(result, variation)       // Variation
+	result = append(result, 20)        // Group 20
+	result = append(result, variation) // Variation
 	if variation == 1 {
 		// Variation 1 is an unsigned 32-bit counter with flags. Qualifier
 		// 0x07 carries an 8-bit count and sequential points without indexes.
@@ -1471,7 +1480,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 	// Parse write request
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
 	if len(req.Data) < 5 {
-		o.iin.ParamUnavail = true
+		o.iin.ParameterError = true
 		return nil, ErrInvalidRequest
 	}
 
@@ -1483,7 +1492,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 	dataIdx := 4
 	for i := 0; i < count; i++ {
 		if dataIdx+2 > len(req.Data) {
-			o.iin.ParamUnavail = true
+			o.iin.ParameterError = true
 			return nil, ErrInvalidRequest
 		}
 
@@ -1495,7 +1504,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 		case 12: // CROB (Control Relay Output Block)
 			// CROB: Code(1) + Count(1) + OnTime(4) + OffTime(4) + Status(1) = 11 bytes
 			if dataIdx+11 > len(req.Data) {
-				o.iin.ParamUnavail = true
+				o.iin.ParameterError = true
 				return nil, ErrInvalidRequest
 			}
 			crob := CROB{
@@ -1508,7 +1517,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			// Call the data handler to process the CROB
 			if dh, ok := o.data.(DataWriter); ok {
 				if err := dh.WriteBinaryOutput(index, &crob); err != nil {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, err
 				}
 			}
@@ -1520,35 +1529,35 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			switch variation {
 			case 1, 5: // 16-bit signed
 				if dataIdx+2 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				value = int16(req.Data[dataIdx])<<8 | int16(req.Data[dataIdx+1])
 				dataIdx += 2
 			case 2, 6: // 16-bit unsigned
 				if dataIdx+2 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				value = uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
 				dataIdx += 2
 			case 3, 7: // 32-bit signed
 				if dataIdx+4 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				value = int32(req.Data[dataIdx])<<24 | int32(req.Data[dataIdx+1])<<16 | int32(req.Data[dataIdx+2])<<8 | int32(req.Data[dataIdx+3])
 				dataIdx += 4
 			case 4, 8: // 32-bit unsigned
 				if dataIdx+4 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				value = uint32(req.Data[dataIdx])<<24 | uint32(req.Data[dataIdx+1])<<16 | uint32(req.Data[dataIdx+2])<<8 | uint32(req.Data[dataIdx+3])
 				dataIdx += 4
 			case 9, 10: // 32-bit float
 				if dataIdx+4 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				bits := uint32(req.Data[dataIdx])<<24 | uint32(req.Data[dataIdx+1])<<16 | uint32(req.Data[dataIdx+2])<<8 | uint32(req.Data[dataIdx+3])
@@ -1556,7 +1565,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				dataIdx += 4
 			case 13, 14: // 64-bit double
 				if dataIdx+8 > len(req.Data) {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
 				bits := uint64(req.Data[dataIdx])<<56 | uint64(req.Data[dataIdx+1])<<48 | uint64(req.Data[dataIdx+2])<<40 | uint64(req.Data[dataIdx+3])<<32 |
@@ -1564,19 +1573,19 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				value = math.Float64frombits(bits)
 				dataIdx += 8
 			default:
-				o.iin.ParamUnavail = true
+				o.iin.ParameterError = true
 				return nil, fmt.Errorf("unsupported analog variation: %d", variation)
 			}
 
 			// Call the data handler to process the analog output
 			if dh, ok := o.data.(DataWriter); ok {
 				if err := dh.WriteAnalogOutput(index, value, variation); err != nil {
-					o.iin.ParamUnavail = true
+					o.iin.ParameterError = true
 					return nil, err
 				}
 			}
 		default:
-			o.iin.ParamUnavail = true
+			o.iin.ParameterError = true
 			return nil, fmt.Errorf("unsupported write group: %d", group)
 		}
 	}
@@ -1722,7 +1731,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		debugLog("handleOperate: calling executeControl for index=%d", index)
 		err := o.executeControl(dh, group, variation, index, pending.Value)
 		if err != nil {
-			o.iin.ParamUnavail = true
+			o.iin.ParameterError = true
 			debugLog("handleOperate: executeControl error: %v", err)
 			return nil, err
 		}
@@ -1772,7 +1781,7 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		debugLog("handleDirectOperate: calling executeControl")
 		err := o.executeControl(dh, group, variation, index, value)
 		if err != nil {
-			o.iin.ParamUnavail = true
+			o.iin.ParameterError = true
 			debugLog("handleDirectOperate: executeControl error: %v", err)
 			return nil, err
 		}
@@ -1915,7 +1924,7 @@ func (o *Outstation) handleDisableUnsolicited(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleFreeze(req *al.APDU) (*al.APDU, error) {
 	// Freeze counters without clearing
 	if err := o.data.FreezeCounters(false); err != nil {
-		o.iin.ParamUnavail = true
+		o.iin.ParameterError = true
 		return nil, err
 	}
 
@@ -1937,7 +1946,7 @@ func (o *Outstation) handleFreeze(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleFreezeClear(req *al.APDU) (*al.APDU, error) {
 	// Freeze counters and clear
 	if err := o.data.FreezeCounters(true); err != nil {
-		o.iin.ParamUnavail = true
+		o.iin.ParameterError = true
 		return nil, err
 	}
 
@@ -2057,7 +2066,7 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 	}
 
 	iin := &al.IIN{
-		ParamUnavail: true,
+		FuncUnknown: true,
 	}
 
 	resp := &al.APDU{

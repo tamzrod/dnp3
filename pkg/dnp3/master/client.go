@@ -35,9 +35,9 @@ import (
 	"sync"
 	"time"
 
-	"dnp3/pkg/dnp3"
 	"dnp3/internal/al"
 	"dnp3/internal/master"
+	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
 	"dnp3/pkg/transport"
 )
@@ -56,6 +56,11 @@ type Client interface {
 
 	// Read issues a read request to the outstation
 	Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error)
+
+	// LastIIN returns the most recent Internal Indications received from the
+	// configured outstation. The same value is carried on each ReadResponse;
+	// this accessor exposes the master's stored copy (DNP3-012).
+	LastIIN() [2]byte
 
 	// Operate issues a control command to the outstation
 	Operate(ctx context.Context, command *types.ControlOutput) (*OperateResponse, error)
@@ -105,10 +110,10 @@ func DefaultConfig() *Config {
 		TransportType:     dnp3.TCP,
 		Address:           "localhost",
 		Port:              20000,
-		Timeout:            5 * time.Second,
-		RetryCount:         3,
-		RetryDelay:         100 * time.Millisecond,
-		KeepAliveInterval:  30 * time.Second,
+		Timeout:           5 * time.Second,
+		RetryCount:        3,
+		RetryDelay:        100 * time.Millisecond,
+		KeepAliveInterval: 30 * time.Second,
 	}
 }
 
@@ -303,9 +308,9 @@ func NewClient(config *Config) (Client, error) {
 	switch config.TransportType {
 	case dnp3.TCP:
 		tcpConfig := &transport.TCPConfig{
-			Address:         config.Address,
-			Port:            config.Port,
-			ConnectTimeout:  int(config.Timeout.Milliseconds()),
+			Address:        config.Address,
+			Port:           config.Port,
+			ConnectTimeout: int(config.Timeout.Milliseconds()),
 			ReceiveTimeout: int(config.Timeout.Milliseconds()),
 			KeepAlive:      int(config.KeepAliveInterval.Milliseconds()),
 		}
@@ -315,9 +320,9 @@ func NewClient(config *Config) (Client, error) {
 		// For TLS, we would need to create a TLSTransport
 		// For now, fall back to TCP
 		tcpConfig := &transport.TCPConfig{
-			Address:         config.Address,
-			Port:            config.Port,
-			ConnectTimeout:  int(config.Timeout.Milliseconds()),
+			Address:        config.Address,
+			Port:           config.Port,
+			ConnectTimeout: int(config.Timeout.Milliseconds()),
 			ReceiveTimeout: int(config.Timeout.Milliseconds()),
 			KeepAlive:      int(config.KeepAliveInterval.Milliseconds()),
 		}
@@ -331,7 +336,7 @@ func NewClient(config *Config) (Client, error) {
 		config:         config,
 		state:          dnp3.StateDisconnected,
 		handlers:       make([]UnsolicitedHandler, 0),
-		internalMaster:  internal,
+		internalMaster: internal,
 		transport:      t,
 	}, nil
 }
@@ -447,14 +452,25 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	analogOutputs := parseAnalogOutputs(resp.Data)
 
 	return &ReadResponse{
-		IIN:            resp.IIN.Bytes(),
-		Timestamp:      time.Now(),
-		BinaryInputs:   binaryInputs,
-		AnalogInputs:   analogInputs,
-		Counters:       counters,
-		BinaryOutputs:  binaryOutputs,
-		AnalogOutputs:  analogOutputs,
+		IIN:           resp.IIN.Bytes(),
+		Timestamp:     time.Now(),
+		BinaryInputs:  binaryInputs,
+		AnalogInputs:  analogInputs,
+		Counters:      counters,
+		BinaryOutputs: binaryOutputs,
+		AnalogOutputs: analogOutputs,
 	}, nil
+}
+
+// LastIIN implements Client.LastIIN. It returns the master's stored copy of
+// the most recent Internal Indications for the configured outstation
+// (DNP3-012). The value is updated on every processed response.
+func (c *client) LastIIN() [2]byte {
+	outstation, ok := c.internalMaster.GetOutstation(c.config.OutstationAddress)
+	if !ok {
+		return [2]byte{}
+	}
+	return outstation.GetIIN()
 }
 
 // buildReadRequest builds an APDU for a read request
@@ -529,7 +545,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.LittleEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset : offset+2])
 			offset += 2
 
 			var value bool
@@ -603,7 +619,9 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		// Group 30 Variation 1 is a signed 32-bit value with flags. For the
 		// count qualifier (0x07), points are sequential and carry no index.
 		if group == 30 && variation == 1 && qualifier == al.QualCount8 {
-			if offset+int(count)*5 > len(data) { break }
+			if offset+int(count)*5 > len(data) {
+				break
+			}
 			for i := 0; i < int(count); i++ {
 				value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
 				quality := types.QualityFlags(data[offset+4])
@@ -618,7 +636,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.LittleEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset : offset+2])
 			offset += 2
 
 			var value float64
@@ -639,7 +657,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 				if offset+3 > len(data) {
 					break
 				}
-				val := int16(binary.LittleEndian.Uint16(data[offset:offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				value = float64(val)
 				offset += 2
 				quality = types.QualityFlags(data[offset])
@@ -712,7 +730,9 @@ func parseCounters(data []byte) []*types.Counter {
 		// Group 20 Variation 1 is an unsigned 32-bit counter with flags.
 		// Qualifier 0x07 carries sequential points without indexes.
 		if group == 20 && variation == 1 && qualifier == al.QualCount8 {
-			if offset+int(count)*5 > len(data) { break }
+			if offset+int(count)*5 > len(data) {
+				break
+			}
 			for i := 0; i < int(count); i++ {
 				value := binary.LittleEndian.Uint32(data[offset : offset+4])
 				quality := types.QualityFlags(data[offset+4])
@@ -727,7 +747,7 @@ func parseCounters(data []byte) []*types.Counter {
 			if offset+2 > len(data) {
 				break
 			}
-			index := binary.LittleEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset : offset+2])
 			offset += 2
 
 			var value uint32
@@ -747,7 +767,7 @@ func parseCounters(data []byte) []*types.Counter {
 				if offset+3 > len(data) {
 					break
 				}
-				value = uint32(binary.LittleEndian.Uint16(data[offset:offset+2]))
+				value = uint32(binary.LittleEndian.Uint16(data[offset : offset+2]))
 				offset += 2
 				quality = types.QualityFlags(data[offset])
 				offset++
@@ -807,7 +827,7 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 		}
 
 		for i := 0; i < int(count) && offset+3 <= len(data); i++ {
-			index := binary.LittleEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset : offset+2])
 			offset += 2
 
 			var value bool
@@ -862,7 +882,7 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
 		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
-			index := binary.LittleEndian.Uint16(data[offset:offset+2])
+			index := binary.LittleEndian.Uint16(data[offset : offset+2])
 			offset += 2
 
 			var value float64

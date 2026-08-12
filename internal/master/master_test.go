@@ -12,8 +12,8 @@ import (
 
 func TestStateString(t *testing.T) {
 	tests := []struct {
-		state   State
-		want    string
+		state State
+		want  string
 	}{
 		{StateDisconnected, "Disconnected"},
 		{StateConnecting, "Connecting"},
@@ -67,10 +67,10 @@ func TestNewOutstation(t *testing.T) {
 
 func TestOutstationUpdateIIN(t *testing.T) {
 	o := NewOutstation(100, "RTU-1")
-	
+
 	iin := [2]byte{0x02, 0x10}
 	o.UpdateIIN(iin)
-	
+
 	if o.IIN[0] != 0x02 {
 		t.Errorf("IIN[0] = 0x%02X, want 0x02", o.IIN[0])
 	}
@@ -108,10 +108,10 @@ func TestDefaultConfig(t *testing.T) {
 func TestNewMaster(t *testing.T) {
 	cfg := &Config{
 		MasterAddress: 100,
-		Timeout:      3000,
-		MaxRetries:   5,
+		Timeout:       3000,
+		MaxRetries:    5,
 	}
-	
+
 	m := NewMaster(cfg)
 
 	if m.config != cfg {
@@ -127,7 +127,7 @@ func TestNewMaster(t *testing.T) {
 
 func TestNewMasterDefaultConfig(t *testing.T) {
 	m := NewMaster(nil)
-	
+
 	if m.config == nil {
 		t.Fatal("config should not be nil")
 	}
@@ -138,11 +138,11 @@ func TestNewMasterDefaultConfig(t *testing.T) {
 
 func TestMasterState(t *testing.T) {
 	m := NewMaster(nil)
-	
+
 	if m.State() != StateDisconnected {
 		t.Errorf("Initial State = %v, want Disconnected", m.State())
 	}
-	
+
 	m.SetState(StateConnected)
 	if m.State() != StateConnected {
 		t.Errorf("State = %v, want Connected", m.State())
@@ -151,22 +151,22 @@ func TestMasterState(t *testing.T) {
 
 func TestMasterOutstationManagement(t *testing.T) {
 	m := NewMaster(nil)
-	
+
 	// Add outstation
 	o1 := m.AddOutstation(100, "RTU-1")
 	if o1.ID != 100 {
 		t.Errorf("Added outstation ID = %d, want 100", o1.ID)
 	}
-	
+
 	o2 := m.AddOutstation(200, "RTU-2")
 	if o2.ID != 200 {
 		t.Errorf("Added outstation ID = %d, want 200", o2.ID)
 	}
-	
+
 	if m.OutstationCount() != 2 {
 		t.Errorf("OutstationCount = %d, want 2", m.OutstationCount())
 	}
-	
+
 	// Get outstation
 	o, ok := m.GetOutstation(100)
 	if !ok {
@@ -175,13 +175,13 @@ func TestMasterOutstationManagement(t *testing.T) {
 	if o.Label != "RTU-1" {
 		t.Errorf("Label = %v, want RTU-1", o.Label)
 	}
-	
+
 	// Outstation not found
 	_, ok = m.GetOutstation(999)
 	if ok {
 		t.Error("GetOutstation(999) should return false")
 	}
-	
+
 	// Remove outstation
 	m.RemoveOutstation(100)
 	if m.OutstationCount() != 1 {
@@ -191,18 +191,18 @@ func TestMasterOutstationManagement(t *testing.T) {
 
 func TestMasterConnect(t *testing.T) {
 	m := NewMaster(nil)
-	
+
 	// Connect without transport
 	if err := m.Connect(); err == nil {
 		t.Error("Connect() should fail without transport")
 	}
-	
+
 	// Connect with mock transport
 	m.SetTransport(&mockTransport{})
 	if err := m.Connect(); err != nil {
 		t.Errorf("Connect() error = %v", err)
 	}
-	
+
 	// Connect() sets StateConnected then StateActive; final ready state is Active
 	if m.State() != StateActive {
 		t.Errorf("State = %v, want Active", m.State())
@@ -214,11 +214,11 @@ func TestMasterDisconnect(t *testing.T) {
 	m.SetTransport(&mockTransport{})
 	m.Connect()
 	m.AddOutstation(100, "RTU-1")
-	
+
 	if err := m.Disconnect(); err != nil {
 		t.Errorf("Disconnect() error = %v", err)
 	}
-	
+
 	if m.State() != StateDisconnected {
 		t.Errorf("State = %v, want Disconnected", m.State())
 	}
@@ -229,20 +229,20 @@ func TestMasterDisconnect(t *testing.T) {
 
 func TestMasterInitialize(t *testing.T) {
 	m := NewMaster(nil)
-	
+
 	// Initialize without connection
 	if err := m.Initialize(); err == nil {
 		t.Error("Initialize() should fail without connection")
 	}
-	
+
 	// Initialize with connection
 	m.SetTransport(&mockTransport{})
 	m.Connect()
-	
+
 	if err := m.Initialize(); err != nil {
 		t.Errorf("Initialize() error = %v", err)
 	}
-	
+
 	if m.State() != StateInitialized {
 		t.Errorf("State = %v, want Initialized", m.State())
 	}
@@ -272,16 +272,16 @@ func TestEncodeDNP3Time(t *testing.T) {
 	// Fixed time for testing
 	t1 := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	data := encodeDNP3Time(t1)
-	
+
 	// Should be 8 bytes
 	if len(data) != 8 {
 		t.Errorf("len(encodeDNP3Time()) = %d, want 8", len(data))
 	}
-	
+
 	// Test with non-zero time
 	t2 := time.Date(2000, 1, 1, 0, 0, 1, 0, time.UTC) // +1 second
 	data2 := encodeDNP3Time(t2)
-	
+
 	// Last 2 bytes should be non-zero (ms fraction)
 	if data2[6] == 0 && data2[7] == 0 {
 		// This is OK for 1 second = 1000ms, upper bytes only
@@ -290,7 +290,7 @@ func TestEncodeDNP3Time(t *testing.T) {
 
 func TestBuildRequest(t *testing.T) {
 	req := buildRequest(5, al.FuncRead, []byte{0x01, 0x02})
-	
+
 	if req.Control.Seq != 5 {
 		t.Errorf("Seq = %d, want 5", req.Control.Seq)
 	}
@@ -344,32 +344,32 @@ func TestValidateResetLinkACK(t *testing.T) {
 		},
 		{
 			name:    "bad function code (NACK)",
-			raw:      encodeACK(t, false, false, frame.FuncNack, masterAddr, outstationID),
+			raw:     encodeACK(t, false, false, frame.FuncNack, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong DIR (primary direction)",
-			raw:      encodeACK(t, true, false, frame.FuncAck, masterAddr, outstationID),
+			raw:     encodeACK(t, true, false, frame.FuncAck, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong PRM (primary station)",
-			raw:      encodeACK(t, false, true, frame.FuncAck, masterAddr, outstationID),
+			raw:     encodeACK(t, false, true, frame.FuncAck, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong source address",
-			raw:      encodeACK(t, false, false, frame.FuncAck, masterAddr, 0x0100),
+			raw:     encodeACK(t, false, false, frame.FuncAck, masterAddr, 0x0100),
 			wantErr: true,
 		},
 		{
 			name:    "wrong destination address",
-			raw:      encodeACK(t, false, false, frame.FuncAck, 0x0200, outstationID),
+			raw:     encodeACK(t, false, false, frame.FuncAck, 0x0200, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "malformed frame (no sync)",
-			raw:      []byte{0xC0, 0x00, 0x00, 0x00},
+			raw:     []byte{0xC0, 0x00, 0x00, 0x00},
 			wantErr: true,
 		},
 	}
@@ -403,32 +403,32 @@ func TestValidateLinkStatusResponse(t *testing.T) {
 		},
 		{
 			name:    "wrong function code (ACK instead of Link Status)",
-			raw:      encodeACK(t, false, false, frame.FuncAck, masterAddr, outstationID),
+			raw:     encodeACK(t, false, false, frame.FuncAck, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong DIR (primary direction)",
-			raw:      encodeACK(t, true, false, frame.FuncLinkStatus, masterAddr, outstationID),
+			raw:     encodeACK(t, true, false, frame.FuncLinkStatus, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong PRM (primary station)",
-			raw:      encodeACK(t, false, true, frame.FuncLinkStatus, masterAddr, outstationID),
+			raw:     encodeACK(t, false, true, frame.FuncLinkStatus, masterAddr, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "wrong source address",
-			raw:      encodeACK(t, false, false, frame.FuncLinkStatus, masterAddr, 0x0100),
+			raw:     encodeACK(t, false, false, frame.FuncLinkStatus, masterAddr, 0x0100),
 			wantErr: true,
 		},
 		{
 			name:    "wrong destination address",
-			raw:      encodeACK(t, false, false, frame.FuncLinkStatus, 0x0200, outstationID),
+			raw:     encodeACK(t, false, false, frame.FuncLinkStatus, 0x0200, outstationID),
 			wantErr: true,
 		},
 		{
 			name:    "malformed frame (no sync)",
-			raw:      []byte{0xC0, 0x00, 0x00, 0x00},
+			raw:     []byte{0xC0, 0x00, 0x00, 0x00},
 			wantErr: true,
 		},
 	}
@@ -480,6 +480,77 @@ func (t *seqRecorderTransport) Receive() ([]byte, error) {
 }
 
 func (t *seqRecorderTransport) SetTimeout(ms int) {}
+
+// echoSeqTransport records sent bytes and, on Receive, returns a valid
+// response whose application SEQ echoes the SEQ of the most recently sent
+// request (DNP3-010 compliant outstation behavior).
+type echoSeqTransport struct {
+	sent    [][]byte
+	lastSeq uint8
+}
+
+func (t *echoSeqTransport) Send(data []byte) error {
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	t.sent = append(t.sent, cp)
+	t.lastSeq = extractRequestSeqForBuild(data)
+	return nil
+}
+
+func (t *echoSeqTransport) Receive() ([]byte, error) {
+	return buildResponseFrameWithSeq(t.lastSeq), nil
+}
+
+func (t *echoSeqTransport) SetTimeout(ms int) {}
+
+// extractRequestSeqForBuild decodes the application SEQ from a raw sent DLL
+// frame (non-testing variant for use inside transport helpers).
+func extractRequestSeqForBuild(raw []byte) uint8 {
+	f, err := frame.Decode(raw)
+	if err != nil {
+		return 0
+	}
+	frag, err := tl.DecodeFragment(f.Data)
+	if err != nil {
+		return 0
+	}
+	apdu, err := al.Decode(frag.Data)
+	if err != nil {
+		return 0
+	}
+	return apdu.Control.Seq
+}
+
+// buildResponseFrameWithSeq builds a valid DLL+TL+APDU response frame carrying
+// only IIN, with the given application sequence number.
+func buildResponseFrameWithSeq(seq uint8) []byte {
+	return buildResponseFrameWithIIN(seq, al.IIN{})
+}
+
+// buildResponseFrameWithIIN builds a valid DLL+TL+APDU response frame carrying
+// the given IIN and application sequence number.
+func buildResponseFrameWithIIN(seq uint8, iin al.IIN) []byte {
+	iinBytes := iin.Bytes()
+	apdu := &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: seq},
+		FuncCode: al.FuncResponse,
+		Data:     iinBytes[:],
+	}
+	frag := tl.Fragment{FIR: true, FIN: true, Data: apdu.Encode()}
+	tlData := tl.EncodeFragment(frag)
+	dllFrame := &frame.Frame{
+		Control: frame.Control{
+			DIR:      false,
+			PRM:      false,
+			FuncCode: frame.FuncConfirmedUserDataR,
+		},
+		DestAddr: 1,
+		SrcAddr:  2,
+		Data:     tlData,
+	}
+	raw, _ := frame.Encode(dllFrame)
+	return raw
+}
 
 // buildMinimalResponseFrame builds a valid DLL frame wrapping a TL fragment
 // wrapping a minimal APDU response (FuncResponse, empty data, Seq=0). It is
@@ -551,10 +622,10 @@ func TestSequenceStream(t *testing.T) {
 
 // TestSendWithRetrySequenceAdvances verifies sendWithRetry assigns the master's
 // sequence to the request and advances it only on successful send (DNP3-008).
+// The mock outstation echoes the request SEQ in its response (DNP3-010).
 func TestSendWithRetrySequenceAdvances(t *testing.T) {
 	m := NewMaster(DefaultConfig())
-	resp := buildMinimalResponseFrame(t)
-	tr := &seqRecorderTransport{resp: resp}
+	tr := &echoSeqTransport{}
 	m.SetTransport(tr)
 	m.SetState(StateInitialized)
 	m.AddOutstation(2, "RTU-1")
@@ -644,8 +715,8 @@ type cannedTransport struct {
 	idx    int
 }
 
-func (t *cannedTransport) Send(data []byte) error  { return nil }
-func (t *cannedTransport) SetTimeout(ms int)       {}
+func (t *cannedTransport) Send(data []byte) error { return nil }
+func (t *cannedTransport) SetTimeout(ms int)      {}
 func (t *cannedTransport) Receive() ([]byte, error) {
 	if t.idx >= len(t.frames) {
 		return nil, errReceiveTimeout
@@ -698,5 +769,61 @@ func TestWaitForConfirmationTimeout(t *testing.T) {
 	}
 	if !errors.Is(err, ErrConfirmTimeout) {
 		t.Fatalf("expected ErrConfirmTimeout, got %v", err)
+	}
+}
+
+// TestProcessResponseMatchingSeq verifies processResponse accepts a response
+// whose SEQ matches the outstanding request (DNP3-010).
+func TestProcessResponseMatchingSeq(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(2, "RTU-1")
+	raw := buildResponseFrameWithSeq(5)
+
+	if _, err := m.processResponse(raw, 2, 5); err != nil {
+		t.Fatalf("expected matching response accepted, got %v", err)
+	}
+}
+
+// TestProcessResponseMismatchSeq verifies processResponse rejects a response
+// whose SEQ does not match, returning ErrResponseSeqMismatch and no data
+// (DNP3-010).
+func TestProcessResponseMismatchSeq(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(2, "RTU-1")
+	raw := buildResponseFrameWithSeq(3) // mismatch vs expected 5
+
+	data, err := m.processResponse(raw, 2, 5)
+	if err == nil {
+		t.Fatal("expected ErrResponseSeqMismatch, got nil")
+	}
+	if data != nil {
+		t.Fatalf("expected no data on mismatch, got %d bytes", len(data))
+	}
+	if !errors.Is(err, ErrResponseSeqMismatch) {
+		t.Fatalf("expected ErrResponseSeqMismatch, got %v", err)
+	}
+}
+
+// TestProcessResponseStoresIIN verifies processResponse always updates the
+// outstation's stored IIN from the response (DNP3-012).
+func TestProcessResponseStoresIIN(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(2, "RTU-1")
+
+	// Build a response carrying a known IIN (DeviceTrouble = IIN1.6 = 0x02,
+	// BadConfig = IIN2.5 = 0x04 → bytes {0x02, 0x04}).
+	raw := buildResponseFrameWithIIN(7, al.IIN{DeviceTrouble: true, BadConfig: true})
+
+	if _, err := m.processResponse(raw, 2, 7); err != nil {
+		t.Fatalf("processResponse failed: %v", err)
+	}
+
+	o, ok := m.GetOutstation(2)
+	if !ok {
+		t.Fatal("outstation 2 not found")
+	}
+	got := o.GetIIN()
+	if got != [2]byte{0x02, 0x04} {
+		t.Fatalf("stored IIN = %v, want {0x02,0x04}", got)
 	}
 }

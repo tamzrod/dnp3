@@ -47,13 +47,13 @@ func TestAppControlField(t *testing.T) {
 // TestFunctionCodes tests function code definitions
 func TestFunctionCodes(t *testing.T) {
 	codes := map[string]uint8{
-		"CONFIRM":              0,
-		"READ":                 2,
-		"WRITE":                3,
-		"SELECT":               4,
-		"OPERATE":              5,
-		"DIRECT_OPERATE":       6,
-		"DIRECT_OPERATE_NR":    7,
+		"CONFIRM":             0,
+		"READ":                2,
+		"WRITE":               3,
+		"SELECT":              4,
+		"OPERATE":             5,
+		"DIRECT_OPERATE":      6,
+		"DIRECT_OPERATE_NR":   7,
 		"FREEZE":              10,
 		"FILE_OPEN":           13,
 		"FILE_CLOSE":          14,
@@ -71,7 +71,7 @@ func TestFunctionCodes(t *testing.T) {
 		"ASSIGN_CLASS":        48,
 		"START_RESTART":       53,
 		"UNSOLICITED":         1,
-		"NO_ACK":             127,
+		"NO_ACK":              127,
 	}
 
 	for name, expected := range codes {
@@ -87,10 +87,10 @@ func TestFunctionCodes(t *testing.T) {
 // TestAPDUEncodeDecode tests APDU round-trip encoding/decoding
 func TestAPDUEncodeDecode(t *testing.T) {
 	tests := []struct {
-		name      string
-		seq       uint8
-		funcCode  uint8
-		data      []byte
+		name     string
+		seq      uint8
+		funcCode uint8
+		data     []byte
 	}{
 		{"read_request", 5, al.FuncRead, []byte{0x01, 0x02}},
 		{"write_request", 10, al.FuncWrite, []byte{0xFF, 0xFE, 0xFD}},
@@ -133,11 +133,11 @@ func TestAPDUEncodeDecode(t *testing.T) {
 // TestResponseCreation tests response APDU creation
 func TestResponseCreation(t *testing.T) {
 	seq := uint8(7)
-	iin := al.IIN{Busy: true, CheckFail: true}
+	iin := al.IIN{DeviceTrouble: true, LocalControl: true}
 	data := []byte{0x01, 0x02, 0x03}
 
 	resp := al.NewAppResponse(seq, iin, data)
-	
+
 	if resp.Header.Control.Seq != seq {
 		t.Errorf("Response seq = %d, want %d", resp.Header.Control.Seq, seq)
 	}
@@ -153,29 +153,32 @@ func TestResponseCreation(t *testing.T) {
 		t.Fatalf("DecodeResponse() error = %v", err)
 	}
 
-	if !decoded.IIN.Busy {
-		t.Error("Decoded IIN.Busy should be true")
+	if !decoded.IIN.DeviceTrouble {
+		t.Error("Decoded IIN.DeviceTrouble should be true")
 	}
 
-	if !decoded.IIN.CheckFail {
-		t.Error("Decoded IIN.CheckFail should be true")
+	if !decoded.IIN.LocalControl {
+		t.Error("Decoded IIN.LocalControl should be true")
 	}
 }
 
-// TestIINEncoding tests Internal Indication field encoding
+// TestIINEncoding tests Internal Indication field encoding against the
+// verified IEEE 1815-2012 bit mapping.
 func TestIINEncoding(t *testing.T) {
 	tests := []struct {
-		name     string
-		iin      al.IIN
-		byte0    byte
-		byte1    byte
+		name  string
+		iin   al.IIN
+		byte0 byte
+		byte1 byte
 	}{
 		{"empty", al.IIN{}, 0x00, 0x00},
-		{"all_stop", al.IIN{AllStop: true}, 0x80, 0x00},
-		{"byte_over", al.IIN{ByteOver: true}, 0x40, 0x00},
-		{"busy", al.IIN{Busy: true}, 0x02, 0x00},
-		{"needs_time_sync", al.IIN{NeedsTimeSync: true}, 0x00, 0x04},
-		{"multiple", al.IIN{AllStop: true, Busy: true, NeedsTimeSync: true}, 0x82, 0x04},
+		{"all_stations", al.IIN{AllStations: true}, 0x80, 0x00},
+		{"class1_events", al.IIN{Class1Events: true}, 0x40, 0x00},
+		{"device_trouble", al.IIN{DeviceTrouble: true}, 0x02, 0x00},
+		{"need_time", al.IIN{NeedTime: true}, 0x08, 0x00},
+		{"bad_config", al.IIN{BadConfig: true}, 0x00, 0x04},
+		{"buffer_overflow", al.IIN{BufferOverflow: true}, 0x00, 0x10},
+		{"multiple", al.IIN{AllStations: true, DeviceTrouble: true, BadConfig: true}, 0x82, 0x04},
 	}
 
 	for _, tt := range tests {
@@ -195,11 +198,11 @@ func TestIINEncoding(t *testing.T) {
 func TestIINRoundTrip(t *testing.T) {
 	iinValues := []al.IIN{
 		{},
-		{AllStop: true},
-		{ByteOver: true, Busy: true},
-		{ConfigError: true, NeedsTimeSync: true},
-		{AllStop: true, ByteOver: true, Limit64K: true, Limit16K: true, MemUnavail: true, CheckFail: true, Busy: true, ParamUnavail: true},
-		{NeedsTimeSync: true, GeneralEnableOff: true},
+		{AllStations: true},
+		{Class1Events: true, DeviceTrouble: true},
+		{BadConfig: true, BufferOverflow: true},
+		{AllStations: true, Class1Events: true, Class2Events: true, Class3Events: true, NeedTime: true, LocalControl: true, DeviceTrouble: true, DeviceRestart: true},
+		{FuncUnknown: true, ObjectUnknown: true, ParameterError: true, AlreadyExecuting: true},
 	}
 
 	for i, original := range iinValues {
@@ -212,7 +215,7 @@ func TestIINRoundTrip(t *testing.T) {
 
 			decodedBytes := decoded.Bytes()
 			originalBytes := original.Bytes()
-			
+
 			if decodedBytes[0] != originalBytes[0] {
 				t.Errorf("IIN[0] = 0x%02X, want 0x%02X", decodedBytes[0], originalBytes[0])
 			}
@@ -246,9 +249,9 @@ func TestNewUnsolicited(t *testing.T) {
 // TestIsRequestResponse tests APDU type detection
 func TestIsRequestResponse(t *testing.T) {
 	tests := []struct {
-		name      string
-		funcCode  uint8
-		isRequest bool
+		name       string
+		funcCode   uint8
+		isRequest  bool
 		isResponse bool
 	}{
 		{"read", al.FuncRead, true, false},
