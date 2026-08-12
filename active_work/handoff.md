@@ -302,4 +302,4 @@ NEXT TASK: DNP3-016 — Binary Input G1V1 final correctness
 - `go test ./...` — all 21 packages green (including integration).
 - `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Commit hash: (pending — DNP3-013/014/015 checkpoint)
+- Commit hash: fe37ef1 (DNP3-013/014/015 checkpoint)
