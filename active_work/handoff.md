@@ -8,13 +8,13 @@
 
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
-- DNP3-001 through DNP3-068, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
-- Last completed: DNP3-068 (Master restart after Close). The 3rd task of
-  checkpoint batch 066/067/068. All three green incl. `-race`;
+- DNP3-001 through DNP3-088, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
+- Last completed: DNP3-088 (Outstation empty event-class buffer stub). The 3rd
+  task of checkpoint batch 072/080/088. All three green incl. `-race`;
   `verify-mvp.sh` exit 0. Ready to commit + push this checkpoint.
-- Last checkpoint: DNP3-055/058/065 (per-outstation seq + link NACK + DLL
-  EncodedSize audit, commit `38c1145`, pushed to origin/main). All green incl.
-  `-race`; `verify-mvp.sh` exit 0.
+- Last checkpoint: DNP3-066/067/068 (distinct confirm timeout + descriptive
+  unsupported-object errors + clean restart after Close, commit `caad7c5`,
+  pushed to origin/main). All green incl. `-race`; `verify-mvp.sh` exit 0.
 - Previous checkpoint: DNP3-056/054/057 (MVP acceptance gate + master CON confirm +
   link FCB/FCV, commit `21fd8db`, pushed to origin/main). All green incl.
   `-race`; `verify-mvp.sh` exit 0.
@@ -1132,18 +1132,77 @@
   green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
   exit 0. Acceptance: "Independent" — met.
 
+### DNP3-072 — Master handoff.md template for implementers (DONE)
+- Recoverability: a canonical, copy-paste handoff template so the next agent
+  can recover state from the repository alone (this file + git + the roadmap).
+- `active_work/HANDOFF_TEMPLATE.md` (new): skeleton with sections Status,
+  Completed Tasks, Current Checkpoint Batch, Next READY, Recommended Next Task,
+  Test Commands, Code State, Implementation Discoveries, Blockers/Risks, Next
+  Action, plus usage note (`cp` to `handoff.md` and fill placeholders).
+- No tests (docs task). Acceptance: "Usable by next agent" / Stop condition
+  "File present" — met.
+
+### DNP3-080 — Outstation reject unsupported function codes (DONE)
+- The outstation's default FC dispatch returned `(nil, err)` and mutated the
+  persistent `o.iin.ParameterError` (a dead write that could pollute later
+  responses). The run loop mapped the error to `sendErrorResponse`, which sends
+  a FuncResponse carrying `IIN.FuncUnknown` — the correct IIN bit for an
+  unknown function code.
+- `internal/outstation/outstation.go`: default case no longer mutates the
+  persistent `o.iin`; the error now names the function code in decimal and hex
+  (`unsupported function code: %d (0x%02X)`). `sendErrorResponse` already sets
+  `IIN.FuncUnknown`, so the master sees a clear failure (a response, not a
+  timeout).
+- `internal/outstation/unsupported_fc_test.go` (new, 3 tests):
+  `TestProcessRequestUnsupportedFunctionCode` — bad FC (0x2B) → descriptive err,
+  nil response;
+  `TestSendErrorResponseUnsupportedFCSetsFuncUnknown` — the wire response
+  decodes to a FuncResponse echoing the request seq with `IIN.FuncUnknown` set;
+  `TestProcessRequestUnsupportedFCDoesNotPolluteStationIIN` — a subsequent
+  valid Read is NOT polluted with FuncUnknown/ParameterError.
+- `test/integration/master_outstation_test.go`: updated
+  `TestOutstationProcessUnsupportedRequest` to use `strings.Contains` (the
+  message now includes the hex form).
+- Verification: `go test ./internal/outstation/ -run 'TestProcessRequestUnsupported|TestSendErrorResponseUnsupported|TestRead'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "Master sees clear failure" — met.
+
+### DNP3-088 — Outstation deterministic event buffer stub (empty) (DONE)
+- The v0 outstation has no event buffer. A READ of an event class (G60 V2/V3/V4
+  = Class 1/2/3) previously fell through to `buildAllStaticData()` — i.e. it
+  returned Class 0 static data, which is incorrect for an event-class poll
+  (and the trailing `len(result)==0 → static` fallback would also fill an empty
+  event response with static data).
+- `internal/outstation/outstation.go` `buildReadResponse`: G60 is now dispatched
+  by variation — V1 (Class 0 integrity) returns static data; V2/V3/V4 (event
+  classes) return an empty (object-less) response deterministically (the empty
+  event-buffer stub). A `classEventsRequested` flag suppresses the
+  `len(result)==0 → static` fallback so an explicit event-class poll returns
+  empty, not static data. No IIN error bits are set (empty is protocol-valid).
+- `internal/outstation/event_class_stub_test.go` (new, 3 tests):
+  `TestReadEventClassReturnsEmpty` — G60 V2/V3/V4 → empty object data (no
+  crash, no static fallback); `TestReadClass0IntegrityReturnsStaticData` — G60
+  V1 still returns static data (no regression); `TestReadEventClassDoesNotPolluteIIN`
+  — empty event-class poll sets no error IIN bits.
+- Verification: `go test ./internal/outstation/ -run 'TestReadEventClass|TestReadClass0Integrity'`
+  green; full `go test ./...` green; `go test -race` green; `verify-mvp.sh`
+  exit 0. Acceptance: "No crash" / "Class 1 request → empty/IIN" — met.
+
 ## Next READY Tasks
 
-- **DNP3-072** — Master handoff.md template
-- **DNP3-080, 084, 085, 087, 088, 098** (Outstation-side READY tasks)
+- **DNP3-084** — Outstation concurrent connection rejection (MVP single)
+- **DNP3-085** — Outstation context cancellation on Start/Stop
+- **DNP3-087** — Outstation public API profile lock (prereq DNP3-030, done)
+- **DNP3-098** — Conformance test enablement (DLL/TL/AL existing)
 
 ## Recommended Next Task
 
-**DNP3-072 — Master handoff.md template** (no prereq). Standardize the
-handoff.md layout used across sessions.
+**DNP3-084 — Outstation concurrent connection rejection (MVP single)** (no
+prereq). Reject a second concurrent connection or document the single-connection
+MVP policy.
 
-If blocked, fall back to an outstation-side READY task
-(**DNP3-080/084/085/087/088/098**).
+If blocked, fall back to **DNP3-085 — Outstation context cancellation on
+Start/Stop** (no prereq).
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1212,15 +1271,15 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-068, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-072 — Master handoff.md template
+COMPLETED: DNP3-001 through DNP3-088, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-084 — Outstation concurrent connection rejection (MVP single)
 ```
 
 ## Test Status
 
 - `./scripts/verify-mvp.sh` — exit 0 (build + vet + unit/integration + race).
   The DNP3-052 MVP gate; re-run as the single pre-merge command. Green as of
-  checkpoint 066/067/068.
+  checkpoint 072/080/088.
 - `go test ./...` — all packages green (including integration + simulator).
 - `go test -race ./internal/master/... ./internal/testutils/... ./pkg/dnp3/... ./test/integration/... ./internal/tl/...` — green (DNP3-043/044/045/049/050/052/053/059/054/057/055/058/065 verified).
 - Pre-existing `go vet` "unreachable code" note in `internal/outstation/outstation.go:827` is NOT introduced by these tasks (confirmed on clean HEAD; `outstation.go` untouched by DNP3-043..065) and is out of scope. The `verify-mvp.sh` vet step excludes `internal/outstation` for this reason; it is still built and race-tested.

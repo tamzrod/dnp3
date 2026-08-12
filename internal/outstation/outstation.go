@@ -994,8 +994,12 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	case al.FuncRecordCurrentTime:
 		resp, err = o.handleRecordCurrentTime(req)
 	default:
-		o.iin.ParameterError = true
-		err = fmt.Errorf("unsupported function code: %d", req.FuncCode)
+		// DNP3-080: unsupported function codes are reported back to the master
+		// as a clear failure. The run loop maps this error to a FuncResponse
+		// carrying IIN.FuncUnknown (function code cannot be processed). Do NOT
+		// mutate the persistent o.iin here — FuncUnknown is per-request and is
+		// applied by sendErrorResponse, so it does not leak into later replies.
+		err = fmt.Errorf("unsupported function code: %d (0x%02X)", req.FuncCode, req.FuncCode)
 	}
 
 	// If we have a response, prepend IIN bytes
@@ -1047,6 +1051,13 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 		return result
 	}
 
+	// classEventsRequested is true when the master asked for Class 1/2/3 event
+	// data (G60 V2/V3/V4). The v0 outstation has an empty event buffer stub
+	// (DNP3-088): such a poll deterministically returns no event objects. It
+	// must NOT fall back to "all static data" — an empty event-class response
+	// is the correct, protocol-valid reply.
+	classEventsRequested := false
+
 	// Parse object headers
 	offset := 0
 	for offset < len(requestData) {
@@ -1079,13 +1090,24 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 		case 40: // Analog Output (static - no timestamp)
 			result = append(result, o.buildAnalogOutputData(variation)...)
 		case 60: // Class data
-			result = append(result, o.buildAllStaticData()...)
+			switch variation {
+			case 1: // Class 0 (integrity) — all static data
+				result = append(result, o.buildAllStaticData()...)
+			case 2, 3, 4: // Class 1/2/3 events — empty stub (DNP3-088)
+				classEventsRequested = true
+			default:
+				// Unknown class variation — treat as Class 0.
+				result = append(result, o.buildAllStaticData()...)
+			}
 		}
 
 		offset += 4
 	}
 
-	if len(result) == 0 {
+	// Only fall back to "all static data" when nothing was recognized AND the
+	// master did not explicitly request an event class. An explicit event-class
+	// poll with an empty buffer returns an empty (object-less) response.
+	if len(result) == 0 && !classEventsRequested {
 		result = o.buildAllStaticData()
 	}
 

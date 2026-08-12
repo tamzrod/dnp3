@@ -2,6 +2,7 @@
 package integration
 
 import (
+	"strings"
 	"testing"
 
 	"dnp3/internal/al"
@@ -141,7 +142,7 @@ func TestOutstationProcessUnsupportedRequest(t *testing.T) {
 		t.Error("Expected error for unsupported function code")
 	}
 
-	if err != nil && err.Error() != "unsupported function code: 13" {
+	if err != nil && !strings.Contains(err.Error(), "unsupported function code: 13") {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
