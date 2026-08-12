@@ -8,12 +8,15 @@
 
 - Planning complete.
 - **MVP COMPLETE** at DNP3-056 (internal verification; external VEC-01 pending).
-- DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
-- Last completed: DNP3-089 (Outstation data handler interface hardening). The
-  3rd task of checkpoint batch 098/095/089. All three green incl. `-race`;
+- DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-091, DNP3-090, DNP3-097, DNP3-084, DNP3-085, DNP3-087, DNP3-081, DNP3-059, DNP3-065 complete. Post-MVP hardening underway.
+- Last completed: DNP3-097 (Shared test fixture library cleanup). The 3rd
+  task of checkpoint batch 090/091/097. All three green incl. `-race`;
   `verify-mvp.sh` exit 0; `scripts/run-conformance.sh` exit 0. Ready to
   commit + push this checkpoint.
-- Last checkpoint: DNP3-084/085/087 (MaxConnections + context cancellation +
+- Last checkpoint: DNP3-098/095/089 (conformance gate + outstation example +
+  data handler contract, commit `4a15e24`, pushed to origin/main). All green
+  incl. `-race`; `verify-mvp.sh` exit 0; `run-conformance.sh` exit 0.
+- Previous checkpoint: DNP3-084/085/087 (MaxConnections + context cancellation +
   profile lock, commit `acdaa32`, pushed to origin/main). All green incl.
   `-race`; `verify-mvp.sh` exit 0.
 - Previous checkpoint: DNP3-066/067/068 (distinct confirm timeout + descriptive
@@ -1248,62 +1251,84 @@
   TestConfigValidate'` green; `-race` green; `verify-mvp.sh` exit 0.
   Acceptance: "Clear errors" / "No silent fallback" — met.
 
-## Completed Tasks (this checkpoint batch 098/095/089)
+## Completed Tasks (this checkpoint batch 090/091/097)
 
-### DNP3-098 — Conformance test enablement (DONE)
-- Commit message: `test: enable existing conformance suites`
-- New `scripts/run-conformance.sh`: single CI-runnable gate that builds the
-  tree then runs the DLL/TL/AL conformance suites (plain + `-race`) and exits
-  non-zero on any failure. Supports `-plain`/`-race` flags. The suites already
-  ran under `verify-mvp.sh`; this script provides a focused, independently
-  runnable conformance gate.
-- Updated `scripts/README.md`: checked the `run-conformance.sh` box (DNP3-098).
-- Verification: `./scripts/run-conformance.sh` exit 0 (DLL/TL/AL plain + race);
-  `verify-mvp.sh` exit 0. Acceptance: "CI-runnable" — met.
-
-### DNP3-095 — Outstation example (DONE)
-- Commit message: `docs: minimal Outstation example`
-- New `examples/outstation/main.go`: minimal DNP3 outstation server using the
-  v0 MVP public API — TCP listener on `0.0.0.0:20000`, outstation address
-  `1024`, single-master (`WithMaxConnections(1)`), serves G1.1/G20.1/G30.1
-  static points, accepts G12V1 direct binary control, rejects analog control.
-  Uses `signal.NotifyContext` + `Start(ctx)`/`Stop(ctx)` for clean lifecycle.
-- New `examples/outstation/main_test.go` (build-compile lock) +
-  `examples/outstation/README.md`; updated `examples/README.md`.
-- Verification: `go build ./examples/outstation` + `go vet` + `go test
-  ./examples/outstation/` green (incl. `-race`). Acceptance: "Compiles" — met.
-
-### DNP3-089 — Outstation data handler interface hardening (DONE)
-- Commit message: `refactor(outstation): MVP data handler contract`
-- `pkg/dnp3/outstation/server.go`: documented the public `DataHandler`
-  interface per the v0 profile — MVP-required getters
-  (`GetBinaryInputs`/`GetAnalogInputs`/`GetCounters` for G1.1/G30.1/G20.1) vs
-  the non-MVP methods (`GetBinaryOutputs`/`GetAnalogOutputs`/
-  `GetFrozenCounters`/`FreezeCounters` — "Reject / Not read by the v0 profile"
-  per supported-profile.md), which a minimal handler may implement as no-ops.
-- New `pkg/dnp3/outstation/data_handler_contract_test.go`:
-  `minimalMVPDataHandler` (only MVP getters return data; others nil/no-op)
-  satisfies `DataHandler` (`var _ DataHandler = (*minimalMVPDataHandler)(nil)`)
-  and works through `SetDataHandler`; asserts non-MVP getters are nil and
-  `FreezeCounters` returns nil.
-- Verification: `go test ./pkg/dnp3/outstation/ -run 'MinimalMVPDataHandler'`
+### DNP3-090 — Outstation command handler interface hardening (DONE)
+- Commit message: `refactor(outstation): MVP command handler contract`
+- `pkg/dnp3/outstation/server.go`: documented the public `CommandHandler`
+  interface per the v0 profile — `HandleBinaryCommand` is MVP-required (Group
+  12 Variation 1 CROB only); `HandleAnalogCommand` (Group 41+) is outside v0
+  scope and a minimal MVP handler must reject analog commands with
+  `ControlNotSupported` + a clear error (per supported-profile.md).
+- New `pkg/dnp3/outstation/command_handler_contract_test.go`:
+  `minimalMVPCommandHandler` satisfies `CommandHandler`
+  (`var _ CommandHandler = (*minimalMVPCommandHandler)(nil)`), accepts G12V1
+  CROB (ControlSuccess), and rejects analog commands with ControlNotSupported
+  + a clear error. Asserts `SetCommandHandler` accepts it.
+- Verification: `go test ./pkg/dnp3/outstation/ -run 'MinimalMVPCommandHandler'`
   green (incl. `-race`); `verify-mvp.sh` exit 0. Acceptance: "Compiles with
-  minimal handler" — met.
+  minimal handler" / "Analog command rejected" / "Clear error" — met.
+
+### DNP3-091 — Outstation integration test symmetry (DONE)
+- Commit message: `test(integration): Outstation-side MVP gate`
+- New `test/integration/outstation_side_gate_test.go`:
+  `TestOutstationSideMVPGate` mirrors the master-side MVP gate from the
+  OUTSTATION's perspective through a real outstation server + master client
+  loopback: (1) read symmetry — the outstation's DataHandler getters
+  (G1/G20/G30) are invoked and the master receives the outstation's served
+  data; (2) operate dispatch symmetry — the outstation's CommandHandler
+  receives a direct-operate CROB with Group=12/Variation=1/index/value; (3)
+  State transitions Running→Down on Start/Stop. Uses recording
+  DataHandler/CommandHandler.
+- DNP3-091 discovery (noted in the test + handoff): the real outstation's
+  DirectOperate response currently carries no control-status object echo, so
+  the master's `Operate` reports `ControlTimeout` against a real outstation
+  (the master-side status==Success assertion is only verified against the
+  simulator, which sends a proper control-ack). The outstation-side dispatch
+  itself succeeds. The operate-response gap is tracked for a future task and
+  is out of scope for test symmetry; a short master timeout (300ms) keeps the
+  test fast.
+- Verification: `go test ./test/integration/ -run 'TestOutstationSideMVPGate'`
+  green (incl. `-race`); `verify-mvp.sh` exit 0. Acceptance: "Both directions
+  green" — met (master-side via mvp_loopback against simulator; outstation-side
+  via this gate).
+
+### DNP3-097 — Shared test fixture library cleanup (DONE)
+- Commit message: `test: shared fixture helpers`
+- New `internal/testutils/golden/golden.go` (leaf package, no internal deps —
+  avoids an import cycle since `testutils` imports the link `frame` package):
+  `Dir()` (path to `active_work/testdata`) + `LoadHex(name)` (read `.hex`,
+  strip `#` comments + whitespace, hex-decode). This is the single shared
+  golden loader.
+- Removed the duplicated golden-loader logic: `internal/master/master_test.go`
+  (`goldenDir`/`loadGoldenHex` now thin wrappers over `golden.Dir`/`LoadHex`;
+  unused imports dropped) and `internal/dll/frame/frame_test.go`
+  (`TestDecodeRacomGoldenFrame` now uses `golden.LoadHex`).
+- New `internal/testutils/golden/golden_test.go` covers `LoadHex` (known
+  fixture + missing-file error).
+- DNP3-081 (configurable simulator point sets) confirmed already satisfied —
+  `MVPOutstationSimulator` exposes `SetBinaryInputs`/`SetAnalogInputs`/
+  `SetCounters`/`SetCommandStatus` with arbitrary point slices, exercised by
+  `internal/testutils/simulator_test.go` with differing configs (acceptance
+  "Tests can vary data" met). No new code required; recorded as done.
+- Verification: `go test ./internal/testutils/golden/ ./internal/master/
+  ./internal/dll/frame/` green (incl. `-race`); `go test ./...` green;
+  `verify-mvp.sh` exit 0. Acceptance: "No duplication" (golden loader now
+  single shared copy) / "Tests still green" — met.
 
 ## Next READY Tasks (pending)
 
-- **DNP3-090** — Outstation command handler interface hardening (prereq DNP3-075, done)
-- **DNP3-091** — Outstation integration test symmetry (prereq DNP3-045, done)
-- **DNP3-097** — Shared test fixture library cleanup (prereq DNP3-036, DNP3-081)
+- **DNP3-099** — Final dual-role verification script (prereq DNP3-052, DNP3-091 — both done)
+- **DNP3-100** — Project-level handoff completion (prereq all prior)
 - Remaining roadmap tasks through DNP3-100 (see `DNP3_MASTER_ROADMAP.md`).
 
 ## Recommended Next Task
 
-**DNP3-090 — Outstation command handler interface hardening** (prereq DNP3-075
-done). CROB only for MVP; analog command rejected with a clear error.
+**DNP3-099 — Final dual-role verification script** (prereq DNP3-052 +
+DNP3-091 done). `scripts/` dual-role gate (master + outstation) that exits 0.
 
-If blocked, fall back to **DNP3-091 — Outstation integration test symmetry**
-(prereq DNP3-045 done).
+If blocked, fall back to **DNP3-100 — Project-level handoff completion**
+(all prior done).
 
 > **MVP COMPLETE** at DNP3-056 (internal verification). Tasks 054+ are
 > post-MVP robustness/correctness hardening; continue per roadmap.
@@ -1372,8 +1397,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-084, DNP3-085, DNP3-087, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
-NEXT TASK: DNP3-090 — Outstation command handler interface hardening
+COMPLETED: DNP3-001 through DNP3-098, DNP3-095, DNP3-089, DNP3-091, DNP3-090, DNP3-097, DNP3-084, DNP3-085, DNP3-087, DNP3-081, DNP3-059, DNP3-065 (MVP COMPLETE at 056)
+NEXT TASK: DNP3-099 — Final dual-role verification script
 ```
 
 ## Test Status

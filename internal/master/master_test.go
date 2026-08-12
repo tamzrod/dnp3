@@ -2,53 +2,27 @@ package master
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 	"time"
 
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
+	"dnp3/internal/testutils/golden"
 	"dnp3/internal/tl"
 )
 
-// goldenDir returns the absolute path to active_work/testdata/.
+// goldenDir returns the absolute path to active_work/testdata/. (DNP3-097:
+// kept as a thin wrapper over the shared golden.Dir so existing callers
+// compile; new code should use golden.LoadHex directly.)
 func goldenDir() (string, error) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("runtime.Caller failed")
-	}
-	// internal/master/master_test.go → repo root is two parents up.
-	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return filepath.Abs(filepath.Join(root, "active_work", "testdata"))
+	return golden.Dir()
 }
 
-// loadGoldenHex reads a .hex fixture from active_work/testdata, strips
-// '#' comments and whitespace, and hex-decodes the remaining bytes.
+// loadGoldenHex reads a .hex fixture from active_work/testdata via the shared
+// golden loader (DNP3-097: no duplicated golden-loader logic).
 func loadGoldenHex(name string) ([]byte, error) {
-	dir, err := goldenDir()
-	if err != nil {
-		return nil, err
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, name))
-	if err != nil {
-		return nil, err
-	}
-	var clean strings.Builder
-	for _, line := range strings.Split(string(raw), "\n") {
-		if i := strings.Index(line, "#"); i >= 0 {
-			line = line[:i]
-		}
-		clean.WriteString(line)
-	}
-	s := strings.ReplaceAll(clean.String(), " ", "")
-	s = strings.ReplaceAll(s, "\t", "")
-	s = strings.ReplaceAll(s, "\r", "")
-	return hex.DecodeString(s)
+	return golden.LoadHex(name)
 }
 
 func TestStateString(t *testing.T) {

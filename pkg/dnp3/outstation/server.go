@@ -308,12 +308,25 @@ type DataHandler interface {
 	FreezeCounters(clear bool) error
 }
 
-// CommandHandler handles control commands from the master
+// CommandHandler handles control commands from the master.
+//
+// v0 MVP profile (DNP3-090): only Group 12 Variation 1 (CROB) direct binary
+// control is in scope. HandleBinaryCommand is the MVP-required method and
+// must return a ControlStatus for G12V1 commands.
+//
+// HandleAnalogCommand covers Group 41 and related analog-output variations,
+// which are outside the v0 profile (supported-profile.md: "Command handler
+// analog controls — Reject — Group 41 and related variations are out of
+// scope"). A minimal MVP handler must therefore reject analog commands by
+// returning ControlNotSupported together with a clear error rather than
+// executing them. The interface method is retained for API continuity.
 type CommandHandler interface {
-	// HandleBinaryCommand handles a binary output command
+	// HandleBinaryCommand handles a binary output command (MVP-required:
+	// Group 12 Variation 1 CROB). Returns the resulting ControlStatus.
 	HandleBinaryCommand(command *types.ControlOutput) (*types.ControlStatus, error)
 
-	// HandleAnalogCommand handles an analog output command
+	// HandleAnalogCommand handles an analog output command. Out of v0 scope;
+	// a minimal MVP handler returns ControlNotSupported with a clear error.
 	HandleAnalogCommand(command *types.ControlOutput) (*types.ControlStatus, error)
 }
 

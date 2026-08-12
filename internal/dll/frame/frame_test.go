@@ -3,31 +3,18 @@ package frame
 import (
 	"bytes"
 	"encoding/hex"
-	"os"
-	"strings"
 	"testing"
+
+	"dnp3/internal/testutils/golden"
 )
 
 // TestDecodeRacomGoldenFrame proves the decoder accepts an independently
 // published DNP3 frame. It is intentionally introduced before the wire-format
 // repair and must fail against the current implementation.
 func TestDecodeRacomGoldenFrame(t *testing.T) {
-	raw, err := os.ReadFile("../../../active_work/testdata/racom-dnp3-link-frame.hex")
+	encoded, err := golden.LoadHex("racom-dnp3-link-frame.hex")
 	if err != nil {
-		t.Fatalf("read golden fixture: %v", err)
-	}
-
-	var fields []string
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields = append(fields, strings.Fields(line)...)
-	}
-	encoded, err := hex.DecodeString(strings.Join(fields, ""))
-	if err != nil {
-		t.Fatalf("decode golden fixture hex: %v", err)
+		t.Fatalf("load golden fixture: %v", err)
 	}
 
 	decoded, err := Decode(encoded)
