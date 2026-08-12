@@ -12,10 +12,10 @@
 - Planning complete for MEXT.
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
-- **Last completed task:** MEXT-013 — Operate real-TCP vs in-repo outstation
-- **Last checkpoint commit:** `e8e5495` (MEXT-013 — Operate real-TCP vs in-repo outstation) — pushed to origin/main
-- **Current task:** none (idle) — next READY is MEXT-017
-- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-013). External gate after MEXT-021/033.
+- **Last completed task:** MEXT-017 — Link handshake external frame vectors
+- **Last checkpoint commit:** `e8e5495` (MEXT-013 — Operate real-TCP vs in-repo outstation) — pushed to origin/main; MEXT-017 commit pending
+- **Current task:** none (idle) — next READY is MEXT-018
+- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-017). External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
 
 ## Completed Tasks
@@ -32,6 +32,7 @@
 - **MEXT-016** — Qualifier allow-list vs 1815 for v0 path. Locked the v0 request-side qualifier allow-list {0x06 all-objects (read/integrity), 0x00 index8 (operate/select), 0x28 range16 (ranged read), 0x07 count8 (event-class poll), 0x27 count16}. Added `internal/master/qualifier_golden_test.go`: TestPollRequestQualifierAllowList (every buildPollRequest header qualifier is in the allow-list; integrity poll golden G60V1 0x06), TestControlRequestQualifierAllowList (G12V1 control request qualifier 0x00, count 1), TestRangedReadRequestQualifierAllowList (range16 0x28, start/stop). Reject-others already enforced by `al.ObjectHeader.Encode` (ErrUnsupportedQualifier) and locked by `internal/al/object_header_test.go`. Updated supported-profile.md (request qualifier allow-list row). go test ./... + verify-mvp.sh green. **Goldens committed.**
 - **MEXT-015** — IntegrityPoll single multi-header path. Removed the per-group workaround as the primary path in `pkg/dnp3/master/client.go` `runIntegrityPoll`: the primary is now ONE Class-0 multi-group Read (G1/G20/G30 all-objects headers in a single APDU); the MEXT-014 qualifier-aware parsers populate every group from that single exchange. Retained a documented per-group fallback (`integrityPollPerGroup`) used only when the primary exchange errors (peer that rejects a multi-group Class-0 read or transport failure). Updated doc comments on `IntegrityPoll` (interface + impl). Added `pkg/dnp3/master/integrity_poll_test.go`: TestIntegrityPollSingleMultiHeaderExchange (asserts exactly ONE application request frame is sent for the poll and the full MVP set G1+G20+G30 is returned from that one exchange), TestIntegrityPollFallbackPerGroup (multi-group primary errors via seq-mismatch transport → per-group fallback returns the full set). Updated supported-profile.md (R3 row marked resolved; verification table row for the multi-header exchange + fallback) and external-acceptance.md. go test ./... + verify-mvp.sh green. **R3 resolved.**
 - **MEXT-013** — Operate real-TCP vs in-repo outstation. Proved the MEXT-012 R1 fix on a real TCP master↔outstation loopback (not the in-memory simulator). The in-repo outstation's `handleDirectOperate` returns an IIN-only response (outstation IIN bytes + no G12V1 control-status echo); before MEXT-012 this left the master with no parseable status → ControlTimeout (the DNP3-091 discovery). With MEXT-012's `resolveOperateStatus`, an IIN-only response with clear IIN is CommandStatusSuccess. Added `test/integration/operate_real_tcp_test.go`: TestOperateRealTCPSuccess (real-TCP Connect → DirectOperate CROB → ControlSuccess, not ControlTimeout; outstation-side dispatch symmetry asserted), TestOperateRealTCPBlockedStatus (rejected command → IIN.ParameterError → classified failure, never ControlSuccess/ControlTimeout). Updated outstation_side_gate_test.go discovery note (no longer claims ControlTimeout). Updated supported-profile.md (R1 row marked resolved; verification table row) and external-acceptance.md (R1 checklist item checked). go test ./... + verify-mvp.sh green. **R1 resolved (real-TCP proven). Observed response shape: IIN-only (no G12V1 echo) on success; IIN.ParameterError on rejection.**
+- **MEXT-017** — Link handshake external frame vectors. Locked the IEEE 1815 wire shape of the master's link-layer handshake request frames against external-style golden byte vectors. Added golden fixtures `active_work/testdata/link-reset-link-stations.hex` (control 0xC0, master 0x0003 → outstation 0x0004), `link-request-link-status.hex` (0xC9), `link-secondary-ack.hex` (0x00), `link-secondary-link-status.hex` (0x02), `link-secondary-nack.hex` (0x01). Added `internal/master/link_handshake_vectors_test.go`: TestLinkHandshakeRequestVectors (the master's first two emitted frames during Connect equal the golden request bytes; decode-level field assertions on control byte/func/addrs), TestLinkHandshakeRequiresBothExchanges (valid ACK + valid Link Status → Connect succeeds, state Active), TestLinkHandshakeNACKFailsConnect (NACK on reset → Connect fails, state Error; NACKRetries=0 so terminal on first NACK), TestLinkHandshakeWrongFuncOnLinkStatusFailsConnect (valid ACK then ACK-instead-of-Link-Status → Connect fails), TestLinkHandshakeMissingLinkStatusFailsConnect (transport closes after ACK, no second exchange → Connect fails), TestLinkHandshakeGoldenResponseDecode (secondary golden response fixtures decode to IEEE 1815 fields independent of the master encoder). Added a `scriptedTransport` test helper (queued responses + sent-frame recording). **Connect requires both exchanges (ACK then Link Status); any mismatch fails Connect → StateError.** go test ./... + verify-mvp.sh green.
 
 ## Current Checkpoint Batch
 
@@ -47,16 +48,16 @@
 - [x] MEXT-016 — Qualifier allow-list vs 1815 for v0 path
 - [x] MEXT-015 — IntegrityPoll single multi-header path
 - [x] MEXT-013 — Operate real-TCP vs in-repo outstation
+- [x] MEXT-017 — Link handshake external frame vectors
 
 ## Next READY Tasks
 
-- **MEXT-017** — Link handshake external frame vectors (prereq MEXT-003, done)
-- MEXT-018 — Application SEQ + CON on solicited path audit (prereq MEXT-003, done)
+- **MEXT-018** — Application SEQ + CON on solicited path audit (prereq MEXT-003, done)
 - MEXT-019 — IIN table freeze vs 1815 (prereq MEXT-003, done)
 
 ## Recommended Next Task
 
-**MEXT-017 — Link handshake external frame vectors**. Capture/golden the link-layer handshake frames (reset link + link status) against IEEE 1815 wire expectations so the external link path is locked. verify-mvp.sh must stay green.
+**MEXT-018 — Application SEQ + CON on solicited path audit**. Audit the master's solicited-path application sequence (CON=1 confirm handling, SEQ match, no SEQ advance on a failed send) against IEEE 1815 rules for the v0 path; fill any test gaps. verify-mvp.sh must stay green.
 
 ## Test Commands (baseline)
 
@@ -93,14 +94,14 @@ go test -race ./internal/master/... ./pkg/dnp3/... ./test/integration/...
 
 ## Next Action
 
-1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-017).
-2. Implement **MEXT-017** (Link handshake external frame vectors).
-3. Checkpoint after MEXT-017 — run go test ./... + verify-mvp.sh, commit, push.
+1. Read `active_work/MEXT_MASTER_ROADMAP.md` (MEXT-018).
+2. Implement **MEXT-018** (Application SEQ + CON on solicited path audit).
+3. Checkpoint after MEXT-018 — run go test ./... + verify-mvp.sh, commit, push.
 
 ## MVP Gate
 
 ```
 TOTAL TASKS: 40
 EXTERNAL MVP COMPLETE AT: MEXT-035
-NEXT TASK: MEXT-017 — Link handshake external frame vectors
+NEXT TASK: MEXT-018 — Application SEQ + CON on solicited path audit
 ```

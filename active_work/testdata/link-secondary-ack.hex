@@ -1,0 +1,5 @@
+# IEEE 1815-2012 — secondary ACK (func 0) in response to Reset Link Stations.
+# Outstation (src 0x0004) -> master (dest 0x0003). No user data.
+# Control byte 0x00 = DIR=0 PRM=0 FCB=0 FCV=0 func=0 (ACK).
+# Length 0x05. Dest/source LSB-first. Trailing 2 octets are the header CRC.
+05 64 05 00 03 00 04 00 3C 56

@@ -1,0 +1,6 @@
+# IEEE 1815-2012 Section 5.3.1 — Reset Link Stations (primary, func 0).
+# Master (src 0x0003) -> outstation (dest 0x0004). No user data.
+# Control byte 0xC0 = DIR=1 PRM=1 FCB=0 FCV=0 func=0.
+# Length 0x05 = Control(1) + Dest(2) + Src(2) + Data(0).
+# Dest/source are LSB-first. Trailing 2 octets are the header CRC.
+05 64 05 C0 04 00 03 00 F9 56

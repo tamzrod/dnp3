@@ -1,0 +1,5 @@
+# IEEE 1815-2012 Section 5.3.3 — Request Link Status (primary, func 9).
+# Master (src 0x0003) -> outstation (dest 0x0004). No user data.
+# Control byte 0xC9 = DIR=1 PRM=1 FCB=0 FCV=0 func=9.
+# Length 0x05. Dest/source LSB-first. Trailing 2 octets are the header CRC.
+05 64 05 C9 04 00 03 00 B6 20

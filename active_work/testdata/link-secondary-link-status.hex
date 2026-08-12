@@ -1,0 +1,5 @@
+# IEEE 1815-2012 — secondary Link Status (func 2) in response to Request Link Status.
+# Outstation (src 0x0004) -> master (dest 0x0003). No user data.
+# Control byte 0x02 = DIR=0 PRM=0 FCB=0 FCV=0 func=2 (Link Status).
+# Length 0x05. Dest/source LSB-first. Trailing 2 octets are the header CRC.
+05 64 05 02 03 00 04 00 30 10
