@@ -171,9 +171,57 @@
   `resp.IIN == client.LastIIN()`.
 - Acceptance: public response carries IIN; loopback asserts IIN.
 
+### DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)
+- Commit message: `feat(master): react to critical IIN bits`
+- `internal/master/master.go`: added `reactToIIN`, called from
+  `processResponse` after the IIN update. On DeviceRestart (IIN1.7) the
+  outstation is marked `NeedsIntegrity` + State="Restart" (clear local
+  state / re-integrity); on NeedTime (IIN1.4) it is marked `NeedsTimeSync`
+  (stub time-sync). Optional callbacks `SetDeviceRestartHandler` /
+  `SetNeedTimeSyncHandler` provide the log/stub hook. Full integrity
+  polling and time objects are later roadmap items.
+- New Outstation accessors: `NeedsIntegrity()/ClearNeedsIntegrity()`,
+  `NeedsTimeSync()/ClearNeedsTimeSync()` (thread-safe).
+- Tests: `TestIINReactionDeviceRestart`, `TestIINReactionNeedTime`,
+  `TestIINReactionBothBits`, `TestIINReactionClean` (injected IIN bits).
+- Acceptance: documented reaction occurs; reaction tests green.
+
+### DNP3-014 — Class-0 integrity request construction
+- Commit message: `feat(master): canonical Class-0 integrity request`
+- `internal/master/master.go`: `buildPollRequest` now constructs the
+  Class-0 / integrity poll with the canonical all-objects qualifier
+  (0x06) on Group 60 Variation 1 (was 0x07 count=0, which is semantically
+  "read zero objects"). Single, deterministic request form for "read all
+  Class-0 static data". The 4-byte header stride is preserved, so the
+  outstation's `buildReadResponse` (which keys off group 60) is unaffected.
+- Golden fixture `active_work/testdata/class0-integrity-request.hex`
+  (G60V1 all-objects: `3C 01 06 00`).
+- New helper `loadGoldenHex` (resolves `active_work/testdata` via
+  runtime.Caller, strips `#` comments/whitespace, hex-decodes).
+- Tests: updated `TestBuildPollRequest` (0x06 form), new
+  `TestBuildPollRequestIntegrityGolden` (golden fixture match +
+  PollClass0 == PollIntegrity form).
+- Acceptance: integrity request is deterministic; request fixture test green.
+
+### DNP3-015 — Multi-fragment Class-0 response handling
+- Commit message: `fix(master): multi-fragment Class-0 reassembly`
+- Verified the receive path (`processReceivedBytes`) already reassembles
+  multi-fragment transport-layer responses into a complete APDU before
+  parse: it loops over DLL frames, pushes each TL fragment to the
+  `tl.Reassembler`, and only returns the message when FIN is received.
+  `al.DecodeResponse` then parses the complete reassembled APDU.
+- Golden fixture `active_work/testdata/class0-multifragment-apdu.hex`
+  (single app message split across 2 transport fragments: G1V1 count=2
+  in frag 1, G30V1 count=1 in frag 2; value=42).
+- Test `TestMultiFragmentClass0Reassembly`: feeds a 2-fragment Class-0
+  response through `processReceivedBytes`, asserts the reassembled APDU
+  matches the golden, decodes it, and confirms both G1V1 (2 points) and
+  G30V1 (1 point) headers are present (fragment 2 data not lost).
+- Acceptance: all points present; multi-fragment test green.
+
 ## Next READY Tasks
 
-- **DNP3-013** — Basic IIN reaction (DeviceRestart / NeedTime)  *(prereqs: DNP3-012 ✓)*
+- **DNP3-016** — Binary Input G1V1 final correctness  *(prereqs: DNP3-015 ✓)*
 - **DNP3-022** — Context cancellation on Connect
 - **DNP3-030** — Complete supported-profile rejection matrix
 - **DNP3-031** — Transport disconnect detection
@@ -189,7 +237,7 @@
 
 ## Recommended Next Task
 
-**DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)**
+**DNP3-016 — Binary Input G1V1 final correctness**
 
 After completing a task:
 
@@ -245,8 +293,8 @@ TOTAL TASKS: 100
 MASTER TASKS: 72
 OUTSTATION TASKS: 28
 MVP COMPLETE AT: DNP3-056
-COMPLETED: DNP3-001 through DNP3-012
-NEXT TASK: DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)
+COMPLETED: DNP3-001 through DNP3-015
+NEXT TASK: DNP3-016 — Binary Input G1V1 final correctness
 ```
 
 ## Test Status
@@ -254,4 +302,4 @@ NEXT TASK: DNP3-013 — Basic IIN reaction (DeviceRestart / NeedTime)
 - `go test ./...` — all 21 packages green (including integration).
 - `go test -race ./internal/al/... ./internal/master/... ./internal/outstation/... ./pkg/dnp3/master/... ./test/integration/...` — green.
 - Pre-existing `go vet` "unreachable code" notes in `internal/outstation/outstation.go:827` and `pkg/dnp3/master/client.go:322` are NOT introduced by these tasks (confirmed on clean HEAD) and are out of scope.
-- Commit hash: f552577 (DNP3-010/011/012 checkpoint)
+- Commit hash: (pending — DNP3-013/014/015 checkpoint)

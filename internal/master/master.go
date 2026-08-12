@@ -96,6 +96,11 @@ type Outstation struct {
 	Unsolicited bool      // Supports unsolicited responses
 	IIN         [2]byte   // Last Internal Indication
 	mu          sync.RWMutex
+
+	// DNP3-013 reaction state — set from received IIN bits, cleared by the
+	// appropriate follow-up action (integrity poll / time-sync).
+	needsIntegrity bool // DeviceRestart IIN received → re-integrity required
+	needsTimeSync  bool // NeedTime IIN received → time sync required
 }
 
 // NewOutstation creates a new outstation entry.
@@ -125,6 +130,54 @@ func (o *Outstation) GetIIN() [2]byte {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.IIN
+}
+
+// NeedsIntegrity reports whether the outstation has signalled a device
+// restart and a re-integrity poll is required (DNP3-013). Clear it with
+// ClearNeedsIntegrity once the integrity poll has been performed.
+func (o *Outstation) NeedsIntegrity() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.needsIntegrity
+}
+
+// ClearNeedsIntegrity clears the re-integrity requirement.
+func (o *Outstation) ClearNeedsIntegrity() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.needsIntegrity = false
+}
+
+// NeedsTimeSync reports whether the outstation has requested time
+// synchronization (DNP3-013). Clear it with ClearNeedsTimeSync once a
+// time-sync has been issued.
+func (o *Outstation) NeedsTimeSync() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.needsTimeSync
+}
+
+// ClearNeedsTimeSync clears the time-sync requirement.
+func (o *Outstation) ClearNeedsTimeSync() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.needsTimeSync = false
+}
+
+// markDeviceRestart records that the outstation restarted: local state is
+// cleared and a re-integrity poll is flagged (DNP3-013).
+func (o *Outstation) markDeviceRestart() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.needsIntegrity = true
+	o.State = "Restart"
+}
+
+// markNeedTimeSync records that the outstation requested time sync (DNP3-013).
+func (o *Outstation) markNeedTimeSync() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.needsTimeSync = true
 }
 
 // HasFlag checks if an IIN flag is set.
@@ -178,6 +231,12 @@ type Master struct {
 	// sequence is the application-layer sequence number (0-15). It advances
 	// by one (mod 16) for each successfully sent request (DNP3-008).
 	sequence uint8
+
+	// DNP3-013 reaction hooks. Optional; invoked from processResponse when
+	// the corresponding IIN bit is set. These are stubs/logs — full time
+	// objects and integrity polling are later roadmap items.
+	onDeviceRestart func(outstationID uint16)
+	onNeedTimeSync  func(outstationID uint16)
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -213,7 +272,28 @@ func (m *Master) SetTransport(t TransportHandler) {
 
 // SetErrorHandler sets the error handler callback.
 func (m *Master) SetErrorHandler(h ErrorHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.onError = h
+}
+
+// SetDeviceRestartHandler sets the callback invoked when an outstation
+// reports the DeviceRestart IIN bit (DNP3-013). The master marks the
+// outstation as needing re-integrity; the callback is the stub/log hook.
+func (m *Master) SetDeviceRestartHandler(h func(outstationID uint16)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onDeviceRestart = h
+}
+
+// SetNeedTimeSyncHandler sets the callback invoked when an outstation
+// reports the NeedTime IIN bit (DNP3-013). The master records that a time
+// sync is required; the callback is the stub/log hook (full time objects
+// are a later roadmap item).
+func (m *Master) SetNeedTimeSyncHandler(h func(outstationID uint16)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onNeedTimeSync = h
 }
 
 // State returns the current master state.
@@ -847,7 +927,42 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
+	// DNP3-013: react to critical IIN bits.
+	m.reactToIIN(outstationID, resp.IIN, o)
+
 	return appData, nil
+}
+
+// reactToIIN applies the minimal required Master reaction to received IIN
+// bits (DNP3-013):
+//   - DeviceRestart (IIN1.7): clear local state and flag re-integrity.
+//   - NeedTime (IIN1.4): record that a time sync is required (stub).
+//
+// Both also invoke the optional callback hooks (logging/stub). Full integrity
+// polling and time objects are later roadmap items.
+func (m *Master) reactToIIN(outstationID uint16, iin al.IIN, o *Outstation) {
+	if iin.DeviceRestart {
+		if o != nil {
+			o.markDeviceRestart()
+		}
+		m.mu.RLock()
+		h := m.onDeviceRestart
+		m.mu.RUnlock()
+		if h != nil {
+			h(outstationID)
+		}
+	}
+	if iin.NeedTime {
+		if o != nil {
+			o.markNeedTimeSync()
+		}
+		m.mu.RLock()
+		h := m.onNeedTimeSync
+		m.mu.RUnlock()
+		if h != nil {
+			h(outstationID)
+		}
+	}
 }
 
 // processReceivedBytes processes raw TCP data through DLL and TL layers.
@@ -969,15 +1084,17 @@ func (m *Master) currentSequence() uint8 {
 // buildPollRequest creates a poll request based on poll type.
 //
 // Each poll object header is constructed via the formal al.ObjectHeader model
-// (DNP3-004). The wire bytes are preserved exactly from the prior ad-hoc
-// construction so existing golden/loopback expectations remain satisfied.
+// (DNP3-004). The Class-0 / integrity poll uses the canonical all-objects
+// qualifier (0x06) on Group 60 Variation 1 (DNP3-014): a single, deterministic
+// request form for "read all Class-0 static data".
 func buildPollRequest(pollType PollType) []byte {
 	// Object headers for different poll types
 	var headers []al.ObjectHeader
 	switch pollType {
 	case PollIntegrity, PollClass0:
-		// Group 60, Variation 1 = All static data (Class 0)
-		headers = []al.ObjectHeader{{Group: 60, Variation: 1, Qualifier: al.QualCount8, Count: 0}}
+		// Group 60, Variation 1 = All static data (Class 0), all-objects
+		// qualifier (0x06) — canonical integrity poll (DNP3-014).
+		headers = []al.ObjectHeader{{Group: 60, Variation: 1, Qualifier: al.QualAllObjects}}
 	case PollClass1:
 		// Group 2, Variation 1 = Binary events
 		headers = []al.ObjectHeader{{Group: 2, Variation: 1, Qualifier: al.QualCount8, Count: 0}}

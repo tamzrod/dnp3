@@ -1,0 +1,16 @@
+# Multi-fragment Class-0 response — expected reassembled application PDU (DNP3-015).
+#
+# Two transport fragments reassemble into this single APDU:
+#   [0]    0xC0  Application control: FIR=1, FIN=1, Seq=0 (single app message)
+#   [1]    0x00  Function code: Response
+#   [2]    0x00  IIN1 (clean)
+#   [3]    0x00  IIN2 (clean)
+#   Object data (split across two transport fragments):
+#     G1V1  01 01 07 02   Group 1 Variation 1, qualifier 0x07 (count8), count 2
+#           03            packed binary byte: bits 0 and 1 set (2 inputs ON)
+#     G30V1 1E 01 07 01   Group 30 Variation 1, qualifier 0x07 (count8), count 1
+#           2A 00 00 00   analog value = 42 (int32, LSB first)
+#           01            flags (online)
+#
+# Total: 18 octets.
+C0 00 00 00 01 01 07 02 03 1E 01 07 01 2A 00 00 00 01

@@ -1,7 +1,13 @@
 package master
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +15,41 @@ import (
 	"dnp3/internal/dll/frame"
 	"dnp3/internal/tl"
 )
+
+// goldenDir returns the absolute path to active_work/testdata/.
+func goldenDir() (string, error) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("runtime.Caller failed")
+	}
+	// internal/master/master_test.go → repo root is two parents up.
+	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	return filepath.Abs(filepath.Join(root, "active_work", "testdata"))
+}
+
+// loadGoldenHex reads a .hex fixture from active_work/testdata, strips
+// '#' comments and whitespace, and hex-decodes the remaining bytes.
+func loadGoldenHex(name string) ([]byte, error) {
+	dir, err := goldenDir()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return nil, err
+	}
+	var clean strings.Builder
+	for _, line := range strings.Split(string(raw), "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		clean.WriteString(line)
+	}
+	s := strings.ReplaceAll(clean.String(), " ", "")
+	s = strings.ReplaceAll(s, "\t", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return hex.DecodeString(s)
+}
 
 func TestStateString(t *testing.T) {
 	tests := []struct {
@@ -253,8 +294,10 @@ func TestBuildPollRequest(t *testing.T) {
 		pollType PollType
 		want     []byte
 	}{
-		{PollIntegrity, []byte{60, 1, 0x07, 0x00}},
-		{PollClass0, []byte{60, 1, 0x07, 0x00}},
+		// DNP3-014: Class-0 / integrity poll uses the canonical all-objects
+		// qualifier (0x06) on Group 60 Variation 1.
+		{PollIntegrity, []byte{60, 1, 0x06, 0x00}},
+		{PollClass0, []byte{60, 1, 0x06, 0x00}},
 		{PollClass1, []byte{2, 1, 0x07, 0x00}},
 		{PollClass2, []byte{32, 1, 0x07, 0x00}},
 		{PollClass3, []byte{22, 1, 0x07, 0x00}},
@@ -265,6 +308,23 @@ func TestBuildPollRequest(t *testing.T) {
 		if string(got) != string(tt.want) {
 			t.Errorf("buildPollRequest(%v) = %v, want %v", tt.pollType, got, tt.want)
 		}
+	}
+}
+
+// TestBuildPollRequestIntegrityGolden verifies the Class-0 integrity poll
+// request bytes match the golden fixture (DNP3-014).
+func TestBuildPollRequestIntegrityGolden(t *testing.T) {
+	golden, err := loadGoldenHex("class0-integrity-request.hex")
+	if err != nil {
+		t.Fatalf("failed to load golden fixture: %v", err)
+	}
+	got := buildPollRequest(PollIntegrity)
+	if !bytes.Equal(got, golden) {
+		t.Fatalf("integrity request = % X, want golden % X", got, golden)
+	}
+	// PollClass0 must produce the identical canonical form.
+	if got0 := buildPollRequest(PollClass0); !bytes.Equal(got0, got) {
+		t.Fatalf("PollClass0 = % X, want identical to integrity % X", got0, got)
 	}
 }
 
@@ -552,6 +612,42 @@ func buildResponseFrameWithIIN(seq uint8, iin al.IIN) []byte {
 	return raw
 }
 
+// buildMultiFragmentClass0Response builds a 2-fragment Class-0 response
+// (transport-layer FIR=1/FIN=0 then FIR=0/FIN=1) carrying a single
+// application message whose complete reassembled APDU is the golden in
+// class0-multifragment-apdu.hex (DNP3-015). The split point is between the
+// G1V1 object data and the G30V1 object header.
+func buildMultiFragmentClass0Response(appSeq uint8) []byte {
+	// Expected complete APDU (golden): control+func+IIN+G1V1(2pts)+G30V1(1pt).
+	apdu := []byte{
+		0xC0 | (appSeq & 0x0F), // FIR|FIN|Seq
+		0x00,                   // FuncResponse
+		0x00, 0x00,             // IIN
+		0x01, 0x01, 0x07, 0x02, // G1V1 count8 count=2
+		0x03,                   // packed binary: bits 0,1 set
+		0x1E, 0x01, 0x07, 0x01, // G30V1 count8 count=1
+		0x2A, 0x00, 0x00, 0x00, // value 42 (int32 LSB)
+		0x01, // flags online
+	}
+	// Split: fragment 1 = bytes [0:9] (through the G1V1 packed byte),
+	// fragment 2 = bytes [9:] (G30V1 header + point).
+	split := 9
+	frag1 := tl.Fragment{FIR: true, FIN: false, Seq: 0, Data: apdu[:split]}
+	frag2 := tl.Fragment{FIR: false, FIN: true, Seq: 1, Data: apdu[split:]}
+
+	dll1 := &frame.Frame{
+		Control:  frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
+		DestAddr: 1, SrcAddr: 2, Data: tl.EncodeFragment(frag1),
+	}
+	dll2 := &frame.Frame{
+		Control:  frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
+		DestAddr: 1, SrcAddr: 2, Data: tl.EncodeFragment(frag2),
+	}
+	b1, _ := frame.Encode(dll1)
+	b2, _ := frame.Encode(dll2)
+	return append(b1, b2...)
+}
+
 // buildMinimalResponseFrame builds a valid DLL frame wrapping a TL fragment
 // wrapping a minimal APDU response (FuncResponse, empty data, Seq=0). It is
 // sufficient for sendWithRetry to complete its receive/process path.
@@ -825,5 +921,210 @@ func TestProcessResponseStoresIIN(t *testing.T) {
 	got := o.GetIIN()
 	if got != [2]byte{0x02, 0x04} {
 		t.Fatalf("stored IIN = %v, want {0x02,0x04}", got)
+	}
+}
+
+// TestIINReactionDeviceRestart verifies that a response carrying the
+// DeviceRestart IIN bit triggers the master's re-integrity reaction
+// (DNP3-013).
+func TestIINReactionDeviceRestart(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(2, "RTU-1")
+
+	var calledID uint16
+	var got bool
+	m.SetDeviceRestartHandler(func(id uint16) {
+		calledID = id
+		got = true
+	})
+
+	raw := buildResponseFrameWithIIN(1, al.IIN{DeviceRestart: true})
+	if _, err := m.processResponse(raw, 2, 1); err != nil {
+		t.Fatalf("processResponse failed: %v", err)
+	}
+
+	o, ok := m.GetOutstation(2)
+	if !ok {
+		t.Fatal("outstation 2 not found")
+	}
+	if !o.NeedsIntegrity() {
+		t.Error("expected NeedsIntegrity=true after DeviceRestart IIN")
+	}
+	if o.State != "Restart" {
+		t.Errorf("expected State=Restart, got %q", o.State)
+	}
+	if !got || calledID != 2 {
+		t.Errorf("DeviceRestart callback not invoked correctly (called=%v id=%d)", got, calledID)
+	}
+	// NeedTime must not be flagged.
+	if o.NeedsTimeSync() {
+		t.Error("expected NeedsTimeSync=false for DeviceRestart-only IIN")
+	}
+}
+
+// TestIINReactionNeedTime verifies that a response carrying the NeedTime IIN
+// bit triggers the master's time-sync stub reaction (DNP3-013).
+func TestIINReactionNeedTime(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(3, "RTU-2")
+
+	var calledID uint16
+	var got bool
+	m.SetNeedTimeSyncHandler(func(id uint16) {
+		calledID = id
+		got = true
+	})
+
+	raw := buildResponseFrameWithIIN(2, al.IIN{NeedTime: true})
+	if _, err := m.processResponse(raw, 3, 2); err != nil {
+		t.Fatalf("processResponse failed: %v", err)
+	}
+
+	o, ok := m.GetOutstation(3)
+	if !ok {
+		t.Fatal("outstation 3 not found")
+	}
+	if !o.NeedsTimeSync() {
+		t.Error("expected NeedsTimeSync=true after NeedTime IIN")
+	}
+	if !got || calledID != 3 {
+		t.Errorf("NeedTimeSync callback not invoked correctly (called=%v id=%d)", got, calledID)
+	}
+	// DeviceRestart must not be flagged.
+	if o.NeedsIntegrity() {
+		t.Error("expected NeedsIntegrity=false for NeedTime-only IIN")
+	}
+}
+
+// TestIINReactionBothBits verifies both reactions fire when both IIN bits set.
+func TestIINReactionBothBits(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(4, "RTU-3")
+
+	rest := false
+	ts := false
+	m.SetDeviceRestartHandler(func(id uint16) { rest = true })
+	m.SetNeedTimeSyncHandler(func(id uint16) { ts = true })
+
+	raw := buildResponseFrameWithIIN(3, al.IIN{DeviceRestart: true, NeedTime: true})
+	if _, err := m.processResponse(raw, 4, 3); err != nil {
+		t.Fatalf("processResponse failed: %v", err)
+	}
+
+	o, ok := m.GetOutstation(4)
+	if !ok {
+		t.Fatal("outstation 4 not found")
+	}
+	if !o.NeedsIntegrity() {
+		t.Error("expected NeedsIntegrity=true")
+	}
+	if !o.NeedsTimeSync() {
+		t.Error("expected NeedsTimeSync=true")
+	}
+	if !rest || !ts {
+		t.Errorf("expected both callbacks fired (restart=%v timesync=%v)", rest, ts)
+	}
+}
+
+// TestIINReactionClean verifies no reaction fires for a clean IIN (DNP3-013).
+func TestIINReactionClean(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(5, "RTU-4")
+
+	rest := false
+	ts := false
+	m.SetDeviceRestartHandler(func(id uint16) { rest = true })
+	m.SetNeedTimeSyncHandler(func(id uint16) { ts = true })
+
+	raw := buildResponseFrameWithIIN(4, al.IIN{})
+	if _, err := m.processResponse(raw, 5, 4); err != nil {
+		t.Fatalf("processResponse failed: %v", err)
+	}
+
+	o, ok := m.GetOutstation(5)
+	if !ok {
+		t.Fatal("outstation 5 not found")
+	}
+	if o.NeedsIntegrity() {
+		t.Error("expected NeedsIntegrity=false for clean IIN")
+	}
+	if o.NeedsTimeSync() {
+		t.Error("expected NeedsTimeSync=false for clean IIN")
+	}
+	if rest || ts {
+		t.Errorf("expected no callbacks for clean IIN (restart=%v timesync=%v)", rest, ts)
+	}
+}
+
+// TestMultiFragmentClass0Reassembly verifies the receive path reassembles a
+// multi-fragment Class-0 response into a complete APDU before parsing, and
+// that all object headers/points are present (DNP3-015).
+func TestMultiFragmentClass0Reassembly(t *testing.T) {
+	m := NewMaster(DefaultConfig())
+	m.AddOutstation(6, "RTU-5")
+
+	raw := buildMultiFragmentClass0Response(7)
+
+	// Reassemble through the receive path.
+	appData, err := m.processReceivedBytes(raw)
+	if err != nil {
+		t.Fatalf("processReceivedBytes failed: %v", err)
+	}
+
+	// The reassembled APDU must match the golden (complete, both fragments).
+	golden, err := loadGoldenHex("class0-multifragment-apdu.hex")
+	if err != nil {
+		t.Fatalf("failed to load golden fixture: %v", err)
+	}
+	// Golden uses Seq=0; our response uses appSeq=7 → adjust control byte.
+	want := make([]byte, len(golden))
+	copy(want, golden)
+	want[0] = 0xC0 | 0x07
+	if !bytes.Equal(appData, want) {
+		t.Fatalf("reassembled APDU = % X, want % X", appData, want)
+	}
+
+	// Decode the response and verify both object headers / all points present.
+	resp, err := al.DecodeResponse(appData)
+	if err != nil {
+		t.Fatalf("DecodeResponse failed: %v", err)
+	}
+	if resp.Header.Control.Seq != 7 {
+		t.Fatalf("seq = %d, want 7", resp.Header.Control.Seq)
+	}
+
+	// Scan object headers in resp.Data and assert G1V1 (count 2) and G30V1
+	// (count 1) are both present — proving the second fragment's data was not
+	// lost during reassembly.
+	var sawG1V1, sawG30V1 bool
+	off := 0
+	for off+4 <= len(resp.Data) {
+		g, v := resp.Data[off], resp.Data[off+1]
+		qual := resp.Data[off+2]
+		cnt := resp.Data[off+3]
+		switch {
+		case g == 1 && v == 1:
+			sawG1V1 = true
+			if qual != 0x07 || cnt != 2 {
+				t.Errorf("G1V1 header = qual %#x count %d, want 0x07/2", qual, cnt)
+			}
+			// G1V1 packed: 1 data byte; advance header(4)+1.
+			off += 4 + 1
+		case g == 30 && v == 1:
+			sawG30V1 = true
+			if qual != 0x07 || cnt != 1 {
+				t.Errorf("G30V1 header = qual %#x count %d, want 0x07/1", qual, cnt)
+			}
+			// G30V1: 1 point = int32(4) + flags(1); advance header(4)+5.
+			off += 4 + 5
+		default:
+			t.Fatalf("unexpected object header g=%d v=%d at offset %d", g, v, off)
+		}
+	}
+	if !sawG1V1 {
+		t.Error("G1V1 object header missing from reassembled response")
+	}
+	if !sawG30V1 {
+		t.Error("G30V1 object header missing from reassembled response")
 	}
 }

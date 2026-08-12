@@ -1,0 +1,16 @@
+# DNP3 Class-0 integrity poll request — application-layer object header (DNP3-014).
+#
+# The canonical integrity poll requests all Class-0 static data via a single
+# object header: Group 60 (class data), Variation 1 (Class 0), with the
+# all-objects qualifier 0x06. The range field for the all-objects qualifier
+# is a single 0x00 octet.
+#
+# Layout (application fragment, after the 2-byte APCI control byte is not
+# included here — this is the object-header body of a READ request):
+#   [0] 0x3C  Group 60 (class data)
+#   [1] 0x01  Variation 1 (Class 0)
+#   [2] 0x06  Qualifier: all-objects
+#   [3] 0x00  Range octet (0x00 for all-objects)
+#
+# Total: 4 octets.
+3C 01 06 00
