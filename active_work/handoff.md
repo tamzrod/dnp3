@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-016 — Qualifier allow-list vs 1815 for v0 path
-- **Last checkpoint commit:** `73e02cd` (MEXT-001..003 checkpoint) — pushed to origin/main
+- **Last checkpoint commit:** `5ffff47` (MEXT-012/014/016 checkpoint) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-015
 - **Test status:** Internal `./scripts/verify-mvp.sh` must remain exit 0. External gate after MEXT-021/033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
