@@ -17,7 +17,7 @@
 - [ ] `verify-external-mvp.sh` exit 0 (real TCP master↔outstation path)
 - [x] CROB control codes match IEEE 1815 bitfield golden vectors (MEXT-011) ✅
 - [ ] Operate does not ControlTimeout on valid success APDU from in-repo outstation over TCP (MEXT-012/013) — parse-side fix done in MEXT-012; real-TCP proof pending MEXT-013
-- [ ] Class-0 multi-object-header response returns all G1/G20/G30 points (MEXT-014/015)
+- [ ] Class-0 multi-object-header response returns all G1/G20/G30 points (MEXT-014/015) — parse-side fixed in MEXT-014; single-request IntegrityPoll pending MEXT-015
 - [ ] README external claims match tests (MEXT-034/035)
 
 ## Record (fill at MEXT-035)

@@ -1002,7 +1002,7 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 
 		// Group 1 = Binary Input (static), Group 2 = Binary Input Event (with timestamp)
 		if group != 1 && group != 2 {
-			offset = skipGroupData(offset, data, group, variation, count)
+			offset = skipGroupData(offset, data, h)
 			continue
 		}
 
@@ -1101,7 +1101,7 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 
 		// Group 30 = Analog Input (static), Group 31 = Analog Input Event (with timestamp)
 		if group != 30 && group != 31 {
-			offset = skipGroupData(offset, data, group, variation, count)
+			offset = skipGroupData(offset, data, h)
 			continue
 		}
 
@@ -1215,7 +1215,7 @@ func parseCounters(data []byte) []*types.Counter {
 
 		// Group 20 = Counter (static), Group 21 = Counter Event (with timestamp)
 		if group != 20 && group != 21 {
-			offset = skipGroupData(offset, data, group, variation, count)
+			offset = skipGroupData(offset, data, h)
 			continue
 		}
 
@@ -1318,7 +1318,7 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 
 		if group != 10 { // Group 10 = Binary Output
 			// Skip past this group's data
-			offset = skipGroupData(offset, data, group, variation, count)
+			offset = skipGroupData(offset, data, h)
 			continue
 		}
 
@@ -1372,7 +1372,7 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 
 		if group != 40 { // Group 40 = Analog Output
 			// Skip past this group's data
-			offset = skipGroupData(offset, data, group, variation, count)
+			offset = skipGroupData(offset, data, h)
 			continue
 		}
 
@@ -1414,70 +1414,105 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 
 // skipGroupData advances the offset past the data for a group.
 // Returns the new offset position.
-func skipGroupData(offset int, data []byte, group uint8, variation uint8, count uint8) int {
-	// Calculate bytes per point based on group/variation
-	var bytesPerPoint int
-	switch group {
-	case 1: // Binary Input Group
-		switch variation {
-		case 1: // With flags: index(2) + value+flags(1) = 3
-			bytesPerPoint = 3
-		case 2: // Without flags: index(2) + value(1) = 3
-			bytesPerPoint = 3
-		default:
-			bytesPerPoint = 3
-		}
-	case 30: // Analog Input Group
-		switch variation {
-		case 1: // 32-bit float with flags: index(2) + float(4) + flags(1) = 7
-			bytesPerPoint = 7
-		case 2: // 16-bit int with flags: index(2) + int16(2) + flags(1) = 5
-			bytesPerPoint = 5
-		case 3: // 32-bit int with flags: index(2) + int32(4) + flags(1) = 7
-			bytesPerPoint = 7
-		case 5: // 32-bit float without flags: index(2) + float(4) = 6
-			bytesPerPoint = 6
-		default:
-			bytesPerPoint = 7
-		}
-	case 20: // Counter Group
-		switch variation {
-		case 1: // 32-bit with flags: index(2) + value(4) + flags(1) = 7
-			bytesPerPoint = 7
-		case 5: // 16-bit with flags: index(2) + value(2) + flags(1) = 5
-			bytesPerPoint = 5
-		case 6: // 32-bit without flags: index(2) + value(4) = 6
-			bytesPerPoint = 6
-		default:
-			bytesPerPoint = 7
-		}
-	case 10: // Binary Output Group
-		switch variation {
-		case 1: // With flags: index(2) + value+flags(1) = 3
-			bytesPerPoint = 3
-		case 2: // Without flags: index(2) + value(1) = 3
-			bytesPerPoint = 3
-		default:
-			bytesPerPoint = 3
-		}
-	case 40: // Analog Output Group
-		switch variation {
-		case 1: // 32-bit float with flags: index(2) + float(4) + flags(1) = 7
-			bytesPerPoint = 7
-		case 2: // 16-bit int with flags: index(2) + int16(2) + flags(1) = 5
-			bytesPerPoint = 5
-		default:
-			bytesPerPoint = 7
-		}
-	default:
-		bytesPerPoint = 7 // Conservative default
+func skipGroupData(offset int, data []byte, h al.ObjectHeader) int {
+	n := objectPointCount(h)
+	if n == 0 {
+		return offset
 	}
-
-	newOffset := offset + int(count)*bytesPerPoint
+	// G1V1 packed format: bits packed 8 per byte, no index/flags.
+	if h.Group == 1 && h.Variation == 1 && isSequentialQualifier(h.Qualifier) {
+		packedBytes := (n + 7) / 8
+		newOffset := offset + packedBytes
+		if newOffset > len(data) {
+			return len(data)
+		}
+		return newOffset
+	}
+	valueBytes := objectValueBytes(h.Group, h.Variation)
+	indexPrefix := objectIndexPrefixBytes(h.Qualifier)
+	newOffset := offset + n*(indexPrefix+valueBytes)
 	if newOffset > len(data) {
 		return len(data)
 	}
 	return newOffset
+}
+
+// objectPointCount returns the number of points described by a header,
+// independent of qualifier-specific encoding.
+func objectPointCount(h al.ObjectHeader) int {
+	switch h.Qualifier {
+	case al.QualCount8, al.QualIndex8, al.QualCount16:
+		return int(h.Count)
+	case al.QualRange16:
+		if h.Stop < h.Start {
+			return 0
+		}
+		return int(h.Stop-h.Start) + 1
+	case al.QualAllObjects:
+		return 0
+	default:
+		return int(h.Count)
+	}
+}
+
+// isSequentialQualifier reports whether the qualifier is a sequential
+// (no per-point index) layout: count8, count16, range16, all-objects.
+func isSequentialQualifier(q uint8) bool {
+	switch q {
+	case al.QualCount8, al.QualCount16, al.QualRange16, al.QualAllObjects:
+		return true
+	default:
+		return false
+	}
+}
+
+// objectIndexPrefixBytes returns the per-point index prefix size for a
+// qualifier. Only index8 (0x00) carries a per-point index in this stack (a
+// 2-octet index, matching the per-point parsers); sequential qualifiers
+// carry none.
+func objectIndexPrefixBytes(q uint8) int {
+	if q == al.QualIndex8 {
+		return 2
+	}
+	return 0
+}
+
+// objectValueBytes returns the per-point value size (excluding any index
+// prefix and any event timestamp) for the MVP-supported object variations.
+func objectValueBytes(group, variation uint8) int {
+	switch group {
+	case 1: // Binary Input
+		return 1
+	case 20: // Counter
+		switch variation {
+		case 5: // uint16 + flags
+			return 3
+		case 6: // uint32 only
+			return 4
+		default: // uint32 + flags
+			return 5
+		}
+	case 30: // Analog Input
+		switch variation {
+		case 2: // int16 + flags
+			return 3
+		case 5: // float32 only
+			return 4
+		default: // int32/float32 + flags
+			return 5
+		}
+	case 10: // Binary Output
+		return 1
+	case 40: // Analog Output
+		switch variation {
+		case 2: // int16 + flags
+			return 3
+		default: // float32 + flags
+			return 5
+		}
+	default:
+		return 5
+	}
 }
 
 // Operate implements Client.Operate
