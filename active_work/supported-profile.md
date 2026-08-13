@@ -104,6 +104,7 @@ reference:
 | IIN bit-map freeze vs IEEE 1815 (named critical masks + full 16-bit round-trip) (MEXT-019) | `internal/al/iin_freeze_test.go`, `internal/al/application.go` (IIN FREEZE note) | MEXT-019 |
 | VEC-01 external capture fixture format (`.vec` + PCAP sidecar) (MEXT-020) | `active_work/testdata/external/FORMAT.md`, `sample-vec01-placeholder.vec` | MEXT-020 / R4 |
 | External MVP gate script (Tier 1 internal real-TCP + Tier 2 VEC-01 fail-closed) (MEXT-021) | `scripts/verify-external-mvp.sh`, `scripts/README.md` | MEXT-021 / R4 |
+| Real-TCP full MVP path (Connect→IntegrityPoll→Operate→Disconnect over TCP, no sim transport) + outstation V0=default-variation (MEXT-022) | `test/integration/real_tcp_full_mvp_test.go`, `internal/outstation/static_variation_test.go`, `internal/outstation/outstation.go` (normalizeStaticVariation) | MEXT-022 |
 | `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
 | Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `pkg/dnp3/master/integrity_poll_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
 | `IntegrityPoll` single multi-header exchange + per-group fallback (MEXT-015) | `pkg/dnp3/master/integrity_poll_test.go` (`TestIntegrityPollSingleMultiHeaderExchange`, `TestIntegrityPollFallbackPerGroup`) | MEXT-015 |

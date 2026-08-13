@@ -1032,6 +1032,24 @@ func (o *Outstation) handleRead(req *al.APDU) (*al.APDU, error) {
 	return resp, nil
 }
 
+// normalizeStaticVariation implements IEEE 1815 "variation 0 = default
+// variation" for the static (non-event) data groups. The v0 outstation's
+// default static variation is Variation 1 for every supported group, so a
+// request for G1V0 / G10V0 / G20V0 / G30V0 / G40V0 is served as V1. Event
+// groups (2/21/31) are not normalized here; their empty-buffer stub behavior is
+// unchanged. This lets the master's MEXT-015 multi-group integrity read (which
+// requests the default variation per group) succeed against the real
+// outstation, not just the simulator.
+func normalizeStaticVariation(group, variation uint8) uint8 {
+	if variation == 0 {
+		switch group {
+		case 1, 10, 20, 30, 40:
+			return 1
+		}
+	}
+	return variation
+}
+
 // buildReadResponse builds data for a READ response.
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
@@ -1065,21 +1083,21 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 		case 0: // Null qualifier - all data
 			result = append(result, o.buildAllStaticData()...)
 		case 1: // Binary Input (static - no timestamp)
-			result = append(result, o.buildBinaryInputData(variation)...)
+			result = append(result, o.buildBinaryInputData(normalizeStaticVariation(group, variation))...)
 		case 2: // Binary Input Event (with timestamp)
 			result = append(result, o.buildBinaryInputEventData(variation)...)
 		case 10: // Binary Output (static - no timestamp)
-			result = append(result, o.buildBinaryOutputData(variation)...)
+			result = append(result, o.buildBinaryOutputData(normalizeStaticVariation(group, variation))...)
 		case 20: // Counter (static - no timestamp)
-			result = append(result, o.buildCounterData(variation)...)
+			result = append(result, o.buildCounterData(normalizeStaticVariation(group, variation))...)
 		case 21: // Counter Event (with timestamp)
 			result = append(result, o.buildCounterEventData(variation)...)
 		case 30: // Analog Input (static - no timestamp)
-			result = append(result, o.buildAnalogInputData(variation)...)
+			result = append(result, o.buildAnalogInputData(normalizeStaticVariation(group, variation))...)
 		case 31: // Analog Input Event (with timestamp)
 			result = append(result, o.buildAnalogInputEventData(variation)...)
 		case 40: // Analog Output (static - no timestamp)
-			result = append(result, o.buildAnalogOutputData(variation)...)
+			result = append(result, o.buildAnalogOutputData(normalizeStaticVariation(group, variation))...)
 		case 60: // Class data
 			switch variation {
 			case 1: // Class 0 (integrity) — all static data

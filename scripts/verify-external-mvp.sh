@@ -71,6 +71,7 @@ REAL_TCP_TARGETS=(
     "./test/integration=TestTCPMasterOutstationRead|TestTCPDirectCommunication|TestMasterOutstationEndToEndComprehensive"
     "./test/integration=TestOperateRealTCPSuccess|TestOperateRealTCPBlockedStatus"
     "./test/integration=TestPublicMVPLoopbackFullLifecycle|TestPublicMVPLoopbackOperateStatus|TestPublicMVPLoopbackErrorClassification"
+    "./test/integration=TestRealTCPFullMVPPath"
 )
 
 step "Tier 1: real-TCP loopback tests"
