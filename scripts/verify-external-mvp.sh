@@ -71,6 +71,7 @@ REAL_TCP_TARGETS=(
     "./test/integration=TestTCPMasterOutstationRead|TestTCPDirectCommunication|TestMasterOutstationEndToEndComprehensive"
     "./test/integration=TestOperateRealTCPSuccess|TestOperateRealTCPBlockedStatus|TestOperateStatusMatrixOnTCP|TestOperateStatusMatrixOnTCPDrop"
     "./test/integration=TestReconnectOnTCPNoStuckState|TestDeviceRestartNotRaisableOnV0Outstation"
+    "./test/integration=TestRoguePeerWrongAddressNoHang|TestRoguePeerBadCRCNoHang"
     "./test/integration=TestPublicMVPLoopbackFullLifecycle|TestPublicMVPLoopbackOperateStatus|TestPublicMVPLoopbackErrorClassification"
     "./test/integration=TestRealTCPFullMVPPath"
 )

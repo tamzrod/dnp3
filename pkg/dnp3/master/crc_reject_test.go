@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
@@ -56,6 +57,33 @@ func TestReadRejectsInvalidCRCIsNoPartial(t *testing.T) {
 	}
 	if resp != nil {
 		t.Fatalf("expected nil response (no partial points); got %+v", resp)
+	}
+}
+
+// TestReadBadCRCNoHangDeadline asserts the master receive path returns a
+// bounded CRC error within an explicit deadline (no deadlock) when the peer
+// keeps emitting bad-CRC frames (MEXT-026). The transport always returns a
+// header-CRC-corrupted frame; the master must reject it (not block).
+func TestReadBadCRCNoHangDeadline(t *testing.T) {
+	cc := newConnectedClientWithTransport(t, &badCRCTransport{})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := cc.Read(context.Background(), &types.ReadRequest{
+			Groups: []types.GroupRequest{{Group: 1, Variation: 0}},
+		})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a bounded CRC error, got nil")
+		}
+		if !strings.Contains(err.Error(), "CRC") {
+			t.Fatalf("error did not name the CRC failure: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Read deadlocked on a bad-CRC frame (no bounded error within 5s)")
 	}
 }
 
