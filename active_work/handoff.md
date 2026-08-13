@@ -12,10 +12,10 @@
 - Planning complete for MEXT.
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
-- **Last completed task:** MEXT-023 — Workbench external-smoke steps
-- **Last checkpoint commit:** `98c6569` (MEXT-022 checkpoint sha) — pushed to origin/main; MEXT-023 commit pending
-- **Current task:** none (idle) — next READY is MEXT-024
-- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-023). External gate `scripts/verify-external-mvp.sh` Tier 1 (internal real-TCP, incl. TestRealTCPFullMVPPath) green; Tier 2 (VEC-01) fail-closed by design until MEXT-033. Workbench external-smoke `scripts/run-workbench-smoke.sh` exit 0.
+- **Last completed task:** MEXT-023 - Workbench external-smoke steps
+- **Last checkpoint commit:** `0db4338` (MEXT-023 - workbench external-smoke steps) - pushed to origin/main
+- **Current task:** none (idle) - next READY is MEXT-024
+- **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green at MEXT-023 checkpoint). External gate `scripts/verify-external-mvp.sh` Tier 1 (internal real-TCP, incl. TestRealTCPFullMVPPath) green; Tier 2 (VEC-01) fail-closed by design until MEXT-033. Workbench external-smoke `scripts/run-workbench-smoke.sh` exit 0. `go test ./...` all green.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
 
 ## Completed Tasks
