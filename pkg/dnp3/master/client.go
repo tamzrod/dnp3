@@ -3,27 +3,64 @@
 // This package implements the Master Station role of the DNP3 protocol.
 // A Master station initiates all communication with outstations.
 //
+// # v0 supported public surface (frozen)
+//
+// The v0 interoperability profile (see active_work/supported-profile.md)
+// supports exactly one path: one TCP master opens one connection to one
+// outstation, performs a Class-0 read of static Binary Input / Analog Input /
+// Counter data, and sends one Direct-Operate CROB control. The public surface
+// below is frozen for external use; "Target" methods are in the v0 path,
+// "Reject" methods return a clear unsupported error until a later profile.
+//
+// Config (NewConfig options):
+//
+//   - WithMasterAddress          — Target (one master address)
+//   - WithOutstationAddress      — Target (one outstation address)
+//   - WithTransport(TCP, ...)    — Target (one TCP peer)
+//   - WithTLS / WithTransport(TLS, ...) — Reject (no plaintext fallback / no TLS)
+//   - WithTimeout, WithRetry     — Defer (present, not externally verified)
+//
+// Client methods:
+//
+//   - Connect / Disconnect / Close — Target (one connection lifecycle)
+//   - State                        — Target
+//   - Read                         — Target (Class-0 static G1.1, G30.1, G20.1 only)
+//   - IntegrityPoll                — Target (convenience over the Target Read groups)
+//   - Operate                      — Target for DirectOperate G12V1 CROB;
+//     Reject for SelectThenOperate / DirectOperateNoResponse
+//   - LastIIN                      — Target
+//   - EnableUnsolicited / DisableUnsolicited / SetUnsolicitedHandler — Reject
+//
+// Explicitly unsupported in v0 (rejected by the public API): TLS, serial
+// transport, unsolicited responses and event delivery, secure authentication,
+// time synchronization and time objects, file transfer, device attributes,
+// restart/delay-measurement/freeze operations, select-before-operate, and any
+// object group/variation not listed above.
+//
 // # Usage
 //
-// Create a new client:
-//
-//	config := master.NewConfig().
-//		WithAddress(1024).
-//		WithTransport(dnp3.TCP, "192.168.1.100", 20000)
-//
+//	config := master.NewConfig(
+//		master.WithMasterAddress(0xFFFF),
+//		master.WithOutstationAddress(1024),
+//		master.WithTransport(dnp3.TCP, "192.168.1.100", 20000),
+//	)
 //	client, err := master.NewClient(config)
-//
-// Connect and read data:
-//
+//	if err != nil {
+//		log.Fatal(err)
+//	}
 //	ctx := context.Background()
 //	if err := client.Connect(ctx); err != nil {
 //		log.Fatal(err)
 //	}
-//	defer client.Disconnect(ctx)
+//	defer client.Close()
 //
-//	resp, err := client.Read(ctx, &types.ReadRequest{
-//		Groups: types.ReadAllStatic,
-//	})
+//	resp, err := client.IntegrityPoll(ctx)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	// resp.BinaryInputs / resp.AnalogInputs / resp.Counters hold the Class-0 data.
+//
+//	_, err = client.Operate(ctx, types.NewBinaryControl(0, true, types.DirectOperate))
 package master
 
 import (
