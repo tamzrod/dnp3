@@ -13,7 +13,7 @@
 - **Internal MVP:** COMPLETE at DNP3-056 (archived). Do not reopen v1 task IDs.
 - **External MVP:** NOT COMPLETE. Target close at **MEXT-035**.
 - **Last completed task:** MEXT-022 — Real-TCP full MVP path test
-- **Last checkpoint commit:** `a7e3386` (MEXT-021 — verify-external-mvp.sh skeleton) — pushed to origin/main; MEXT-022 commit pending
+- **Last checkpoint commit:** `d1ef2a0` (MEXT-022 — real-TCP full MVP master path) — pushed to origin/main
 - **Current task:** none (idle) — next READY is MEXT-023
 - **Test status:** Internal `./scripts/verify-mvp.sh` exit 0 (green after MEXT-022). External gate `scripts/verify-external-mvp.sh` Tier 1 (internal real-TCP, now incl. TestRealTCPFullMVPPath) green; Tier 2 (VEC-01) fail-closed by design until MEXT-033.
 - **Internal MVP baseline sha:** `53b40fb` (`53b40fb2f8df3ef6a682f091c6664c9aef64bde2`) — `./scripts/verify-mvp.sh` exit 0 pinned here before external changes (MEXT-003).
