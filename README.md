@@ -162,13 +162,19 @@ We prioritize sustainable software over short-term development speed.
 
 ### 🟢 Verified Master MVP (v0 interoperability profile)
 
-The repository implements and internally verifies the v0 Master interoperability
-profile: one TCP master connects to one outstation, performs a Class-0 read of
-Binary Input (G1V1), Analog Input (G30V1), and Counter (G20V1), and issues one
-Direct-Operate control (G12V1 CROB). The full MVP path is exercised end-to-end
-against the deterministic in-memory simulator in
-[`test/integration/mvp_loopback_test.go`](test/integration/mvp_loopback_test.go)
-(DNP3-045), with no network I/O.
+The repository implements and verifies the v0 Master interoperability profile:
+one TCP master connects to one outstation, performs a Class-0 read of Binary
+Input (G1V1), Analog Input (G30V1), and Counter (G20V1), and issues one
+Direct-Operate control (G12V1 CROB). The MVP path is exercised end-to-end both
+against the deterministic in-memory simulator
+([`test/integration/mvp_loopback_test.go`](test/integration/mvp_loopback_test.go),
+DNP3-045) and over a **real TCP transport with real DNP3 wire framing** against
+the in-repo outstation
+([`test/integration/real_tcp_full_mvp_test.go`](test/integration/real_tcp_full_mvp_test.go),
+MEXT-022). The external-MVP gate
+[`./scripts/verify-external-mvp.sh`](scripts/verify-external-mvp.sh) (MEXT-033)
+runs all three tiers — real-TCP MVP path, operate matrix, and multi-header
+Class-0 parse — and exits 0 on a clean tree.
 
 **Verified capabilities (each has an in-repo test reference — see
 [`active_work/supported-profile.md`](active_work/supported-profile.md) for the
@@ -205,21 +211,28 @@ tested profile adds them):**
 - ⛔ Select-before-operate and direct-operate-no-response
 - ⛔ Object groups/variations outside G1V1, G30V1, G20V1, G12V1
 
-**External interop status (MEXT series lock):**
-- 🔒 **External interoperability is NOT claimed.** The Master is verified for
-  **internal use only** (deterministic fixtures + in-repo simulator loopback).
-- 🔒 Do not assume production-ready or third-party-interop status. An external
-  claim is blocked until **MEXT-035** passes (`./scripts/verify-external-mvp.sh`
-  exit 0, plus CROB/Operate/multi-header gates). See
+**External interop status (MEXT series):**
+- ✅ **v0 Master path verified over real TCP + real DNP3 wire framing.** The
+  external-MVP gate `./scripts/verify-external-mvp.sh` (MEXT-033) exits 0:
+  Tier 1 real-TCP MVP path (Connect→IntegrityPoll→Operate→Disconnect, plus
+  reconnect/no-stuck-state and rogue-peer negatives), Tier 2 operate matrix,
+  Tier 3 multi-header Class-0 parse. See
   [`active_work/MEXT_MASTER_ROADMAP.md`](active_work/MEXT_MASTER_ROADMAP.md) and
   [`active_work/external-acceptance.md`](active_work/external-acceptance.md).
+- 🔒 **Third-party interoperability is NOT claimed.** There is no independent
+  raw capture / VEC-01 / third-party-stack proof (residual R4 remains open);
+  verification is against the in-repo outstation over real TCP. The gate's
+  VEC-01 third-party-capture tier is advisory and non-blocking; set
+  `REQUIRE_EXTERNAL=1` to make it blocking.
+- 🔒 **Not full IEEE 1815.** Only the v0 object subset (G1V1, G30V1, G20V1,
+  G12V1) is implemented and verified; this is not a conformance claim.
 - Known external blockers (residuals R1–R5) are listed in
   [`active_work/supported-profile.md`](active_work/supported-profile.md).
 
 **Not yet verified:**
-- ⚠️ External interoperability (independent raw capture / VEC-01) is still
-  pending. All current verification is internal (deterministic fixtures and
-  the in-repo simulator loopback).
+- ⚠️ Third-party interoperability (independent raw capture / VEC-01) is still
+  pending. The v0 path is verified over real TCP against the in-repo
+  outstation, not against an external/third-party stack.
 - ⚠️ Not IEEE 1815 complete (only the v0 object subset is implemented).
 - ⚠️ Workbench is an engineering tool, not production SCADA.
 
