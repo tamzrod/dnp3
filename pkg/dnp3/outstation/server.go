@@ -495,10 +495,22 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)
 	if err != nil {
 		debugLog("WriteBinaryOutput ERROR: %v", err)
-	} else if status != nil {
+		return err
+	}
+	if status != nil && *status != types.ControlSuccess {
+		// MEXT-024: a handler that signals a non-success status with no error
+		// must NOT surface as ControlSuccess. The bridge returns an error so the
+		// outstation emits an error response (a complete APDU, not a silent
+		// timeout) carrying a failure IIN, which the master resolves to a
+		// failure status (never success). Without this, a not-supported /
+		// blocked command reported via status-only would be a false success.
+		debugLog("WriteBinaryOutput: non-success status %d -> failure", *status)
+		return fmt.Errorf("command rejected by handler: status %d", *status)
+	}
+	if status != nil {
 		debugLog("WriteBinaryOutput result: status=%d", *status)
 	}
-	return err
+	return nil
 }
 
 // WriteAnalogOutput handles writing an analog output from the master.
@@ -541,10 +553,18 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 	status, err := h.commandHandler.HandleAnalogCommand(cmd)
 	if err != nil {
 		debugLog("WriteAnalogOutput ERROR: %v", err)
-	} else if status != nil {
+		return err
+	}
+	if status != nil && *status != types.ControlSuccess {
+		// MEXT-024: see WriteBinaryOutput — a non-success status with no error
+		// must not surface as ControlSuccess.
+		debugLog("WriteAnalogOutput: non-success status %d -> failure", *status)
+		return fmt.Errorf("command rejected by handler: status %d", *status)
+	}
+	if status != nil {
 		debugLog("WriteAnalogOutput result: status=%d", *status)
 	}
-	return err
+	return nil
 }
 
 // DefaultDataHandler is a simple data handler that returns empty data

@@ -69,7 +69,7 @@ step "Tier 1: go build ./..."
 # interop and must stay green as the foundation for the external claim.
 REAL_TCP_TARGETS=(
     "./test/integration=TestTCPMasterOutstationRead|TestTCPDirectCommunication|TestMasterOutstationEndToEndComprehensive"
-    "./test/integration=TestOperateRealTCPSuccess|TestOperateRealTCPBlockedStatus"
+    "./test/integration=TestOperateRealTCPSuccess|TestOperateRealTCPBlockedStatus|TestOperateStatusMatrixOnTCP|TestOperateStatusMatrixOnTCPDrop"
     "./test/integration=TestPublicMVPLoopbackFullLifecycle|TestPublicMVPLoopbackOperateStatus|TestPublicMVPLoopbackErrorClassification"
     "./test/integration=TestRealTCPFullMVPPath"
 )
