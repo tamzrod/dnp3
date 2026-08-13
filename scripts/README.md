@@ -20,6 +20,7 @@ This directory contains utility scripts for development, testing, and maintenanc
 - [x] `verify-mvp.sh` - Run the DNP3 MVP verification gate (build + vet + unit/integration + race; exit 0 on a clean tree). See [DNP3-052](../active_work/DNP3_MASTER_ROADMAP.md).
 - [x] `verify-external-mvp.sh` - Run the DNP3 **external** MVP verification gate (MEXT-021). Two tiers: Tier 1 internal real-TCP loopback tests (build + real-TCP transport tests); Tier 2 external/third-party (VEC-01) proof, **fail-closed** until genuine external interop proof lands (MEXT-022/MEXT-033). Exit 0 only when both tiers pass. Set `ALLOW_NO_EXTERNAL=1` to run Tier 1 only (does NOT satisfy the external claim). See [MEXT-021](../active_work/MEXT_MASTER_ROADMAP.md).
 - [x] `run-conformance.sh` - Run the DLL/TL/AL layer conformance suites (plain + race; exit 0 on green). CI-runnable conformance gate. See [DNP3-098](../active_work/DNP3_MASTER_ROADMAP.md).
+- [x] `run-workbench-smoke.sh` - Run the DNP3 **workbench external-smoke** (MEXT-023). Builds and runs `scripts/workbench_e2e.go` via the PUBLIC API (`pkg/dnp3/master` + `pkg/dnp3/outstation`) over a real TCP loopback with no simulator transport: Outstation Start → Master Connect → Class-0 Read (G1/G30/G20) → per-group Reads → Operate (CROB) → clean shutdown. CI-runnable analogue of the interactive workbench TUI smoke (`cmd/workbench`); does NOT require the workbench TUI binary. Exit 0 = pass. Reproducible from this README. See [MEXT-023](../active_work/MEXT_MASTER_ROADMAP.md).
 - [ ] `test-conformance.sh` - Run conformance tests (alias of `run-conformance.sh`)
 - [ ] `test-interop.sh` - Run interoperability tests
 - [ ] `test-fuzz.sh` - Run fuzzing tests
@@ -65,11 +66,22 @@ Run a script:
 ./scripts/<script-name>.sh
 ```
 
+#### Workbench external-smoke (MEXT-023)
+
+Run the programmatic end-to-end workbench smoke over the public API on a real TCP loopback (no simulator transport, no workbench TUI build required):
+
+```bash
+./scripts/run-workbench-smoke.sh
+```
+
+Exercises Outstation Start → Master Connect → Class-0 Read (G1/G30/G20) → per-group Reads → Operate (CROB) → clean shutdown. Exit 0 = pass.
+
 ## Requirements
 
 | Script | Requirements |
 |--------|--------------|
 | `build-workbench.ps1` | Go 1.22+, PowerShell 5.1+ |
+| `run-workbench-smoke.sh` | Bash, Go 1.22+ |
 | `bootstrap.sh` | Bash, Go |
 | `test-*.sh` | Bash, Go, test dependencies |
 
