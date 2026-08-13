@@ -113,6 +113,7 @@ reference:
 | Master error taxonomy consumer notes (ClassifyError + ErrorCode table; NACK → Sequence) (MEXT-032) | `docs/error-taxonomy.md`, `README.md` | MEXT-032 |
 | External-MVP full gate (real-TCP MVP + operate matrix + multi-header; exit 0; VEC-01 advisory) (MEXT-033) | `scripts/verify-external-mvp.sh`, `scripts/README.md` | MEXT-033 |
 | README external claim (v0 verified via real-TCP gate; NOT third-party interop; NOT full IEEE 1815) (MEXT-034) | `README.md` | MEXT-034 |
+| External MVP acceptance record (both verify scripts exit 0; EXTERNAL MVP COMPLETE) (MEXT-035) | `active_work/handoff.md`, `active_work/supported-profile.md` | MEXT-035 |
 | `Connect` / `Disconnect` / `Close` lifecycle + context cancellation | `pkg/dnp3/master/client_test.go`, `test/integration/close_reuse_test.go` | DNP3-022/024/050 |
 | Public `Read` / `IntegrityPoll` (Class-0 G1/G30/G20) | `pkg/dnp3/master/client_test.go`, `pkg/dnp3/master/integrity_poll_test.go`, `test/integration/mvp_loopback_test.go` | DNP3-036/037/045 |
 | `IntegrityPoll` single multi-header exchange + per-group fallback (MEXT-015) | `pkg/dnp3/master/integrity_poll_test.go` (`TestIntegrityPollSingleMultiHeaderExchange`, `TestIntegrityPollFallbackPerGroup`) | MEXT-015 |
