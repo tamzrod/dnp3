@@ -188,7 +188,10 @@ authoritative matrix):**
   (Direct-Operate G12V1) with command-status reporting
 - ✅ Retry, timeout, and outstanding-request tracking; optional idle-timeout
   keep-alive close
-- ✅ Public error taxonomy + `ClassifyError` (DNP3-043)
+- ✅ Public error taxonomy + `ClassifyError` (DNP3-043) — see
+  [`docs/error-taxonomy.md`](docs/error-taxonomy.md) for the consumer guide to
+  classifying `Read`/`IntegrityPoll`/`Operate` failures (timeout, CRC,
+  unsupported, disconnect, …)
 - ✅ Optional diagnostic logger hook, no-op/silent by default (DNP3-044)
 - ✅ Master/outstation link-layer address validation (DNP3-049)
 - ✅ Workbench TUI — Master and Outstation modes
