@@ -697,6 +697,25 @@ func (c *client) State() dnp3.ConnectionState {
 	return c.state
 }
 
+// markTransportDisconnected records that the underlying transport has dropped.
+// It flips the public state to Disconnected and tears down the internal master
+// + transport so a subsequent Connect re-dials a fresh socket rather than
+// retrying the dead one (MEXT-025: no stuck state after a peer drop). The
+// teardown is best-effort — the caller already holds a transport error — and
+// runs without holding c.mu to avoid lock-ordering issues with the transport.
+func (c *client) markTransportDisconnected() {
+	c.mu.Lock()
+	alreadyDown := c.state == dnp3.StateDisconnected
+	c.state = dnp3.StateDisconnected
+	c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
+	c.mu.Unlock()
+	if alreadyDown {
+		return
+	}
+	_ = c.internalMaster.Disconnect()
+	_ = c.transport.Close()
+}
+
 // Read implements Client.Read
 func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error) {
 	if request == nil || len(request.Groups) == 0 {
@@ -760,11 +779,11 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 		if res.err != nil {
 			// If the transport disconnected, reflect that in the public state so
 			// a subsequent Read returns ErrNotConnected rather than retrying a
-			// dead link (DNP3-031).
+			// dead link (DNP3-031). MEXT-025: also tear down the transport so a
+			// later Connect re-dials a fresh socket instead of retrying the dead
+			// one (no stuck state after a peer drop).
 			if master.IsDisconnectError(res.err) {
-				c.mu.Lock()
-				c.state = dnp3.StateDisconnected
-				c.mu.Unlock()
+				c.markTransportDisconnected()
 			}
 			// Attach the matching public error sentinel so callers can classify
 			// the failure via dnp3.ClassifyError (DNP3-043). The internal error
@@ -1613,11 +1632,11 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		if res.err != nil {
 			// If the transport disconnected, reflect that in the public state so
 			// a subsequent Operate returns ErrNotConnected rather than retrying
-			// a dead link (DNP3-031).
+			// a dead link (DNP3-031). MEXT-025: also tear down the transport so
+			// a later Connect re-dials a fresh socket instead of retrying the
+			// dead one (no stuck state after a peer drop).
 			if master.IsDisconnectError(res.err) {
-				c.mu.Lock()
-				c.state = dnp3.StateDisconnected
-				c.mu.Unlock()
+				c.markTransportDisconnected()
 			}
 			// Attach the matching public error sentinel so callers can classify
 			// the failure via dnp3.ClassifyError (DNP3-043). The internal error

@@ -70,6 +70,7 @@ step "Tier 1: go build ./..."
 REAL_TCP_TARGETS=(
     "./test/integration=TestTCPMasterOutstationRead|TestTCPDirectCommunication|TestMasterOutstationEndToEndComprehensive"
     "./test/integration=TestOperateRealTCPSuccess|TestOperateRealTCPBlockedStatus|TestOperateStatusMatrixOnTCP|TestOperateStatusMatrixOnTCPDrop"
+    "./test/integration=TestReconnectOnTCPNoStuckState|TestDeviceRestartNotRaisableOnV0Outstation"
     "./test/integration=TestPublicMVPLoopbackFullLifecycle|TestPublicMVPLoopbackOperateStatus|TestPublicMVPLoopbackErrorClassification"
     "./test/integration=TestRealTCPFullMVPPath"
 )

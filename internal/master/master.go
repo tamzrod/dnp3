@@ -14,6 +14,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"dnp3/internal/al"
@@ -518,6 +519,20 @@ func IsDisconnectError(err error) bool {
 	}
 	if errors.Is(err, net.ErrClosed) {
 		return true
+	}
+	// MEXT-025: a write/read that fails because the peer dropped the TCP
+	// connection surfaces as a syscall errno (EPIPE on write after a
+	// closed/receiver-gone peer, ECONNRESET/ECONNABORTED on a reset). These are
+	// disconnects too — without recognizing them the master stays stuck in a
+	// connected state after the peer is gone, so a subsequent Connect refuses
+	// ("already connected") and the client can never recover. Match the
+	// underlying errno so the public state flips to Disconnected (DNP3-031).
+	var se syscall.Errno
+	if errors.As(err, &se) {
+		switch se {
+		case syscall.ECONNRESET, syscall.ECONNABORTED, syscall.EPIPE, syscall.ETIMEDOUT:
+			return true
+		}
 	}
 	return false
 }
