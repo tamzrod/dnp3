@@ -1,15 +1,19 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: VEC-01-LAB-PREP-001
+Package: VEC-01-LAB-DEPLOY-001
 Branch: work
-CURRENT: NONE
+CURRENT: VEC-01-LAB-DEPLOY-001
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
 
 
 
+
+
+## CURRENT — VEC-01-LAB-DEPLOY-001 (human-promoted 2026-11-08)
+The only CURRENT is `workflow/active_work/VEC-01-LAB-DEPLOY-001.md` on permanent `work`, after safe fast-forward synchronization with merged PR #20 baseline `f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab`. Owner-authorized task scope: controlled pinned OpenDNP3 3.1.2 source acquisition, full dependency/license provenance, offline isolated C++ outstation compilation, static binary smoke checks, isolated network *configuration only*, mandatory Go regression gates and verified evidence. **No DNP3 listener, protocol packets, master/outstation session, packet capture, CROB, physical or production control, PR, merge or release.** This is task promotion, **not** execution or lab deployment. R4 OPEN / VEC-01 NOT EXECUTED / third-party interoperability NOT PROVEN.
 
 ## Package closure — VEC-01-LAB-PREP-001 (2026-11-08)
 The OpenDNP3 laboratory preparation package is complete as **documentation
