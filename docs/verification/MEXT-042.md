@@ -4,7 +4,7 @@ Package: MEXT-THIRD-PARTY-CAPTURE-PROCEDURE-001
 Branch: work
 Task: MEXT-042 — Independent third-party DNP3 capture procedure placeholder
 Execution commit SHA: `4b6eecc81a7581677f91655c69d1d0050cfd8228`
-Base SHA (merged PR #18 `main`): `95ac10289ead46c09264a9da2bb877f0e0507410`
+Base SHA (merged PR #18 `main`): `b334c8cd3d8d1f84842c952c84ced4bef42efdd7`
 Promotion baseline: `b334c8cd3d8d1f84842c952c84ced4bef42efdd7` (per task body)
 
 ## Purpose

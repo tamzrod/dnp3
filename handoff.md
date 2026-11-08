@@ -3,15 +3,28 @@
 Repository: tamzrod/dnp3
 Package: DNP3-MEXT042-PROVENANCE-CORRECTION-001
 Branch: work
-CURRENT: DNP3-060
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_READY
+Status: WORK_PACKAGE_READY
 
 
 
 
-## CURRENT DNP3-060 — limited historical evidence correction
-Owner-promoted on 2026-11-08, permanent branch `work`. The only active task is `workflow/active_work/DNP3-060.md`: correct the two inaccurate PR #18 base SHA labels in MEXT-042 evidence/archive without changing historical test results. The underlying MEXT-042 procedure remains completed and third-party VEC-01/R4 remains OPEN. Every mandated Go check must actually run and PASS, including private Go installation fallback. No other implementation, PR or merge is authorized by this promotion; this is TASK_READY only, not a completed correction.
+## Package closure — DNP3-060 (2026-11-08)
+The MEXT-042 provenance correction is complete. DNP3-060 corrected the two
+inaccurate PR #18 base-SHA labels in `docs/verification/MEXT-042.md` and
+`archive/active-work/MEXT-042.md` from `95ac1028…` (which is actually merged
+PR #17) to the correct merged PR #18 SHA
+`b334c8cd3d8d1f84842c952c84ced4bef42efdd7` — exactly one line changed per file.
+Historical MEXT-042 execution SHA, test exit results and the archived task body
+are unchanged. All mandatory checks PASSED on the exact `work` tree at
+`da00a24e42d93e0025033d32037421864cc6cf3a` with a provisioned official Go
+1.22.12 toolchain: `gofmt -l .` clean, `git diff --check`, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`,
+`go test -race ./internal/outstation/... -count=1`, `./scripts/verify-mvp.sh`,
+and `./scripts/verify-external-mvp.sh` (Tiers 1-3). Evidence:
+`docs/verification/DNP3-060.md`; archive: `archive/active-work/DNP3-060.md`.
+R4/VEC-01 remains OPEN.
 
 ## Package closure — MEXT-042 (2026-11-08)
 The independent third-party capture procedure package is complete as
