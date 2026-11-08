@@ -522,24 +522,6 @@ def check_python_runtime(auto_install: bool = False) -> GateCheck:
             )
 
         yaml_version = yaml_result.stdout.strip()
-                        return GateCheck(
-                            name="python_runtime",
-                            gate="B3",
-                            passed=True,
-                            details=f"PASSED: {python_version}, PyYAML {yaml_version} (auto-installed)"
-                        )
-            
-            # Still not available
-            install_cmd = "pip install --user pyyaml"
-            return GateCheck(
-                name="pyyaml_installed",
-                gate="B3",
-                passed=False,
-                details=f"FAILED: PyYAML not installed. Run: {install_cmd}",
-                can_proceed=False
-            )
-        
-        yaml_version = yaml_result.stdout.strip()
         
         return GateCheck(
             name="python_runtime",
