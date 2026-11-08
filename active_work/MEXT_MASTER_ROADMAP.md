@@ -1,22 +1,24 @@
 # DNP3 Master External-Use Roadmap (MEXT)
 
-**Status:** Planning complete — ready for implementation agents  
+**Status:** Historical MEXT-001–035 completed; MEXT-040/041 deferral stubs completed; MEXT-042 unpromoted  
 **Created:** 2026-08-12  
 **Primary objective:** Master usable against real/external outstations with IEEE 1815-correct wire behavior for the v0 profile  
 **Series:** MEXT (Master External)  
 **Total tasks:** 40  
 **External MVP complete at:** MEXT-035  
-**Next task:** MEXT-001 — Archive v1 series + open MEXT handoff
+**Next task:** NONE — no active human-promoted post-gate implementation task
 
-This document is the single source of truth for implementation agents in the
-**external Master** series.
+This document is the **historical MEXT plan**. The executed MEXT-001–035 series
+is complete; post-gate deferral stubs MEXT-040 and MEXT-041 are complete as
+**documentation only**. The task execution authority is exclusively the matching
+CURRENT markers in `workflow/active_work/README.md` and root `handoff.md`.
+A roadmap entry or backlog stub does not authorize implementation.
 
-Do **not** implement outside the defined micro-tasks.  
-Do **not** invent requirements beyond IEEE 1815 wire correctness for the v0
-profile and external acceptance criteria below.  
-Do **not** expand to full Level 3/4 feature surface until the external gate
-passes.  
-Update `active_work/handoff.md` after every completed task.
+Do **not** implement outside a newly human-promoted bounded CWAL microtask.  
+Do **not** invent requirements beyond IEEE 1815 wire correctness for the v0 profile.  
+Do **not** expand to Level 3/4 or post-gate features without separate approved
+architecture, acceptance criteria, and CWAL authority.  
+The historical MEXT completion narrative remains in `active_work/handoff.md`.
 
 **Archived series:** `active_work/archive/DNP3_MASTER_ROADMAP_v1_internal_mvp.md`  
 (Internal Master MVP complete at DNP3-056; external interop was never claimed.)
@@ -26,39 +28,39 @@ the v0 object subset (G1V1, G30V1, G20V1, G12V1 Direct-Operate, TCP only).
 
 ---
 
-## 1. CURRENT DNP3 LIBRARY STATE
+## 1. CURRENT DNP3 LIBRARY STATE — POST-MEXT-035
 
-Native Go library. Internal Master MVP path is verified:
+Native Go library. Internal Master MVP and the in-repo real-TCP v0 Master path are verified:
 
 - **DLL / TL / AL:** Frame, CRC, fragment, APDU, object-header model present.
 - **Master public API:** `Connect`, `Disconnect`, `Close`, `Read`, `IntegrityPoll`, `Operate`, `LastIIN`, error taxonomy, optional logger.
 - **v0 subset:** Class-0 G1V1 / G30V1 / G20V1 + Direct-Operate G12V1.
-- **Verification:** Simulator loopback, unit/integration/race, `verify-mvp.sh` exit 0. **No external verification.**
+- **Verification:** Simulator/unit/integration/race and in-repo real-TCP MVP gates were recorded PASS at MEXT-035. Mandatory Go vet/build/unit/race and internal/external verification gates were actually executed and recorded PASS in DNP3-058 on `2afbeb5`; merged PR #17 main CI passed at `95ac1028`. None of this substitutes for independent third-party interoperability.
 - **Outstation:** Sufficient for in-repo TCP loopback; test peer for MEXT.
 
-### Known residuals blocking external use
+### Post-gate residual disposition
 
-| ID | Residual | Impact |
-|----|----------|--------|
-| R1 | Operate vs real outstation often **ControlTimeout** (no control-status echo) | External control path fails |
-| R2 | CROB control-code **values** may be 1..8 enum, not IEEE 1815 bitfield | Real IEDs may reject/misinterpret |
-| R3 | Multi-object-header Class-0 parse can lose points; IntegrityPoll per-group workaround | Fragile vs real multi-header responses |
-| R4 | No VEC-01 / independent PCAP or third-party stack proof | Cannot claim external interop |
-| R5 | Marketing/docs risk of over-claiming | Consumers assume production-ready |
+| ID | Status | Evidence / limitation |
+|----|--------|-----------------------|
+| R1 | Resolved for tested v0 in-repo TCP path | MEXT-012/013 success and rejection tests |
+| R2 | Resolved for v0 control codes | MEXT-011 CROB IEEE 1815 golden vectors |
+| R3 | Resolved for tested v0 Class-0 path | MEXT-014/015 and MEXT-033 multi-header gate |
+| R4 | **OPEN** | No independent VEC-01, PCAP or third-party-stack interoperability proof |
+| R5 | Mitigated, ongoing | MEXT-034/035 bounded README claims; do not overclaim conformance or production readiness |
 
 ---
 
-## 2. EXTERNAL READINESS GAPS
+## 2. VERIFIED v0 SCOPE AND REMAINING BOUNDARIES
 
-| Area | Internal | External |
-|------|----------|----------|
-| Connect + link handshake | Yes | Needs real-TCP proof |
-| Class-0 read G1/G20/G30 | Yes (sim) | Needs multi-header + real TCP |
-| Direct-Operate G12V1 | Yes (sim only for status) | **Broken/ambiguous on real OS** |
-| CROB wire codes | Layout OK | **Values need 1815 reconciliation** |
-| Retry / timeout / FCB / CON | Yes | Needs real-peer stress |
-| Unsupported feature reject | Yes | Keep locked |
-| Independent capture (VEC-01) | No | **Required for external claim** |
+| Area | In-repo evidence | Remaining boundary |
+|------|------------------|--------------------|
+| Connect + link handshake | Real-TCP gate and golden frames | No independent peer proof |
+| Class-0 read G1/G20/G30 | In-repo TCP multi-header tests | Other groups unsupported |
+| Direct-Operate G12V1 | In-repo real-TCP matrix | No third-party control confirmation |
+| CROB wire codes | v0 IEEE 1815 bitfield goldens | Broader profiles not claimed |
+| Retry / timeout / FCB / CON | Focused tests and reconnect/rogue-peer negatives | No third-party stress proof |
+| Unsupported features | Explicit reject in supported profile | SBO/events/unsolicited still not supported |
+| VEC-01 capture | **Not present** | R4 OPEN; no third-party interoperability claim |
 
 ---
 
@@ -82,7 +84,7 @@ Constraints: pure protocol library; v0 profile only until gate; IEEE 1815 wire f
 
 ## 4. EXTERNAL ACCEPTANCE GATE
 
-Declare **Master ready for external use** only when **all** pass on one commit:
+The **in-repo v0 external-MVP gate** was recorded complete at MEXT-035 using all six checks below. This does not establish independent third-party interoperability, full IEEE 1815 conformance or production SCADA readiness:
 
 1. `./scripts/verify-mvp.sh` exit 0
 2. `./scripts/verify-external-mvp.sh` exit 0 (real TCP master↔outstation)
@@ -91,7 +93,7 @@ Declare **Master ready for external use** only when **all** pass on one commit:
 5. Class-0 multi-header response returns all G1/G20/G30 points
 6. README external claims match tests
 
-**External MVP complete at: MEXT-035**
+**In-repo external MVP completed at MEXT-035; independent R4 still OPEN.**
 
 See also `active_work/external-acceptance.md`.
 
@@ -471,16 +473,20 @@ Parallel-safe after MEXT-003: 010, 012, 014, 016.
 
 ---
 
-## 9. IMPLEMENTATION START POINT
+## 9. POST-GATE EXECUTION STATE — AS OF 2026-11-08
+
+- MEXT-001–035: historical implementation and in-repo verification series completed at MEXT-035.
+- MEXT-040: **COMPLETED DOCUMENTATION STUB** (SBO remains DEFERRED / NOT SUPPORTED); `archive/active-work/MEXT-040.md`.
+- MEXT-041: **COMPLETED DOCUMENTATION STUB** (events/unsolicited remain DEFERRED / NOT SUPPORTED); `archive/active-work/MEXT-041.md`.
+- DNP3-058: **COMPLETED VERIFICATION CORRECTION** (actual Go gates PASS on `2afbeb5`); `docs/verification/DNP3-058.md`.
+- PR #17 merged into `main` on 2026-11-08 at `95ac10289ead46c09264a9da2bb877f0e0507410`; its main GitHub Actions run passed.
+- MEXT-042: **UNPROMOTED** third-party stack capture procedure backlog stub. Independent VEC-01/R4 proof remains missing.
+
+Task definitions above are historical or backlog reference material, **not** execution approval. New post-gate implementation requires human promotion and applicable KDE design approval.
 
 ```
-NEXT TASK: MEXT-001 — Archive v1 series + open MEXT handoff
+CURRENT: NONE (for completed PR #17 package; see authoritative CWAL markers)
+QUEUED: NONE
+NEXT FEATURE TASK: NONE PROMOTED
 ```
 
-Workflow: one micro-task → test → update handoff.md → every 3: verify → commit → push main.
-
-```
-TOTAL TASKS: 40
-EXTERNAL MVP COMPLETE AT: MEXT-035
-NEXT TASK: MEXT-001 — Archive v1 series + open MEXT handoff
-```

@@ -1,54 +1,33 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: DNP3-POSTGATE-VERIFICATION-CORRECTION-001
-Branch: work/mext-postgate-roadmap
+Package: DNP3-POST-PR17-ROADMAP-SYNC-001
+Branch: work
 CURRENT: NONE
 QUEUED: NONE
 Status: WORK_PACKAGE_READY
 
+
 ## Package closure
-The Go verification correction is complete. DNP3-058 executed the mandatory Go
-gates that MEXT-040/041 had truthfully recorded as NOT_RUN, on execution SHA
-`2afbeb5acf0fce9126edb122290b29ba3f532151` with a provisioned official Go
-1.22.12 toolchain. Every required check PASSED: `gofmt -l .` clean,
-`git diff --check`, `go vet ./...`, `go build ./...`, `go test ./... -count=1`,
-`go test -race ./internal/outstation/...`, `./scripts/verify-mvp.sh`,
-`./scripts/verify-external-mvp.sh` (Tiers 1-3), and the CI-equivalent
-`go test -race -coverprofile ./...`. Evidence is in `docs/verification/DNP3-058.md`;
-the task is archived at `archive/active-work/DNP3-058.md`. The historical
-MEXT-040/041 evidence remains unchanged and truthful for its time.
-`CURRENT: NONE` forbids further implementation until a human promotes a new
-package.
+The post-PR #17 roadmap synchronization package is complete. DNP3-059 reconciled
+the historical MEXT roadmap, the external-acceptance checklist and the
+historical MEXT handoff with evidence already on `main`, without creating new
+execution authority or changing code, profile, governance or verification
+archives. It executed every mandatory Go gate on the exact branch tree at
+`16f6f70ef70ab448a7b6a3a3b783902ee86f790e` with a provisioned official Go
+1.22.12 toolchain: `gofmt -l .` clean, `git diff --check`, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`,
+`go test -race ./internal/outstation/... -count=1`, `./scripts/verify-mvp.sh`,
+and `./scripts/verify-external-mvp.sh` (Tiers 1-3). Evidence is in
+`docs/verification/DNP3-059.md`; the task is archived at
+`archive/active-work/DNP3-059.md`. R4/VEC-01 third-party interoperability
+remains OPEN; MEXT-042 remains unpromoted.
 
-## Prior historical package (completed, not reopened)
-MEXT-040 (SBO deferral) and MEXT-041 (events/unsolicited deferral) were archived
-with documentation-only evidence and a final remote checkpoint at
-`16ef1f7278b44f6a005edcfe076b376c0551bb38`. Their original evidence truthfully
-records Go checks NOT_RUN at the time; DNP3-058 supersedes those missing checks
-with new proof rather than rewriting history. Do not alter those documents.
-MEXT-042 remains unpromoted.
+## Execution stop
+CURRENT is NONE and QUEUED is NONE. No implementation, protocol, profile or
+governance task may run without a new human-promoted bounded CWAL microtask with
+matching markers in this file and root `handoff.md`. PR creation, merge, release
+and field-device tests each require separate human authorization.
 
-## Work branch policy
-`work/mext-postgate-roadmap` is the persistent non-main execution branch for this
-post-gate roadmap series. It does not grant standing implementation authority.
-New packages require fresh human promotion and scope. No automatic PR, merge,
-main push, production deployment or field command.
-
-## Support boundary
-MEXT-035 recorded in-repo real-TCP v0 Master MVP completion. Unsupported SBO and
-unsolicited/event functionality remain deferred. No independent VEC-01/third-party
-interoperability proof or complete IEEE 1815 conformance claim. DNP3-056/057/058
-correction tasks are completed and archived; do not reopen them.
-
-## Verification state
-PASS (actual execution, Go 1.22.12): `gofmt -l .` clean, `git diff --check`,
-`go vet ./...`, `go build ./...`, `go test ./... -count=1`,
-`go test -race ./internal/outstation/...`, `./scripts/verify-mvp.sh`,
-`./scripts/verify-external-mvp.sh`, and the CI-equivalent race+coverage run. See
-`docs/verification/DNP3-058.md` for exact commands and results.
-
-## Remaining limitations
-No third-party interoperability/capture evidence exists; no IEEE 1815 conformance
-claim is made. PR creation, merge, release and field-device tests each require
-separate human authorization.
+## Persistent working branch policy
+The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.

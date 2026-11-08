@@ -1,10 +1,26 @@
 # DNP3 Implementation Handoff (MEXT Series)
 
-**Last updated:** 2026-08-12  
+**Historical MEXT handoff baseline:** 2026-08-12  
+**Post-merge synchronization:** 2026-11-08  
 **Roadmap:** `active_work/MEXT_MASTER_ROADMAP.md`  
 **Profile:** `active_work/supported-profile.md`  
 **Acceptance:** `active_work/external-acceptance.md`  
 **Archived series:** `active_work/archive/`
+
+## Post-PR #17 checkpoint — 2026-11-08
+
+This is a current-status addendum; historical task reports below are retained as originally recorded.
+
+- **Merged repository baseline:** PR #17 merged to `main` at `95ac10289ead46c09264a9da2bb877f0e0507410`; the GitHub Actions workflow on that `main` commit completed successfully.
+- **MEXT external MVP:** MEXT-035 previously completed the **in-repo real-TCP v0** acceptance gate. This does **not** demonstrate independent third-party interoperability, complete IEEE 1815 conformance, or production readiness.
+- **MEXT-040:** Completed and archived as a **planning-only SBO deferral stub** in `archive/active-work/MEXT-040.md`. SBO remains **DEFERRED / NOT SUPPORTED**.
+- **MEXT-041:** Completed and archived as a **planning-only events/unsolicited deferral stub** in `archive/active-work/MEXT-041.md`. Event classes and unsolicited responses remain **DEFERRED / NOT SUPPORTED**.
+- **DNP3-058:** Completed and archived at `archive/active-work/DNP3-058.md`; JR provisioned private official Go 1.22.12 and actually executed the mandatory vet/build/tests/race and internal/external MVP gates with recorded PASS on `2afbeb5acf0fce9126edb122290b29ba3f532151`. Evidence: `docs/verification/DNP3-058.md`. MEXT-040/041's original NOT_RUN records remain truthful for their earlier execution and are not rewritten.
+- **Open interoperability residual:** R4 / VEC-01 remains **OPEN**. Independent third-party protocol captures have not been established.
+- **Next roadmap candidate:** MEXT-042 is an **unpromoted** documentation/procedure backlog stub; it is not an active implementation task. SBO and event/unsolicited implementation require new KDE design approval and human-promoted CWAL authority.
+- **Execution authority:** The matching top marker blocks in root `handoff.md` and `workflow/active_work/README.md` control the active CWAL task. The historical MEXT roadmap is not execution authority.
+
+---
 
 ## Status
 
