@@ -1,3 +1,11 @@
+<!-- Archived after verified acceptance. Original task body preserved verbatim below. -->
+
+Archived: 2026-11-08
+Execution commit SHA: 4b6eecc81a7581677f91655c69d1d0050cfd8228
+Base SHA (merged PR #18 main): 95ac10289ead46c09264a9da2bb877f0e0507410
+Verification evidence: docs/verification/MEXT-042.md
+Go toolchain: go1.22.12 linux/amd64 (private install $HOME/sdk/go; official archive sha256 4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43)
+
 # MEXT-042 — Independent third-party DNP3 capture procedure placeholder
 
 Status: CURRENT — HUMAN_PROMOTED
