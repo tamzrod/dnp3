@@ -1,51 +1,20 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: MEXT-POSTGATE-ROADMAP-001
+Package: DNP3-POSTGATE-VERIFICATION-CORRECTION-001
 Branch: work/mext-postgate-roadmap
-CURRENT: NONE
+CURRENT: DNP3-058
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
-## Package closure
-The post-MEXT-035 documentation-only backlog package is complete. MEXT-040 (SBO
-profile deferral backlog stub) and MEXT-041 (events/unsolicited deferral backlog
-stub) both passed documentation-only acceptance, were archived under
-`archive/active-work/`, and have evidence in `docs/verification/MEXT-040.md` and
-`docs/verification/MEXT-041.md`. Both stubs live in
-`active_work/postgate-backlog.md` and record their capabilities as
-DEFERRED / NOT SUPPORTED. MEXT-042 (third-party capture procedure) remains
-unpromoted and requires separate human approval. `CURRENT: NONE` forbids further
-implementation until a human promotes a new package.
+## Current authorization — mandatory Go verification
+The repository owner promoted DNP3-058 on 2026-11-08 because Go checks for MEXT-040/041 were NOT_RUN and the maintainer explicitly requires actual execution. Read `workflow/active_work/DNP3-058.md` and perform only the verification correction. Install/provision a compatible Go toolchain in the executor environment if necessary; a missing toolchain is not a waiver. Required gates must all be executed and PASS, otherwise retain CURRENT as TASK_BLOCKED.
 
-## Work branch policy
-`work/mext-postgate-roadmap` is the persistent non-main execution branch for this
-post-gate roadmap series. A long-lived branch is **not** blanket authorization
-for future roadmap tasks. New packages require fresh human promotion and scope,
-regardless of branch reuse. No automatic PR, merge, main push, production
-deployment or field command.
+## Prior historical package (completed, not reopened)
+MEXT-040 (SBO deferral) and MEXT-041 (events/unsolicited deferral) were correctly archived with documentation-only evidence and a final remote checkpoint at `16ef1f7278b44f6a005edcfe076b376c0551bb38`. Their original evidence truthfully records Go checks NOT_RUN at the time. Do NOT alter those documents; write supplemental actual verification results in `docs/verification/DNP3-058.md`.
 
-## Dependency and merge hygiene
-Started from `main` at `b38d7691aeb1adccf52fe665e368d4d77766977c` after PR #15
-merged with passing main CI. Historical roadmap sync PR #16
-(`docs/sync-mext-roadmap-post-pr15`) was **open** when this branch was prepared.
-If PR #16 merges later, reconcile base safely before PR creation; do not silently
-overwrite its roadmap/handoff changes. This package must NOT edit the MEXT roadmap
-or `active_work/handoff.md`.
+## Branch / governance
+`work/mext-postgate-roadmap` is the persistent work branch. It does not grant standing implementation authority. No code, wire, protocol, supported-profile, CI, dependency or field-device change is allowed. PR creation, merging, releases and field tests each require separate human authorization. The only current task is DNP3-058. MEXT-042 remains unpromoted.
 
-## Support boundary
-MEXT-035 recorded in-repo real-TCP v0 Master MVP completion. Unsupported SBO and
-unsolicited/event functionality remain deferred. No independent VEC-01/third-party
-interoperability proof or complete IEEE 1815 conformance claim. DNP3-056/057
-correction tasks are completed and archived; do not reopen them.
-
-## Verification state
-PASS: `bash scripts/cwal-check.sh`, `git diff --check`, documentation scope
-checks. NOT_RUN: `go test ./... -count=1`, `go vet ./...` (Go toolchain absent;
-changes are docs-only). See `docs/verification/MEXT-040.md` and
-`docs/verification/MEXT-041.md` for exact commands and results.
-
-## Remaining limitations
-No third-party interoperability/capture evidence exists; no IEEE 1815 conformance
-claim is made. PR creation, merge, release and field-device tests each require
-separate human authorization.
+## Verification and checkpoint boundary
+No DNP3-058 Go commands have been run yet; this commit is **TASK_READY only**. Run CWAL startup gate on an exact remote-synced clean checkout; provision Go if absent; execute all mandatory checks in task body, record exact commands/version/exit codes and remote SHA. Archive, close markers, push, read back, and report TASK_CHECKPOINTED only if all gates actually pass. Otherwise TASK_BLOCKED.
