@@ -1,22 +1,24 @@
 # DNP3 Master External-Use Roadmap (MEXT)
 
-**Status:** Planning complete — ready for implementation agents  
+**Status:** MEXT-035 COMPLETE (historical series); post-gate work is unpromoted  
 **Created:** 2026-08-12  
 **Primary objective:** Master usable against real/external outstations with IEEE 1815-correct wire behavior for the v0 profile  
 **Series:** MEXT (Master External)  
 **Total tasks:** 40  
 **External MVP complete at:** MEXT-035  
-**Next task:** MEXT-001 — Archive v1 series + open MEXT handoff
+**Next task:** NONE — MEXT-040/041/042 remain unpromoted post-gate backlog
 
-This document is the single source of truth for implementation agents in the
-**external Master** series.
+This is the historical task plan for the **completed external Master MVP** series.
+It does not authorize execution. New implementation requires a separately approved
+KDE design (where applicable) and a human-promoted CURRENT CWAL task in
+`workflow/active_work/README.md` and `handoff.md`.
 
-Do **not** implement outside the defined micro-tasks.  
+Do **not** infer task authorization from historical roadmap entries.  
 Do **not** invent requirements beyond IEEE 1815 wire correctness for the v0
 profile and external acceptance criteria below.  
-Do **not** expand to full Level 3/4 feature surface until the external gate
-passes.  
-Update `active_work/handoff.md` after every completed task.
+Do **not** expand to Level 3/4 or post-gate features without new architecture
+approval and a human-promoted CWAL package.  
+The prior MEXT task-by-task history is recorded in `active_work/handoff.md`.
 
 **Archived series:** `active_work/archive/DNP3_MASTER_ROADMAP_v1_internal_mvp.md`  
 (Internal Master MVP complete at DNP3-056; external interop was never claimed.)
@@ -26,39 +28,39 @@ the v0 object subset (G1V1, G30V1, G20V1, G12V1 Direct-Operate, TCP only).
 
 ---
 
-## 1. CURRENT DNP3 LIBRARY STATE
+## 1. CURRENT DNP3 LIBRARY STATE (post-MEXT-035 / PR #15)
 
-Native Go library. Internal Master MVP path is verified:
+Native Go library. The internal Master MVP and in-repo real-TCP v0 Master path are verified:
 
 - **DLL / TL / AL:** Frame, CRC, fragment, APDU, object-header model present.
 - **Master public API:** `Connect`, `Disconnect`, `Close`, `Read`, `IntegrityPoll`, `Operate`, `LastIIN`, error taxonomy, optional logger.
 - **v0 subset:** Class-0 G1V1 / G30V1 / G20V1 + Direct-Operate G12V1.
-- **Verification:** Simulator loopback, unit/integration/race, `verify-mvp.sh` exit 0. **No external verification.**
+- **Verification:** Simulator/unit/integration/race coverage plus the real-TCP MVP gate (`scripts/verify-external-mvp.sh`, required Tiers 1–3) recorded PASS at MEXT-035. PR #15 also removed the `go vet ./...` unreachable return and applied repository-wide `gofmt`; its merged `main` CI passed. These in-repo tests are **not** independent third-party interoperability proof.
 - **Outstation:** Sufficient for in-repo TCP loopback; test peer for MEXT.
 
-### Known residuals blocking external use
+### Residual disposition after MEXT-035
 
-| ID | Residual | Impact |
-|----|----------|--------|
-| R1 | Operate vs real outstation often **ControlTimeout** (no control-status echo) | External control path fails |
-| R2 | CROB control-code **values** may be 1..8 enum, not IEEE 1815 bitfield | Real IEDs may reject/misinterpret |
-| R3 | Multi-object-header Class-0 parse can lose points; IntegrityPoll per-group workaround | Fragile vs real multi-header responses |
-| R4 | No VEC-01 / independent PCAP or third-party stack proof | Cannot claim external interop |
-| R5 | Marketing/docs risk of over-claiming | Consumers assume production-ready |
+| ID | Status | Evidence / limitation |
+|----|--------|------------------------|
+| R1 | Resolved for in-repo v0 path | MEXT-012/013 real-TCP direct-operate success and rejection cases |
+| R2 | Resolved for v0 wire subset | MEXT-011 CROB IEEE 1815 bitfield goldens |
+| R3 | Resolved for tested v0 subset | MEXT-014/015 multi-header parse and poll; MEXT-033 gate Tier 3 |
+| R4 | **Open** | No independent VEC-01/PCAP or third-party-stack proof; third-party interoperability cannot be claimed |
+| R5 | Mitigated, ongoing | MEXT-034/035 scoped README claims; continue forbidding production-readiness/conformance overclaims |
 
 ---
 
-## 2. EXTERNAL READINESS GAPS
+## 2. VERIFIED SCOPE AND REMAINING GAPS
 
-| Area | Internal | External |
-|------|----------|----------|
-| Connect + link handshake | Yes | Needs real-TCP proof |
-| Class-0 read G1/G20/G30 | Yes (sim) | Needs multi-header + real TCP |
-| Direct-Operate G12V1 | Yes (sim only for status) | **Broken/ambiguous on real OS** |
-| CROB wire codes | Layout OK | **Values need 1815 reconciliation** |
-| Retry / timeout / FCB / CON | Yes | Needs real-peer stress |
-| Unsupported feature reject | Yes | Keep locked |
-| Independent capture (VEC-01) | No | **Required for external claim** |
+| Area | Post-MEXT evidence | Remaining boundary |
+|------|--------------------|--------------------|
+| Connect + link handshake | In-repo real-TCP gate and golden frames | Independent peer not verified |
+| Class-0 read G1/G20/G30 | In-repo real TCP and multi-header coverage | Other object groups unsupported |
+| Direct-Operate G12V1 | In-repo real-TCP success/rejection matrix | No third-party control confirmation |
+| CROB wire codes | IEEE 1815 bitfield goldens for v0 | Broader profile not claimed |
+| Retry / timeout / FCB / CON | Focused tests, reconnect/rogue-peer negatives | Third-party stress not verified |
+| Unsupported features | Explicit rejection per supported profile | Feature expansion needs separate authorization |
+| Independent capture (VEC-01) | **Not available** | R4 open; third-party interoperability not claimed |
 
 ---
 
@@ -82,7 +84,7 @@ Constraints: pure protocol library; v0 profile only until gate; IEEE 1815 wire f
 
 ## 4. EXTERNAL ACCEPTANCE GATE
 
-Declare **Master ready for external use** only when **all** pass on one commit:
+The **in-repo v0 external-use MVP gate** was completed at MEXT-035, based on the six requirements below. This does **not** establish third-party interoperability, full IEEE 1815 compliance, or production SCADA readiness:
 
 1. `./scripts/verify-mvp.sh` exit 0
 2. `./scripts/verify-external-mvp.sh` exit 0 (real TCP master↔outstation)
@@ -91,7 +93,7 @@ Declare **Master ready for external use** only when **all** pass on one commit:
 5. Class-0 multi-header response returns all G1/G20/G30 points
 6. README external claims match tests
 
-**External MVP complete at: MEXT-035**
+**External MVP completed at MEXT-035 (in-repo real TCP; R4 remains open).**
 
 See also `active_work/external-acceptance.md`.
 
@@ -471,16 +473,27 @@ Parallel-safe after MEXT-003: 010, 012, 014, 016.
 
 ---
 
-## 9. IMPLEMENTATION START POINT
+## 9. CURRENT EXECUTION AUTHORITY / NEXT STEP
+
+The MEXT-001–035 sequence is historical and completed per the MEXT handoff.
+MEXT-040/041/042 are post-gate **backlog stubs**, not automatically promoted
+or approved for implementation. The two CWAL correction tasks DNP3-056
+(unreachable return) and DNP3-057 (formatting) were merged through PR #15.
+
+GitHub evidence: PR #15 merged on 2026-11-08 as `b38d7691aeb1adccf52fe665e368d4d77766977c`;
+`main` CI for that merge completed successfully. See
+`docs/verification/DNP3-056.md`, `docs/verification/DNP3-057.md`, and
+`active_work/handoff.md` for detailed evidence and limitations.
+
+**CWAL execution state (authoritative pointers are outside this historical roadmap):**
 
 ```
-NEXT TASK: MEXT-001 — Archive v1 series + open MEXT handoff
+CURRENT: NONE
+QUEUED: NONE
+Status: WORK_PACKAGE_READY (completed correction package; no active implementation task)
+NEXT TASK: NONE — human promotion and applicable KDE design approval required
 ```
 
-Workflow: one micro-task → test → update handoff.md → every 3: verify → commit → push main.
+No direct `main` push from an execution agent, independent PR creation, merge,
+deployment, or live field control is authorized by this roadmap.
 
-```
-TOTAL TASKS: 40
-EXTERNAL MVP COMPLETE AT: MEXT-035
-NEXT TASK: MEXT-001 — Archive v1 series + open MEXT handoff
-```
