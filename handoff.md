@@ -1,14 +1,18 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: DNP3-MEXT042-PROVENANCE-CORRECTION-001
+Package: VEC-01-LAB-PREP-001
 Branch: work
-CURRENT: NONE
+CURRENT: VEC-01-LAB-PREP-001
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
 
 
+
+
+## CURRENT — VEC-01-LAB-PREP-001 (human-promoted 2026-11-08)
+The **only** active bounded task is `workflow/active_work/VEC-01-LAB-PREP-001.md` on permanent branch `work`. Scope: planning-only independent OpenDNP3 peer preparation, isolated non-production topology, configuration and future validation/evidence plan. No clone, build, installation, peer execution, DNP3 packets, network capture, field-device control, implementation, or PR is authorized. Mandatory existing Go regression verification must actually PASS. VEC-01 is NOT EXECUTED; R4 remains OPEN. This promotion records TASK_READY, not implementation or completion.
 
 ## Package closure — DNP3-060 (2026-11-08)
 The MEXT-042 provenance correction is complete. DNP3-060 corrected the two
