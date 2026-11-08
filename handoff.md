@@ -1,7 +1,7 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: VEC-01-LAB-PREP-001
+Package: DNP3-VEC01-LAB-DEPLOY-PROVENANCE-CORRECTION-001
 Branch: work
 CURRENT: NONE
 QUEUED: NONE
@@ -10,6 +10,43 @@ Status: WORK_PACKAGE_READY
 
 
 
+
+
+
+## Package closure — DNP3-061 (2026-11-08)
+The VEC-01-LAB-DEPLOY-001 startup provenance correction is complete. DNP3-061
+replaced only the startup `origin/main`/merge-base paragraph in
+`docs/verification/VEC-01-LAB-DEPLOY-001.md`: the independently verified
+promotion/integration baseline is `main` at
+`f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab` (merged PR #20, also the merge base of
+`work` and `main`), while the earlier `95ac1028…` assertion is identified as PR
+#17's historical baseline and the original local `origin/main` tracking-ref
+observation is recorded as **UNVERIFIED** (not invented). All other bytes,
+build hashes, recorded test exits, archive and readiness plan are unchanged.
+All mandatory Go gates PASSED on the exact `work` tree at
+`1fe78501281b6ffd73c2f48d687e67745d7d0809` with provisioned Go 1.22.12.
+Evidence: `docs/verification/DNP3-061.md`; archive:
+`archive/active-work/DNP3-061.md`. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## Package closure — VEC-01-LAB-DEPLOY-001 (2026-11-08)
+The isolated OpenDNP3 peer acquisition/build/static-smoke package is complete
+**without protocol execution**. It added
+`active_work/vec-01-opendnp3-lab-deployment-readiness.md` and lab artifacts
+outside the repo: OpenDNP3 3.1.2 pinned at commit
+`26b4c01e4839bbbda8866655e086471c4917ee53` (tag verified), acquired-archive
+SHA-256 `183cc292…`; dependencies asio-1-16-0, exe4cpp, ser4cpp and (unused)
+catch acquired with SHA-256 recorded and SHA-1 cross-checked against upstream
+declarations; licenses OpenDNP3 Apache-2.0, exe4cpp/ser4cpp BSD-3-Clause, asio
+Boost-1.0. Hermetic no-network build (`unshare -n`, FetchContent fully
+disconnected) produced a byte-identical `outstation-demo`
+(SHA-256 `8ae8c841…`); static ELF/ldd/hash checks passed; the socket-binding
+demo was NOT run and no listener/port-20000/protocol activity occurred. All
+mandatory Go regression gates PASSED on the exact `work` tree at
+`5766bd1c4c3577d67b455201dbbb102026d48a11` with provisioned Go 1.22.12.
+Evidence: `docs/verification/VEC-01-LAB-DEPLOY-001.md`; archive:
+`archive/active-work/VEC-01-LAB-DEPLOY-001.md`. **VEC-01 NOT EXECUTED / R4 OPEN
+/ THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
 ## Package closure — VEC-01-LAB-PREP-001 (2026-11-08)
 The OpenDNP3 laboratory preparation package is complete as **documentation
