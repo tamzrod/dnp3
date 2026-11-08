@@ -166,8 +166,9 @@ func TestControlDeadlineBoundsBlockingWait(t *testing.T) {
 }
 
 // TestControlQuarantineBlocksFurtherControls (F3) proves that once an outcome
-// is UNKNOWN, no new control may be issued (fail closed) and that the guard
-// holds across reconnect (a state reset) — only explicit teardown clears it.
+// is UNKNOWN, no new control may be issued (fail closed) and that the quarantine
+// is PERSISTENT across reconnect and even explicit teardown (VEC-01 B4 F2/F3
+// corrective addendum): it is never released automatically.
 func TestControlQuarantineBlocksFurtherControls(t *testing.T) {
 	tr := &failReceiveTransport{}
 	m := newControlMaster(t, tr)
@@ -197,12 +198,22 @@ func TestControlQuarantineBlocksFurtherControls(t *testing.T) {
 		t.Fatalf("control after reconnect was transmitted: sends = %d, want 1", got)
 	}
 
-	// Explicit teardown is the only event that releases the quarantine.
+	// Explicit teardown must ALSO not release an UNKNOWN outcome: releasing it
+	// without a separately approved reconciliation protocol would silently
+	// discard a possibly-executed control.
 	if err := m.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if m.IsQuarantined(1) {
-		t.Fatal("Disconnect did not clear the control quarantine")
+	if !m.IsQuarantined(1) {
+		t.Fatal("Disconnect must NOT clear the control quarantine (persistent UNKNOWN)")
+	}
+	// A control after Disconnect is still refused (fail closed).
+	m.SetState(StateInitialized)
+	if _, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn)); !errors.Is(err, ErrControlQuarantined) {
+		t.Fatalf("control after Disconnect = %v, want ErrControlQuarantined", err)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("control after Disconnect was transmitted: sends = %d, want 1", got)
 	}
 }
 
@@ -372,5 +383,180 @@ func TestControlNoLateReplayAfterOutcome(t *testing.T) {
 	}
 	if !m.IsQuarantined(1) {
 		t.Fatal("outstation must remain quarantined after an UNKNOWN outcome")
+	}
+}
+
+// blockingSendTransport blocks inside Send until releaseCh is closed, modelling
+// a transport whose send cannot be aborted (an uncooperative custom transport).
+// It records that a send was entered so a test can prove the worker is blocked
+// mid-send and that the fail-closed gate stays held.
+type blockingSendTransport struct {
+	entered   chan struct{}
+	releaseCh chan struct{}
+	once      sync.Once
+}
+
+func newBlockingSendTransport() *blockingSendTransport {
+	return &blockingSendTransport{entered: make(chan struct{}), releaseCh: make(chan struct{})}
+}
+
+func (t *blockingSendTransport) Send(data []byte) error {
+	t.once.Do(func() { close(t.entered) })
+	<-t.releaseCh
+	return nil
+}
+func (t *blockingSendTransport) SetTimeout(ms int)        {}
+func (t *blockingSendTransport) Receive() ([]byte, error) { return nil, errors.New("no response") }
+func (t *blockingSendTransport) release()                 { close(t.releaseCh) }
+
+// TestControlWorkerGateHeldWhileBlockedSend (F3) proves the control gate stays
+// held while a worker is blocked in an uncooperative send: a second control is
+// refused with ErrControlInProgress and no second transmission is attempted.
+// When the send finally returns, the worker terminates and the gate is released.
+func TestControlWorkerGateHeldWhileBlockedSend(t *testing.T) {
+	tr := newBlockingSendTransport()
+	m := newControlMaster(t, tr)
+
+	type res struct {
+		status CommandStatus
+		err    error
+	}
+	done := make(chan res, 1)
+	go func() {
+		s, err := m.OperateWithStatusContext(context.Background(), 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(2*time.Second))
+		done <- res{s, err}
+	}()
+
+	select {
+	case <-tr.entered:
+	case <-time.After(time.Second):
+		t.Fatal("control send never entered")
+	}
+
+	// The worker is blocked mid-send: the gate must be held and a second control
+	// must be refused with ErrControlInProgress (not sent).
+	if !m.HasActiveControl(1) {
+		t.Fatal("control gate not held while a worker is blocked in Send")
+	}
+	if _, err := m.OperateWithStatusContext(context.Background(), 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second)); !errors.Is(err, ErrControlInProgress) {
+		t.Fatalf("second control while blocked error = %v, want ErrControlInProgress", err)
+	}
+
+	// Release the send so the worker can terminate.
+	tr.release()
+	r := <-done
+	if !errors.Is(r.err, ErrControlOutcomeUnknown) {
+		t.Fatalf("worker result err = %v, want ErrControlOutcomeUnknown", r.err)
+	}
+	// After termination the gate is released (but the outstation stays
+	// quarantined because the outcome was UNKNOWN).
+	deadline := time.Now().Add(time.Second)
+	for m.HasActiveControl(1) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if m.HasActiveControl(1) {
+		t.Fatal("control gate still held after the worker terminated")
+	}
+	if !m.IsQuarantined(1) {
+		t.Fatal("UNKNOWN outcome must persist as a quarantine after worker termination")
+	}
+}
+
+// TestControlCancelledBeforeSendNotSent (F3) proves a control cancelled between
+// admission and the transmission point is a definite pre-send NOT_SENT failure:
+// nothing is transmitted and the outstation is not quarantined.
+func TestControlCancelledBeforeSendNotSent(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := m.OperateWithStatusContext(ctx, 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second))
+	if err == nil {
+		t.Fatal("expected an error for a pre-send cancelled control")
+	}
+	if !errors.Is(err, ErrOperationDeadlineExceeded) {
+		t.Fatalf("error = %v, want ErrOperationDeadlineExceeded (definite pre-send)", err)
+	}
+	if got := tr.sendCount(); got != 0 {
+		t.Fatalf("nothing should be sent for a pre-send cancelled control; sends = %d", got)
+	}
+	if m.IsQuarantined(1) {
+		t.Fatal("a definite pre-send failure must not quarantine the outstation")
+	}
+}
+
+// TestControlSessionChangeBlocksLateSend (F3) proves a control worker admitted
+// in one session cannot transmit after the session generation advances (a
+// Disconnect between admission and send): the late send is a definite NOT_SENT
+// failure and nothing is transmitted.
+func TestControlSessionChangeBlocksLateSend(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	gen, release, err := m.AcquireControlGate(1)
+	if err != nil {
+		t.Fatalf("AcquireControlGate: %v", err)
+	}
+	defer release()
+
+	// Tear down the session before the control transmits: the worker's session
+	// generation is now stale.
+	if err := m.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	m.SetState(StateInitialized)
+
+	_, err = m.OperateWithStatusGated(context.Background(), gen, 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second))
+	if err == nil {
+		t.Fatal("expected a stale-session control to fail closed without sending")
+	}
+	if got := tr.sendCount(); got != 0 {
+		t.Fatalf("a stale-session control must not transmit; sends = %d", got)
+	}
+	if m.IsQuarantined(1) {
+		t.Fatal("a definite pre-send (stale-session) failure must not quarantine")
+	}
+}
+
+// errorSendTransport fails Send with a non-disconnect error, modelling an
+// ambiguous/partial write: a send was attempted but its outcome cannot be
+// positively established. The control must fail closed as UNKNOWN and
+// quarantine the outstation.
+type errorSendTransport struct {
+	mu    sync.Mutex
+	sends int
+}
+
+func (t *errorSendTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.mu.Unlock()
+	return errors.New("write failed after partial transmission")
+}
+func (t *errorSendTransport) SetTimeout(ms int)        {}
+func (t *errorSendTransport) Receive() ([]byte, error) { return nil, errors.New("no response") }
+func (t *errorSendTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
+
+// TestControlAmbiguousSendFailureQuarantines (F3) proves an ambiguous send
+// failure (a send was attempted but the outcome is unknown) fails closed as
+// UNKNOWN and quarantines the outstation, without a second transmission.
+func TestControlAmbiguousSendFailureQuarantines(t *testing.T) {
+	tr := &errorSendTransport{}
+	m := newControlMaster(t, tr)
+
+	_, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
+	if !errors.Is(err, ErrControlOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("ambiguous send attempted %d times, want exactly 1", got)
+	}
+	if !m.IsQuarantined(1) {
+		t.Fatal("an ambiguous send failure must quarantine the outstation")
 	}
 }

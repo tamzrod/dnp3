@@ -389,3 +389,58 @@ Gate B and the CURRENT remain **`TASK_BLOCKED`**. Full detail: §19 of
 `docs/verification/VEC-01-LAB-EXEC-001.md`.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## B4 F2/F3 corrective — evidence reconciliation + checkpoint (append-only, 2026-11-09)
+
+Owner-authorized "B4 F2/F3 corrective implementation and evidence reconciliation
+— offline only" addendum, baseline `d1719e7`, authorization commit `0e31dfc`.
+Bounded **offline** correction of the F2/F3 lifecycle GAPs; F1 unchanged. No
+TCP/DNP3 listener, socket, peer, CROB, namespace, capture or external probe used
+by the corrective tests. Result: **`B4_SAFETY_CORRECTION_PASS` (Go offline safety
+readiness only)** — not `B4_SAFETY_PASS`, not Gate B acceptance.
+
+**Reconciliation (prior scope).** §18/§19 recorded success for
+`go test ./... -count=1`, `verify-mvp.sh` and `verify-external-mvp.sh`; that
+record is retained and its technical results are not retracted. Source
+inspection (`verify-mvp.sh` runs `./test/integration`; `verify-external-mvp.sh`
+runs `TestRealTCPFullMVPPath`/operate-matrix selectors; `test/integration`
+creates real `net.Listen` listeners and issues G12V1 controls) is **PROVEN_STATIC**
+that those suites exercise a real loopback TCP listener + CROB. Raw runner logs,
+sandbox enforcement and actually-opened sockets are **UNVERIFIED**. The CURRENT
+addendum lists those suites as DO NOT RUN, so running them was an **unauthorized
+test-scope deviation** — reported plainly, not treated as authorized. The
+earlier independent CHECK PUSHBACK (F2/F3 not proven by §18/§19) is retained.
+
+**Corrections.** F3-A: `Disconnect` no longer clears the control quarantine —
+UNKNOWN persists across Disconnect/failed connect/reconnect/late completion; it
+bumps a session generation. F3-B: public `Operate` registers a per-outstation
+control gate before dispatch; the worker runs on the caller's context with one
+whole-control deadline; concurrent/later controls refused
+(`ErrControlInProgress`/`ErrControlQuarantined`); a session-generation check
+forbids a late send against a reconnected session. F2: one absolute Connect
+budget at public entry (default 5 s) shared across dial/handshake/init/cleanup;
+`ConnectContext` gets the remaining budget. Transport: `TCPTransport.Connect`
+dials and `Send` writes without holding `mu`, so `Close` can abort a stuck dial
+/ unblock a write (the CURRENT's lock-order concern). Lock order analyzed;
+`controlMu` is a leaf.
+
+**Files:** `internal/master/master.go`, `pkg/dnp3/master/client.go`,
+`pkg/transport/tcp.go`, `internal/master/control_safety_test.go`,
+`pkg/dnp3/master/control_safety_test.go`, `pkg/dnp3/master/race_test.go`.
+
+**Permitted offline gates run (this checkout, `go1.22.12`):** `gofmt -l .` clean,
+`git diff --check` clean, `go vet ./internal/master ./pkg/dnp3/master ./pkg/transport`
+PASS, narrow `go test -count=1 -run '^(TestControl…|…)$' ./internal/master ./pkg/dnp3/master`
+PASS, narrow `go test -race -count=1` on the same selectors PASS. **NOT_RUN**
+(per addendum item 9): `go test ./...`, `verify-mvp.sh`, `verify-external-mvp.sh`,
+`test/integration`, CI/PR.
+
+**Unresolved (unchanged).** Lower-level confirmed-link FCB/FCV retransmission and
+physical TCP send counts remain NOT_TESTED/UNVERIFIED. An uncooperative custom
+transport keeps the fail-closed gate held while its worker blocks (intended
+fail-closed behavior, not proof of hard termination). Full detail:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §20–§21. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

@@ -147,6 +147,37 @@ remain **NOT_TESTED / UNVERIFIED**. Overall Gate B and the CURRENT remain
 INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §18
 and `active_work/vec-01-opendnp3-lab-execution-evidence.md`.
 
+### Gate B4 F2/F3 corrective + evidence reconciliation — offline only (2026-11-09)
+Owner-authorized "B4 F2/F3 corrective implementation and evidence reconciliation
+— offline only" addendum executed at authorizing commit `0e31dfc` (baseline
+`d1719e7`). Bounded **offline** correction of the F2/F3 lifecycle GAPs within the
+narrow source allowlist (`internal/master/master.go`, `pkg/dnp3/master/client.go`,
+`pkg/transport/tcp.go`, plus tests in the two master packages); F1 unchanged.
+**F3-A:** `Disconnect` no longer clears the control quarantine — an UNKNOWN
+outcome persists across Disconnect, failed connect, reconnect, late worker
+completion and request-marker cleanup (a session generation is bumped instead).
+**F3-B:** public `Operate` registers a per-outstation control gate before
+dispatch; the worker runs on the caller's context with one whole-control
+deadline; concurrent/later controls are refused
+(`ErrControlInProgress`/`ErrControlQuarantined`); a session-generation check
+forbids a late send against a reconnected session. **F2:** one absolute Connect
+budget at public entry (default 5 s) shared across dial/handshake/init/cleanup,
+with `ConnectContext` receiving the remaining budget; `TCPTransport.Connect`
+dials and `Send` writes without holding `mu` so `Close` can abort a stuck dial /
+unblock a write. Result: **`B4_SAFETY_CORRECTION_PASS` (Go offline safety
+readiness only)** — **not** `B4_SAFETY_PASS`, **not** Gate B acceptance.
+Reconciliation: the §18/§19 recorded runs of `go test ./...`,
+`verify-mvp.sh` and `verify-external-mvp.sh` are retained but are a **PROVEN_STATIC**
+real-TCP scope (they select `test/integration` listeners + CROB) whose raw logs
+and opened sockets are **UNVERIFIED**, and running them was an **unauthorized
+test-scope deviation** (reported, not retroactively authorized); the earlier
+independent CHECK PUSHBACK for F2/F3 is retained. Lower-level confirmed-link
+FCB/FCV replay and physical TCP send counts remain **NOT_TESTED / UNVERIFIED**.
+Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §20–§21 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md`.
+
 
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

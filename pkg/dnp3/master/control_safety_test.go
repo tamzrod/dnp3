@@ -385,3 +385,180 @@ func TestOperateMalformedResponseFailsClosed(t *testing.T) {
 		t.Fatal("outstation not quarantined after malformed control response")
 	}
 }
+
+// countingBlockingTransport records each Send and blocks Receive until
+// releaseCh is closed. It models a control whose response never arrives and
+// lets a test count transmissions across a cancellation and late completion.
+type countingBlockingTransport struct {
+	mu        sync.Mutex
+	sends     int
+	sent      chan struct{}
+	releaseCh chan struct{}
+	closeOnce sync.Once
+}
+
+func newCountingBlockingTransport() *countingBlockingTransport {
+	return &countingBlockingTransport{
+		sent:      make(chan struct{}, 1),
+		releaseCh: make(chan struct{}),
+	}
+}
+
+func (t *countingBlockingTransport) Listen() error  { return nil }
+func (t *countingBlockingTransport) Accept() error  { return nil }
+func (t *countingBlockingTransport) Connect() error { return nil }
+func (t *countingBlockingTransport) Close() error {
+	t.closeOnce.Do(func() { close(t.releaseCh) })
+	return nil
+}
+func (t *countingBlockingTransport) SetTimeout(ms int) {}
+func (t *countingBlockingTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.mu.Unlock()
+	select {
+	case t.sent <- struct{}{}:
+	default:
+	}
+	return nil
+}
+func (t *countingBlockingTransport) Receive() ([]byte, error) {
+	<-t.releaseCh
+	return nil, errors.New("receive aborted")
+}
+func (t *countingBlockingTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
+
+// TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion (VEC-01 B4 F2/F3)
+// proves an UNKNOWN control outcome is not silently cleared: after cancellation
+// quarantines the outstation, a late worker completion and an explicit client
+// Disconnect both leave the quarantine in place, and a further control is
+// refused before any transmission.
+func TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion(t *testing.T) {
+	tr := newCountingBlockingTransport()
+	cc := clientWithTransport(t, tr)
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := cc.Operate(ctx, &types.ControlOutput{
+			Group: 12, Variation: 1, Index: 0,
+			CommandType: types.DirectOperate,
+			Value:       &types.BinaryCommandValue{Value: true},
+		})
+		errCh <- err
+	}()
+
+	select {
+	case <-tr.sent:
+	case <-time.After(time.Second):
+		t.Fatal("control request was never sent")
+	}
+	cancel()
+	if err := <-errCh; !errors.Is(err, dnp3.ErrContextCanceled) {
+		t.Fatalf("Operate error = %v, want ErrContextCanceled", err)
+	}
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("outstation not quarantined after cancelled control")
+	}
+
+	// Let the late worker complete (Receive returns) and give it a moment.
+	_ = tr.Close()
+	time.Sleep(50 * time.Millisecond)
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("late worker completion must not clear the UNKNOWN quarantine")
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("control transmitted %d times; a late worker must not resend", got)
+	}
+
+	// Explicit client Disconnect must NOT clear an UNKNOWN quarantine.
+	if err := cc.Disconnect(context.Background()); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("Disconnect must not clear the UNKNOWN quarantine")
+	}
+
+	// A further control is refused before any transmission.
+	_, err := cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if !errors.Is(err, master.ErrControlQuarantined) {
+		t.Fatalf("control after Disconnect = %v, want ErrControlQuarantined", err)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("refused control was transmitted: sends = %d, want 1", got)
+	}
+}
+
+// slowDialStallTransport's Connect blocks for dialDelay then succeeds; Receive
+// then sleeps for the configured timeout and fails, stalling the link handshake.
+// It proves the public Connect shares ONE budget across the dial and the
+// handshake instead of granting the handshake a fresh full budget after the
+// dial.
+type slowDialStallTransport struct {
+	mu        sync.Mutex
+	dialDelay time.Duration
+	timeoutMs int
+}
+
+func (t *slowDialStallTransport) Listen() error { return nil }
+func (t *slowDialStallTransport) Accept() error { return nil }
+func (t *slowDialStallTransport) Close() error  { return nil }
+func (t *slowDialStallTransport) Send(data []byte) error {
+	return nil
+}
+func (t *slowDialStallTransport) SetTimeout(ms int) {
+	t.mu.Lock()
+	t.timeoutMs = ms
+	t.mu.Unlock()
+}
+func (t *slowDialStallTransport) Connect() error {
+	time.Sleep(t.dialDelay)
+	return nil
+}
+func (t *slowDialStallTransport) Receive() ([]byte, error) {
+	t.mu.Lock()
+	ms := t.timeoutMs
+	t.mu.Unlock()
+	if ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
+	return nil, errors.New("no handshake response")
+}
+
+// TestConnectSlowDialSharesOneBudget (VEC-01 B4 F2) proves the dial and the
+// link handshake share ONE whole-connect budget: with a 200ms budget, a 120ms
+// dial leaves only ~80ms for the handshake, so Connect fails near 200ms rather
+// than dial + a fresh full handshake budget.
+func TestConnectSlowDialSharesOneBudget(t *testing.T) {
+	tr := &slowDialStallTransport{dialDelay: 120 * time.Millisecond}
+	c, err := NewClient(NewConfig(WithConnectTimeout(200 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cc := c.(*client)
+	cc.transport = tr
+	cc.internalMaster.SetTransport(&transportAdapter{Handler: tr})
+
+	start := time.Now()
+	err = cc.Connect(context.Background())
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected connect to fail closed when the budget is exceeded")
+	}
+	if elapsed > 600*time.Millisecond {
+		t.Fatalf("Connect took %v; the dial and handshake must share the 200ms budget", elapsed)
+	}
+}

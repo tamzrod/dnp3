@@ -294,5 +294,32 @@ owner authorization to proceed. Until then CURRENT stays `TASK_BLOCKED`; no
 archive, closure, PR, merge or R4 change. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §9.
 
+## B4 F2/F3 corrective + evidence reconciliation — offline only (2026-11-09)
+Owner-authorized "B4 F2/F3 corrective implementation and evidence reconciliation
+— offline only" addendum executed at authorizing commit `0e31dfc` (baseline
+`d1719e7`). Bounded **offline** correction of the F2/F3 lifecycle GAPs; F1
+unchanged; no TCP/DNP3 listener, socket, peer, CROB, namespace or capture. **F3-A:**
+`Disconnect` no longer clears the control quarantine — an UNKNOWN outcome persists
+across Disconnect, failed connect, reconnect, late worker completion and
+request-marker cleanup (a session generation is bumped instead). **F3-B:** public
+`Operate` registers a per-outstation control gate before dispatch; the worker runs
+on the caller's context with one whole-control deadline; concurrent/later controls
+are refused (`ErrControlInProgress`/`ErrControlQuarantined`); a session-generation
+check forbids a late send against a reconnected session. **F2:** one absolute
+Connect budget at public entry (default 5 s) shared across dial/handshake/init/
+cleanup; `ConnectContext` receives the remaining budget; `TCPTransport.Connect`
+dials and `Send` writes without holding `mu` so `Close` can abort a stuck dial /
+unblock a write. Result: **`B4_SAFETY_CORRECTION_PASS` (Go offline safety
+readiness only)** — **not** `B4_SAFETY_PASS`, **not** Gate B acceptance. The
+§18/§19 recorded `go test ./...`, `verify-mvp.sh` and `verify-external-mvp.sh`
+runs are retained but are a **PROVEN_STATIC** real-TCP scope (they select
+`test/integration` listeners + CROB) whose raw logs/sockets are **UNVERIFIED**,
+and running them was an **unauthorized test-scope deviation** (reported, not
+retroactively authorized); the earlier independent CHECK PUSHBACK for F2/F3 is
+retained. Lower-level confirmed-link FCB/FCV replay and physical TCP send counts
+remain **NOT_TESTED / UNVERIFIED**. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §20–§21.
+
 ## Persistent branch rule (owner instruction, 2026-11-08)
 Use `work` for the remaining active roadmap, including subsequent separately human-approved CWAL packages. Do not switch branches by package. A stable branch name does not bypass task authorization, PR audit against `main`, CI, or merge approval. The superseded `docs/sync-mext-post-pr17-20261108` ref is not the active CWAL branch; retire it after confirming the new `work` tip.

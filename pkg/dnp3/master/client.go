@@ -629,13 +629,23 @@ func (c *client) Connect(ctx context.Context) error {
 	c.state = dnp3.StateConnecting
 	c.mu.Unlock()
 
+	// VEC-01 B4 F2: establish ONE absolute whole-connect deadline at entry,
+	// constrained by the caller's earlier deadline and the configured
+	// ConnectTimeout. The dial, the two-stage link handshake, initialization and
+	// bounded cleanup all share this single remaining budget; the internal master
+	// must not start a fresh full budget after the dial.
+	deadline := time.Now().Add(c.connectBudget())
+	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
+		deadline = dl
+	}
+
 	// Run the blocking connect steps on a goroutine so we can race them
 	// against ctx.Done(). The goroutine owns the transport/master for the
 	// duration of the attempt.
 	type connectResult struct{ err error }
 	done := make(chan connectResult, 1)
 	go func() {
-		done <- connectResult{err: c.connectBlocking(ctx)}
+		done <- connectResult{err: c.connectBlocking(ctx, deadline)}
 	}()
 
 	select {
@@ -664,13 +674,19 @@ func (c *client) Connect(ctx context.Context) error {
 // connectBlocking performs the synchronous connect sequence. It checks ctx
 // between blocking steps so a cancellation that lands between the transport
 // dial and the link handshake is observed without waiting for the next timeout.
-func (c *client) connectBlocking(ctx context.Context) error {
+// deadline is the single absolute whole-connect deadline established at the
+// public Connect entry (VEC-01 B4 F2); every step shares its remaining budget.
+func (c *client) connectBlocking(ctx context.Context, deadline time.Time) error {
 	// Step 1: Add outstation FIRST (needed for link handshake)
 	c.internalMaster.AddOutstation(c.config.OutstationAddress, fmt.Sprintf("outstation-%d", c.config.OutstationAddress))
 
 	if err := ctx.Err(); err != nil {
 		c.cleanupConnect()
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+	}
+	if !time.Now().Before(deadline) {
+		c.cleanupConnect()
+		return fmt.Errorf("%w: connect budget exhausted before dial", dnp3.ErrTimeout)
 	}
 
 	// Step 2: Connect transport
@@ -685,11 +701,15 @@ func (c *client) connectBlocking(ctx context.Context) error {
 	}
 
 	// Step 3: Connect internal master (performs link-layer handshake). VEC-01 B4
-	// F2: use the deadline-aware connect so the whole link handshake (reset +
-	// status) shares one finite budget derived from the master's connect budget,
-	// tightened by the caller's earlier deadline. A zero budget falls back to the
-	// configured default.
-	if err := c.internalMaster.ConnectContext(ctx, 0); err != nil {
+	// F2: pass the REMAINING whole-connect budget (not a fresh one) so the dial
+	// and the link handshake share one finite budget. ConnectContext tightens it
+	// further by the caller's earlier deadline.
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		c.cleanupConnect()
+		return fmt.Errorf("%w: connect budget exhausted before handshake", dnp3.ErrTimeout)
+	}
+	if err := c.internalMaster.ConnectContext(ctx, remaining); err != nil {
 		c.cleanupConnect()
 		return fmt.Errorf("master connect failed: %w", err)
 	}
@@ -782,6 +802,18 @@ func (c *client) State() dnp3.ConnectionState {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.state
+}
+
+// connectBudget resolves the whole-connect budget (VEC-01 B4 F2): the configured
+// ConnectTimeout when positive, else the master's documented default
+// (master.DefaultConnectTimeout). This keeps the public Connect entry consistent
+// with the internal master's default rather than treating a zero value as a
+// zero-length budget.
+func (c *client) connectBudget() time.Duration {
+	if c.config != nil && c.config.ConnectTimeout > 0 {
+		return c.config.ConnectTimeout
+	}
+	return time.Duration(master.DefaultConnectTimeout) * time.Millisecond
 }
 
 // markTransportDisconnected records that the underlying transport has dropped.
@@ -1689,7 +1721,19 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	outstationID := c.config.OutstationAddress
 	c.mu.RUnlock()
 
+	// VEC-01 B4 F3: register the control worker (gate) BEFORE any other
+	// admission so an UNKNOWN outcome or a concurrent control dominates every
+	// other refusal — a quarantined outstation is reported as quarantined
+	// regardless of connection state. Admission fails closed with
+	// ErrControlQuarantined (prior outcome UNKNOWN) or ErrControlInProgress
+	// (another worker active).
+	gen, release, gerr := internal.AcquireControlGate(outstationID)
+	if gerr != nil {
+		return nil, wrapInternalError("operate refused", gerr)
+	}
+
 	if state < dnp3.StateConnected {
+		release()
 		return nil, dnp3.ErrNotConnected
 	}
 
@@ -1698,12 +1742,15 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	// rejected with a clear error before any wire traffic.
 	switch command.CommandType {
 	case types.SelectThenOperate:
+		release()
 		return nil, fmt.Errorf("%w: select-before-operate", dnp3.ErrUnsupportedOption)
 	case types.DirectOperateNoResponse:
+		release()
 		return nil, fmt.Errorf("%w: direct-operate-no-response", dnp3.ErrUnsupportedOption)
 	case types.DirectOperate:
 		// supported
 	default:
+		release()
 		return nil, fmt.Errorf("%w: unknown command type %d", dnp3.ErrUnsupportedOption, command.CommandType)
 	}
 
@@ -1722,26 +1769,33 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	}
 
 	// VEC-01 B4 F1/F3: a non-idempotent control is dispatched single-shot. The
-	// caller's context is honored for promptness, but cancellation is NOT treated
-	// as "nothing happened": the dispatch runs to completion in the background
-	// and, if the context ends while it is outstanding, the outstation is
-	// quarantined (failure closed) because the control may have been executed.
-	// The quarantine clears only on an explicit Disconnect.
+	// worker (gate acquired above) runs on the caller's context with ONE
+	// whole-control deadline, so cancellation and a session change are observed
+	// at the transmission point. If the context ends while the worker is
+	// outstanding, the outstation is quarantined (fail closed) because the
+	// control may have been executed; the quarantine is persistent and is never
+	// released automatically.
+	deadline := time.Now().Add(internal.OperateBudget())
+
 	type operateResult struct {
 		status master.CommandStatus
 		err    error
 	}
 	done := make(chan operateResult, 1)
 	go func() {
-		status, err := internal.OperateWithStatus(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue)
+		// The worker owns the gate for its whole lifetime: release runs only when
+		// the worker terminates, so a still-blocked worker keeps the outstation
+		// gated (no second control can be admitted behind it).
+		defer release()
+		status, err := internal.OperateWithStatusGated(ctx, gen, outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue, deadline)
 		done <- operateResult{status: status, err: err}
 	}()
 
 	var cs master.CommandStatus
 	select {
 	case <-ctx.Done():
-		// Fail closed: the control may already be on the wire, so quarantine
-		// the outstation. This is never cleared by reconnect or a later control.
+		// Fail closed: the control may already be on the wire, so quarantine the
+		// outstation. This is never cleared by reconnect or a later control.
 		if c.internalMaster != nil {
 			c.internalMaster.QuarantineOutstation(outstationID)
 		}

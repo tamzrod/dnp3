@@ -95,8 +95,10 @@ func TestConcurrentReadsRaceFree(t *testing.T) {
 }
 
 // TestConcurrentOperateRaceFree asserts concurrent Operate calls are race-free.
-// DNP3-040: concurrent same-outstation Operates are rejected with
-// ErrRequestOutstanding (defined behavior); only that error is tolerated.
+// DNP3-040 / VEC-01 B4 F3: concurrent same-outstation Operates are rejected
+// with a defined error (ErrRequestOutstanding when they reach the request path,
+// or ErrControlInProgress when the control gate is already held); only those
+// defined refusals are tolerated.
 func TestConcurrentOperateRaceFree(t *testing.T) {
 	cc := newConnectedClientWithTransport(t, &pubStatusEchoTransport{commandStatus: 0})
 
@@ -112,7 +114,7 @@ func TestConcurrentOperateRaceFree(t *testing.T) {
 				CommandType: types.DirectOperate,
 				Value:       &types.BinaryCommandValue{Value: true},
 			})
-			if err != nil && !errors.Is(err, master.ErrRequestOutstanding) {
+			if err != nil && !errors.Is(err, master.ErrRequestOutstanding) && !errors.Is(err, master.ErrControlInProgress) {
 				errs <- err
 			}
 		}()

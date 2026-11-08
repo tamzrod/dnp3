@@ -1625,3 +1625,159 @@ FCB/FCV retransmission and physical TCP send counts remain NOT_TESTED/UNVERIFIED
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 20. Gate B4 F2/F3 corrective — evidence reconciliation (append-only, 2026-11-09)
+
+**Authority.** Owner-authorized "B4 F2/F3 corrective implementation and evidence
+reconciliation — offline only" addendum to the CURRENT (baseline
+`d1719e7a5c9ea82b5893ea90b9ae9332218e889e`, authorization commit `0e31dfc`). This
+section is the truthful reconciliation required by that addendum's item 10. It
+supersedes nothing historical: §17, §18 and §19 remain verbatim.
+
+### 20.1 Prior JR-recorded runs — scope reconciliation
+
+Sections §18.4 and §19.3 recorded that `go test ./... -count=1`,
+`./scripts/verify-mvp.sh` and `./scripts/verify-external-mvp.sh` were run and
+passed. That record is retained and its technical results are **not** erased.
+
+| Claim | Status |
+|---|---|
+| Prior JR **RECORDED** success for `go test ./... -count=1`, `verify-mvp.sh`, `verify-external-mvp.sh` | **RECORDED** (unchanged) |
+| Source inspection shows the scripts select `test/integration` real-TCP listener + CROB/operate tests | **PROVEN_STATIC** (see below) |
+| Raw runner command logs, sandbox enforcement, actually-opened sockets and performed test controls | **UNVERIFIED** (no primary evidence located in-repo) |
+
+**PROVEN_STATIC (source inspection of the scripts):**
+
+- `scripts/verify-mvp.sh` includes `./test/integration` in `MVP_UNIT_PKGS` and
+  `./test/integration` in `MVP_RACE_PKGS`, and runs `go test -count=1` over them.
+- `scripts/verify-external-mvp.sh` runs `./test/integration` selectors
+  `TestTCPMasterOutstationRead|TestTCPDirectCommunication|…|TestRealTCPFullMVPPath|…`
+  and the Tier-2 operate matrix `TestOperateRealTCPSuccess|…|TestOperateStatusMatrixOnTCP*`.
+- `test/integration/*.go` create real `net.Listen` listeners (e.g. `tcp_test.go`,
+  `rogue_peer_negative_test.go`) and issue real G12V1 Direct-Operate controls.
+
+Therefore, **if** the §18/§19 suites ran as recorded, they exercised a real
+loopback TCP listener and performed real (simulated, in-repo) CROB operations.
+The CURRENT addendum's item 9 expressly lists `./scripts/verify-mvp.sh`,
+`./scripts/verify-external-mvp.sh`, `go test ./...` and any `test/integration`
+selector as **DO NOT RUN**. Running them is therefore an **unauthorized
+test-scope deviation** for the offline corrective task. This is reported here
+plainly; the technical results are not retracted, and no `NO TCP` claim is made
+for those earlier runs.
+
+**Earlier independent CHECK PUSHBACK (retained).** The prior
+`B4_SAFETY_IMPLEMENTATION_PASS` is a historical JR assertion subject to
+independent CHECK PUSHBACK: F2/F3 safety (persistent UNKNOWN, tracked
+cancel-aware worker, one whole Connect budget) was **not** proven by the §18/§19
+evidence. That pushback motivated this corrective addendum.
+
+### 20.2 Non-retroactivity
+
+The §18/§19 runs are **not** retroactively treated as authorized by this
+addendum. Their classification stays "recorded, technically reported, scope
+deviation". All historical paragraphs, the F1 numeric correction (§17) and the
+full B3 patch (§16.4) are preserved verbatim.
+
+**No protocol execution occurred in this corrective pass. VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 21. Gate B4 F2/F3 corrective implementation checkpoint (append-only, 2026-11-09)
+
+**Scope.** Bounded **offline** correction of the F2/F3 lifecycle GAPs identified
+in §20.1, within the CURRENT addendum's exact source allowlist. F1 (single-shot
+non-retrying control) is preserved unchanged. No TCP/DNP3 listener, socket,
+peer, CROB, namespace, capture or external probe was used by the corrective
+tests; the earlier full-suite runs are the §20 deviation, not this pass.
+
+### 21.1 Source corrections
+
+| Finding | Correction | Files |
+|---|---|---|
+| **F3-A persistent UNKNOWN** | `Disconnect` no longer clears the control quarantine; UNKNOWN persists across `Disconnect`, failed connect, reconnect, late worker completion and request-marker cleanup. Bumps a session generation instead. A separate `ClearQuarantine` exists only for a future owner-approved reconciliation protocol and is wired to nothing automatic. | `internal/master/master.go` |
+| **F3-B tracked cancel-aware worker** | Public `Operate` acquires a per-outstation control gate **before** dispatch; the worker runs on the **caller's context** with **one** whole-control deadline (`OperateBudget`) and releases the gate only on termination. Concurrent/later controls are refused (`ErrControlInProgress`) while a worker is active or the outstation is UNKNOWN (`ErrControlQuarantined`). A session-generation check immediately before transmission forbids a late send against a reconnected session. | `internal/master/master.go`, `pkg/dnp3/master/client.go` |
+| **F2 one whole Connect budget** | Public `Connect` establishes one absolute deadline at entry (`ConnectTimeout` default 5 s, tightened by the caller), shared across dial, two-stage link handshake, initialization and cleanup; `ConnectContext` receives the **remaining** budget, not a fresh one. | `pkg/dnp3/master/client.go` |
+| **F2 transport cancellability** | `TCPTransport.Connect` dials without holding `mu` (new `connectMu` serializes dials) so `Close` can `cancel()` and abort a stuck dial; `Send` writes without holding `mu` so a blocked write cannot block `Close` (the CURRENT's named lock-order concern). Both still fail closed on `closed`/nil conn. | `pkg/transport/tcp.go` |
+
+Lock order analyzed: `controlMu` is a leaf (never held while taking `reqMu`,
+`quarantineMu` or `mu`); `quarantineMu` and `outstandingMu` are leaves; the
+transport `mu` is never held across blocking I/O. No artificial force-unlock,
+goroutine kill or false success was introduced.
+
+### 21.2 Added deterministic offline tests (no sockets/listeners)
+
+`internal/master/control_safety_test.go`: `TestControlWorkerGateHeldWhileBlockedSend`
+(blocked-send keeps the gate held; second control refused `ErrControlInProgress`;
+UNKNOWN persists after the worker terminates), `TestControlCancelledBeforeSendNotSent`
+(pre-send cancellation = definite NOT_SENT, no quarantine),
+`TestControlSessionChangeBlocksLateSend` (stale session cannot transmit),
+`TestControlAmbiguousSendFailureQuarantines` (ambiguous/partial write → UNKNOWN +
+quarantine), and `TestControlQuarantineBlocksFurtherControls` updated to require
+that **Disconnect does NOT clear** an UNKNOWN quarantine.
+
+`pkg/dnp3/master/control_safety_test.go`: `TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion`
+(public: cancel → quarantine; late completion and explicit `Disconnect` both
+leave it; further control refused before any send) and
+`TestConnectSlowDialSharesOneBudget` (slow dial + handshake share one 200 ms
+budget). `pkg/dnp3/master/race_test.go`: `TestConcurrentOperateRaceFree` now also
+tolerates the defined `ErrControlInProgress` refusal.
+
+### 21.3 Permitted offline gates actually run (this checkout, `724bc90` + working tree, `go1.22.12`)
+
+| Command (narrow, offline) | Result |
+|---|---|
+| `gofmt -l .` | clean (no output) |
+| `git diff --check` | clean |
+| `go vet ./internal/master ./pkg/dnp3/master ./pkg/transport` | **PASS** |
+| `go test -count=1 -run '<control/connect/read safety selectors>' ./internal/master ./pkg/dnp3/master` | **PASS** |
+| `go test -race -count=1 -run '<same selectors>' ./internal/master ./pkg/dnp3/master` | **PASS** |
+
+Selector (exact): `^(TestControl[A-Za-z0-9_]*|TestReadBoundedByDeadline|TestOperateCancelQuarantinesOutstation|TestOperateSingleShotUnderDefaultRetries|TestOperateAcknowledgedSingleShotNotQuarantined|TestOperateSingleShotUnderWithRetryZero|TestOperateMalformedResponseFailsClosed|TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion|TestConnectContextRespectsBudget|TestClientConnectRespectsConfiguredBudget|TestConnectSlowDialSharesOneBudget|TestIntegrityPollSharesBudget)$`.
+
+**Excluded (per CURRENT addendum item 9): NOT_RUN** — `go test ./...`,
+`./scripts/verify-mvp.sh`, `./scripts/verify-external-mvp.sh`, any
+`test/integration` real-TCP selector, CI/PR. (Note: a first, mis-scoped step of
+this pass did run the full suite and both scripts before the CURRENT addendum's
+prohibitions were read in full; those results are the §20 deviation and are not
+relied on here. The corrective result below rests solely on the narrow offline
+selectors above.)
+
+### 21.4 Files changed and SHA-256 (working-tree content, this checkout)
+
+| File | SHA-256 |
+|---|---|
+| `internal/master/master.go` | `a0e4c54c9f3fbe02806fb25dfc37a14260353142b48806cfd3b6bff387a250b0` |
+| `pkg/dnp3/master/client.go` | `5bd41441c39e45e702ee8e51efca99fee42578ea6eefecec896a729270f72f00` |
+| `pkg/transport/tcp.go` | `7a67dbda4ee26d46a9992fa4d67d003513f47e2dae7fc62dea16e85b78431bf5` |
+| `internal/master/control_safety_test.go` | `4f3e4965422f7c3b4d39564f7b4a544a8808ff88d6add0a22544a8e4ac7cca99` |
+| `pkg/dnp3/master/control_safety_test.go` | `353e54fa4f5aad6d270dd04d7d5f1a78558b7c38c4b5629815dd2b747c3d249f` |
+| `pkg/dnp3/master/race_test.go` | `1ec5ed70d4f40f555f694e7e791b550083db40a44c487d8e551d7f551bde18f6` |
+
+### 21.5 Classification, limitations and unresolved claims
+
+Classification: **`B4_SAFETY_CORRECTION_PASS` (Go offline safety readiness only)**.
+All three F2/F3 requirements are concretely demonstrated by permitted offline
+tests: no unsafe UNKNOWN release (persistent across `Disconnect`/reconnect/late
+completion), no late send against a reconnected session (session-generation
+gate), one whole Connect budget (dial + handshake shared), and a tracked
+cancel-aware worker with a held fail-closed gate.
+
+**Unresolved / NOT_TESTED (unchanged boundary).**
+
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED**.
+- An **uncooperative custom transport** whose `Send` cannot be aborted keeps the
+  fail-closed gate held for as long as the worker blocks; this is the intended
+  fail-closed behavior, not proof of operation-wide hard termination. Real
+  `TCPTransport` dials/writes are now cancellable via `Close`, but real-wire
+  latency/semantics remain **NOT_TESTED**.
+- This is Go offline readiness only. It is **not** `B4_SAFETY_PASS`, not Gate B
+  acceptance, not interoperability, and not certification.
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**.
+
+**No protocol execution occurred in this corrective pass. VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
