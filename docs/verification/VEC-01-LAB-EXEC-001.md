@@ -1322,3 +1322,61 @@ recorded as an explicit, minor divergence, not a silent one.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 17. Gate B4 CHECK correction — F1 retry-count clarification (append-only, 2026-11-08)
+
+**Authority:** owner-authorized "B4 F1 retry-count evidence correction —
+append-only" addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`.
+This is an **evidence-only, append-only factual correction**: no code, test,
+listener, TCP/DNP3 session, control/CROB, namespace, compilation or networked
+tool call was performed. Execution SHA (branch `work`):
+`177bfd3d965f31050389719597811895a9f7df53`.
+
+**Superseding correction (referenced row §16.3 F1, left unedited).** The
+historical F1 wording **"up to 3 resends"** is corrected here: in the *default
+generic application-request retry loop*, `MaxRetries=3` denotes **up to three
+total attempts** — **one initial send plus at most two resends** — **not** three
+resends. This correction does **not** change the F1 class (**GAP**): even a
+single possible second non-idempotent CROB is unacceptable without future
+explicit safety work.
+
+**Actually checked code evidence (this checkout):**
+
+| Location | What it establishes |
+|---|---|
+| `internal/master/master.go:28` | `MaxRetries = 3` constant. |
+| `internal/master/master.go:441-444` | `RetryPolicy` doc contract: "A count of N means the request may be attempted up to N times total … (the initial attempt plus N-1 retries)." |
+| `internal/master/master.go:456-478` | `DefaultRetryPolicy`: `retries := cfg.MaxRetries`; `if retries < 1 { retries = MaxRetries }` (`:466-467`), then every retryable class is set to `retries`. |
+| `internal/master/master.go:485-506` | `retryDecision(class, attempt)`: `if attempt >= limit { return false, 0 }`; `attempt` is the 1-based count of attempts already made (`:481-484`). With `limit=3`, attempts 1 and 2 permit a retry; attempt 3 does not. |
+| `internal/master/master.go:1621-1751` | `sendWithRetryAndGetResponse`: the single generic loop used by reads **and** controls; `attempt++` at the loop top, `retryAgain(...)` gated resends. |
+| `internal/master/master.go:1758-1781` | `retryAgain` → `retryDecision`; terminal wrap `ErrMaxRetries`. |
+| `pkg/dnp3/master/client.go:165-167,259-263,328-330,483` | Public `RetryCount`/`WithRetry` feed `internalConfig.MaxRetries`; `RetryCount=0` is valid (only `<0` rejected) and is coerced by `DefaultRetryPolicy` to `MaxRetries=3`. |
+
+Therefore `WithRetry(0, …)` remains **not** a one-shot control fix: zero is
+coerced to the default 3 total attempts, so a non-idempotent DirectOperate can
+still be re-sent.
+
+**Scope of the bound — what this does NOT prove.** The corrected count applies
+**only** to the generic application-request loop above. It is **not** a proven
+universal on-wire send limit. Lower-level DNP3 confirmed-link **FCB/FCV**
+behavior, any independently queued or retransmitted link frames, and actual
+per-attempt physical TCP send counts are **NOT_TESTED / UNVERIFIED**. This
+correction does **not** assert that there is no link-layer replay, that exactly
+three physical TCP sends occur, or that an ambiguous timeout implies an
+unexecuted CROB.
+
+**Preserved unchanged.** The §16.3 F1/F2/F3 classifications (all **GAP**), F4–F8,
+the §16.4 recovered B3 patch text, its 7687-byte original artifact SHA-256
+`1758ad1c8999f1b948a3773aa82ce823b17b8cdefc73072764c0818fa33b8241`, the
+documented whitespace-normalized Git copy, and all B1–B3 scope claims and
+qualifications. Only this appended section and the matching note in
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` were added.
+
+**Unchanged truth.** Gate B and the CURRENT remain `TASK_BLOCKED`;
+`B4_STATIC_AUDIT_COMPLETE` is not `B4_SAFETY_PASS`; mandatory Go gates remain
+**NOT_RUN**; the ambiguity boundary (any timeout / cancellation /
+disconnect-after-send / absent response on a G12V1 DirectOperate is
+**UNKNOWN / INDETERMINATE**) stands.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

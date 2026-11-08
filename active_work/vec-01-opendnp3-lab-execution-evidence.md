@@ -298,3 +298,35 @@ FAILURE/SUCCESS/resend. F1–F3 require a future owner-authorized correction.
 gates remain **NOT_RUN**.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## B4 F1 retry-count correction — append-only (2026-11-08)
+
+Owner-authorized "B4 F1 retry-count evidence correction — append-only" addendum.
+Evidence-only; execution SHA `177bfd3d965f31050389719597811895a9f7df53`. **This
+note qualifies the F1 row in the B4 table above; the historical row text is
+preserved, not deleted or overwritten.**
+
+The F1 row's historical phrase **"up to 3 control resends"** is corrected: in the
+default generic application-request retry loop, `MaxRetries=3` means **three
+total attempts** — **one initial send plus at most two resends** — **not** three
+resends. Checked at `internal/master/master.go:28` (`MaxRetries=3`),
+`:441-444` (`RetryPolicy` N-total-attempts contract), `:456-478`
+(`DefaultRetryPolicy` coerces `MaxRetries<1` to the default),
+`:485-506` (`retryDecision`: `attempt >= limit` stops the resend),
+`:1621-1751` (`sendWithRetryAndGetResponse`), `:1758-1781` (`retryAgain`); and
+`pkg/dnp3/master/client.go:165-167,259-263,328-330,483` (`RetryCount`/`WithRetry`
+→ `MaxRetries`; `0` valid and coerced to the default). F1 remains **GAP**: even
+one possible second non-idempotent CROB is unacceptable.
+
+**Not proven by this bound:** lower-level confirmed-link FCB/FCV behavior, any
+independently queued/retransmitted link frames and actual per-attempt physical
+TCP send counts are **NOT_TESTED / UNVERIFIED**. No claim of "no link-layer
+replay", of exactly three physical sends, or that an ambiguous timeout implies an
+unexecuted CROB.
+
+Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §17. Gate B and the
+CURRENT remain **`TASK_BLOCKED`**; mandatory Go gates remain **NOT_RUN**.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

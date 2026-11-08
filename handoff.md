@@ -114,6 +114,20 @@ CURRENT remain **`TASK_BLOCKED`**; Go gates **NOT_RUN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §16. Gate B full acceptance,
 Gates C/D/E, B4 implementation and R4 closure remain separately authorized-only.
 
+### Gate B4 F1 retry-count correction — append-only (2026-11-08)
+Owner-authorized "B4 F1 retry-count evidence correction — append-only" addendum
+executed at SHA `177bfd3d965f31050389719597811895a9f7df53` (evidence-only; no
+code/execution). The B4 block above is preserved unchanged; its phrase "up to 3
+resends" is **superseded**: in the default generic application-request loop
+`MaxRetries=3` means **three total attempts** — one initial send plus **at most
+two resends** — verified at `internal/master/master.go:28,441-444,456-478,485-506,1621-1751,1758-1781`.
+`WithRetry(0,…)` is still **not** a one-shot control fix (zero is coerced to the
+default). F1 remains **GAP**; lower-level confirmed-link FCB/FCV replay and actual
+physical TCP send counts remain **NOT_TESTED / UNVERIFIED**. Overall Gate B and
+the CURRENT remain **`TASK_BLOCKED`**; Go gates **NOT_RUN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §17 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md`.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
