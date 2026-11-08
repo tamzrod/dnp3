@@ -1,3 +1,12 @@
+<!-- Archived after verified acceptance. Original task body preserved verbatim below. -->
+
+Archived: 2026-11-08
+Execution commit SHA: 5766bd1c4c3577d67b455201dbbb102026d48a11
+Promotion baseline: f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab (merged PR #20)
+Verification evidence: docs/verification/VEC-01-LAB-DEPLOY-001.md
+Go toolchain: go1.22.12 linux/amd64 (private install $HOME/sdk/go)
+Lab artifacts (outside repo): /tmp/vec01-lab (outstation-demo sha256 8ae8c84125c4920352b6daef4145e2a91de9e02cd6e2c1b94bf6995ebeb093bb)
+
 # VEC-01-LAB-DEPLOY-001 — Isolated OpenDNP3 peer acquisition, build and static smoke gates
 
 Status: CURRENT — HUMAN_PROMOTED

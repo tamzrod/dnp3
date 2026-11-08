@@ -3,17 +3,33 @@
 Repository: tamzrod/dnp3
 Package: VEC-01-LAB-DEPLOY-001
 Branch: work
-CURRENT: VEC-01-LAB-DEPLOY-001
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_READY
+Status: WORK_PACKAGE_READY
 
 
 
 
 
 
-## CURRENT — VEC-01-LAB-DEPLOY-001 (human-promoted 2026-11-08)
-The only CURRENT is `workflow/active_work/VEC-01-LAB-DEPLOY-001.md` on permanent `work`, after safe fast-forward synchronization with merged PR #20 baseline `f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab`. Owner-authorized task scope: controlled pinned OpenDNP3 3.1.2 source acquisition, full dependency/license provenance, offline isolated C++ outstation compilation, static binary smoke checks, isolated network *configuration only*, mandatory Go regression gates and verified evidence. **No DNP3 listener, protocol packets, master/outstation session, packet capture, CROB, physical or production control, PR, merge or release.** This is task promotion, **not** execution or lab deployment. R4 OPEN / VEC-01 NOT EXECUTED / third-party interoperability NOT PROVEN.
+## Package closure — VEC-01-LAB-DEPLOY-001 (2026-11-08)
+The isolated OpenDNP3 peer acquisition/build/static-smoke package is complete
+**without protocol execution**. It added
+`active_work/vec-01-opendnp3-lab-deployment-readiness.md` and lab artifacts
+outside the repo: OpenDNP3 3.1.2 pinned at commit
+`26b4c01e4839bbbda8866655e086471c4917ee53` (tag verified), acquired-archive
+SHA-256 `183cc292…`; dependencies asio-1-16-0, exe4cpp, ser4cpp and (unused)
+catch acquired with SHA-256 recorded and SHA-1 cross-checked against upstream
+declarations; licenses OpenDNP3 Apache-2.0, exe4cpp/ser4cpp BSD-3-Clause, asio
+Boost-1.0. Hermetic no-network build (`unshare -n`, FetchContent fully
+disconnected) produced a byte-identical `outstation-demo`
+(SHA-256 `8ae8c841…`); static ELF/ldd/hash checks passed; the socket-binding
+demo was NOT run and no listener/port-20000/protocol activity occurred. All
+mandatory Go regression gates PASSED on the exact `work` tree at
+`5766bd1c4c3577d67b455201dbbb102026d48a11` with provisioned Go 1.22.12.
+Evidence: `docs/verification/VEC-01-LAB-DEPLOY-001.md`; archive:
+`archive/active-work/VEC-01-LAB-DEPLOY-001.md`. **VEC-01 NOT EXECUTED / R4 OPEN
+/ THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
 ## Package closure — VEC-01-LAB-PREP-001 (2026-11-08)
 The OpenDNP3 laboratory preparation package is complete as **documentation
