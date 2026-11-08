@@ -365,7 +365,7 @@ def check_go_toolchain() -> GateCheck:
                 name="go_available",
                 gate="B3",
                 passed=False,
-                details="WARNING: Go toolchain not available. For Go projects, install: curl -sL https://go.dev/dl/go1.22.5.linux-amd64.tar.gz | tar -xz -C $HOME/go --strip-components=1 && echo 'export PATH=$HOME/go/bin:$PATH' >> ~/.bashrc",
+                details="WARNING: Go toolchain not available. Provision separately only with explicit human approval; this gate never downloads or installs toolchains.",
                 can_proceed=True  # Warning only - can proceed with Python-only checks
             )
         
@@ -476,33 +476,13 @@ def check_go_dependencies() -> GateCheck:
         )
 
 
-def _try_user_install(package: str) -> tuple[bool, str]:
-    """
-    Try to install a Python package using user-local installation.
-    
-    Returns: (success, message)
-    """
-    try:
-        result = subprocess.run(
-            ["pip", "install", "--user", package],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        if result.returncode == 0:
-            return True, f"Successfully installed {package} to user-local directory"
-        else:
-            return False, result.stderr.strip() or "Installation failed"
-    except Exception as e:
-        return False, str(e)
-
-
-def check_python_runtime(auto_install: bool = True) -> GateCheck:
+def check_python_runtime(auto_install: bool = False) -> GateCheck:
     """
     Gate B3.3: Verify Python runtime for KDE Runtime.
     
     Check that Python 3.10+ is available and PyYAML is installed.
-    If not installed and auto_install is True, try user-local installation.
+    Observation only. The legacy auto_install parameter is ignored for API
+    compatibility; installation is never performed by a bootstrap gate.
     """
     try:
         # Check Python version
@@ -533,36 +513,14 @@ def check_python_runtime(auto_install: bool = True) -> GateCheck:
         )
         
         if yaml_result.returncode != 0:
-            # PyYAML not found - try auto-install
-            if auto_install:
-                success, msg = _try_user_install("pyyaml")
-                if success:
-                    # Verify installation worked
-                    yaml_result = subprocess.run(
-                        ["python3", "-c", "import yaml; print(yaml.__version__)"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if yaml_result.returncode == 0:
-                        yaml_version = yaml_result.stdout.strip()
-                        return GateCheck(
-                            name="python_runtime",
-                            gate="B3",
-                            passed=True,
-                            details=f"PASSED: {python_version}, PyYAML {yaml_version} (auto-installed)"
-                        )
-            
-            # Still not available
-            install_cmd = "pip install --user pyyaml"
             return GateCheck(
                 name="pyyaml_installed",
                 gate="B3",
                 passed=False,
-                details=f"FAILED: PyYAML not installed. Run: {install_cmd}",
+                details="FAILED: PyYAML not installed; no automatic installation permitted. Request separately authorized provisioning.",
                 can_proceed=False
             )
-        
+
         yaml_version = yaml_result.stdout.strip()
         
         return GateCheck(
