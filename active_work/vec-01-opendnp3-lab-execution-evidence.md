@@ -88,3 +88,40 @@ This note supersedes the **prospective reviewer/signature requirement** in the o
 Gate C/D/E and all previously unrun Go checks remain **NOT_TESTED**, not PASS. JR must not operate the peer until objective Gate B checks PASS in a demonstrably isolated environment. Preserve original raw PCAP and trace-derived `.vec` only when later authorized execution actually occurs. No mandatory external reviewer/signature. No master-code fixes, new scope, self-certification of full IEEE 1815, production access or R4 closure.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Gate B substep 1 — isolation construction and proof (2026-11-08)
+
+Owner-authorized "isolation construction and proof only" substep. **Result:
+`NETWORK_ISOLATION_PASS`** (isolation only). Gate B overall remains
+`TASK_BLOCKED`. Execution SHA `675183a64179c084ece77728bb57f779c679af4e`.
+
+A dedicated isolated lab was constructed with two private network namespaces
+(`vec01-master`, `vec01-outstation`) joined by an internal veth pair only
+(subnet `10.77.0.0/24`, addrs `10.77.0.1`/`10.77.0.2`), forwarding disabled and
+a deny-all policy applied **inside the lab only**. The host/pod routes, firewall
+and cluster network policy were **not** modified (host netns inode unchanged).
+
+| Objective boundary check | Result |
+|---|---|
+| No external IPv4/IPv6 route (passive lookups) | PASS (unreachable) |
+| No route to cluster API / pod gateway | PASS (unreachable) |
+| No DNS resolution | PASS (fails) |
+| No NAT / bridge / published listener | PASS (none) |
+| Lab-local reachability only | PASS (veth only) |
+| Forwarding disabled in lab | PASS (`0`) |
+| No IPv6 globals | PASS (0) |
+| Physical I/O absent (serial/GPIO/mem) | PASS (absent) |
+| Host/pod boundary unchanged | PASS (inode unchanged) |
+
+Evidence (outside Git, SHA-256 manifest included):
+`/workspace/vec01-lab-artifacts/gate-b-isolation-proof/`.
+
+Still BLOCKED and separately authorized-only: **B2** listener safety (proposed
+`10.77.0.2:20000`, link addrs 3/4), **B3** peer v0 capability (G1V1/G30V1/G20V1)
+with a verifiable memory-backed **BO[0]** CROB target, **B4** bounds/retry
+policy, then Gates C/D/E and the mandatory Go gates. No listener, DNP3/TCP
+packet, control, CROB, PCAP or networked Go test ran in this substep.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

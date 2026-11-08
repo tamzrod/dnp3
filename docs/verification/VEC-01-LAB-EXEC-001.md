@@ -330,3 +330,103 @@ archive/closure, PR, merge, or R4 status change occurred in this substep.**
 **Prospective acceptance:** Automated, recorded isolation/routes/forwarding/firewall/listener checks and actual simulator-only CROB wiring must PASS before **any** protocol execution; finite deadlines, no blind retries; then actual external OpenDNP3 3.1.2 interoperable traffic, genuine raw PCAP and capture-derived `.vec`, IEEE 1815 v0 wire-field comparisons, mandatory positive/negative cases and fresh Go gates must PASS. Missing/failed/untested mandatory checks retain TASK_BLOCKED. A second-person sign-off or separate independent reviewer verdict is no longer necessary, but the peer remains an independently implemented C++ stack and evidence must be independently reproducible.
 
 **Checkpoint scope:** Historical report text above preserved; this additive note is not a claim of execution, compliance, R4 closure, new PR or merge. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 11. Gate B substep 1 — isolation construction and proof — 2026-11-08 (NETWORK_ISOLATION_PASS)
+
+**Authority:** Owner-authorized "queued Gate B substep 1 — isolation construction
+and proof only" addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`.
+Scope is limited to resolving **only** the first objective Gate B blocker
+(isolated, non-routed network with no internet/OT reachability). Gates B2–B5, C,
+D, E were **not** authorized and were **not** performed. Execution SHA:
+`675183a64179c084ece77728bb57f779c679af4e` (branch `work`).
+
+**Verdict: `NETWORK_ISOLATION_PASS`** (isolation only). **Gate B overall remains
+`TASK_BLOCKED`** because the listener-safety (B2), peer v0 capability/simulated
+BO[0] (B3) and bounds/retry (B4) conditions are separate and not yet authorized
+or passed.
+
+### 11.1 What was built (non-Git, disposable, lab-only)
+
+A dedicated isolated network was constructed using two private network
+namespaces joined by an **internal veth pair only** — no host networking,
+no privileged bridge, no NAT, no external port publishing, no production/OT
+interface. The host/pod routes and firewall were **not** modified.
+
+| Item | Value |
+|------|-------|
+| Master netns | `vec01-master`, netns inode `net:[4026532705]` |
+| Outstation netns | `vec01-outstation`, netns inode `net:[4026532776]` |
+| Host/pod netns (unchanged) | `net:[4026532371]` |
+| Lab subnet | `10.77.0.0/24` (non-routed illustrative) |
+| Master lab addr | `10.77.0.1/24` on `veth-m` (peer `link-netns vec01-outstation`) |
+| Outstation lab addr | `10.77.0.2/24` on `veth-o` (peer `link-netns vec01-master`) |
+| Link addrs (planned) | master 3, outstation 4 (not yet activated) |
+| Tooling | iproute2 6.15.0, iptables 1.8.11 (nf_tables), util-linux unshare 2.41.5 |
+
+### 11.2 Objective isolation checks (all PASS)
+
+| # | Check | Method | Result |
+|---|-------|--------|--------|
+| C1 | No external IPv4 route | passive `ip route get 8.8.8.8` | exit 2 (unreachable), both ns |
+| C2 | No external IPv6 route | passive `ip -6 route get 2001:4860:4860::8888` | exit 2 (unreachable), both ns |
+| C3 | No route to cluster API `10.3.0.1` | passive `ip route get` | exit 2 (unreachable), both ns |
+| C4 | No route to pod gateway `169.254.1.1` | passive `ip route get` | exit 2 (unreachable), both ns |
+| C5 | Lab-local reachability | `ping` 10.77.0.2 / 10.77.0.1 | exit 0 both directions |
+| C6 | No listeners inside lab | `ss -tln` | 0 LISTEN sockets, both ns |
+| C7 | Forwarding disabled | `sysctl net.ipv4.ip_forward` | `0`, both ns |
+| C8 | DNS unreachable | `getent hosts example.com` | exit 2, both ns |
+| C9 | No NAT table entries | `iptables -t nat -L -n` | empty, both ns |
+| C10 | No bridge device | `ip link show type bridge` | none |
+| C11 | veth peers are lab-internal | `ip -d link show` | `link-netns` = the other lab ns |
+| C12 | No IPv6 globals | `ip -6 addr show scope global` | 0, both ns |
+| C13 | Deny-all firewall (lab only) | `iptables -L -n -v` | OUTPUT/INPUT DROP except `10.77.0.0/24` + `lo` |
+
+### 11.3 Physical-I/O absence (static)
+
+- `/dev/ttyS0`, `/dev/ttyS1`, `/dev/ttyUSB0`, `/dev/ttyACM0`, `/dev/mem`,
+  `/dev/port`: **absent**.
+- No GPIO controllers exposed (`/sys/class/gpio/gpiochip*` absent).
+- No field-bus / gateway path present. (Also confirmed in §9.4 for the peer.)
+
+### 11.4 Host/pod boundary unchanged (no scope creep)
+
+- Host netns inode still `net:[4026532371]`; host default route still
+  `default via 169.254.1.1 dev eth0`; host `iptables` still empty; host listeners
+  unchanged (agent runtime ports 60000/60001 only). No host/production route,
+  firewall, or Kubernetes network policy was modified.
+
+### 11.5 Evidence location and hashes (outside Git)
+
+Durable path: `/workspace/vec01-lab-artifacts/gate-b-isolation-proof/`.
+
+| File | SHA-256 |
+|------|---------|
+| `isolation-summary.txt` | `1203f57f25ddb7176db870f22ceca40883ee8d18fe4014f4c6ca355511af6313` |
+| `isolation-checks.txt` | `8debda109aa51d2351774dd6984e371e47d56cf0ee664c27de50c3a1f6f5e2d7` |
+| `lab-namespace-inventory.txt` | `77d285930b010149ce4396570f7911e867bb41192871827da7ef2b38082bf352` |
+| `physical-io-and-boundary.txt` | `3fb52549b782fccaff953380e8971392d4a61c0d9afb66633835188b4314bce5` |
+| `build-isolated-lab.sh` (reproducible construction) | `78d302534e3b29b160b2cac07dff5d6666a80777ede9983322f22cc6c81acca4` |
+| `isolation-manifest.txt` | self-describing manifest of the above |
+
+### 11.6 Scope compliance and hard prohibitions respected
+
+- **No** DNP3 listener activation, **no** TCP/DNP3 packet, **no** control/CROB,
+  **no** PCAP, **no** networked Go test suite execution, **no** peer-variation or
+  simulated-BO adaptation, **no** production probe, **no** new branch/PR/merge,
+  **no** R4 change. Only allowlisted docs updated.
+- Both top markers remain `Status: TASK_BLOCKED`; CURRENT not archived/closed.
+
+### 11.7 Honest limitations and next gate
+
+- A PASS of **network isolation only** is **not** a PASS of Gate B overall.
+- Still BLOCKED and separately authorized-only: B2 listener safety (proposed
+  bind limited to `10.77.0.2:20000`, addrs 3/4), B3 peer v0 capability
+  (G1V1/G30V1/G20V1) with a verifiable memory-backed **BO[0]** CROB target, B4
+  bounds/retry policy, then Gates C/D/E and the mandatory Go gates.
+- The lab namespaces are disposable and were left constructed (no listener).
+  Teardown command: `sudo ip netns del vec01-master && sudo ip netns del vec01-outstation`.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

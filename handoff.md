@@ -19,6 +19,23 @@ The owner has amended the existing CURRENT with a later, explicit precedence rul
 
 **Still TASK_BLOCKED on actual technical evidence:** the inspected pod has internet egress/forwarding and does not prove isolated OT-free routes; stock demo binds `0.0.0.0:20000` with 10/1 addresses, offers G1V2/G30V5 rather than verified target G1V1/G30V1, and lacks a demonstrated memory-only BO[0] CROB target. Missing isolation, listener, v0 variation, control safety or bounded deadlines must report FAIL/NOT_TESTED, never PASS. No network/test/control authorization or protocol execution occurred during the correction. `CURRENT` remains unchanged and `TASK_BLOCKED` until objective Gate B PASS, followed by valid independent-peer interoperability evidence, negative tests and mandatory Go gates. No PR/merge/R4 closure. JR invocation remains `operation cwal`.
 
+### Gate B substep 1 result — isolation construction and proof (2026-11-08)
+Owner-authorized "isolation construction and proof only" substep executed at SHA
+`675183a64179c084ece77728bb57f779c679af4e`. A dedicated isolated lab was built
+from two private netns (`vec01-master`, `vec01-outstation`) joined by an internal
+veth pair only (`10.77.0.0/24`; addrs `10.77.0.1`/`10.77.0.2`), forwarding
+disabled, deny-all inside the lab; the host/pod routes, firewall and cluster
+policy were **not** modified. Objective boundary checks all **PASS**: no external
+IPv4/IPv6 route, no route to cluster API/gateway, no DNS, no NAT/bridge/published
+listener, lab-local-only reachability, no IPv6 globals, no physical I/O, host
+boundary unchanged. **Result: `NETWORK_ISOLATION_PASS` (isolation only).** Gate B
+overall remains `TASK_BLOCKED`; still separately authorized-only: B2 listener
+safety, B3 peer v0 variations + verifiable memory-backed BO[0], B4 bounds/retry,
+then Gates C/D/E and mandatory Go gates. Evidence (outside Git, SHA-256 manifest):
+`/workspace/vec01-lab-artifacts/gate-b-isolation-proof/`. No listener, DNP3/TCP
+packet, control, CROB, PCAP or networked Go test ran. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §11.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
