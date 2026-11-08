@@ -125,3 +125,38 @@ policy, then Gates C/D/E and the mandatory Go gates. No listener, DNP3/TCP
 packet, control, CROB, PCAP or networked Go test ran in this substep.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## Gate B substep 2 — static listener / link-address proof (2026-11-08)
+
+Human-authorized "Gate B substep 2 — static listener and link-address
+configuration only" addendum. Verdict: **`NETWORK_ISOLATION_NOT_TESTED`;
+`LISTENER_STATIC_CONFIG_NOT_TESTED`**. Overall Gate B and CURRENT remain
+`TASK_BLOCKED`. Execution SHA `bcec52ede1e7fe59c6a457426116ddc6efb5ad8b`.
+
+The addendum's §2 precondition — a **live** reverification of the substep-1
+namespaces before any B2 work — did **not** hold, so B2 preparation stopped as
+mandated (no silent recreation of the lab).
+
+| Precondition | Actual result | Verdict |
+|---|---|---|
+| `vec01-master`/`vec01-outstation` exist | no named netns (`/run/netns`, `/var/run/netns` absent) | FAIL |
+| Namespace identity matches substep 1 | self inode `net:[4026532553]` ≠ recorded `net:[4026532371]`; different pod | FAIL |
+| Internal veth + `10.77.0.0/24` present | only `eth0`, `lo`; no veth; no lab subnet | FAIL |
+| No default/external IPv4 route | default route `via 169.254.1.1 dev eth0` present | FAIL |
+| Forwarding disabled | `net.ipv4.ip_forward = 1` | FAIL |
+| Deny-all lab firewall | nft empty; iptables policy ACCEPT, no rules | FAIL |
+| iproute2 available | `ip` MISSING | NOT_TESTED |
+| No physical I/O | serial/USB/mem/port absent | PASS |
+| Retained peer artifacts (Gate A) | `outstation-demo`/`libopendnp3.a` and durable store contents ABSENT | FAIL |
+
+Go toolchain MISSING (no Go gate ran; prior NOT_RUN retained, not converted).
+New evidence (outside Git, SHA-256 manifest):
+`/workspace/vec01-lab-artifacts/gate-b-substep2-reverify/`. No listener, DNP3/TCP
+packet, control, CROB, PCAP, namespace recreation or networked Go test occurred.
+
+Resumption prerequisites: a dedicated isolated non-routed runtime with iproute2;
+the pinned OpenDNP3 3.1.2 peer bytes restored to the durable store; then a fresh
+owner-authorized B2 step. B3/B4, Gates C/D/E and the mandatory Go gates remain
+not authorized and not performed.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

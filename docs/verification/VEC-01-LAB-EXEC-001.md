@@ -430,3 +430,97 @@ Durable path: `/workspace/vec01-lab-artifacts/gate-b-isolation-proof/`.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 12. Gate B substep 2 — static listener / link-address proof — 2026-11-08 (NOT_TESTED)
+
+**Authority:** Owner-authorized "Gate B substep 2 — static listener and
+link-address configuration only" addendum in CURRENT
+`workflow/active_work/VEC-01-LAB-EXEC-001.md`. Scope: reverify the surviving
+isolated lab and statically prove a prospective listener binding of exactly
+`10.77.0.2:20000` with outstation link address 4 and master link address 3,
+**without** activating any listener, sending any TCP/DNP3 packet or invoking any
+control. Preconditions §2 of that addendum require a **live** reverification of
+the substep-1 namespaces before any B2 work; if they are missing, the addendum
+mandates **STOP TASK_BLOCKED** with `NETWORK_ISOLATION_NOT_TESTED`/`FAIL` and
+forbids silently recreating them under B2-only authority. Execution SHA:
+`bcec52ede1e7fe59c6a457426116ddc6efb5ad8b` (branch `work`).
+
+**Verdict: `NETWORK_ISOLATION_NOT_TESTED`; `LISTENER_STATIC_CONFIG_NOT_TESTED`.**
+Overall Gate B and the CURRENT remain `TASK_BLOCKED`. No B2 artifact was produced
+because the mandatory preconditions did not hold.
+
+### 12.1 Live precondition reverification (all FAIL / NOT_TESTED)
+
+The substep-1 lab does **not** survive, and the current execution environment is
+not the pod recorded in substep 1. Actual measured results:
+
+| # | Precondition (addendum §2) | Method | Actual result | Verdict |
+|---|----------------------------|--------|---------------|---------|
+| P1 | `vec01-master` / `vec01-outstation` namespaces exist | `ls -la /run/netns`, `/var/run/netns` | both directories **absent**; no named netns | **FAIL** |
+| P2 | Namespace identities match substep 1 | `readlink /proc/self/ns/net` | self inode `net:[4026532553]` ≠ recorded host `net:[4026532371]`; different pod | **FAIL** |
+| P3 | Internal veth pair + lab addresses present | `/sys/class/net`, `ip` | only `eth0`, `lo`; **no** `veth-m`/`veth-o`; no `10.77.0.0/24` | **FAIL** |
+| P4 | No public/OT/cluster/default route (IPv4) | `/proc/net/route` | default route `via 169.254.1.1 dev eth0` **present** (internet egress) | **FAIL** |
+| P5 | Forwarding disabled | `sysctl net.ipv4.ip_forward` | `1` (enabled) | **FAIL** |
+| P6 | Deny-all lab firewall | `nft list ruleset`, `iptables -L` | nft **empty**; iptables INPUT/FORWARD/OUTPUT policy **ACCEPT**, no rules | **FAIL** |
+| P7 | No externally reachable published listener | `/proc/net/tcp{,6}` | 2 LISTEN sockets on `0.0.0.0` (agent runtime 60000/60001); no lab listener | n/a (host pod) |
+| P8 | iproute2 available to build/inspect the lab | `command -v ip` | `ip` **MISSING** (iproute2 not installed) | **NOT_TESTED** |
+| P9 | No physical I/O | `ls /dev/ttyS*` etc. | ttyS0/S1/USB0/ACM0, `/dev/mem`, `/dev/port` **absent** | PASS |
+| P10 | Host/pod identity | `hostname` | `runtime-aozicfatuefownhn-86999879b-cmc2d` ≠ substep-1 `runtime-omgblkbssxnzsmru-8967c77bc-q48q7` | different environment |
+
+Because the isolated lab is gone and the present host is a routed, forwarding,
+internet-egress pod, **no isolation state can be reverified and no B2 listener
+proof can be made here**. Per addendum §2 the namespaces must **not** be silently
+recreated under this B2-only authorization, and no listener/static bind test was
+attempted.
+
+### 12.2 Retained peer artifacts (Gate A precondition) — ABSENT
+
+- Durable store `/workspace/vec01-lab-artifacts/` currently contains **only** this
+  substep's reverification directory; the historical `gate-b-isolation-proof/`
+  and `gate-b-reviewer-packet/` subdirectories are **ABSENT**.
+- `outstation-demo` and `libopendnp3.a` are **absent** everywhere on the
+  filesystem (searched to depth 6); `/tmp/vec01-lab` is **absent**.
+- Therefore the pinned peer bytes cannot be rehashed and no peer
+  configuration/binary can be inspected or prepared. The addendum §3 requires
+  validating these before edits; without them B2 preparation is not possible.
+- Go toolchain: **MISSING** (`go: command not found`), so no Go gate could run
+  (consistent with prior NOT_RUN records; not converted to PASS).
+
+### 12.3 Newly retained evidence (outside Git)
+
+Durable path: `/workspace/vec01-lab-artifacts/gate-b-substep2-reverify/`.
+
+| File | SHA-256 |
+|------|---------|
+| `live-netns-inventory.txt` | `e9e66f327a224df81535a1f6a6ec86f76a426700442c566d59fe8d81cb7ff04f` |
+| `live-network-and-boundary.txt` | `86bd6b581d25a278a4f5659c35d6eab3d793a49a175bb991555c9d82dc216cd9` |
+| `live-firewall-io-and-artifacts.txt` | `005c2e8e91d8620072431029122708a79e21487c311e3c105d60183a023ebfe6` |
+| `SHA256SUMS.txt` | self-describing manifest of the above |
+
+### 12.4 Scope compliance and hard prohibitions respected
+
+- **No** listener activation, **no** TCP/DNP3 packet, **no** control/CROB,
+  **no** PCAP, **no** networked Go test suite, **no** peer-variation or
+  simulated-BO adaptation, **no** namespace recreation, **no** production probe,
+  **no** new branch/PR/merge, **no** R4 change.
+- Only allowlisted documentation was updated; both top markers remain
+  `Status: TASK_BLOCKED`; CURRENT not archived/closed.
+
+### 12.5 Honest limitation and next gate
+
+- `LISTENER_STATIC_CONFIG_PASS` requires verified surviving isolation **and**
+  static confirmation of all endpoint/address settings. Neither condition can be
+  met in the present environment, so B2 is recorded **NOT_TESTED**, not FAIL of
+  the design, and not a PASS.
+- B2 remains separately authorized-only. Resumption prerequisites: a dedicated
+  isolated, non-routed runtime (no public/OT/cluster route, forwarding disabled,
+  deny-all lab policy) with iproute2 available; the pinned OpenDNP3 3.1.2 peer
+  bytes restored to the durable store; then a fresh owner-authorized B2 step can
+  prepare and statically prove `10.77.0.2:20000` with link addresses 3/4.
+- B3 (peer v0 variations + memory-backed BO[0]) and B4 (bounds/retry), then Gates
+  C/D/E and the mandatory Go gates, remain not authorized and not performed.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

@@ -36,6 +36,24 @@ then Gates C/D/E and mandatory Go gates. Evidence (outside Git, SHA-256 manifest
 packet, control, CROB, PCAP or networked Go test ran. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §11.
 
+### Gate B substep 2 result — static listener/link-address proof (2026-11-08)
+Owner-authorized "static listener and link-address configuration only" substep
+executed at SHA `bcec52ede1e7fe59c6a457426116ddc6efb5ad8b`. Its §2 precondition —
+a **live** reverification of the substep-1 namespaces before any B2 work — did
+**not** hold, so B2 stopped as mandated and the lab was **not** silently
+recreated. Actual live reverification: no named netns (`/run/netns`,
+`/var/run/netns` absent); self netns inode `net:[4026532553]` ≠ recorded host
+`net:[4026532371]` (different pod `runtime-aozicfatuefownhn-86999879b-cmc2d`);
+only `eth0`/`lo` (no veth, no `10.77.0.0/24`); default route `via 169.254.1.1`
+present; `ip_forward=1`; nft empty and iptables policy ACCEPT; `ip` MISSING;
+serial/USB/mem/port absent (PASS); pinned peer bytes and prior durable artifacts
+ABSENT; Go MISSING. **Result: `NETWORK_ISOLATION_NOT_TESTED`;
+`LISTENER_STATIC_CONFIG_NOT_TESTED`.** Gate B overall remains `TASK_BLOCKED`; B2
+still separately authorized-only. Evidence (outside Git, SHA-256 manifest):
+`/workspace/vec01-lab-artifacts/gate-b-substep2-reverify/`. No listener,
+DNP3/TCP packet, control, CROB, PCAP, namespace recreation or networked Go test
+ran. See `docs/verification/VEC-01-LAB-EXEC-001.md` §12.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
