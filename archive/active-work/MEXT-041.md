@@ -1,3 +1,10 @@
+<!-- Archived after verified acceptance. Original task body preserved verbatim below. -->
+
+Archived: 2026-11-08
+Base commit (before change): 0751184e255fa275fc1f47162fe9649be4f0620d
+Fix commit: branch head of work/mext-postgate-roadmap
+Verification evidence: docs/verification/MEXT-041.md
+
 # MEXT-041 — Post-gate events / unsolicited backlog stub
 
 Status: QUEUED — HUMAN_PREPROMOTED (NOT CURRENT)

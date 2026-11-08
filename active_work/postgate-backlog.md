@@ -86,3 +86,94 @@ Planning only — none of the following exists for SBO today:
 This stub asserts no SBO support, no SBO conformance, and no external
 interoperability. It does not authorize any Select-Before-Operate request, any
 code change, or any change to the v0 supported profile.
+
+---
+
+## MEXT-041 — Event classes / unsolicited responses
+
+Status: **DEFERRED / NOT SUPPORTED** (planning stub only)
+
+### Current state
+
+Event classes and unsolicited responses are **not implemented, not verified, and
+not approved**. The v0 supported profile rejects them:
+`active_work/supported-profile.md` lists "Unsolicited responses and event
+delivery" under *Explicitly Unsupported*, dispositions Master
+`EnableUnsolicited`, `DisableUnsolicited`, and `SetUnsolicitedHandler` as
+**Reject** ("No unsolicited delivery path."), dispositions Outstation
+`WithUnsolicitedMode` and `SetUnsolicitedHandler` as **Reject**, and
+dispositions `types.ReadAllEvents` as **Reject** ("Event objects are out of
+scope.").
+
+This stub does not change the v0 supported profile. The supported-profile
+boundary and its rejected-option list remain authoritative and unchanged. Only
+the solicited Class 0 static read path is supported today; the application-layer
+SEQ/CON behavior that is verified applies to the solicited request/response
+path, not to unsolicited delivery.
+
+### What events and unsolicited would add (if ever approved)
+
+An events/unsolicited profile would add event object classes (Class 1/2/3 event
+data), event buffering with retrieval, and unsolicited responses the outstation
+sends without a matching master request. This is distinct from the v0 solicited
+Class 0 static read path and would require new public API surface, new wire
+exchanges, new confirmation/retry semantics, and new negative-case handling.
+
+### Prerequisites before any design
+
+The following must be resolved and separately approved before implementation:
+
+1. **Explicit design approval.** A recorded KDE/architecture decision for the
+   events/unsolicited profile, its public API shape, and its supported and
+   unsupported boundary. No event or unsolicited design is approved by this
+   stub.
+2. **Protocol specification evidence.** IEEE 1815 citations for the event object
+   groups and variations in scope, the unsolicited response function codes,
+   enable/disable semantics, and the CON/SEQ confirmation rules that govern
+   unsolicited delivery.
+3. **Supported-profile update.** A revised profile document that moves events
+   and unsolicited from *Reject* to an approved, bounded capability with its own
+   acceptance criteria.
+
+### Design questions to be researched
+
+- **Event class group/variation coverage.** Which event object groups and
+  variations (and which event classes) are in scope, how they map to points, and
+  how they are bounded and encoded.
+- **Unsolicited enable/disable semantics.** How enable/disable is negotiated per
+  class, how the outstation tracks enablement state, and what happens on
+  reconnect or configuration change.
+- **CON/SEQ and application confirmation.** How the unsolicited SEQ numbering,
+  CON flag, and application-layer confirmation interact, and how confirmation
+  timeout and retry are bounded without duplicating or losing events.
+- **Retry and timeout.** How unsolicited retransmission is bounded, how it
+  coexists with solicited traffic, and how ambiguous outcomes are handled.
+- **Duplicate handling and bounded queues.** How duplicate event delivery is
+  detected and suppressed, and how the outstation's event buffer is bounded
+  under backpressure, slow masters, and disconnects.
+- **Bounded resources.** Limits on buffered events, outstanding confirmations,
+  and per-connection state, consistent with the project's bounded-memory and
+  lifecycle rules.
+
+### Required evidence for a future approval
+
+Planning only — none of the following exists for events/unsolicited today:
+
+- Golden-wire vector tests for the event object encodings and unsolicited
+  response frames, including LSB-first fields.
+- Negative tests for confirmation timeout, disconnect mid-unsolicited, duplicate
+  delivery, and event-buffer overflow.
+- Lifecycle and concurrency tests (enable/disable across reconnect, racing
+  solicited and unsolicited traffic), including race testing where applicable.
+- Non-production validation only. No live SCADA or field-device unsolicited
+  traffic may be issued.
+- Independent, third-party interoperability evidence if any external
+  compatibility claim is ever made. In-repo TCP loopback tests do not establish
+  external interoperability or full IEEE 1815 conformance.
+
+### Non-claims
+
+This stub asserts no event or unsolicited support, no event/unsolicited
+conformance, and no external interoperability. It does not authorize any
+unsolicited delivery path, any code change, or any change to the v0 supported
+profile.
