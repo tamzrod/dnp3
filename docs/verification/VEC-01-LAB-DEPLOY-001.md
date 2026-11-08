@@ -40,8 +40,16 @@ committed; the repo checkout stayed clean.
 - Markers in `workflow/active_work/README.md` and `handoff.md` match:
   Repository `tamzrod/dnp3`, Package `VEC-01-LAB-DEPLOY-001`, Branch `work`,
   CURRENT `VEC-01-LAB-DEPLOY-001`, QUEUED `NONE`, Status `TASK_READY`.
-- `origin/main` = `95ac10289ead46c09264a9da2bb877f0e0507410`; merge base of
-  `work` and `main` = `95ac1028…` (main is an ancestor of `work`).
+- Independently verified promotion/integration baseline: `main` at
+  `f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab` (merged PR #20), which is also the
+  merge base of `work` and `main` and is an ancestor of `work` (checked against
+  the remote `refs/heads/main` via `git ls-remote`).
+- The original report asserted `origin/main` =
+  `95ac10289ead46c09264a9da2bb877f0e0507410` with merge base `95ac1028…`; that
+  SHA is PR #17's historical baseline, **not** the PR #20 promotion baseline.
+  The local `origin/main` tracking-ref value actually observed at original
+  startup is **UNVERIFIED** from retained evidence and is not rewritten here as
+  though `f21f32c…` had been seen locally.
 - `bash scripts/cwal-check.sh` on the clean, remote-synced checkout →
   `CWAL CHECK OK: CURRENT=VEC-01-LAB-DEPLOY-001 branch=work`, exit 0.
 - `git status --porcelain` clean before editing.

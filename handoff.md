@@ -3,9 +3,9 @@
 Repository: tamzrod/dnp3
 Package: DNP3-VEC01-LAB-DEPLOY-PROVENANCE-CORRECTION-001
 Branch: work
-CURRENT: DNP3-061
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_READY
+Status: WORK_PACKAGE_READY
 
 
 
@@ -13,8 +13,21 @@ Status: TASK_READY
 
 
 
-## CURRENT — DNP3-061 (human-promoted 2026-11-08)
-The only CURRENT is `workflow/active_work/DNP3-061.md` on permanent `work`. Owner-authorized **provenance-only** correction of the historical `origin/main` and merge-base wording in `docs/verification/VEC-01-LAB-DEPLOY-001.md`. The verified PR #20 promotion baseline is `f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab`; JR's actual local `origin/main` at original startup is **UNVERIFIED** and must not be invented. No prior build hash, Go result, original archived task, readiness plan, runtime code or non-claim can be changed. All mandatory Go checks must actually PASS. This promotion is **TASK_READY**, not execution. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+## Package closure — DNP3-061 (2026-11-08)
+The VEC-01-LAB-DEPLOY-001 startup provenance correction is complete. DNP3-061
+replaced only the startup `origin/main`/merge-base paragraph in
+`docs/verification/VEC-01-LAB-DEPLOY-001.md`: the independently verified
+promotion/integration baseline is `main` at
+`f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab` (merged PR #20, also the merge base of
+`work` and `main`), while the earlier `95ac1028…` assertion is identified as PR
+#17's historical baseline and the original local `origin/main` tracking-ref
+observation is recorded as **UNVERIFIED** (not invented). All other bytes,
+build hashes, recorded test exits, archive and readiness plan are unchanged.
+All mandatory Go gates PASSED on the exact `work` tree at
+`1fe78501281b6ffd73c2f48d687e67745d7d0809` with provisioned Go 1.22.12.
+Evidence: `docs/verification/DNP3-061.md`; archive:
+`archive/active-work/DNP3-061.md`. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
 ## Package closure — VEC-01-LAB-DEPLOY-001 (2026-11-08)
 The isolated OpenDNP3 peer acquisition/build/static-smoke package is complete
