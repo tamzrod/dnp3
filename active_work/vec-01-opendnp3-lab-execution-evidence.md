@@ -42,3 +42,30 @@ Durable lab artifact store (outside Git, outside `/tmp`):
   not a technical protocol failure.
 - Closing R4, changing `supported-profile.md`, production use, and feature
   expansion each require separate owner approval — none was sought or given.
+
+## Gate B evidence-preparation substep (human-authorized addendum, 2026-11-08)
+
+Executed under the owner-authorized **Gate B pushback addendum (EVIDENCE
+PREPARATION ONLY)**; task remains `TASK_BLOCKED`. **Passive/static only: no
+listener, no TCP/DNP3 packet, no capture, no control, no probing.** Substep
+execution SHA: `9d6833c914608c517748f9c26a8a5fc06701170f`.
+
+| Item | Result | Reference |
+|------|--------|-----------|
+| Retained peer re-hash | PASS (matches pinned) | `gate-b-reviewer-packet/inspection/peer-artifact-manifest.txt` |
+| Network/isolation (passive) | NOT ISOLATED (routed k8s pod, internet egress, `ip_forward=1`) | `…/inspection/network-inventory.txt` |
+| Firewall / tooling (list-only) | no policy; `ip` absent → cannot build `10.77.0.0/24` | `…/inspection/firewall-inventory.txt` |
+| Peer configuration | binds `0.0.0.0:20000`, addrs 10/1; default BI = **G1V2** (not G1V1); AI[0]=G30V5 | `…/inspection/peer-configuration.txt` |
+| Simulator / output mapping | points memory-backed; **no BO[0] target**; CROB = status echo only; no physical I/O | `…/inspection/simulator-and-output-mapping.txt` |
+| UNAPPROVED reviewer packet | assembled with blank reviewer checklist | `/workspace/vec01-lab-artifacts/gate-b-reviewer-packet/` |
+
+Outstanding UNVERIFIED: reviewer identity/decision; environment isolation and
+no-OT-reachability; peer v0 variation compliance; verifiable BO[0] CROB target;
+Class-0 qualifier / multi-header / sequence behaviour; Go toolchain.
+
+Resumption prerequisites (all required): authenticated independent reviewer
+sign-off on the actual environment and hashes; demonstrably isolated non-routable
+topology; peer configured to v0 variations with a verifiable simulator-only
+BO[0]; and owner authorization to proceed. Until then: `TASK_BLOCKED`.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

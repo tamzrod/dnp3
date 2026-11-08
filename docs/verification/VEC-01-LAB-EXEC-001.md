@@ -210,3 +210,109 @@ owner authorization that resolves the task's mandatory independent-review
 requirement for an isolated, simulated, non-routable lab. Only after that
 approval may Gates C–E and the full Go gates run. No corrective action was taken
 autonomously.
+
+---
+
+## 9. Gate B evidence-preparation substep (human-authorized addendum, 2026-11-08)
+
+Under the owner-authorized **Gate B pushback addendum (EVIDENCE PREPARATION
+ONLY)**, the following **passive/static** work was performed while the task
+remains `TASK_BLOCKED`. **No listener was started; no TCP/DNP3 connection was
+made; no packet was sent or captured; no CROB was invoked; nothing was probed on
+any operational network.** Execution SHA for this substep:
+`9d6833c914608c517748f9c26a8a5fc06701170f` (branch `work`).
+
+### 9.1 Durable location and hashes
+
+All substep evidence is retained **outside Git** in the durable store
+`/workspace/vec01-lab-artifacts`, under
+`gate-b-reviewer-packet/` (UNAPPROVED reviewer packet; see its
+`packet-manifest.txt` for SHA-256 of every file). Retained peer bytes were
+re-hashed fresh and still match the pinned values:
+`outstation-demo` `8ae8c841…`, `libopendnp3.a` `e2926474…`, source tarball
+`183cc292…`, dependencies `18883c35…` / `2a8a2c7d…` / `5a78f83d…` /
+`197640c0…`.
+
+### 9.2 Static network / isolation inspection (passive)
+
+| Observation | Actual value | Verdict |
+|-------------|--------------|---------|
+| Host | `runtime-omgblkbssxnzsmru-8967c77bc-q48q7` (Kubernetes pod) | not a dedicated offline host |
+| Interfaces | only `lo` and `eth0` | no isolated segment |
+| Address / route | `10.2.19.149/…`, live default route via `169.254.1.1` | routed, not non-routed |
+| Internet egress | DNS `10.3.0.10`, k8s API `10.3.0.1:443` reachable | internet/control-plane reachable |
+| `net.ipv4.ip_forward` | `1` (and `conf.all.forwarding=1`) | forwarding ON |
+| Firewall | `iptables` chains empty (policy ACCEPT); `nft` ruleset empty | no isolation policy |
+| `ip`/iproute2 | **absent** (also `bridge`, `veth`, `ss` absent) | cannot build `10.77.0.0/24` |
+| Netns capability | `unshare` present; non-root `CapEff=0`, `sudo` `CapEff=0x1ffffffffff` | no evidence of an isolated, no-OT-reachability topology |
+
+**Result:** the environment is a shared, routed, internet-connected pod.
+Isolation and no-OT-reachability are **UNVERIFIED** and, on current evidence,
+**not demonstrable here**. The addendum forbids claiming isolation from intended
+design alone, so none is claimed.
+
+### 9.3 Static peer configuration inspection
+
+- As-shipped demo binds `IPEndpoint("0.0.0.0", 20000)` and uses link addresses
+  `LocalAddr=10`, `RemoteAddr=1` — explicitly unsafe/out-of-spec, **not run**.
+- Default static variations (`MeasurementInfo.cpp`): **Binary Input = G1V2**
+  (`Group1Var2`), Analog Input = G30V1, Counter = G20V1. The v0 profile and this
+  task require **G1V1** binary inputs → **real variation mismatch (recorded, not
+  hidden)**. The demo also overrides `analog_input[0].svariation = G30Var5`.
+- `SuccessCommandHandler` echoes the CROB and returns fixed `SUCCESS`; its base
+  `DoOperate` writes nothing (no physical and no memory output).
+
+### 9.4 Static simulator / output-mapping inspection
+
+- Demo points are memory-backed (`struct State`), but the task's proposed exact
+  ground-truth values (BI[0]=true, AI[0]=2300, CT[0]=42) are **not** preset and
+  are **UNVERIFIED**.
+- **No BO[0] target exists** in the demo; no BO/CROB `Update` is issued. The
+  required "single verifiable simulated CROB target" is **UNVERIFIED / ABSENT**;
+  a CROB "success" from this peer is a status echo, not a verified state change.
+- No physical I/O path: no `gpio`/`/dev/tty`/`serial`/`modbus` references;
+  `ldd` shows only standard system libraries. (Positive safety property.)
+
+### 9.5 UNAPPROVED reviewer packet
+
+Assembled at `/workspace/vec01-lab-artifacts/gate-b-reviewer-packet/` with:
+`README.md`, `inspection/network-inventory.txt`,
+`inspection/firewall-inventory.txt`, `inspection/peer-artifact-manifest.txt`,
+`inspection/peer-configuration.txt`,
+`inspection/simulator-and-output-mapping.txt`,
+`config-hashes/config-file-sha256.txt`, `proposed-topology.md`,
+`pending-deadlines-and-watchdog.md`, `risk-and-uncertainty.md`,
+`independent-preflight-checklist.md` (**blank**), and `packet-manifest.txt`.
+
+### 9.6 Outstanding UNVERIFIED fields and resumption prerequisites
+
+- Reviewer identity, qualification, decision, date and authenticated sign-off:
+  **not provided** (no reviewer or review channel supplied).
+- Environment isolation / no-OT-reachability: **UNVERIFIED / not demonstrable**.
+- Peer v0 variation compliance (G1V1): **UNVERIFIED / mismatched as shipped**.
+- Verifiable simulated CROB BO[0] target: **UNVERIFIED / absent**.
+- Exact Class-0 response qualifier, multi-header packing, sequence/confirm
+  behaviour, CROB response bytes: **UNVERIFIED** (require execution).
+- Go toolchain for the master side: **absent**.
+
+**Resumption prerequisites (all required):** authenticated independent reviewer
+sign-off on the actual environment and hashes; a demonstrably isolated,
+non-routable, no-OT-reachability topology; a peer configuration with v0
+variations (G1V1/G30V1/G20V1) and a verifiable simulator-only BO[0] target; and
+owner authorization to proceed to execution. Until then the task stays
+`TASK_BLOCKED`.
+
+### 9.7 Non-networking checks run in this substep
+
+| Check | Result |
+|-------|--------|
+| `bash scripts/cwal-check.sh` | PASS (clean, synced CURRENT tree) |
+| `git diff --check` | PASS |
+| Fresh `sha256sum` of retained peer bytes | PASS (match pinned) |
+| Passive `/proc` network/namespace reads | PASS (evidence recorded) |
+| `sudo -n iptables -L` / `nft list ruleset` (list-only) | PASS (empty policy observed) |
+| `gofmt` / `go vet` / `go build` / `go test` / `verify-*.sh` | NOT_RUN (Go absent; real-TCP gates prohibited pre-approval) |
+
+**No network listener, TCP/DNP3 packet, control, PCAP capture, Gate C/D/E work,
+archive/closure, PR, merge, or R4 status change occurred in this substep.**
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

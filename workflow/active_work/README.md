@@ -140,5 +140,24 @@ evidence (no archive, no marker closure). Evidence:
 R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** R4 status is unchanged and
 requires separate owner approval.
 
+### Gate B evidence-preparation substep (addendum, 2026-11-08) — still TASK_BLOCKED
+Under the owner-authorized Gate B pushback addendum (EVIDENCE PREPARATION ONLY),
+passive/static evidence was gathered with **no listener, no TCP/DNP3 packet, no
+capture, no control and no probing** (execution SHA
+`9d6833c914608c517748f9c26a8a5fc06701170f`). Findings: the executor environment is
+a shared, routed Kubernetes pod with internet egress, `ip_forward=1`, no firewall
+policy and no `ip`/iproute2, so isolation / no-OT-reachability is **UNVERIFIED and
+not demonstrable here**; the peer's as-shipped Class-0 binary inputs default to
+**G1V2** (not v0 **G1V1**), its demo binds `0.0.0.0:20000` with link addrs 10/1,
+and it has **no verifiable simulator-only BO[0] CROB target** (operate returns a
+status echo only). An **UNAPPROVED** reviewer packet (with a blank independent
+checklist) is retained outside Git at
+`/workspace/vec01-lab-artifacts/gate-b-reviewer-packet/`. Resumption requires an
+authenticated named independent reviewer sign-off plus a demonstrably isolated
+topology, v0-compliant peer variations, a verifiable simulator-only BO[0], and
+owner authorization to proceed. Until then CURRENT stays `TASK_BLOCKED`; no
+archive, closure, PR, merge or R4 change. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §9.
+
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.
