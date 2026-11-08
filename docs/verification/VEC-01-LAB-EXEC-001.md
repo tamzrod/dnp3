@@ -316,3 +316,17 @@ owner authorization to proceed to execution. Until then the task stays
 **No network listener, TCP/DNP3 packet, control, PCAP capture, Gate C/D/E work,
 archive/closure, PR, merge, or R4 status change occurred in this substep.**
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 10. Owner-authorized Gate B rule correction — 2026-11-08 (NO EXECUTION)
+
+**Prospective authority change, not a rewrite of the checkpoint:** The original sections above truthfully report JR's historical stop under the then-effective independent-review requirement. The repository owner has now amended CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md` to **remove mandatory separate-person review/signature** and replace it with objective, recorded, fail-closed isolation and simulator-only verification. The earlier requested unsigned reviewer packet is retained as historical, optional evidence; no signature or reviewer identity is a current blocking prerequisite. No past independent approval is claimed.
+
+**Still BLOCKED for technical reasons, independently of paperwork:** The reported execution environment is a routed Kubernetes pod with internet egress, IP forwarding and no proven protected isolated network; default peer listener `0.0.0.0:20000` / addresses 10/1 are not approved; stock OpenDNP3 binary input G1V2 and analog G30V5 differ from required G1V1/G30V1, and the required memory-backed BO[0] CROB target has not been demonstrated. These are actual deficiencies or UNVERIFIED settings, not resolved by changing the reviewer rule. A peer config/adaptation and isolation must be demonstrated without unapproved changes to Go master or tracked code.
+
+**Current evidence state:** Gate A remains recorded PASS (reproduction and historical hashes; rehash retained bytes when resuming). Gate B objective safety: FAIL / NOT_TESTED on the items above. Gates C–E: NOT_TESTED. Required Go gates: retain their exact earlier NOT_RUN outcomes; none retroactively PASS. No listener, TCP/DNP3 packet, physical output, CROB, raw PCAP or `.vec` has occurred under this correction.
+
+**Prospective acceptance:** Automated, recorded isolation/routes/forwarding/firewall/listener checks and actual simulator-only CROB wiring must PASS before **any** protocol execution; finite deadlines, no blind retries; then actual external OpenDNP3 3.1.2 interoperable traffic, genuine raw PCAP and capture-derived `.vec`, IEEE 1815 v0 wire-field comparisons, mandatory positive/negative cases and fresh Go gates must PASS. Missing/failed/untested mandatory checks retain TASK_BLOCKED. A second-person sign-off or separate independent reviewer verdict is no longer necessary, but the peer remains an independently implemented C++ stack and evidence must be independently reproducible.
+
+**Checkpoint scope:** Historical report text above preserved; this additive note is not a claim of execution, compliance, R4 closure, new PR or merge. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
