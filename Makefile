@@ -88,30 +88,30 @@ list-files:
 	@echo "Project structure:"
 	@find . -type f -not -path '*/.git/*' | sort
 
-## kde-start - Start KDE runtime with quick preflight and bootstrap verification
+## kde-start - Start KDE runtime with non-installing verification
 kde-start:
 	@echo "=== KDE Runtime Startup ==="
 	@echo ""
 	@echo "Step 1: Bootstrap Status Check"
 	@python3 .kde/bootstrap/status.py || true
 	@echo ""
-	@echo "Step 2: Environment Preflight (Quick)"
+	@echo "Step 2: Observation-only environment preflight (Quick)"
 	@python3 .kde/bootstrap/gates.py --quick
 	@echo ""
 	@echo "Step 3: Starting KDE Engine..."
 	@python3 -c "import sys; sys.path.insert(0, '.kde'); from runtime.runtime import demo; demo()"
 
-## kde-check - Run full preflight check with bootstrap status
+## kde-check - Run observation-only full preflight with bootstrap status
 kde-check:
 	@echo "=== KDE Full Check ==="
 	@echo ""
 	@echo "Step 1: Bootstrap Status"
 	@python3 .kde/bootstrap/status.py
 	@echo ""
-	@echo "Step 2: Environment Gates (Full)"
+	@echo "Step 2: Observation-only environment gates (Full)"
 	@python3 .kde/bootstrap/gates.py --full
 
-## kde-quick - Run quick preflight check (skip slow checks)
+## kde-quick - Run observation-only quick preflight (skip slow checks)
 kde-quick:
 	@echo "=== KDE Quick Check ==="
 	@python3 .kde/bootstrap/gates.py --quick
@@ -129,9 +129,9 @@ kde-help:
 	@echo ""
 	@echo "${BOLD}${GREEN}KDE Runtime Commands${NC}"
 	@echo ""
-	@echo "${BOLD}make kde-start${NC}   - Start KDE runtime (bootstrap + preflight + engine)"
-	@echo "${BOLD}make kde-check${NC}    - Full bootstrap and environment check"
-	@echo "${BOLD}make kde-quick${NC}    - Quick preflight check (skip slow checks)"
+	@echo "${BOLD}make kde-start${NC}   - Start KDE runtime (observation-only gates + engine; no installs)"
+	@echo "${BOLD}make kde-check${NC}    - Full KDE check (no installs or downloads)"
+	@echo "${BOLD}make kde-quick${NC}    - Quick non-installing preflight (skip slow checks)"
 	@echo "${BOLD}make kde-status${NC}   - Show bootstrap status (no environment checks)"
 	@echo "${BOLD}make kde-watch${NC}    - Watch bootstrap status continuously"
 	@echo ""
