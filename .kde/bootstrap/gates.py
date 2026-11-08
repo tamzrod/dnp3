@@ -365,7 +365,7 @@ def check_go_toolchain() -> GateCheck:
                 name="go_available",
                 gate="B3",
                 passed=False,
-                details="WARNING: Go toolchain not available. For Go projects, install: curl -sL https://go.dev/dl/go1.22.5.linux-amd64.tar.gz | tar -xz -C $HOME/go --strip-components=1 && echo 'export PATH=$HOME/go/bin:$PATH' >> ~/.bashrc",
+                details="WARNING: Go toolchain not available. Provision separately only with explicit human approval; this gate never downloads or installs toolchains.",
                 can_proceed=True  # Warning only - can proceed with Python-only checks
             )
         
