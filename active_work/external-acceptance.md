@@ -2,7 +2,7 @@
 
 **Series:** MEXT  
 **Gate task:** MEXT-035  
-**Do not claim external Master readiness until every item is checked on one commit.**
+**MEXT-035 in-repo v0 gate recorded complete.** This is not an independent third-party interoperability or IEEE 1815 conformance certification. R4/VEC-01 remains open.
 
 ## Commands
 
@@ -13,19 +13,24 @@
 
 ## Checklist
 
-- [ ] `verify-mvp.sh` exit 0 (no internal regression)
-- [ ] `verify-external-mvp.sh` exit 0 (real TCP master↔outstation path)
+- [x] `verify-mvp.sh` exit 0 (no internal regression) — recorded in MEXT-035 handoff
+- [x] `verify-external-mvp.sh` exit 0 (in-repo real-TCP Master↔Outstation; Tiers 1–3) — recorded in MEXT-035 handoff; VEC-01 advisory absent
 - [x] CROB control codes match IEEE 1815 bitfield golden vectors (MEXT-011) ✅
 - [x] Operate does not ControlTimeout on valid success APDU from in-repo outstation over TCP (MEXT-012/013) — parse-side fix done in MEXT-012; proven on real TCP in MEXT-013 (`TestOperateRealTCPSuccess`)
-- [ ] Class-0 multi-object-header response returns all G1/G20/G30 points (MEXT-014/015) — parse-side fixed in MEXT-014; IntegrityPoll now uses a single Class-0 multi-group read as primary path (one exchange returns the full set) with a per-group fallback (MEXT-015); real-TCP proof pending MEXT-033
-- [ ] README external claims match tests (MEXT-034/035)
+- [x] Class-0 multi-object-header response returns all G1/G20/G30 points (MEXT-014/015) — primary single-exchange read, per-group fallback; covered by MEXT-033 Tier 3
+- [x] README external claims match the tested in-repo v0 gate and explicitly disclaim third-party interoperability/full IEEE 1815 (MEXT-034/035)
 
-## Record (fill at MEXT-035)
+## MEXT-035 acceptance record (synchronized 2026-11-08)
 
 | Field | Value |
 |-------|-------|
-| Date | |
-| Commit | |
-| verify-mvp.sh | |
-| verify-external-mvp.sh | |
-| Notes | |
+| Historical gate | MEXT-035 completed, as documented in `active_work/handoff.md` and `active_work/supported-profile.md` |
+| Exact MEXT-035 verification SHA | Not established by this synchronization; consult original gate history before claiming a pinned SHA |
+| `verify-mvp.sh` | PASS recorded by historical MEXT-035 handoff |
+| `verify-external-mvp.sh` | PASS recorded by historical MEXT-035 handoff (in-repo Tiers 1–3) |
+| Additional checkpoint | PR #15 merged 2026-11-08 at `b38d7691aeb1adccf52fe665e368d4d77766977c`; merge CI completed successfully |
+| Limitations | No third-party VEC-01/PCAP proof; not full IEEE 1815 and not production SCADA certification |
+
+Do not treat the later PR #15 CI result as a substitute for the historical
+MEXT-035 gate record. The acceptance above is a reconciliation of existing
+recorded evidence, **not** a claim that those MEXT checks were re-run now.
