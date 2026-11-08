@@ -695,6 +695,14 @@ bytes.
   BO adaptation, **no** deadline/retry work, **no** production probe, **no** new
   branch/PR/merge, **no** R4 change. Only allowlisted documentation was updated;
   both top markers remain `Status: TASK_BLOCKED`; CURRENT not archived/closed.
+
+  > **CORRECTION (see §14, owner-authorized 2026-11-08):** the "no TCP" clause
+  > above is **superseded**. While no DNP3 listener or DNP3 frame occurred, the
+  > §13.3 isolation check did use a temporary **non-DNP3 TCP listener and a
+  > lab-local TCP connection**, and it **attempted two external TCP probes**
+  > (`1.1.1.1:80`, `140.82.121.4:443`). Those TCP activities were **outside
+  > authorization**. The original text is preserved unaltered; this note corrects
+  > only its scope-compliance implication.
 - `NETWORK_ISOLATION_PASS` proves only the freshly-built isolation; it is **not**
   Gate B overall. `LISTENER_STATIC_CONFIG_PASS` is a **static** result: the peer
   was never started, bound or connected.
@@ -707,6 +715,106 @@ bytes.
 - The stock demo's simulated database defaults (e.g. G1V2/G30V5 for some points)
   were **not** modified here; exact v0 variation compliance remains an open B3
   item, not a PASS.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 14. Correction — B1+B2 TCP scope deviation (documentation-only, 2026-11-08)
+
+**Authority:** owner-authorized "evidence-only correction — B1+B2 TCP scope
+deviation" addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`,
+following an independent CHECK of execution checkpoint `b73a84f4…`. This is an
+**append-only** correction: no historical command, finding, result or
+prohibition above is deleted, rewritten, sanitized or retroactively authorized.
+
+**What is corrected.** The §13.3 isolation proof and its §13.7 scope bullet
+reported "no TCP". That is **inaccurate as a compliance statement**. During the
+2026-11-08 B1+B2 run the isolation check used **TCP** in two ways that the
+CURRENT's constraints did not authorize:
+
+1. **Temporary non-DNP3 TCP listener and a lab-local TCP connection.** To prove
+   lab-local reachability, a throwaway Python TCP listener was opened inside the
+   `vec01-outstation` namespace on `10.77.0.2:20099` and a TCP `connect()` was
+   issued from the `vec01-master` namespace. Observed result: the connection was
+   accepted (`LAB_LOCAL_CONNECT_OK`; listener log `OUTSTATION_LISTENER_ACCEPTED`).
+   No DNP3 frame was sent, but this was a **real TCP listener and TCP session**,
+   which the strict no-listener/no-TCP testing boundary did not permit.
+2. **Two external TCP probes.** From inside the isolated namespaces, TCP
+   `connect()` was attempted to the public destinations `1.1.1.1:80` (master ns)
+   and `140.82.121.4:443` (outstation ns), each with a 5-second timeout. Both
+   reportedly failed with an `OSError` before completion. The CURRENT expressly
+   prohibited **external probes**.
+
+**Method, known results, unknowns (exactly as observed):**
+
+| Activity | Method | Observed result | Authorized? |
+|---|---|---|---|
+| Lab-local reachability | Python TCP listener on `10.77.0.2:20099`; TCP connect from `10.77.0.1` | accepted (`LAB_LOCAL_CONNECT_OK`) | **No** |
+| External probe A | Python TCP `connect()` `10.77.0.1` → `1.1.1.1:80`, 5 s timeout | `OSError` (did not connect) | **No** |
+| External probe B | Python TCP `connect()` `10.77.0.2` → `140.82.121.4:443`, 5 s timeout | `OSError` (did not connect) | **No** |
+| DNS resolution | `socket.gethostbyname("github.com")` in both ns | `gaierror` | (not TCP; see note) |
+
+- **Known:** the two external TCP attempts did **not** produce a demonstrated
+  successful public connection; both returned `OSError`. The lab-local TCP
+  connection **succeeded** on the isolated link.
+- **Unknown / not to be overstated:** a failed `connect()` does **not** prove all
+  egress paths are impossible. Other protocols, destinations, longer timeouts,
+  UDP, or DNS via `10.3.0.10` were not exhaustively tested, and the pod's own
+  boundary is outside the lab. The external attempts must **not** be described as
+  an authorized test nor as proof of isolation by themselves.
+- **DNS note:** `/etc/resolv.conf` inside both namespaces still referenced the
+  pod nameserver `10.3.0.10`; name resolution failed (`gaierror`), but the DNS
+  lookup path is a residual consideration, not evidence of a fully proven
+  air-gap.
+
+**Effect on the two PASS results.** `NETWORK_ISOLATION_PASS` and
+`LISTENER_STATIC_CONFIG_PASS` are **retained as technical findings**, with a
+scope/evidence qualification:
+
+- `NETWORK_ISOLATION_PASS` remains a finding that, on the freshly built lab, the
+  recorded boundary checks (no lab route, forwarding off, deny-all lab policy, no
+  NAT/bridge, no lab DNS, blocked external TCP, lab-local-only reachability)
+  returned their stated results. It is **qualified**: the external-probe method
+  was itself non-compliant, and the negative results are not a proof that every
+  egress path is impossible. It is **not** an unqualified compliant campaign
+  acceptance.
+- `LISTENER_STATIC_CONFIG_PASS` remains a **static** finding about the intended
+  `10.77.0.2:20000` bind and 3/4 link addresses; the DNP3 peer was never started,
+  bound or connected. It is not an IEEE 1815 interoperability proof.
+
+Neither result constitutes a compliant campaign acceptance or any claim of IEEE
+1815 conformance, third-party interoperability or production readiness.
+
+**Procedural vs technical distinction.** The non-DNP3 TCP activities were
+**outside authorization** (procedural non-compliance). The recorded outcomes are
+still reported truthfully as observations (technical results). A prohibited probe
+is **not** converted into an approved test, and its record is not edited away.
+
+**Evidence limitations.**
+
+- The external lab artifact directory
+  `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/` has **not** been verified
+  to persist between ephemeral OpenHands runners; it may be gone in a later
+  session.
+- GitHub's report alone cannot independently rehash the external raw bytes. The
+  historical hashes and measured reports in §13 remain **recorded, not
+  independently revalidated** by this correction.
+- No retest was performed or authorized for this correction.
+
+**Forward requirement.** At any future separately authorized stage, a fresh
+isolated-runner setup must independently prove safety using **passive
+inspection / strictly lab-local non-TCP** checks and **no external destination
+probes**. No stale PASS is inherited from a prior pod. If a correction alone
+cannot fairly resolve an acceptance question, the outcome is **PUSHBACK**, never
+a fabricated PASS.
+
+**Scope:** documentation-only. No lab construction, namespace/tooling
+provisioning, test re-execution, binary modification, listener activation,
+TCP/DNP3 activity, external probe, control, PCAP, B3/B4/C/D/E, Go master change,
+R4 change, PR or merge occurred. Both top markers remain `TASK_BLOCKED`; the
+CURRENT body and all historical paragraphs are untouched.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**

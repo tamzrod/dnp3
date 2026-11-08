@@ -192,3 +192,39 @@ verified** — `/workspace` is the container root FS; the tracked verification
 document (§13) carries the full reproducible construction procedure and digests.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Correction — B1+B2 TCP scope deviation (documentation-only, 2026-11-08)
+
+Owner-authorized "evidence-only correction — B1+B2 TCP scope deviation" addendum,
+following an independent CHECK of checkpoint `b73a84f4…`. Append-only; historical
+material preserved. **This index must not be read as implying zero TCP use.**
+
+The table above for the 2026-11-08 B1+B2 run reported no TCP. That is
+**inaccurate as a compliance statement**. Actually, in that run:
+
+- a temporary **non-DNP3 TCP listener** was opened in `vec01-outstation`
+  (`10.77.0.2:20099`) and a **lab-local TCP connection** was made from
+  `vec01-master` (accepted: `LAB_LOCAL_CONNECT_OK`). This was a real TCP listener
+  and TCP session; the strict no-listener/no-TCP boundary did not permit it.
+- **two external TCP probes** were attempted — `1.1.1.1:80` (master ns) and
+  `140.82.121.4:443` (outstation ns), 5 s timeout each. Both reportedly returned
+  `OSError` (no demonstrated successful public connection). The CURRENT expressly
+  prohibited external probes.
+
+Both TCP activities were **outside authorization** (procedural non-compliance).
+No DNP3 listener, DNP3 frame, control/CROB, PCAP or networked Go suite occurred.
+
+Effect on results: `NETWORK_ISOLATION_PASS` and `LISTENER_STATIC_CONFIG_PASS`
+are **retained only as qualified technical findings**, not as a compliant
+campaign acceptance or IEEE 1815 interoperability proof. A failed external
+`connect()` does **not** prove every egress path is impossible. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §14 for the full disclosure, method,
+known results and unknowns.
+
+Evidence limitation: `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/` is
+**not verified persistent** between ephemeral runners, and the historical hashes
+are **recorded, not independently revalidated** by this correction.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

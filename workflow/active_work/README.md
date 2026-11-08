@@ -68,12 +68,15 @@ policy, lab-local-only reachability and no physical I/O → **`NETWORK_ISOLATION
 An address-only peer patch (bind `10.77.0.2:20000`, `LocalAddr=4`, `RemoteAddr=3`,
 rebuild `12f96e21…`) with matching prospective Go master settings (local 3, remote
 4, target `10.77.0.2:20000`) passed static checks → **`LISTENER_STATIC_CONFIG_PASS`**.
-Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**; no listener, TCP/DNP3
-packet, control, CROB, PCAP or networked Go test ran; Go gates **NOT_RUN** (no Go
+Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**; no DNP3 listener/frame,
+control, CROB, PCAP or networked Go test ran, **but** a temporary non-DNP3 TCP
+listener with a lab-local TCP connection and two external TCP probes (both
+blocked) occurred **outside authorization**; Go gates **NOT_RUN** (no Go
 toolchain on runner). Evidence (outside Git, SHA-256 manifest):
 `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/`; durability across runners
-**NOT verified**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §13. B3/B4 and
-Gates C/D/E remain separately authorized-only.
+**NOT verified**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §13 and the
+owner-authorized **TCP scope correction §14**. B3/B4 and Gates C/D/E remain
+separately authorized-only.
 
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
