@@ -191,6 +191,23 @@ type Config struct {
 	// auto-integrity poll is already in flight to avoid unbounded recursion.
 	// Supported-profile: Defer — optional, not externally verified in v0.
 	AutoIntegrityOnRestart bool
+	// ConnectTimeout is the whole-connect budget (VEC-01 B4 F2): dial plus link
+	// reset/status and initialization. Zero uses the internal default
+	// (DefaultConnectTimeout, 5 s). The caller's earlier context deadline always
+	// tightens it. Supported-profile: Defer — requires lifecycle verification.
+	ConnectTimeout time.Duration
+	// OperateTimeout is the whole-control budget (VEC-01 B4 F2) for the single
+	// supported G12V1 DirectOperate: send, wait and status interpretation. Zero
+	// uses the internal default (DefaultOperateTimeout, 5 s). The caller's earlier
+	// context deadline always tightens it.
+	// Supported-profile: Defer — requires lifecycle verification.
+	OperateTimeout time.Duration
+	// ReadTimeout is the whole-request budget (VEC-01 B4 F2) for a Class-0 read,
+	// including bounded retries and, for an integrity poll, the shared per-group
+	// fallback. Zero uses the internal default (DefaultReadTimeout, 10 s). The
+	// caller's earlier context deadline always tightens it.
+	// Supported-profile: Defer — requires lifecycle verification.
+	ReadTimeout time.Duration
 }
 
 // DefaultConfig returns a default configuration
@@ -294,6 +311,32 @@ func WithLogger(l Logger) ConfigOption {
 func WithAutoIntegrityOnRestart() ConfigOption {
 	return func(c *Config) {
 		c.AutoIntegrityOnRestart = true
+	}
+}
+
+// WithConnectTimeout sets the whole-connect budget (VEC-01 B4 F2). A
+// non-positive value restores the internal default (5 s).
+func WithConnectTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.ConnectTimeout = d
+	}
+}
+
+// WithOperateTimeout sets the whole-control budget (VEC-01 B4 F2) for the
+// single supported G12V1 DirectOperate. A non-positive value restores the
+// internal default (5 s).
+func WithOperateTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.OperateTimeout = d
+	}
+}
+
+// WithReadTimeout sets the whole-request budget (VEC-01 B4 F2) for a Class-0
+// read, including bounded retries and the shared integrity-poll fallback. A
+// non-positive value restores the internal default (10 s).
+func WithReadTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.ReadTimeout = d
 	}
 }
 
@@ -478,11 +521,14 @@ func NewClient(config *Config) (Client, error) {
 
 	// Create internal master
 	internalConfig := &master.Config{
-		MasterAddress: config.MasterAddress,
-		Timeout:       int(config.Timeout.Milliseconds()),
-		MaxRetries:    config.RetryCount,
-		RetryDelay:    int(config.RetryDelay.Milliseconds()),
-		IdleTimeout:   int(config.IdleTimeout.Milliseconds()),
+		MasterAddress:  config.MasterAddress,
+		Timeout:        int(config.Timeout.Milliseconds()),
+		MaxRetries:     config.RetryCount,
+		RetryDelay:     int(config.RetryDelay.Milliseconds()),
+		IdleTimeout:    int(config.IdleTimeout.Milliseconds()),
+		ConnectTimeout: int(config.ConnectTimeout.Milliseconds()),
+		OperateTimeout: int(config.OperateTimeout.Milliseconds()),
+		ReadTimeout:    int(config.ReadTimeout.Milliseconds()),
 	}
 	internal := master.NewMaster(internalConfig)
 
@@ -638,8 +684,12 @@ func (c *client) connectBlocking(ctx context.Context) error {
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
-	// Step 3: Connect internal master (performs link-layer handshake)
-	if err := c.internalMaster.Connect(); err != nil {
+	// Step 3: Connect internal master (performs link-layer handshake). VEC-01 B4
+	// F2: use the deadline-aware connect so the whole link handshake (reset +
+	// status) shares one finite budget derived from the master's connect budget,
+	// tightened by the caller's earlier deadline. A zero budget falls back to the
+	// configured default.
+	if err := c.internalMaster.ConnectContext(ctx, 0); err != nil {
 		c.cleanupConnect()
 		return fmt.Errorf("master connect failed: %w", err)
 	}
@@ -755,6 +805,14 @@ func (c *client) markTransportDisconnected() {
 
 // Read implements Client.Read
 func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error) {
+	return c.readWithDeadline(ctx, request, time.Time{})
+}
+
+// readWithDeadline is the deadline-aware read implementation (VEC-01 B4 F2).
+// When deadline is non-zero it bounds the whole request/response exchange,
+// including bounded retries; a zero deadline defers to the master's configured
+// read budget. The public Read entry point passes a zero deadline.
+func (c *client) readWithDeadline(ctx context.Context, request *types.ReadRequest, deadline time.Time) (*ReadResponse, error) {
 	if request == nil || len(request.Groups) == 0 {
 		return nil, dnp3.ErrInvalidRequest
 	}
@@ -775,6 +833,12 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 
 	if state < dnp3.StateConnected {
 		return nil, dnp3.ErrNotConnected
+	}
+
+	// VEC-01 B4 F2: the caller's earlier deadline, when present, tightens the
+	// read budget so the whole exchange (all retries) cannot outlive it.
+	if dl, ok := ctx.Deadline(); ok && (deadline.IsZero() || dl.Before(deadline)) {
+		deadline = dl
 	}
 
 	// Wire to internal master for proper protocol handling
@@ -803,7 +867,7 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	}
 	done := make(chan readResult, 1)
 	go func() {
-		data, err := c.internalMaster.SendRequestWithRetryAndGetResponse(apdu, outstationID)
+		data, err := c.internalMaster.SendRequestWithRetryAndGetResponseDeadline(apdu, outstationID, deadline)
 		done <- readResult{data: data, err: err}
 	}()
 
@@ -911,24 +975,28 @@ func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 		c.mu.Unlock()
 	}()
 
+	// VEC-01 B4 F2: the whole integrity poll — the primary multi-group read
+	// AND any per-group fallback — shares ONE finite wall-clock budget. The
+	// budget is derived once here so the fallback cannot silently reset it.
+	deadline := time.Now().Add(c.internalMaster.ReadBudget())
 	// Primary: single Class-0 multi-group read (MEXT-015).
-	resp, err := c.Read(ctx, types.NewReadRequest(
+	resp, err := c.readWithDeadline(ctx, types.NewReadRequest(
 		types.GroupRequest{Group: 1, Variation: 0},
 		types.GroupRequest{Group: 20, Variation: 0},
 		types.GroupRequest{Group: 30, Variation: 0},
-	))
+	), deadline)
 	if err == nil {
 		return resp, nil
 	}
 	// Fallback: per-group reads for peers that cannot satisfy a single
 	// multi-group Class-0 exchange (MEXT-015).
-	return c.integrityPollPerGroup(ctx)
+	return c.integrityPollPerGroup(ctx, deadline)
 }
 
 // integrityPollPerGroup is the MEXT-015 fallback: each MVP static group is read
 // in its own request and merged into one ReadResponse. It is used only when the
 // primary single multi-group Class-0 read errors.
-func (c *client) integrityPollPerGroup(ctx context.Context) (*ReadResponse, error) {
+func (c *client) integrityPollPerGroup(ctx context.Context, deadline time.Time) (*ReadResponse, error) {
 	type groupRead struct {
 		group uint8
 		apply func(*ReadResponse, *ReadResponse)
@@ -942,7 +1010,7 @@ func (c *client) integrityPollPerGroup(ctx context.Context) (*ReadResponse, erro
 	out := &ReadResponse{Timestamp: time.Now()}
 	var lastIIN [2]byte
 	for _, r := range reads {
-		resp, err := c.Read(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}))
+		resp, err := c.readWithDeadline(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}), deadline)
 		if err != nil {
 			return nil, fmt.Errorf("read group %d: %w", r.group, err)
 		}
@@ -1607,6 +1675,14 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, dnp3.ErrInvalidRequest
 	}
 
+	// VEC-01 B4 F3: an already-cancelled context is a definite pre-send failure —
+	// nothing was transmitted, so no control is dispatched and no quarantine
+	// applies. Checked before spawning the dispatch worker so the outcome is
+	// deterministic rather than racing the worker's own completion.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+	}
+
 	c.mu.RLock()
 	state := c.state
 	internal := c.internalMaster
@@ -1645,12 +1721,12 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		rawValue = command.Value
 	}
 
-	// Perform operate through internal master and parse the per-point command
-	// status from the response (DNP3-020/021/024). The public response carries
-	// the real status; a failed point is never reported as ControlSuccess. The
-	// caller's context is honored: if ctx is cancelled while the operate is
-	// outstanding, Operate returns promptly with ErrContextCanceled and no
-	// response (the in-flight result is discarded).
+	// VEC-01 B4 F1/F3: a non-idempotent control is dispatched single-shot. The
+	// caller's context is honored for promptness, but cancellation is NOT treated
+	// as "nothing happened": the dispatch runs to completion in the background
+	// and, if the context ends while it is outstanding, the outstation is
+	// quarantined (failure closed) because the control may have been executed.
+	// The quarantine clears only on an explicit Disconnect.
 	type operateResult struct {
 		status master.CommandStatus
 		err    error
@@ -1664,16 +1740,26 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	var cs master.CommandStatus
 	select {
 	case <-ctx.Done():
+		// Fail closed: the control may already be on the wire, so quarantine
+		// the outstation. This is never cleared by reconnect or a later control.
+		if c.internalMaster != nil {
+			c.internalMaster.QuarantineOutstation(outstationID)
+		}
 		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
 	case res := <-done:
 		if res.err != nil {
 			// If the transport disconnected, reflect that in the public state so
-			// a subsequent Operate returns ErrNotConnected rather than retrying
-			// a dead link (DNP3-031). MEXT-025: also tear down the transport so
-			// a later Connect re-dials a fresh socket instead of retrying the
-			// dead one (no stuck state after a peer drop).
+			// a subsequent Operate returns ErrNotConnected rather than retrying a
+			// dead link (DNP3-031). MEXT-025: also tear down the transport so a
+			// later Connect re-dials a fresh socket instead of retrying the dead
+			// one (no stuck state after a peer drop).
 			if master.IsDisconnectError(res.err) {
 				c.markTransportDisconnected()
+			}
+			if ctx.Err() != nil {
+				// The caller's context ended; surface the cancellation sentinel
+				// while preserving the internal ErrControlOutcomeUnknown chain.
+				return nil, fmt.Errorf("%w: %w", dnp3.ErrContextCanceled, res.err)
 			}
 			// Attach the matching public error sentinel so callers can classify
 			// the failure via dnp3.ClassifyError (DNP3-043). The internal error
@@ -1682,7 +1768,6 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		}
 		cs = res.status
 	}
-
 	// Get outstation state
 	outstation, _ := internal.GetOutstation(outstationID)
 	var iin [2]byte

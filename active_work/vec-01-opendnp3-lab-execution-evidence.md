@@ -330,3 +330,41 @@ Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §17. Gate B and the
 CURRENT remain **`TASK_BLOCKED`**; mandatory Go gates remain **NOT_RUN**.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## B4 F1–F3 Go safety implementation — offline only (append-only, 2026-11-08)
+
+Owner-authorized "B4 F1–F3 Go safety implementation — offline only" addendum,
+baseline `a1a55749e960cfa529df966240ef6608e4ddba21`, authorizing commit `d48912a`.
+Bounded **offline, non-production** correction of the three control-safety GAPs
+plus deterministic in-memory tests. **No TCP/DNP3 listener, socket, peer, CROB,
+namespace, capture or external probe.** Result: **`B4_SAFETY_IMPLEMENTATION_PASS`
+(Go offline readiness only)** — not `B4_SAFETY_PASS`, not Gate B acceptance.
+
+| Finding | Correction | Offline evidence |
+|---|---|---|
+| **F1** single-shot control | Dedicated non-retrying `sendControlOnce`; one logical G12V1 DirectOperate, no hidden retry; public `Operate` uses it | `TestControlSingleShotNoRetryOnMissingResponse`, `…OnDisconnect`, `TestControlSingleShotUnderDefaultRetries` (Send count == 1 under default retries) |
+| **F2** finite common budget | Connect ≤5 s, Class-0 read ≤10 s (integrity poll shares one deadline across fallback), DirectOperate ≤5 s; caller deadline tightens; `Config.ConnectTimeout/OperateTimeout/ReadTimeout` + `With*` options | `TestConnectContextRespectsBudget`, `TestClientConnectRespectsConfiguredBudget`, `TestControlDeadlineBoundsBlockingWait`, `TestReadBoundedByDeadline`, `TestIntegrityPollSharesBudget` |
+| **F3** fail-closed cancellation | UNKNOWN outcome → per-outstation quarantine (`ErrControlQuarantined`); clears only on explicit `Disconnect`; already-cancelled = definite NOT_SENT (no quarantine); explicit rejection ≠ UNKNOWN | `TestOperateCancelQuarantinesOutstation`, `TestOperateAlreadyCancelledContext`, `TestControlQuarantineBlocksFurtherControls`, `TestControlPreSendFailureDoesNotQuarantine`, `TestControlExplicitFailureStatusNotUnknown` |
+
+**Files:** `internal/master/master.go`, `pkg/dnp3/master/client.go`,
+`internal/master/control_safety_test.go` (new), `pkg/dnp3/master/control_safety_test.go`
+(new), `internal/master/command_status_test.go` (updated).
+
+**Gates actually run (checkout `d48912a`, `go1.22.12`):** `gofmt -l` clean,
+`git diff --check` clean, `go vet ./...` clean, `go build ./...` ok,
+`go test ./... -count=1` all ok, `go test -race ./internal/master/... ./pkg/dnp3/master/...`
+ok, `go test -race ./internal/outstation/...` ok, `./scripts/verify-mvp.sh` OK,
+`./scripts/verify-external-mvp.sh` OK, `bash scripts/cwal-check.sh` OK at the
+clean post-commit checkpoint.
+
+**Limitations (unchanged boundary).** Application-level single-shot only:
+lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+remain **NOT_TESTED / UNVERIFIED**. `pkg/transport/tcp.go` is unchanged, so a
+blocked receive is bounded by the deadline-capped `SetTimeout`, not transport
+teardown. An already-dispatched control's worker runs to completion; the safety
+property is the quarantine gate, not worker termination.
+
+Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §18. Gate B and the
+CURRENT remain **`TASK_BLOCKED`**.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

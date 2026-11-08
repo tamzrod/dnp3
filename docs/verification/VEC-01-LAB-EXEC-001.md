@@ -1380,3 +1380,166 @@ disconnect-after-send / absent response on a G12V1 DirectOperate is
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 18. Gate B4 F1–F3 Go safety implementation — offline only (append-only, 2026-11-08)
+
+**Authority:** owner-authorized "B4 F1–F3 Go safety implementation — offline only"
+addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`, from
+baseline `a1a55749e960cfa529df966240ef6608e4ddba21`. This section records a
+**bounded, offline, non-production** Go correction of the three demonstrated
+control-safety defects (F1/F2/F3) plus **deterministic in-memory** tests. **No
+TCP/DNP3 listener, socket, peer, CROB execution, namespace, capture or external
+probe was used.** Authorizing commit (branch `work`): `d48912a`
+(`d48912a3590f895b46863164fb5fd00c1400f0f3`). Go toolchain: `go1.22.12
+linux/amd64` (checksum-verified pinned per-user toolchain at `$HOME/toolchain/go`,
+pre-existing; `go.mod` declares `go 1.22.0`).
+
+**Result classification: `B4_SAFETY_IMPLEMENTATION_PASS` (Go offline readiness
+only).** This is **not** `B4_SAFETY_PASS` of live interoperability, **not** Gate B
+acceptance and **not** certification. Gate B and the CURRENT remain
+`TASK_BLOCKED`.
+
+### 18.1 F1 — genuinely single-shot G12V1 DirectOperate
+
+The one supported v0 control is dispatched through a **dedicated non-retrying**
+path (`sendControlOnce`), independent of the generic read retry loop. The
+control is transmitted **at most once**; there is **no** hidden fallback/retry on
+timeout, NACK, CRC, invalid/missing response, missing confirmation or disconnect.
+
+| Location | Change |
+|---|---|
+| `internal/master/master.go` `OperateWithStatusContext` (`:1622`) | New single-shot, deadline-bounded control entry; `OperateWithStatus` (`:1596`) is a thin wrapper supplying the configured budget. |
+| `internal/master/master.go` `sendControlOnce` (`:1674`) | Sends the single APDU exactly once (no loop), then one confirm wait and one response wait. |
+| `pkg/dnp3/master/client.go` `Operate` (`:1673`) | Runs the control in-band (context-aware); no `WithRetry`-style reuse of the retrying loop. |
+
+**Deterministic evidence (offline).**
+`TestControlSingleShotNoRetryOnMissingResponse`,
+`TestControlSingleShotNoRetryOnDisconnect` and
+`TestControlSingleShotUnderDefaultRetries` assert the transport `Send` count is
+**exactly 1** even though the default retry policy (`TimeoutRetries = 3`) would
+otherwise permit retries. `WithRetry(0, …)` is **not** relied upon as the fix
+(§17 remains true: zero is coerced to the default).
+
+**What this does NOT prove (unchanged boundary).** This is an
+application-level single-shot guarantee only. Lower-level DNP3 confirmed-link
+**FCB/FCV** retransmission, any independently queued/retransmitted link frames
+and actual physical TCP send counts remain **NOT_TESTED / UNVERIFIED**. No
+claim is made that exactly one physical TCP segment is emitted, that there is no
+link-layer replay, or that an ambiguous timeout implies an unexecuted CROB.
+
+### 18.2 F2 — one finite budget per operation
+
+Each operation now carries a single finite wall-clock budget; subordinate
+waits/retries share the **remaining** budget and never reset it.
+
+| Operation | Default budget | Config field | Where enforced |
+|---|---|---|---|
+| Connect (dial + link reset/status + init) | 5000 ms | `Config.ConnectTimeout` | `ConnectContext` (`:1184`), `performLinkHandshake` (`:1263`) |
+| Class-0 read (all bounded retries) | 10000 ms | `Config.ReadTimeout` | `SendRequestWithRetryAndGetResponseDeadline` (`:2296`), `performReadRequest` |
+| Integrity poll (primary **and** per-group fallback) | 10000 ms (shared) | `Config.ReadTimeout` | `runIntegrityPoll` (`client.go:964`), `integrityPollPerGroup` (`client.go:999`) |
+| One DirectOperate (send + wait + status) | 5000 ms | `Config.OperateTimeout` | `OperateWithStatusContext` (`:1622`) |
+
+- `constrainTimeout` caps every subordinate receive wait to the remaining
+  budget; `waitHitBudget` (`:2199`) classifies a blocking wait that consumed the
+  deadline-capped budget as `ErrOperationDeadlineExceeded` rather than a peer
+  error (used in the link reset/status handshake).
+- The caller's earlier `ctx` deadline always **tightens** the budget.
+- Public budget options `WithConnectTimeout` / `WithOperateTimeout` /
+  `WithReadTimeout` (`client.go:319/328/337`) are additive and backward
+  compatible; `DefaultConfig` leaves them zero so existing behavior is
+  unchanged except that a whole-operation budget now bounds the exchange.
+- **Integrity-poll fallback shares one deadline** (`runIntegrityPoll` derives the
+  deadline once and passes it to both the primary multi-group read and every
+  per-group fallback read), so a fallback cannot silently extend the poll.
+
+**Deterministic evidence (offline).** `TestConnectContextRespectsBudget`,
+`TestClientConnectRespectsConfiguredBudget`, `TestControlDeadlineBoundsBlockingWait`,
+`TestReadBoundedByDeadline` and `TestIntegrityPollSharesBudget` assert the
+operation returns near the configured budget against an unresponsive transport
+double. **Explicit limitation:** a whole-operation budget cannot be enforced by
+per-attempt timeouts alone; `pkg/transport/tcp.go` is unchanged (the source
+compatibility constraint held), so a blocked `Receive` is bounded by the
+deadline-capped `SetTimeout`, not by transport teardown.
+
+### 18.3 F3 — fail-closed cancellation and control lifetime
+
+Cancellation/deadline/disconnect-after-possible-send/malformed-or-missing
+response is treated as an **UNKNOWN** control outcome and the outstation is
+**quarantined**.
+
+- `ErrControlOutcomeUnknown` marks an indeterminate outcome; the public
+  `Operate` surfaces `dnp3.ErrContextCanceled` (preserving the internal chain)
+  and calls `QuarantineOutstation`.
+- `quarantineOutstation` / `QuarantineOutstation` / `IsQuarantined`
+  (`internal/master/master.go:956/976/982`) guard the per-outstation state under
+  `quarantineMu`, independent of `reqMu`.
+- `sendControlOnce` re-checks the quarantine **under the request lock** before
+  any send; a quarantined outstation refuses a new control with
+  `ErrControlQuarantined` **before** any wire traffic.
+- The quarantine clears **only** on explicit `Disconnect` (never on reconnect or
+  a later control), so a possibly-executed control's UNKNOWN outcome is not
+  silently discarded.
+- Distinction preserved: an **already-cancelled context** is a definite
+  **NOT_SENT** failure (checked before dispatch in `Operate`, no quarantine); a
+  **positively established pre-send** failure does not quarantine; an **explicit
+  remote rejection** (valid response, non-success status) is returned as-is and
+  does not quarantine.
+
+**Deterministic evidence (offline).** `TestOperateCancelQuarantinesOutstation`
+(cancel mid-control → prompt return, quarantine, second control refused),
+`TestOperateAlreadyCancelledContext` (no dispatch, no quarantine),
+`TestControlQuarantineBlocksFurtherControls`,
+`TestControlPreSendFailureDoesNotQuarantine`,
+`TestControlExplicitFailureStatusNotUnknown`. `TestOperateWithStatusTruncatedNotSuccess`
+was updated: an unparseable command status is now a fail-closed
+`ErrControlOutcomeUnknown` with quarantine (never success).
+
+**Residual limitation.** The internal worker for an already-dispatched control
+still runs to completion in the background (the send cannot be retracted); the
+safety property is enforced by the quarantine gate, not by killing the worker.
+No late completion replays a control or clears the quarantine.
+
+### 18.4 Verification gates actually run (this checkout, `d48912a`)
+
+| Command | Result |
+|---|---|
+| `go version` | `go1.22.12 linux/amd64` |
+| `gofmt -l` (changed files) | clean (no output) |
+| `git diff --check` | clean |
+| `go vet ./...` | clean |
+| `go build ./...` | ok |
+| `go test ./... -count=1` | all packages ok |
+| `go test -race ./internal/master/... ./pkg/dnp3/master/... -count=1` | ok |
+| `go test -race ./internal/outstation/... -count=1` | ok |
+| `./scripts/verify-mvp.sh` | OK (all MVP gate checks passed) |
+| `./scripts/verify-external-mvp.sh` | OK (tiers 1–3 passed) |
+| `bash scripts/cwal-check.sh` | OK on clean post-commit tree (run at checkpoint) |
+
+All tests are deterministic and runnable in a network-disabled sandbox; none
+open sockets/listeners or start the external OpenDNP3 peer.
+
+### 18.5 Files changed and hashes (SHA-256 of working-tree content)
+
+| File | SHA-256 |
+|---|---|
+| `internal/master/master.go` | `ad20f4bb7a8d894c37139849de5988b9af8eaa46dda272d1ab7f99088eb128e5` |
+| `pkg/dnp3/master/client.go` | `bd08543110e1ce8e127d16c422e8e81fb594805c958be41992d4e9f18384ca57` |
+| `internal/master/control_safety_test.go` (new) | `857824ea8754a955e17da70e47f39616224ffa8009b1d46abd30ccb39058fb37` |
+| `pkg/dnp3/master/control_safety_test.go` (new) | `2c8050f0d8cbae88f526b6d6537a03503559991fe9ef931573360008f4ca2ef1` |
+| `internal/master/command_status_test.go` (updated) | see checkpoint commit |
+
+### 18.6 Preserved unchanged / non-claims
+
+The §16.3 F1/F2/F3 original rows, the §17 F1 numerical correction, F4–F8, the
+§16.4 recovered B3 patch text and its 7687-byte SHA-256, the B1–B3 scope
+claims, and all earlier sections are retained verbatim. This section is
+prospective and additive.
+
+**Unchanged truth.** Gate B and the CURRENT remain `TASK_BLOCKED`; no real-wire
+semantics, latency, independent-peer behavior or real session was exercised;
+`B4_SAFETY_IMPLEMENTATION_PASS` is Go offline safety readiness only.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
