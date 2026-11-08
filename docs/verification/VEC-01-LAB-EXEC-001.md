@@ -524,3 +524,189 @@ Durable path: `/workspace/vec01-lab-artifacts/gate-b-substep2-reverify/`.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 13. Gate B B1+B2 single-run recovery — ephemeral runner (2026-11-08)
+
+**Authority:** owner-authorized "B1+B2 single-run recovery — ephemeral runner
+correction" addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`.
+That addendum overrides **only** the stale requirement that the substep-1
+namespaces/pod inode/`/workspace` peer bytes survive, and permits a *fresh*
+lab plus a reproducible bootstrap **within the same execution**, then a static
+B2 preparation. It grants **no** protocol execution and **no** B3/B4/C/D/E
+authorization, and it requires the CURRENT markers to remain `TASK_BLOCKED`.
+Execution SHA (branch `work`): `ad48def4c57b22ce6c6c163e5a426234236d8fc8`.
+
+**Verdicts:** `NETWORK_ISOLATION_PASS` and `LISTENER_STATIC_CONFIG_PASS`, both
+proven objectively **in this execution**. Overall Gate B and the CURRENT remain
+`TASK_BLOCKED`. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN.**
+
+### 13.1 CWAL startup
+
+- Markers match in `workflow/active_work/README.md` and `handoff.md`: Repository
+  `tamzrod/dnp3`, Package `VEC-01-LAB-EXEC-001`, Branch `work`, CURRENT
+  `VEC-01-LAB-EXEC-001`, QUEUED `NONE`, Status `TASK_BLOCKED`.
+- Remote readback: `refs/heads/work` = `ad48def4c57b22ce6c6c163e5a426234236d8fc8`
+  (== local HEAD), `refs/heads/main` = `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`.
+  `git merge-base --is-ancestor 02a58f7… ad48def…` → true (main is an ancestor of
+  `work`). Worktree clean (`git status --porcelain` empty).
+- `bash scripts/cwal-check.sh` → `CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001
+  branch=work`, exit 0.
+
+### 13.2 Reproducible bootstrap (fresh, this runner)
+
+Tools installed in this disposable runner only (`apt-get`, passwordless sudo
+available): `iproute2`, `cmake` 3.31.6, `file`, `unzip`. Host/pod routes,
+firewall, Kubernetes policy and physical interfaces were **not** modified.
+
+Pinned inputs retrieved and verified against recorded digests (raw output in
+`peer-provenance.txt`):
+
+| Input | SHA-256 (actual) | Recorded | Match |
+|---|---|---|---|
+| `opendnp3-3.1.2.tar.gz` | `183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2` | same | ✅ |
+| `asio-1-16-0.zip` | `18883c350558eadf91218ae5ce9a8f8f85099c2f036c1c8579fb639092e928c5` | same | ✅ |
+| `exe4cpp-fb878a4.zip` | `2a8a2c7d9982f54858b92c03cff91ef433907472039f8e61ff7c9f9b3d48db6c` | same | ✅ |
+| `ser4cpp-3c44973.zip` | `5a78f83de2d70bdf4be2ab607bc4416c6866ce64a257a8f19948cf5746762f6e` | same | ✅ |
+| `catch-2.11.3.hpp` | `197640c056d6d01e5a56737fbdfe671d2b872c8c7533e01cc2de4be19ab7a028` | same | ✅ |
+
+Tag peel verified live: `refs/tags/3.1.2` = `523f7d2d…`; `refs/tags/3.1.2^{}` =
+`26b4c01e4839bbbda8866655e086471c4917ee53` (matches the pinned commit). SHA-1
+cross-checks of the three used dependencies match the upstream `URL_HASH`
+declarations exactly (`6bdd3352…`, `18b141e8…`, `937b759b…`). The `catch` header
+(test-only, unused; `DNP3_TESTS=OFF`) first returned an HTTP 504 from the release
+URL, so it was obtained from the equivalent tagged source
+(`raw.githubusercontent.com/catchorg/Catch2/v2.11.3/...`); its SHA-256 matches
+the recorded value, so the bytes are identical.
+
+Hermetic **offline** stock build (`sudo unshare -n`, no DNS/route; verified
+`NO_NET`) reproduced the historical hashes **exactly**:
+
+| Artifact | SHA-256 (this run) | Historical | Match |
+|---|---|---|---|
+| `outstation-demo` | `8ae8c84125c4920352b6daef4145e2a91de9e02cd6e2c1b94bf6995ebeb093bb` | same | ✅ |
+| `libopendnp3.a` | `e2926474288fb8d2c6c7962192bad2ff0f724f63c07d2209fe5b30c26fbe0677` | same | ✅ |
+
+Toolchain: g++ 14.2.0, CMake 3.31.6, GNU Make 4.4.1, ld 2.44, Linux 6.8.0 x86_64.
+
+### 13.3 Gate B1 — objective fail-closed isolation proof (`NETWORK_ISOLATION_PASS`)
+
+A **fresh** lab was constructed in this execution (script `build-isolated-lab.sh`)
+with two private network namespaces joined by a single internal veth pair:
+`vec01-master` (`net:[4026532612]`, `veth-m` `10.77.0.1/24`) and
+`vec01-outstation` (`net:[4026532705]`, `veth-o` `10.77.0.2/24`). Host/pod
+boundary (self inode `net:[4026532525]`) unchanged.
+
+| Boundary check | Method | Actual | Verdict |
+|---|---|---|---|
+| No external IPv4 route | `ip -4 route` per ns | only `10.77.0.0/24` | PASS |
+| No IPv6 global route | `ip -6 route` per ns | only `fe80::/64` | PASS |
+| Forwarding disabled | `ip_forward`, ipv6 forwarding | `0` / `0` | PASS |
+| Deny-all lab policy | `iptables -S` per ns | INPUT/FORWARD/OUTPUT DROP + lo/veth allow | PASS |
+| No NAT/masquerade | `iptables -t nat -S` | default only | PASS |
+| No bridge / published port | `ip link type bridge`, host `ss` | none; no 20000 | PASS |
+| No DNS | python `gethostbyname` per ns | `gaierror` | PASS |
+| No external egress | TCP connect to `1.1.1.1:80`, `140.82.121.4:443` | `OSError` (blocked) | PASS |
+| Lab-local reachability | master `10.77.0.1` → outstation `10.77.0.2` | connect OK | PASS |
+| No physical I/O | `/dev/ttyS*`,`ttyUSB*`,`ttyACM*`,`mem`,`port` | absent | PASS |
+| Host/pod boundary unchanged | inode/routes/firewall | unchanged | PASS |
+
+The connectivity probe used a throwaway, non-DNP3 TCP listener on the isolated
+link solely to prove lab-local reachability; no DNP3 frame was sent.
+
+### 13.4 Gate B2 — static listener/link-address proof (`LISTENER_STATIC_CONFIG_PASS`)
+
+Minimal **address-only** source tweak to the external lab copy
+(`src/opendnp3-3.1.2-lab`, outside Git), 3 lines, patch SHA-256
+`1b6ed5402885d757e7f04a9e5ecd25e3b8d7bcb2db701c1ec4e17f475e52247d`:
+bind `0.0.0.0:20000` → `10.77.0.2:20000`; `LocalAddr` 10 → 4; `RemoteAddr` 1 → 3.
+Offline rebuild produced `outstation-demo` SHA-256
+`12f96e21e29611fc74052a20a9f190f550d50cafb80eed97f4a53320db3c33ea`
+(byte-identical across two clean builds). The lab `libopendnp3.a` differs from
+stock (`312b7b5a…`) **only** by the 4-byte-longer embedded source path
+(`…/opendnp3-3.1.2-lab/…`): of 215 object files, 36 differ and all 36 differ
+solely in that path string (0 unexplained differences). This is not claimed to
+retain the historical hash.
+
+| Static check | Actual | Verdict |
+|---|---|---|
+| Explicit bind literal | `10.77.0.2` present in lab binary (`strings`) | PASS |
+| No wildcard bind | no `"0.0.0.0"` in lab example source | PASS |
+| Outstation link addrs | `LocalAddr=4`, `RemoteAddr=3` in lab source | PASS |
+| Bind matches live isolated interface | `10.77.0.2` == `veth-o` address | PASS |
+| No listener active | 0 listeners in both namespaces | PASS |
+| No host-published port | no host listener on 20000 | PASS |
+| Go master mapping (repo HEAD) | `MasterAddress`→source, `OutstationAddress`→`DestAddr` (`client.go`, `master.go:1091-1092`) | PASS |
+
+Prospective Go master configuration (static; not executed): TCP, address
+`10.77.0.2`, port `20000`, master local link address `3` (source), outstation
+link address `4` (destination).
+
+### 13.5 Evidence location and hashes (outside Git)
+
+Durable path attempted: `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/`.
+Post-transfer `sha256sum -c SHA256SUMS.txt` → all `OK`.
+
+| File | SHA-256 |
+|------|---------|
+| `peer-provenance.txt` | `8d92ab9255ec446880b34c61df282f92477364af324b4be1ff4a0999bfef53d7` |
+| `isolation-summary.txt` | `9bf1731c1876048e151fac71338b5bb122cf395ce6d1c20d02ebafacde28b586` |
+| `isolation/isolation-checks.txt` | `3fa1cb2455caf4f99b7ab3b883a0d27be808c9229c0dff6a7efe1aa4daeb9d01` |
+| `isolation/host-boundary.txt` | `6eebe6c9cfbab68c57d9d0c52666eebfb81f6cc023f550124e8763f475bb3fb5` |
+| `isolation/listener.log` | `e99f49889a4c8db3d27b6126343b4fe7cf6cfd0ab976b8161c5a817083f102dd` |
+| `b2-address-only.patch` | `1b6ed5402885d757e7f04a9e5ecd25e3b8d7bcb2db701c1ec4e17f475e52247d` |
+| `b2-static-proof.txt` | `ca02b189fbbea19546a4c202c2490506c899949e5008e87e5e1f0b5e9e4d9414` |
+| `b2-summary.txt` | `dff87c48e8a3c4301536ad27a4bb7f598e4d5fe5111ee82d1214b38a0fcf495a` |
+| `build-isolated-lab.sh` | `74b30ba3a1a20a3849d53ec0a5e880f7aa51e64276dcea5e3254b55efac877c5` |
+| `prove-isolation.sh` | `40290635267fc438e9c3e50feffb91d9cdc8323e8035e9678940e2bbb28a4e95` |
+| `SHA256SUMS.txt` | self-describing manifest of the above |
+
+**Durability limitation (honest):** `/workspace` is this container's root
+filesystem. Survival across OpenHands runners is **not verified** (the previous
+`gate-b-isolation-proof/` and `gate-b-reviewer-packet/` directories were absent
+at the start of this run). The store location is therefore *not* claimed durable.
+The tracked documents below carry the complete reproducible construction
+procedure and pinned digests so a fresh runner can rebuild without the ephemeral
+bytes.
+
+### 13.6 Reproduction procedure (for a fresh runner)
+
+1. Install `iproute2 cmake file unzip` (passwordless sudo).
+2. Retrieve the five pinned inputs (URLs in
+   `active_work/vec-01-opendnp3-lab-deployment-readiness.md`) and verify the
+   SHA-256 values in §13.2 before use; `catch` may be taken from
+   `raw.githubusercontent.com/catchorg/Catch2/v2.11.3/single_include/catch2/catch.hpp`.
+3. Extract sources; extract asio/exe4cpp/ser4cpp into a local `depsrc/`.
+4. Hermetic stock build inside `unshare -n` with
+   `-DFETCHCONTENT_FULLY_DISCONNECTED=ON` and `-DFETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}=…`;
+   expect `8ae8c841…` / `e2926474…`.
+5. Copy `src/opendnp3-3.1.2` → `src/opendnp3-3.1.2-lab`, apply the 3-line
+   address-only patch, rebuild offline; expect `outstation-demo` `12f96e21…`.
+6. Run `sudo bash build-isolated-lab.sh` then `sudo bash prove-isolation.sh`;
+   expect all boundary checks PASS.
+7. Apply the static B2 checks in §13.4.
+
+### 13.7 Scope compliance, non-claims and next gate
+
+- **No** DNP3 listener activation, **no** TCP/DNP3 packet, **no** control/CROB,
+  **no** PCAP, **no** networked Go test suite, **no** peer variation / simulated
+  BO adaptation, **no** deadline/retry work, **no** production probe, **no** new
+  branch/PR/merge, **no** R4 change. Only allowlisted documentation was updated;
+  both top markers remain `Status: TASK_BLOCKED`; CURRENT not archived/closed.
+- `NETWORK_ISOLATION_PASS` proves only the freshly-built isolation; it is **not**
+  Gate B overall. `LISTENER_STATIC_CONFIG_PASS` is a **static** result: the peer
+  was never started, bound or connected.
+- The Go toolchain was **MISSING** on this runner, so the mandatory Go gates were
+  **NOT_RUN** here (not converted to PASS); they remain required for the later
+  approved campaign.
+- Still BLOCKED and separately authorized-only: **B3** peer v0 capability
+  (G1V1/G30V1/G20V1) with a verifiable memory-backed **BO[0]** CROB target, **B4**
+  bounds/retry policy, then Gates C/D/E and the mandatory Go gates.
+- The stock demo's simulated database defaults (e.g. G1V2/G30V5 for some points)
+  were **not** modified here; exact v0 variation compliance remains an open B3
+  item, not a PASS.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

@@ -160,3 +160,35 @@ owner-authorized B2 step. B3/B4, Gates C/D/E and the mandatory Go gates remain
 not authorized and not performed.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Gate B B1+B2 single-run recovery — ephemeral runner (2026-11-08)
+
+Owner-authorized addendum permits a **fresh** lab plus reproducible bootstrap in
+the same execution (OpenHands runners are ephemeral; prior lab/pod/artifacts did
+not survive). Static/offline only. Execution SHA `ad48def4…` (branch `work`).
+Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**.
+
+| Step | Result | Evidence |
+|------|--------|----------|
+| CWAL startup (markers, ancestry, `cwal-check.sh`) | PASS | `main 02a58f7…` ancestor of `work ad48def…`; `CWAL CHECK OK` |
+| Reproducible bootstrap: pinned inputs + digest verification | PASS | tarball `183cc292…`; deps SHA-256 match + SHA-1 match; tag peel `26b4c01e…` |
+| Stock peer reproduced (hermetic offline) | PASS | `outstation-demo 8ae8c841…`; `libopendnp3.a e2926474…` (both exact) |
+| Fresh isolated lab construction | PASS | `vec01-master 10.77.0.1`, `vec01-outstation 10.77.0.2`, single veth |
+| **B1** objective isolation proof | **`NETWORK_ISOLATION_PASS`** | no route/DNS/egress/NAT/bridge; forwarding off; deny-all; lab-local only |
+| **B2** static listener/link-address proof | **`LISTENER_STATIC_CONFIG_PASS`** | bind `10.77.0.2:20000`; addrs 4/3; no wildcard; no listener started |
+| Mandatory Go gates | **NOT_RUN** | Go toolchain missing on runner; not converted to PASS |
+| B3 / B4 / Gates C / D / E | NOT AUTHORIZED | out of scope for this addendum |
+
+Peer (address-only) patch: `0.0.0.0:20000`→`10.77.0.2:20000`, `LocalAddr` 10→4,
+`RemoteAddr` 1→3; lab `outstation-demo` SHA-256 `12f96e21…` (not claimed to equal
+the stock hash). Prospective Go master config (static): TCP `10.77.0.2:20000`,
+master local link addr 3, outstation link addr 4.
+
+Evidence (outside Git): `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/`
+(SHA-256 manifest; `sha256sum -c` all OK). **Durability across runners is NOT
+verified** — `/workspace` is the container root FS; the tracked verification
+document (§13) carries the full reproducible construction procedure and digests.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

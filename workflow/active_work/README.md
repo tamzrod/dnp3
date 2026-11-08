@@ -54,6 +54,27 @@ still separately authorized-only. Evidence (outside Git, SHA-256 manifest):
 DNP3/TCP packet, control, CROB, PCAP, namespace recreation or networked Go test
 ran. See `docs/verification/VEC-01-LAB-EXEC-001.md` §12.
 
+### Gate B B1+B2 single-run recovery — ephemeral runner (2026-11-08)
+Owner-authorized "B1+B2 single-run recovery — ephemeral runner correction"
+addendum executed at SHA `ad48def4c57b22ce6c6c163e5a426234236d8fc8`. Because
+OpenHands runners are ephemeral, a **fresh** lab was built in this execution and
+its actual properties were proven. Pinned inputs were re-verified (tarball
+`183cc292…`; asio/exe4cpp/ser4cpp SHA-256 match + SHA-1 match; tag peel
+`26b4c01e…`), and a hermetic offline stock build reproduced `outstation-demo`
+`8ae8c841…` and `libopendnp3.a` `e2926474…` **exactly**. A two-namespace lab
+(`vec01-master` `10.77.0.1`, `vec01-outstation` `10.77.0.2`, single internal veth,
+`10.77.0.0/24`) proved no route/DNS/egress/NAT/bridge, forwarding off, deny-all
+policy, lab-local-only reachability and no physical I/O → **`NETWORK_ISOLATION_PASS`**.
+An address-only peer patch (bind `10.77.0.2:20000`, `LocalAddr=4`, `RemoteAddr=3`,
+rebuild `12f96e21…`) with matching prospective Go master settings (local 3, remote
+4, target `10.77.0.2:20000`) passed static checks → **`LISTENER_STATIC_CONFIG_PASS`**.
+Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**; no listener, TCP/DNP3
+packet, control, CROB, PCAP or networked Go test ran; Go gates **NOT_RUN** (no Go
+toolchain on runner). Evidence (outside Git, SHA-256 manifest):
+`/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/`; durability across runners
+**NOT verified**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §13. B3/B4 and
+Gates C/D/E remain separately authorized-only.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
