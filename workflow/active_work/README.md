@@ -1,17 +1,17 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: DNP3-VET-CORRECTION-001
+Package: DNP3-PR15-FORMATTING-CORRECTION-001
 Branch: fix/dnp3-056-outstation-vet-cwal
-CURRENT: NONE
+CURRENT: DNP3-057
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
-## Current state
-The single promoted task DNP3-056 was completed and archived to `archive/active-work/DNP3-056.md`. Evidence is recorded in `docs/verification/DNP3-056.md`. No task is currently promoted; `CURRENT: NONE` forbids further implementation until a human promotes a new package.
+## Current authorization
+The repository owner promoted DNP3-057 on 2026-11-08 to correct the existing GitHub Actions repository-wide Go formatting failure on open PR #15. Read only `workflow/active_work/DNP3-057.md` and follow `operation cwal.md`. This is a new corrective package on the **same** branch; it does not reopen completed DNP3-056 or authorize another PR or merge.
 
-## Verification state
-PASS: `go vet ./...`, `go test ./... -count=1`, `go build ./...`, `./scripts/verify-external-mvp.sh` (Tiers 1-3; advisory VEC-01 third-party capture not present and non-blocking by design). See `docs/verification/DNP3-056.md` for exact commands and results.
+## CI observation and verification
+PR #15: Lint formatting failed; Documentation and Test checks passed in the reported run. The existing CI gate is `gofmt -l .`. Formatting inventory, changes, and post-fix test results remain **NOT_RUN** until the CURRENT task executes. Never claim successful corrective verification without actual runs.
 
-## Remaining limitations
-No third-party interoperability/capture evidence exists; no IEEE 1815 conformance claim is made. PR creation, merge, release and field-device tests each require separate human authorization.
+## Historical checkpoint (not active authority)
+DNP3-056 remains completed and archived: `archive/active-work/DNP3-056.md`, evidence `docs/verification/DNP3-056.md`, original implementation commit `f2568dd`. History-only main synchronization commit `524b385` preserved the verified tree. Do not modify those artifacts as part of DNP3-057.
