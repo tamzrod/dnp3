@@ -56,8 +56,8 @@ This directory contains Runtime configuration artifacts that define how KDE init
 
 | Document | Purpose |
 |----------|---------|
-| [/engines/current.md](/workspace/project/kde/engines/current.md) | Engine registry (shows Status vs Default) |
-| [/laboratory/LABORATORY-RULES.md](/workspace/project/kde/laboratory/LABORATORY-RULES.md) | Laboratory Rules (includes Human Authority directive) |
+| [Engine registry](../../engines/current.md) | Verified repository-relative engine registry (status versus default) |
+| [KDE governance hierarchy](../GOVERNANCE-HIERARCHY.md) | Verified human-approval and authority definitions; former `/workspace/project/kde/laboratory/LABORATORY-RULES.md` is absent and must not be inferred |
 
 ---
 
