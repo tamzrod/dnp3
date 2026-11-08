@@ -3,12 +3,12 @@
 Repository: tamzrod/dnp3
 Package: DNP3-VET-CORRECTION-001
 Branch: fix/dnp3-056-outstation-vet-cwal
-CURRENT: DNP3-056
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_READY
+Status: WORK_PACKAGE_READY
 
 ## Concise handoff
-Human-authorized CURRENT correction: DNP3-056. Task file at `workflow/active_work/DNP3-056.md`; fix the one unreachable `return nil` in `internal/outstation/outstation.go` and verify without altering runtime behavior. Branch created from `docs/dnp3-agent-rules` because the CWAL governance overlay is not yet merged to main; PR #13 remains separate. PR #14 was closed unmerged.
+Human-authorized CURRENT DNP3-056 completed and archived. The unreachable `return nil` after `RunWithContext`'s infinite loop in `internal/outstation/outstation.go` was removed (one statement). No other source change. Verification: `go vet ./...` PASS, `go test ./... -count=1` PASS, `go build ./...` PASS, `./scripts/verify-external-mvp.sh` PASS (Tiers 1-3). Evidence in `docs/verification/DNP3-056.md`; archived task at `archive/active-work/DNP3-056.md`. Package DNP3-VET-CORRECTION-001 is now WORK_PACKAGE_READY with `CURRENT: NONE`.
 
 ## Next action
-Check out this branch cleanly; fetch and compare remote SHA, run `bash scripts/cwal-check.sh`, execute CURRENT only, run required tests, record truthful evidence, then archive and remotely checkpoint after success. No new PR or merge until separately authorized.
+No task is promoted. PR creation, merge, release and field-device tests require separate human authorization. To continue, a human must promote a new package with matching markers.
