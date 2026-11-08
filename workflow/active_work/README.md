@@ -1,11 +1,16 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: DNP3-POST-PR17-ROADMAP-SYNC-001
+Package: MEXT-THIRD-PARTY-CAPTURE-PROCEDURE-001
 Branch: work
-CURRENT: NONE
+CURRENT: MEXT-042
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
+
+
+
+## CURRENT — MEXT-042 (owner-promoted 2026-11-08)
+MEXT-042 is the **documentation-only** independent third-party capture procedure placeholder, human-promoted after PR #18 merged. Permanent execution branch: `work`. Authoritative scope and executable verification: `workflow/active_work/MEXT-042.md`. **Do not execute third-party capture, issue live field controls, change supported behavior, or close R4/VEC-01**. Mandatory Go verification is executable and must PASS, including private Go installation fallback. No other CURRENT or QUEUED task is authorized. DNP3-059 remains closed and archived. This task is **TASK_READY only**, not implemented or checkpointed.
 
 
 ## Package closure
