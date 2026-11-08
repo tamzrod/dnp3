@@ -1,7 +1,7 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: DNP3-MEXT042-PROVENANCE-CORRECTION-001
+Package: VEC-01-LAB-PREP-001
 Branch: work
 CURRENT: NONE
 QUEUED: NONE
@@ -9,6 +9,26 @@ Status: WORK_PACKAGE_READY
 
 
 
+
+
+## Package closure — VEC-01-LAB-PREP-001 (2026-11-08)
+The OpenDNP3 laboratory preparation package is complete as **documentation
+only**. It added `active_work/vec-01-opendnp3-lab-preparation.md`, a planning
+placeholder covering peer provenance (independently implemented OpenDNP3 C++,
+Apache-2.0, archived upstream, pinned tag 3.1.2), reproducible preparation
+design, isolated non-production topology, the v0 configuration matrix, a future
+test matrix (not execution), capture/artifact plan, and authorization gates. No
+peer was cloned, built, installed or run; no DNP3 packets, capture, field
+control or production interaction occurred. **VEC-01 remains NOT EXECUTED, R4
+remains OPEN, and third-party interoperability is NOT PROVEN.** All mandatory
+regression gates PASSED on the exact `work` tree at
+`08d3882a3b63010e21be6d4021593dda0c5cc4e3` with a provisioned official Go
+1.22.12 toolchain: `gofmt -l .` clean, `git diff --check`, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`,
+`go test -race ./internal/outstation/... -count=1`, `./scripts/verify-mvp.sh`,
+and `./scripts/verify-external-mvp.sh` (Tiers 1-3). Evidence:
+`docs/verification/VEC-01-LAB-PREP-001.md`; archive:
+`archive/active-work/VEC-01-LAB-PREP-001.md`.
 
 ## Package closure — DNP3-060 (2026-11-08)
 The MEXT-042 provenance correction is complete. DNP3-060 corrected the two
