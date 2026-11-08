@@ -1,5 +1,11 @@
 # Agent and Contributor Rules — tamzrod/dnp3
 
+## Operation routing (DNP3)
+- **Operation CWAL:** Read [operation cwal.md](operation%20cwal.md), [BLACK_SHEEP_WALL.md](BLACK_SHEEP_WALL.md), and the matching top marker blocks in `workflow/active_work/README.md` and `handoff.md`. Run `bash scripts/cwal-check.sh`. Execute **only** a human-promoted CURRENT task; `CURRENT: NONE` forbids implementation.
+- **BLACK SHEEP WALL:** For scoped investigations, read the minimum relevant code/tests/specification; standalone investigation and independent audit are read-only.
+- **KDE authority:** The `.kde/` governance hierarchy and approved design decisions retain authority. CWAL coordinates execution but cannot self-approve architectural or governance changes.
+- **Safety and checkpoint:** No automatic PR, merge, push to `main`, live field command, or unverifiable checkpoint. Promote queued tasks only under the exact human-approved package and after remote verification.
+
 ## Identity and authority
 - Repository: `tamzrod/dnp3`; native Go implementation of IEEE 1815 (DNP3).
 - This document is an operational checklist, **not** a replacement for `.kde/` governance, approved architecture, or documented protocol requirements.
