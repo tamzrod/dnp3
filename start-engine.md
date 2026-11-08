@@ -48,7 +48,7 @@ Before any work, acknowledge the Five Core Principles from `.kde/seeds/seed-001/
 
 ### Step 2: Inspect dependencies without installing
 
-The KDE bootstrap gates currently call a PyYAML auto-install path when missing. Do **not** invoke that mutating bootstrap as an implicit startup step. First inspect locally available modules and report missing requirements; any installation requires separate human approval and a permitted network/provisioning environment.
+The KDE bootstrap gates are observation-only by default: missing PyYAML is reported as blocked, never automatically installed. A separate human-approved provisioning workflow is required for any installation.
 
 ```bash
 python3 --version
@@ -101,21 +101,21 @@ python3 -c "import sys; sys.path.insert(0, '.kde'); from runtime.runtime import 
 
 ## Detailed Command Reference
 
-### Bootstrap Gates (may install dependencies; NOT the default for offline tasks)
+### Bootstrap Gates (observation-only; no dependency installation)
 
 | Command | Purpose | Time |
 |---------|---------|------|
-| `python3 .kde/bootstrap/gates.py --quick` | Bootstrap gate (may auto-install PyYAML) | Requires separately authorized provisioning |
-| `python3 .kde/bootstrap/gates.py --full` | Full bootstrap gate (may auto-install PyYAML) | Requires separately authorized provisioning |
+| `python3 .kde/bootstrap/gates.py --quick` | Non-installing bootstrap checks | Available for explicitly selected KDE work |
+| `python3 .kde/bootstrap/gates.py --full` | Non-installing full checks | Available for explicitly selected KDE work |
 
 ### Make Targets
 
 If Make is available:
 
 ```bash
-make kde-quick      # Quick preflight check
-make kde-check      # Full preflight check  
-make kde-start      # Start runtime with quick preflight
+make kde-quick      # Non-installing KDE gate checks
+make kde-check      # Non-installing full KDE gate checks
+make kde-start      # Start KDE demo after non-installing checks; explicit KDE intent only
 make kde-status     # Show bootstrap status
 ```
 
@@ -189,7 +189,7 @@ from runtime import demo  # No .kde in path!
 | `preflight` | preflight.py | Run system check |
 | `run demo` | runtime.demo() | Execute demo |
 | `check state` | cat state.json | Read runtime state |
-| `bootstrap` | explicit provisioning approval required before gates.py --full | Not a default safe startup operation |
+| `bootstrap` | gates.py --full | Non-installing environment checks; no task promotion |
 | `health` | status.py | Show bootstrap status |
 
 ---
@@ -232,7 +232,7 @@ python3 .kde/runtime/preflight.py  # Run as script
 
 ### State shows "uninitialized"
 
-Inspect runtime state and report the missing initialization. Bootstrap may install packages, so run it only after an explicit authorization that allows provisioning.
+Inspect runtime state and report the missing initialization. Bootstrap performs non-installing checks and cannot self-authorize provisioning or task execution.
 
 ---
 
@@ -269,4 +269,4 @@ Inspect runtime state and report the missing initialization. Bootstrap may insta
 - `operation cwal` uses the exact human-promoted CURRENT and matching markers; it does not automatically initialize KDE, install tools or create a laboratory investigation.
 - `PLAN` and `CHECK` remain read-only; governance maintenance requires separate human authorization.
 - The approved `.kde/governance/runtime/defaults.yaml` is authoritative for engine/seed defaults. This file reports those settings but never changes them.
-- Existing KDE documentation may still contain examples of package installation. Such examples do not grant authority to execute them, especially for an offline-only CURRENT.
+- KDE bootstrap and Make's KDE checks are non-installing; no invocation grants authority to install missing dependencies or exceed the selected task's safety restrictions.
