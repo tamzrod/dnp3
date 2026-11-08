@@ -1,17 +1,21 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: DNP3-VEC01-LAB-DEPLOY-PROVENANCE-CORRECTION-001
+Package: VEC-01-LAB-EXEC-001
 Branch: work
-CURRENT: NONE
+CURRENT: VEC-01-LAB-EXEC-001
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
 
 
 
 
 
+
+
+## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
+Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
 ## Package closure — DNP3-061 (2026-11-08)
 The VEC-01-LAB-DEPLOY-001 startup provenance correction is complete. DNP3-061
