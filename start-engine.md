@@ -219,11 +219,7 @@ sys.path.insert(0, '.kde')
 
 ### "No module named yaml"
 
-PyYAML not installed:
-
-```bash
-pip install pyyaml
-```
+PyYAML not installed. Report the missing dependency and stop. Do not auto-install it during CWAL, PLAN, CHECK or implicit OpenHands startup. Provisioning requires separate human approval.
 
 ### "ImportError: attempted relative import with no known parent package"
 
