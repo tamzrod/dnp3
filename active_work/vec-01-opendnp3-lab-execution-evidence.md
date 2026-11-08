@@ -228,3 +228,37 @@ Evidence limitation: `/workspace/vec01-lab-artifacts/gate-b-b1b2-recovery/` is
 are **recorded, not independently revalidated** by this correction.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Gate B3 — static v0 simulator preparation (2026-11-08)
+
+Owner-authorized "Gate B3 — static simulator preparation only" addendum. Static/
+offline only; execution SHA `eca059e7…` (branch `work`). Overall Gate B and the
+CURRENT remain **`TASK_BLOCKED`**. **`B3_STATIC_SIMULATOR_PASS` (static readiness
+only).**
+
+| Step | Result | Evidence |
+|------|--------|----------|
+| CWAL startup (markers, ancestry, `cwal-check.sh`) | PASS | `origin/work eca059e7…`; `CWAL CHECK OK` |
+| Pinned inputs re-verified | PASS | tarball `183cc292…`; deps SHA-256 + SHA-1 match; tag peel `26b4c01e…` |
+| Stock peer reproduced (offline) | PASS (path-only diff) | stock hashes differ only by embedded build path (36/215 objects, 0 unexplained) |
+| Fresh isolated lab (non-TCP proof) | PASS | `vec01-master 10.77.0.1`, `vec01-outstation 10.77.0.2`, single veth |
+| **B3 static v0 config** | **`B3_STATIC_SIMULATOR_PASS`** | G1V1/G30V1/G20V1 @0; BI[0]=true, AI[0]=2300, CT[0]=42; unsolicited off; class-0 restricted |
+| **B3 memory-only BO[0] handler** | PASS (static) | `LabCrobCommandHandler`: DirectOperate latch on/off @0 only; rejects SBO/no-ack/wrong index/analog |
+| Offline compile + static checks | PASS | 0 warnings/errors; deterministic rebuild `6657ec80…` |
+| Mandatory Go gates | **NOT_RUN** | no Go toolchain on runner; not converted to PASS |
+| B4 / Gates C / D / E | NOT AUTHORIZED | out of scope for this addendum |
+
+Only the external lab demo `cpp/examples/outstation/main.cpp` changed (patch
+`b3-lab-demo.patch`, SHA-256 `1758ad1c…`); the pinned protocol library is
+untouched. Bind `10.77.0.2:20000`; link addresses 4/3; no wildcard in the demo.
+Prospective Go master: TCP `10.77.0.2:20000`, master local 3, outstation 4.
+
+Evidence (outside Git, SHA-256 manifest, `sha256sum -c` all OK):
+`/workspace/vec01-lab-artifacts/gate-b-b3-static/`. **Durability across runners
+is NOT verified**; the tracked verification §15 carries the full reproducible
+procedure and digests. No listener, TCP/DNP3, CROB, PCAP, external probe or
+networked Go suite ran.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

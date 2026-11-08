@@ -78,6 +78,25 @@ toolchain on runner). Evidence (outside Git, SHA-256 manifest):
 owner-authorized **TCP scope correction §14**. B3/B4 and Gates C/D/E remain
 separately authorized-only.
 
+### Gate B3 — static v0 simulator preparation (2026-11-08)
+Owner-authorized "Gate B3 — static simulator preparation only" addendum executed
+at SHA `eca059e7215934dbd2e2d2389788718b043e64df`. Pinned OpenDNP3 3.1.2 inputs
+re-verified; a fresh non-TCP isolated lab proven (`NETWORK_ISOLATION_PASS`,
+passive + strictly lab-local ICMP only, no TCP/external probes). An external
+lab-only demo change (`b3-lab-demo.patch`) sets G1V1/G30V1/G20V1 at index 0,
+removes the stock G30V5 override, initializes BI[0]=true / AI[0]=2300 / CT[0]=42,
+disables unsolicited, restricts Class-0 to BI/AI/CT, binds `10.77.0.2:20000`
+(addrs 4/3), and replaces the always-success handler with a memory-only G12V1
+`LabCrobCommandHandler` (DirectOperate latch on/off at BO[0] only; rejects SBO,
+no-ack, wrong index and analog). Offline build 0 warnings, deterministic
+`6657ec80…` → **`B3_STATIC_SIMULATOR_PASS` (static readiness only)**. The pinned
+protocol library was not modified. Overall Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; no listener/TCP/DNP3/CROB/PCAP/external probe/networked Go
+test ran; Go gates **NOT_RUN**. Evidence (outside Git, SHA-256 manifest):
+`/workspace/vec01-lab-artifacts/gate-b-b3-static/`; durability across runners
+**NOT verified**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §15. B4 and
+Gates C/D/E remain separately authorized-only.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 

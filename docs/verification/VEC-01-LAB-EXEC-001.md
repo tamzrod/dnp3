@@ -818,3 +818,197 @@ CURRENT body and all historical paragraphs are untouched.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 15. Gate B3 — static v0 simulator preparation (2026-11-08)
+
+**Authority:** owner-authorized "Gate B3 — static simulator preparation only"
+addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`. Scope:
+build/configuration readiness of an independent OpenDNP3 3.1.2 laboratory
+executable whose source/config statically specify G1V1/G30V1/G20V1, fixed points
+BI[0]=true / AI[0]=2300 / CT[0]=42, and a single memory-only BO[0] G12V1
+direct-operate handler. **No listener, no TCP/DNP3, no CROB execution, no PCAP,
+no external probes, no networked tests.** Execution SHA (branch `work`):
+`eca059e7215934dbd2e2d2389788718b043e64df`.
+
+**Verdict: `B3_STATIC_SIMULATOR_PASS` (static readiness only).** Overall Gate B
+and the CURRENT remain `TASK_BLOCKED`. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### 15.1 CWAL startup
+
+- Markers match in `workflow/active_work/README.md` and `handoff.md` (Repository
+  `tamzrod/dnp3`, Package/CURRENT `VEC-01-LAB-EXEC-001`, Branch `work`, QUEUED
+  `NONE`, Status `TASK_BLOCKED`). Local `work` fast-forwarded to `origin/work`
+  = `eca059e7…`; worktree clean; `bash scripts/cwal-check.sh` → `CWAL CHECK OK`.
+
+### 15.2 Reproducible bootstrap (fresh, this runner)
+
+Tools staged outside Git: `iproute2`, `iputils-ping`, `cmake` 3.31.6, `file`,
+`unzip` (passwordless sudo). Host/pod routes, firewall, Kubernetes policy and
+physical interfaces were **not** modified.
+
+Pinned inputs re-acquired and verified (raw output `peer-provenance.txt`):
+
+| Input | SHA-256 (actual) | Recorded | Match |
+|---|---|---|---|
+| `opendnp3-3.1.2.tar.gz` | `183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2` | same | ✅ |
+| `asio-1-16-0.zip` | `18883c350558eadf91218ae5ce9a8f8f85099c2f036c1c8579fb639092e928c5` | same | ✅ |
+| `exe4cpp-fb878a4.zip` | `2a8a2c7d9982f54858b92c03cff91ef433907472039f8e61ff7c9f9b3d48db6c` | same | ✅ |
+| `ser4cpp-3c44973.zip` | `5a78f83de2d70bdf4be2ab607bc4416c6866ce64a257a8f19948cf5746762f6e` | same | ✅ |
+| `catch-2.11.3.hpp` | `197640c056d6d01e5a56737fbdfe671d2b872c8c7533e01cc2de4be19ab7a028` | same | ✅ |
+
+Tag peel verified live: `refs/tags/3.1.2^{}` = `26b4c01e4839bbbda8866655e086471c4917ee53`.
+SHA-1 cross-checks of the three used dependencies match upstream `URL_HASH`
+(`6bdd3352…`, `18b141e8…`, `937b759b…`). Two dependency downloads initially
+returned GitHub 503/error HTML; the loop retried until the bytes matched the
+recorded digests, so only verified bytes were used.
+
+Hermetic **offline** stock build (`unshare -n`, no DNS/route): configure exit 0,
+build exit 0. The stock hashes differed from the historical values
+(`fe674bf5…` vs `8ae8c841…`; `033104f8…` vs `e2926474…`) **only** by the embedded
+build path: of 215 library object files, 36 differ and all 36 differ solely in
+the embedded source-path string (`/tmp/vec01-b3/...` vs `/tmp/vec01-lab/...`);
+0 unexplained differences. This is a path-dependent rebuild difference, not a
+semantic change; the modified lab binary is **not** claimed to equal the pinned
+stock binary.
+
+### 15.3 Fresh isolation proof (`NETWORK_ISOLATION_PASS`, non-TCP)
+
+A **fresh** lab was built (`build-isolated-lab.sh`): `vec01-master`
+(`net:[4026532612]`, `veth-m` `10.77.0.1/24`) and `vec01-outstation`
+(`net:[4026532705]`, `veth-o` `10.77.0.2/24`), single internal veth. Per the
+addendum, the proof used **passive inspection and strictly lab-local ICMP only —
+no TCP, no sockets, no external destination probes, no DNS queries**.
+
+| Boundary check | Actual | Verdict |
+|---|---|---|
+| No external IPv4 route | only `10.77.0.0/24` | PASS |
+| No IPv6 global route | only `fe80::/64` | PASS |
+| Forwarding disabled | `0` / `0` | PASS |
+| Deny-all lab policy | INPUT/FORWARD/OUTPUT DROP + lo/veth allow | PASS |
+| No NAT/masquerade | default only | PASS |
+| No published host port / bridge | none | PASS |
+| No lab listening sockets | none | PASS |
+| No physical I/O | ttyS*/ttyUSB*/ttyACM*/mem/port absent | PASS |
+| Lab-local reachability (ICMP) | `10.77.0.1` ↔ `10.77.0.2` 0% loss | PASS |
+| Host/pod boundary unchanged | inode/routes/firewall unchanged | PASS |
+
+### 15.4 B3 lab configuration (static)
+
+Only the external lab demo `cpp/examples/outstation/main.cpp` was changed; the
+pinned protocol library is untouched (`diff -rq` reports a single differing
+file). Patch `b3-lab-demo.patch`, SHA-256
+`1758ad1c8999f1b948a3773aa82ce823b17b8cdefc73072764c0818fa33b8241`.
+
+- **Variations (index 0):** `StaticBinaryVariation::Group1Var1`,
+  `StaticAnalogVariation::Group30Var1` (analog `clazz = Class0`),
+  `StaticCounterVariation::Group20Var1`; the stock `Group30Var5`/`Class2` analog
+  override is removed.
+- **Fixed memory points** initialized before protocol use:
+  `Binary(true)` → BI[0]=true; `Analog(2300.0)` → AI[0]=2300; `Counter(42)` →
+  CT[0]=42 (via `UpdateBuilder` with `EventMode::Suppress`).
+- **Unsolicited disabled:** `config.outstation.params.allowUnsolicited = false`.
+- **Class-0 restricted** to `BinaryInput | AnalogInput | Counter` via
+  `typesAllowedInClass0`, so no BO status / AO status / double-binary / frozen /
+  octet-string / time-and-interval objects enter a G60V1 all-objects response.
+- **Bind/link:** demo binds `IPEndpoint("10.77.0.2", 20000)` (no wildcard);
+  `config.link.LocalAddr = 4`, `config.link.RemoteAddr = 3`. The `0.0.0.0`
+  literal present in the binary originates in the pinned **library**
+  (`IPEndpoint.h`, `SocketHelpers.h`), not the demo bind.
+- **Memory-only G12V1 handler** (`LabCrobCommandHandler`, replaces
+  `SuccessCommandHandler`): accepts **only** `OperateType::DirectOperate` at
+  index 0 with `OperationType::LATCH_ON`/`LATCH_OFF` and `count == 1`; returns
+  `NOT_SUPPORTED` for SBO / `DirectOperateNoAck` / unsupported codes and all
+  analog outputs, `OUT_OF_RANGE` for index ≠ 0, `FORMAT_ERROR` for count ≠ 1.
+  It returns `SUCCESS` only after the in-memory `state_` is written and read
+  back equal to the request (`(observed == requested) ? SUCCESS : HARDWARE_ERROR`).
+  No hardware, GPIO, field bus, Modbus, OT interface or unsolicited output.
+
+### 15.5 Offline compile and static verification
+
+| Static check | Actual | Verdict |
+|---|---|---|
+| Exact v0 variations present | G1V1/G30V1/G20V1 at index 0 | PASS |
+| No `Group30Var5` override remains | removed | PASS |
+| Fixed point initialization present | BI[0]=true, AI[0]=2300, CT[0]=42 | PASS |
+| Bind `10.77.0.2:20000`, no wildcard in demo | source + binary literal | PASS |
+| Link addresses 4 / 3 | source | PASS |
+| Unsolicited disabled, Class-0 restricted | source | PASS |
+| Handler accept/reject + memory mutation | source | PASS |
+| Offline compile, 0 warnings/errors | build log | PASS |
+| Deterministic rebuild (2 clean builds) | byte-identical `6657ec80…` | PASS |
+
+Lab `outstation-demo` SHA-256
+`6657ec806f06b72ccbc0fcfcd646ee58d48156fb71b65cba36c59b5b130da3e7`;
+lab `libopendnp3.a` SHA-256
+`25f83aaad27fb54b46e98ab215cfe7af9e1fa6f022fc63290e81a564126e03b0`. Toolchain:
+g++ 14.2.0, CMake 3.31.6, GNU Make 4.4.1, Linux 6.8.0 x86_64.
+
+**NOT_TESTED / limitations (not converted to PASS):** static inspection cannot
+prove actual G1V1 packed-byte wire output or a real CROB state transition on the
+wire; the peer was never started or connected. The stock demo's remaining
+default points (indices 1..9) keep library default variations and are outside
+the in-profile Class-0 set; exact multi-header packing and qualifiers remain for
+a later authorized wire gate. Mandatory Go gates were **NOT_RUN** (no Go
+toolchain on this runner). B4, Gates C/D/E, real interoperability, raw PCAP,
+capture-derived `.vec`, R4 closure, PR and merge remain separately authorized-only.
+
+### 15.6 Evidence location and hashes (outside Git)
+
+Durable path attempted: `/workspace/vec01-lab-artifacts/gate-b-b3-static/`.
+Post-transfer `sha256sum -c SHA256SUMS.txt` → all `OK`.
+
+| File | SHA-256 |
+|------|---------|
+| `peer-provenance.txt` | `d11d078c595e15dad036cf75bd6a835ab9bb8989d64813a2ebbca67d3867459f` |
+| `b3-lab-demo.patch` | `1758ad1c8999f1b948a3773aa82ce823b17b8cdefc73072764c0818fa33b8241` |
+| `b3-static-verify.txt` | `2d059899850df1e90119eb42af7c1201a3c7ce2456c970c6dea15063c49fb2b2` |
+| `b3-summary.txt` | `046577c4efeb3bced3572b52ea6420e1813d98869adb7be1931e31c017780695` |
+| `isolation-checks.txt` | `569be5cfaa072daf064f658e45b2f60aca05e9520bc8e885c62d833ec853801d` |
+| `lab-construct.log` | `e2cd707796ae033afc66b0161ee45acce49a0a68c88aad1473fc94e0a0ae7472` |
+| `build-isolated-lab.sh` | `d13bb57422423a53e59e127f80a8214c81a10cef05577243f90f566a39628e87` |
+| `prove-isolation.sh` | `0d44c8149f24354cd7828b9b94b48933f5c80e28e6d46a55da63f63ee19da71a` |
+| `build-lab.log` | `0dcf9b221cfb802af582e391126425984a7e04da4f7f78d47b727ec0d25ad948` |
+| `stock-build.log` | `d95fe23f8326d0d25ee7cee3bf664c72ab5fad17f3046a28e48b6219d55ece4b` |
+| `SHA256SUMS.txt` | self-describing manifest of the above |
+
+**Durability limitation (honest):** `/workspace` is this container's root
+filesystem and has not been verified to persist between ephemeral runners. The
+tracked documents carry the full pinned inputs, patch, commands and digests so a
+fresh runner can reconstruct the lab without the ephemeral bytes.
+
+### 15.7 Reproduction procedure (for a fresh runner)
+
+1. Install `iproute2 iputils-ping cmake file unzip` (passwordless sudo).
+2. Retrieve the five pinned inputs (URLs in
+   `active_work/vec-01-opendnp3-lab-deployment-readiness.md`); verify the §15.2
+   SHA-256 values before use. `catch` may come from
+   `raw.githubusercontent.com/catchorg/Catch2/v2.11.3/single_include/catch2/catch.hpp`.
+   Retry transient 503/error pages until the bytes match the recorded digests.
+3. Extract sources; extract asio/exe4cpp/ser4cpp into a local `depsrc/`.
+4. Copy `src/opendnp3-3.1.2` → `src/opendnp3-3.1.2-b3`; apply
+   `b3-lab-demo.patch` (single file: demo `main.cpp`).
+5. Offline build inside `unshare -n` with `-DFETCHCONTENT_FULLY_DISCONNECTED=ON`
+   and `-DFETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}=…`; expect
+   `outstation-demo` `6657ec80…`.
+6. Run `sudo bash build-isolated-lab.sh` then `sudo bash prove-isolation.sh`;
+   expect all boundary checks PASS (non-TCP only).
+7. Re-apply the §15.5 static checks.
+
+### 15.8 Scope compliance and next gate
+
+- **No** listener activation, **no** TCP/DNP3 packet, **no** CROB execution,
+  **no** PCAP, **no** external probe, **no** networked Go suite, **no** host or
+  production network change, **no** Go source edit, **no** protocol-library
+  edit, **no** B4 / Gates C/D/E, **no** R4 change, **no** PR/merge. Only
+  allowlisted documentation was updated; both top markers remain
+  `Status: TASK_BLOCKED`; CURRENT not archived/closed.
+- `B3_STATIC_SIMULATOR_PASS` is **static readiness only**; it is not proof of
+  emitted wire bytes, of a runtime CROB effect, or of interoperability.
+- Still BLOCKED and separately authorized-only: **B4** bounds/retry policy, then
+  Gates C/D/E and the mandatory Go gates.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
