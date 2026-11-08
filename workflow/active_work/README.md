@@ -3,16 +3,31 @@
 Repository: tamzrod/dnp3
 Package: DNP3-POST-PR17-ROADMAP-SYNC-001
 Branch: work
-CURRENT: DNP3-059
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_READY
+Status: WORK_PACKAGE_READY
 
 
-## Active synchronization authority
-DNP3-059 is the owner-promoted documentation-only historical roadmap synchronization task after PR #17 merged into main at `95ac10289ead46c09264a9da2bb877f0e0507410`. Read `workflow/active_work/DNP3-059.md`. MEXT-040/041 and DNP3-058 remain completed and archived. MEXT-042 is NOT promoted. All code, unsupported feature boundaries and independent VEC-01/third-party limitations remain untouched.
+## Package closure
+The post-PR #17 roadmap synchronization package is complete. DNP3-059 reconciled
+the historical MEXT roadmap, the external-acceptance checklist and the
+historical MEXT handoff with evidence already on `main`, without creating new
+execution authority or changing code, profile, governance or verification
+archives. It executed every mandatory Go gate on the exact branch tree at
+`16f6f70ef70ab448a7b6a3a3b783902ee86f790e` with a provisioned official Go
+1.22.12 toolchain: `gofmt -l .` clean, `git diff --check`, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`,
+`go test -race ./internal/outstation/... -count=1`, `./scripts/verify-mvp.sh`,
+and `./scripts/verify-external-mvp.sh` (Tiers 1-3). Evidence is in
+`docs/verification/DNP3-059.md`; the task is archived at
+`archive/active-work/DNP3-059.md`. R4/VEC-01 third-party interoperability
+remains OPEN; MEXT-042 remains unpromoted.
 
 ## Execution stop
-Only DNP3-059 may run. On completion archive/evidence, restore CURRENT NONE, QUEUED NONE, WORK_PACKAGE_READY in both files, and verify remote checkpoint. No direct main push or automatic PR/merge.
+CURRENT is NONE and QUEUED is NONE. No implementation, protocol, profile or
+governance task may run without a new human-promoted bounded CWAL microtask with
+matching markers in this file and root `handoff.md`. PR creation, merge, release
+and field-device tests each require separate human authorization.
 
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.
