@@ -20,27 +20,27 @@ This skill provides guidance for conducting investigations and experiments withi
 
 | Content | Location | Purpose |
 |---------|----------|---------|
-| Five Core Principles | `runtime/principles_enforcer.py` | Actual enforcement code |
-| Laboratory Workflow | `laboratory/WORKFLOW.md` | Investigation lifecycle (9 stages) |
-| Investigation Templates | `laboratory/templates/investigation-template.md` | Investigation artifact template |
-| Experiment Templates | `laboratory/templates/experiment-template.md` | Experiment artifact template |
-| ECU Runtime | `runtime/ecu/` | Execution control and governance |
-| Pre-Flight Check | `runtime/preflight.py` | System readiness verification |
+| Five Core Principles | `.kde/runtime/principles_enforcer.py` | Actual enforcement code |
+| Laboratory Workflow | `.kde/governance/STATE-MACHINE.md` | Verified document-state transitions; no nine-stage workflow file exists at the old path |
+| Investigation Templates | Unavailable in this repository | Former investigation template path is absent; use only human-approved existing artifacts |
+| Experiment Templates | Unavailable in this repository | Former experiment template path is absent; do not invent a replacement |
+| ECU Runtime | `.kde/runtime/ecu/` | Execution control and governance |
+| Pre-Flight Check | `.kde/runtime/preflight.py` | System readiness verification |
 
 ## Investigation Workflow
 
-For explicitly selected KDE investigations only, follow the applicable, verified laboratory workflow and approval records. The previously referenced `laboratory/WORKFLOW.md` is absent in this repository; do not invent or silently substitute its authority. The nine conceptual stages are:
+For explicitly selected KDE investigations only, follow the applicable, verified laboratory workflow and approval records. The previously referenced `laboratory/WORKFLOW.md` and two template paths are absent in this repository. `.kde/governance/STATE-MACHINE.md` supports document-state transitions, **not** a substitute nine-stage investigation procedure; do not invent or silently substitute workflow authority. The nine conceptual stages are:
 
 1. IDEA → 2. INVESTIGATION → 3. EVIDENCE COLLECTION → 4. OBSERVATION → 5. SYNTHESIS → 6. VALIDATION → 7. CANDIDATE KNOWLEDGE → 8. PROMOTION → 9. KNOWLEDGE REPOSITORY
 
 ## Required Artifacts
 
-For each investigation, create artifacts in `/laboratory/investigations/INV-XXX/`:
+For each explicitly human-approved investigation, use the verified repository-relative `laboratory/investigations/<approved-ID>/` path (not a filesystem-root `/laboratory/` path):
 - `investigation.md` - Research question and scope
 - `index.md` - Experiment index
 - `links/` - Links to experiments
 
-For each experiment, create artifacts in `/laboratory/experiments/LAB-XXX/`:
+For an explicitly authorized experiment only, use `laboratory/experiments/<approved-ID>/` if that exact path and artifact schema are approved:
 - `experiment.md` - Experiment definition with hypothesis
 - `runs/` - Run records
 - `evidence/` - Evidence files
