@@ -1,16 +1,20 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: VEC-01-LAB-DEPLOY-001
+Package: DNP3-VEC01-LAB-DEPLOY-PROVENANCE-CORRECTION-001
 Branch: work
-CURRENT: NONE
+CURRENT: DNP3-061
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
 
 
 
 
+
+
+## CURRENT — DNP3-061 (human-promoted 2026-11-08)
+The only CURRENT is `workflow/active_work/DNP3-061.md` on permanent `work`. Owner-authorized **provenance-only** correction of the historical `origin/main` and merge-base wording in `docs/verification/VEC-01-LAB-DEPLOY-001.md`. The verified PR #20 promotion baseline is `f21f32cf5d0631c8f50e6b3f398bffe975bbb6ab`; JR's actual local `origin/main` at original startup is **UNVERIFIED** and must not be invented. No prior build hash, Go result, original archived task, readiness plan, runtime code or non-claim can be changed. All mandatory Go checks must actually PASS. This promotion is **TASK_READY**, not execution. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
 
 ## Package closure — VEC-01-LAB-DEPLOY-001 (2026-11-08)
 The isolated OpenDNP3 peer acquisition/build/static-smoke package is complete
