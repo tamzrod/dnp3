@@ -21,14 +21,14 @@ type Session struct {
 	mu           sync.RWMutex
 	UserNumber   uint8
 	Role         sa.Role
-	Seq          uint8        // Session sequence number
-	SessionKey   [16]byte     // Session encryption key
-	MACKey       [16]byte     // MAC verification key
+	Seq          uint8    // Session sequence number
+	SessionKey   [16]byte // Session encryption key
+	MACKey       [16]byte // MAC verification key
 	State        int
 	CreatedAt    time.Time
 	LastActivity time.Time
 	ExpiresAt    time.Time
-	AuthSeq      uint8        // Authentication sequence number
+	AuthSeq      uint8 // Authentication sequence number
 }
 
 // NewSession creates a new authenticated session
@@ -52,7 +52,7 @@ func NewSession(userNumber uint8, role sa.Role, sessionKey [16]byte, macKey [16]
 func (s *Session) IsActive() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.State == StateAuthenticated && time.Now().Before(s.ExpiresAt)
 }
 
@@ -60,17 +60,17 @@ func (s *Session) IsActive() bool {
 func (s *Session) Extend(timeout time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if s.State != StateAuthenticated {
 		return sa.ErrSessionNotActive
 	}
-	
+
 	// Also check if session has expired
 	if time.Now().After(s.ExpiresAt) {
 		s.State = StateExpired
 		return sa.ErrSessionNotActive
 	}
-	
+
 	s.LastActivity = time.Now()
 	s.ExpiresAt = s.LastActivity.Add(timeout)
 	return nil
@@ -80,7 +80,7 @@ func (s *Session) Extend(timeout time.Duration) error {
 func (s *Session) Invalidate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.State = StateInactive
 }
 
@@ -88,7 +88,7 @@ func (s *Session) Invalidate() {
 func (s *Session) IncrementSeq() uint8 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.Seq = (s.Seq + 1) & 0x0F
 	s.LastActivity = time.Now()
 	return s.Seq
@@ -98,7 +98,7 @@ func (s *Session) IncrementSeq() uint8 {
 func (s *Session) IncrementAuthSeq() uint8 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.AuthSeq = (s.AuthSeq + 1) & 0x3F
 	s.LastActivity = time.Now()
 	return s.AuthSeq
@@ -108,7 +108,7 @@ func (s *Session) IncrementAuthSeq() uint8 {
 func (s *Session) GetSeq() uint8 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.Seq
 }
 
@@ -116,7 +116,7 @@ func (s *Session) GetSeq() uint8 {
 func (s *Session) GetAuthSeq() uint8 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.AuthSeq
 }
 
@@ -124,7 +124,7 @@ func (s *Session) GetAuthSeq() uint8 {
 func (s *Session) GetRole() sa.Role {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.Role
 }
 
@@ -132,7 +132,7 @@ func (s *Session) GetRole() sa.Role {
 func (s *Session) GetUserNumber() uint8 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.UserNumber
 }
 
@@ -140,7 +140,7 @@ func (s *Session) GetUserNumber() uint8 {
 func (s *Session) RemainingTime() time.Duration {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	remaining := time.Until(s.ExpiresAt)
 	if remaining < 0 {
 		return 0
@@ -167,15 +167,15 @@ func NewSessionManager(timeout time.Duration) *SessionManager {
 func (sm *SessionManager) CreateSession(userNumber uint8, role sa.Role, sessionKey [16]byte, macKey [16]byte) (*Session, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	// Check if session already exists
 	if _, exists := sm.sessions[userNumber]; exists {
 		sm.sessions[userNumber].Invalidate()
 	}
-	
+
 	session := NewSession(userNumber, role, sessionKey, macKey, sm.timeout)
 	sm.sessions[userNumber] = session
-	
+
 	return session, nil
 }
 
@@ -183,18 +183,18 @@ func (sm *SessionManager) CreateSession(userNumber uint8, role sa.Role, sessionK
 func (sm *SessionManager) GetSession(userNumber uint8) (*Session, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	
+
 	session, exists := sm.sessions[userNumber]
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Check if session is still active
 	if !session.IsActive() {
 		delete(sm.sessions, userNumber)
 		return nil, false
 	}
-	
+
 	return session, true
 }
 
@@ -202,11 +202,11 @@ func (sm *SessionManager) GetSession(userNumber uint8) (*Session, bool) {
 func (sm *SessionManager) RemoveSession(userNumber uint8) bool {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	if _, exists := sm.sessions[userNumber]; !exists {
 		return false
 	}
-	
+
 	delete(sm.sessions, userNumber)
 	return true
 }
@@ -215,12 +215,12 @@ func (sm *SessionManager) RemoveSession(userNumber uint8) bool {
 func (sm *SessionManager) InvalidateSession(userNumber uint8) bool {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	session, exists := sm.sessions[userNumber]
 	if !exists {
 		return false
 	}
-	
+
 	session.Invalidate()
 	delete(sm.sessions, userNumber)
 	return true
@@ -230,7 +230,7 @@ func (sm *SessionManager) InvalidateSession(userNumber uint8) bool {
 func (sm *SessionManager) Cleanup() int {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	count := 0
 	now := time.Now()
 	for userNumber, session := range sm.sessions {
@@ -246,7 +246,7 @@ func (sm *SessionManager) Cleanup() int {
 func (sm *SessionManager) ActiveSessionCount() int {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	
+
 	count := 0
 	now := time.Now()
 	for _, session := range sm.sessions {
@@ -261,7 +261,7 @@ func (sm *SessionManager) ActiveSessionCount() int {
 func (sm *SessionManager) ListActiveSessions() []uint8 {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	
+
 	users := make([]uint8, 0)
 	now := time.Now()
 	for userNumber, session := range sm.sessions {

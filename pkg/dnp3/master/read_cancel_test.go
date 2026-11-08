@@ -27,12 +27,12 @@ func newBlockingReceiveTransport() *blockingReceiveTransport {
 	}
 }
 
-func (t *blockingReceiveTransport) Listen() error                   { return nil }
-func (t *blockingReceiveTransport) Accept() error                   { return nil }
-func (t *blockingReceiveTransport) Connect() error                  { return nil }
-func (t *blockingReceiveTransport) Close() error                    { close(t.releaseCh); return nil }
-func (t *blockingReceiveTransport) Send(data []byte) error          { t.sent <- data; return nil }
-func (t *blockingReceiveTransport) SetTimeout(ms int)              {}
+func (t *blockingReceiveTransport) Listen() error          { return nil }
+func (t *blockingReceiveTransport) Accept() error          { return nil }
+func (t *blockingReceiveTransport) Connect() error         { return nil }
+func (t *blockingReceiveTransport) Close() error           { close(t.releaseCh); return nil }
+func (t *blockingReceiveTransport) Send(data []byte) error { t.sent <- data; return nil }
+func (t *blockingReceiveTransport) SetTimeout(ms int)      {}
 func (t *blockingReceiveTransport) Receive() ([]byte, error) {
 	<-t.releaseCh
 	return nil, errors.New("receive aborted")
@@ -89,12 +89,18 @@ func TestReadCancelledMidRequest(t *testing.T) {
 	cc, tr := readClient(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	errCh := make(chan struct{ err error; resp *ReadResponse }, 1)
+	errCh := make(chan struct {
+		err  error
+		resp *ReadResponse
+	}, 1)
 	go func() {
 		resp, err := cc.Read(ctx, &types.ReadRequest{
 			Groups: []types.GroupRequest{{Group: 1, Variation: 0}},
 		})
-		errCh <- struct{ err error; resp *ReadResponse }{err, resp}
+		errCh <- struct {
+			err  error
+			resp *ReadResponse
+		}{err, resp}
 	}()
 
 	// Wait for the request to be sent so the read is genuinely outstanding.

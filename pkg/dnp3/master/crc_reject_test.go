@@ -133,4 +133,3 @@ func TestALRejectsInvalidCRC(t *testing.T) {
 		}
 	})
 }
-

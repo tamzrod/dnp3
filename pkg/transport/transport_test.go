@@ -46,11 +46,19 @@ func TestTCPReceiveConcatenatedFrames(t *testing.T) {
 	go func() { _, _ = peer.Write(want); _ = peer.Close() }()
 
 	first, err := transport.Receive()
-	if err != nil { t.Fatalf("first Receive: %v", err) }
-	if !bytes.Equal(first, frame) { t.Fatalf("first frame = %x, want %x", first, frame) }
+	if err != nil {
+		t.Fatalf("first Receive: %v", err)
+	}
+	if !bytes.Equal(first, frame) {
+		t.Fatalf("first frame = %x, want %x", first, frame)
+	}
 	second, err := transport.Receive()
-	if err != nil { t.Fatalf("second Receive: %v", err) }
-	if !bytes.Equal(second, frame) { t.Fatalf("second frame = %x, want %x", second, frame) }
+	if err != nil {
+		t.Fatalf("second Receive: %v", err)
+	}
+	if !bytes.Equal(second, frame) {
+		t.Fatalf("second frame = %x, want %x", second, frame)
+	}
 }
 
 func TestTCPReceiveFragmentedWrite(t *testing.T) {
@@ -69,8 +77,12 @@ func TestTCPReceiveFragmentedWrite(t *testing.T) {
 	}()
 
 	got, err := transport.Receive()
-	if err != nil { t.Fatalf("Receive: %v", err) }
-	if !bytes.Equal(got, want) { t.Fatalf("received frame = %x, want %x", got, want) }
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("received frame = %x, want %x", got, want)
+	}
 }
 
 // TestTCPConfig tests TCP configuration defaults.
@@ -101,13 +113,13 @@ func TestTLSConfig(t *testing.T) {
 // TestTCPTransportClose tests that Close can be called multiple times.
 func TestTCPTransportClose(t *testing.T) {
 	transport := NewTCPTransport(nil)
-	
+
 	// Close when not connected
 	err := transport.Close()
 	if err != nil {
 		t.Errorf("Close on unconnected transport failed: %v", err)
 	}
-	
+
 	// Close again
 	err = transport.Close()
 	if err != nil {
@@ -121,7 +133,7 @@ func TestTLSTransportClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTLSTransport failed: %v", err)
 	}
-	
+
 	// Close when not connected
 	err = transport.Close()
 	if err != nil {
@@ -132,15 +144,15 @@ func TestTLSTransportClose(t *testing.T) {
 // TestTCPTransportState tests transport state methods.
 func TestTCPTransportState(t *testing.T) {
 	transport := NewTCPTransport(nil)
-	
+
 	if transport.IsConnected() {
 		t.Error("New transport should not be connected")
 	}
-	
+
 	if transport.LocalAddr() != nil {
 		t.Error("Unconnected transport should have nil local address")
 	}
-	
+
 	if transport.RemoteAddr() != nil {
 		t.Error("Unconnected transport should have nil remote address")
 	}
@@ -152,11 +164,11 @@ func TestTLSTransportState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTLSTransport failed: %v", err)
 	}
-	
+
 	if transport.IsConnected() {
 		t.Error("New TLS transport should not be connected")
 	}
-	
+
 	_, ok := transport.ConnectionState()
 	if ok {
 		t.Error("Unconnected TLS transport should have no connection state")
@@ -166,7 +178,7 @@ func TestTLSTransportState(t *testing.T) {
 // TestTCPTransportSetTimeout tests timeout setting.
 func TestTCPTransportSetTimeout(t *testing.T) {
 	transport := NewTCPTransport(nil)
-	
+
 	transport.SetTimeout(10000)
 	transport.SetTimeout(0)
 	transport.SetTimeout(-1)
@@ -178,7 +190,7 @@ func TestTLSTransportSetTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTLSTransport failed: %v", err)
 	}
-	
+
 	transport.SetTimeout(10000)
 	transport.SetTimeout(0)
 }

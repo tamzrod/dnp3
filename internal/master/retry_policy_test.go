@@ -43,9 +43,9 @@ func (t *countingTransport) Receive() ([]byte, error) {
 // application SEQ, so recovery tests can build a response that echoes it
 // (DNP3-010 compliant) after an initial NACK/CRC failure (DNP3-034).
 type seqAwareTransport struct {
-	sent     [][]byte
-	receive  func() ([]byte, error)
-	lastSeq  uint8
+	sent    [][]byte
+	receive func() ([]byte, error)
+	lastSeq uint8
 }
 
 func (t *seqAwareTransport) Send(data []byte) error {
@@ -254,9 +254,9 @@ func TestRetryPerClassCounts(t *testing.T) {
 	mN.AddOutstation(2, "RTU-1")
 	mN.SetRetryPolicy(&RetryPolicy{
 		TimeoutRetries: 3, TimeoutDelay: 0,
-		NACKRetries:    2, NACKDelay: 0,
-		CRCRetries:     3, CRCDelay: 0,
-		OtherRetries:   3, OtherDelay: 0,
+		NACKRetries: 2, NACKDelay: 0,
+		CRCRetries: 3, CRCDelay: 0,
+		OtherRetries: 3, OtherDelay: 0,
 	})
 	if err := mN.sendWithRetry(buildRequest(0, al.FuncRead, []byte{0x00}), 2); err == nil {
 		t.Fatal("expected NACK exhaustion")
@@ -274,9 +274,9 @@ func TestRetryPerClassCounts(t *testing.T) {
 	mC.AddOutstation(2, "RTU-1")
 	mC.SetRetryPolicy(&RetryPolicy{
 		TimeoutRetries: 3, TimeoutDelay: 0,
-		NACKRetries:    3, NACKDelay: 0,
-		CRCRetries:     1, CRCDelay: 0,
-		OtherRetries:   3, OtherDelay: 0,
+		NACKRetries: 3, NACKDelay: 0,
+		CRCRetries: 1, CRCDelay: 0,
+		OtherRetries: 3, OtherDelay: 0,
 	})
 	if err := mC.sendWithRetry(buildRequest(0, al.FuncRead, []byte{0x00}), 2); err == nil {
 		t.Fatal("expected CRC exhaustion")

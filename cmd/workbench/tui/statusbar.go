@@ -7,13 +7,13 @@ import (
 
 // StatusBar represents the status bar at the bottom of the screen.
 type StatusBar struct {
-	Mode        string // "Master" or "Outstation"
-	Connection  string
-	Address     string
-	IIN         string
-	Error       string
-	AutoRead    bool
-	AutoWrite   bool
+	Mode       string // "Master" or "Outstation"
+	Connection string
+	Address    string
+	IIN        string
+	Error      string
+	AutoRead   bool
+	AutoWrite  bool
 }
 
 // NewStatusBar creates a new status bar.

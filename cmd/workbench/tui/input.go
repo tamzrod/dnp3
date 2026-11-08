@@ -57,7 +57,7 @@ func (i *Input) EnableRawMode() error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return nil // Skip raw mode for non-TTY (e.g., piped input)
 	}
-	
+
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err

@@ -104,18 +104,18 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "valid via WithTimeout zero rejected",
-			config: NewConfig(WithTimeout(0)),
+			name:    "valid via WithTimeout zero rejected",
+			config:  NewConfig(WithTimeout(0)),
 			wantErr: true,
 		},
 		{
-			name: "valid via WithRetry negative delay rejected",
-			config: NewConfig(WithRetry(3, -1)),
+			name:    "valid via WithRetry negative delay rejected",
+			config:  NewConfig(WithRetry(3, -1)),
 			wantErr: true,
 		},
 		{
-			name: "valid via WithRetry negative count rejected",
-			config: NewConfig(WithRetry(-1, 100*time.Millisecond)),
+			name:    "valid via WithRetry negative count rejected",
+			config:  NewConfig(WithRetry(-1, 100*time.Millisecond)),
 			wantErr: true,
 		},
 		// DNP3-049: address validation.
@@ -299,10 +299,10 @@ func TestOperateRequestValidation(t *testing.T) {
 		{
 			name: "valid command",
 			command: &types.ControlOutput{
-				Group:      12,
+				Group:       12,
 				Variation:   1,
-				Index:      0,
-				Value:      &types.BinaryCommandValue{Value: true},
+				Index:       0,
+				Value:       &types.BinaryCommandValue{Value: true},
 				CommandType: types.DirectOperate,
 			},
 			wantErr: false, // Will fail on not connected, but validation passes

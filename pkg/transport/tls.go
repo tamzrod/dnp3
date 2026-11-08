@@ -36,21 +36,21 @@ type TLSConfig struct {
 // DefaultTLSConfig returns default TLS configuration.
 func DefaultTLSConfig() *TLSConfig {
 	return &TLSConfig{
-		TCPConfig: *DefaultTCPConfig(),
+		TCPConfig:  *DefaultTCPConfig(),
 		MinVersion: tls.VersionTLS12,
 	}
 }
 
 // TLSTransport implements Handler for TLS connections.
 type TLSTransport struct {
-	conn     *tls.Conn
-	listener net.Listener
-	config   *TLSConfig
+	conn      *tls.Conn
+	listener  net.Listener
+	config    *TLSConfig
 	tlsConfig *tls.Config
-	mu       sync.RWMutex
-	closed   bool
-	ctx      context.Context
-	cancel   context.CancelFunc
+	mu        sync.RWMutex
+	closed    bool
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 // NewTLSTransport creates a new TLS transport.

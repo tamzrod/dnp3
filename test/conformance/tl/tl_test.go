@@ -17,11 +17,11 @@ func TestTransportHeaderEncoding(t *testing.T) {
 		seq      uint8
 		expected byte
 	}{
-		{"single_fragment", true, true, 0, 0xC0},     // 0x80 | 0x40 | 0x00
-		{"first_of_multi", true, false, 5, 0x85},     // 0x80 | 0x05
+		{"single_fragment", true, true, 0, 0xC0},    // 0x80 | 0x40 | 0x00
+		{"first_of_multi", true, false, 5, 0x85},    // 0x80 | 0x05
 		{"middle_fragment", false, false, 10, 0x0A}, // 0x0A
 		{"final_fragment", false, true, 15, 0x4F},   // 0x40 | 0x0F
-		{"max_seq_first", true, true, 15, 0xCF},      // 0x80 | 0x40 | 0x0F
+		{"max_seq_first", true, true, 15, 0xCF},     // 0x80 | 0x40 | 0x0F
 	}
 
 	for _, tt := range tests {
@@ -43,11 +43,11 @@ func TestTransportHeaderEncoding(t *testing.T) {
 // TestTransportHeaderDecoding tests transport header byte decoding
 func TestTransportHeaderDecoding(t *testing.T) {
 	tests := []struct {
-		name      string
-		header    byte
-		wantFIR   bool
-		wantFIN   bool
-		wantSeq   uint8
+		name    string
+		header  byte
+		wantFIR bool
+		wantFIN bool
+		wantSeq uint8
 	}{
 		{"single", 0xC0, true, true, 0},
 		{"first", 0x85, true, false, 5},
@@ -76,7 +76,7 @@ func TestTransportHeaderDecoding(t *testing.T) {
 // TestFragmentationSingleFragment tests single fragment handling
 func TestFragmentationSingleFragment(t *testing.T) {
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	
+
 	fragmenter := tl.NewFragmenter()
 	fragments := fragmenter.Fragmentize(data)
 
@@ -164,13 +164,13 @@ func TestFragmentationSequenceWrap(t *testing.T) {
 // TestReassembly tests fragment reassembly
 func TestReassembly(t *testing.T) {
 	originalData := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE}
-	
+
 	fragmenter := tl.NewFragmenter()
 	fragments := fragmenter.Fragmentize(originalData)
 
 	// Create reassembly buffer
 	reassembler := tl.NewReassembler()
-	
+
 	// Push all fragments
 	for _, frag := range fragments {
 		data, err := reassembler.Push(frag)
@@ -215,7 +215,7 @@ func TestReassemblyOutOfOrder(t *testing.T) {
 // TestReassemblyDuplicate tests handling of duplicate fragments
 func TestReassemblyDuplicate(t *testing.T) {
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	
+
 	fragmenter := tl.NewFragmenter()
 	fragments := fragmenter.Fragmentize(data)
 	if len(fragments) < 1 {
@@ -281,7 +281,7 @@ func TestEmptyData(t *testing.T) {
 // TestEncodedFragments tests encoding and decoding fragments
 func TestEncodedFragments(t *testing.T) {
 	data := []byte{0xDE, 0xAD, 0xBE, 0xEF}
-	
+
 	fragmenter := tl.NewFragmenter()
 	fragments := fragmenter.Fragmentize(data)
 

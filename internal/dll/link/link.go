@@ -101,13 +101,13 @@ type Config struct {
 // DefaultConfig returns a sensible default configuration.
 func DefaultConfig(localAddr, remoteAddr uint16, role Role) Config {
 	return Config{
-		LocalAddr:        localAddr,
-		RemoteAddr:       remoteAddr,
-		Role:             role,
-		ConfirmTimeout:   5 * time.Second,
-		ResponseTimeout:   10 * time.Second,
-		MaxRetries:       3,
-		Unbalanced:       role == RolePrimary, // Primary is always unbalanced
+		LocalAddr:       localAddr,
+		RemoteAddr:      remoteAddr,
+		Role:            role,
+		ConfirmTimeout:  5 * time.Second,
+		ResponseTimeout: 10 * time.Second,
+		MaxRetries:      3,
+		Unbalanced:      role == RolePrimary, // Primary is always unbalanced
 	}
 }
 
@@ -136,8 +136,8 @@ type StateMachine struct {
 	state State
 
 	// FCB state for balanced mode
-	fcb        bool
-	expectFCB  bool
+	fcb       bool
+	expectFCB bool
 
 	// Retry count for current operation
 	retries int
@@ -162,11 +162,11 @@ type StateMachine struct {
 // NewStateMachine creates a new link state machine.
 func NewStateMachine(config Config) *StateMachine {
 	return &StateMachine{
-		config:   config,
-		state:    StateLinkDown,
-		frameCh:  make(chan *frame.Frame, 100),
-		errCh:    make(chan error, 10),
-		doneCh:   make(chan struct{}),
+		config:  config,
+		state:   StateLinkDown,
+		frameCh: make(chan *frame.Frame, 100),
+		errCh:   make(chan error, 10),
+		doneCh:  make(chan struct{}),
 	}
 }
 
@@ -228,7 +228,7 @@ func (sm *StateMachine) SendData(ctx context.Context, data []byte, confirm bool)
 	}
 
 	f := &frame.Frame{
-		Control: ctrl,
+		Control:  ctrl,
 		DestAddr: sm.config.RemoteAddr,
 		SrcAddr:  sm.config.LocalAddr,
 		Data:     data,
@@ -490,8 +490,8 @@ func (sm *StateMachine) Stats() Stats {
 type Stats struct {
 	FramesSent     uint64
 	FramesReceived uint64
-	Errors        uint64
-	State         State
+	Errors         uint64
+	State          State
 }
 
 // FrameChan returns the channel for received frames.

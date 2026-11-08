@@ -26,13 +26,13 @@ type AppState struct {
 
 // Controller handles application events and coordinates between UI and session.
 type Controller struct {
-	mu         sync.RWMutex
-	appState   *AppState
-	session    session.Session
-	logger     *logger.Logger
-	decoder    *protocol.Decoder
+	mu            sync.RWMutex
+	appState      *AppState
+	session       session.Session
+	logger        *logger.Logger
+	decoder       *protocol.Decoder
 	onStateChange func(*AppState)
-	onLogEntry   func(*logger.Entry)
+	onLogEntry    func(*logger.Entry)
 }
 
 // Config holds controller configuration.
@@ -88,7 +88,7 @@ func (c *Controller) Stop() error {
 // Connect establishes a connection to the outstation.
 func (c *Controller) Connect(address string, port int) error {
 	c.mu.Lock()
-	
+
 	if c.session != nil && c.session.State() == session.StateConnected {
 		c.mu.Unlock()
 		return nil
@@ -330,11 +330,11 @@ func (c *Controller) handleResponse(resp *session.Response) {
 func (c *Controller) handleError(format string, args ...interface{}) {
 	errMsg := fmt.Sprintf(format, args...)
 	c.logger.Error(errMsg)
-	
+
 	c.mu.Lock()
 	c.appState.ConnectionError = errMsg
 	c.mu.Unlock()
-	
+
 	c.notifyStateChange()
 }
 

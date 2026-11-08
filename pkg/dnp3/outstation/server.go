@@ -37,8 +37,8 @@ import (
 	"sync"
 	"time"
 
-	"dnp3/pkg/dnp3"
 	"dnp3/internal/outstation"
+	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
 	"dnp3/pkg/transport"
 )
@@ -144,15 +144,15 @@ type Config struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		OutstationAddress:  1024,
-		MasterAddress:      0xFFFF,
-		TransportType:      dnp3.TCP,
-		Address:            "", // all interfaces
-		Port:               20000,
-		MaxFragmentSize:    2048,
-		KeepAliveInterval:  30 * time.Second,
-		MaxEventBuffers:    1000,
-		MaxConnections:     1, // DNP3-084: MVP single-master profile
+		OutstationAddress: 1024,
+		MasterAddress:     0xFFFF,
+		TransportType:     dnp3.TCP,
+		Address:           "", // all interfaces
+		Port:              20000,
+		MaxFragmentSize:   2048,
+		KeepAliveInterval: 30 * time.Second,
+		MaxEventBuffers:   1000,
+		MaxConnections:    1, // DNP3-084: MVP single-master profile
 	}
 }
 
@@ -341,7 +341,7 @@ type UnsolicitedHandler interface {
 
 // internalDataHandler adapts public DataHandler to internal/outstation.DataHandler
 type internalDataHandler struct {
-	publicHandler   DataHandler
+	publicHandler  DataHandler
 	commandHandler CommandHandler
 }
 
@@ -482,14 +482,14 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
 
 	cmd := &types.ControlOutput{
-		Group:      12, // Binary Output
-		Variation:  1, // CROB
-		Index:     index,
-		Value:     &types.BinaryCommandValue{Value: value},
+		Group:       12, // Binary Output
+		Variation:   1,  // CROB
+		Index:       index,
+		Value:       &types.BinaryCommandValue{Value: value},
 		CommandType: types.SelectThenOperate,
-		Count:     crob.Count,
-		OnTime:    crob.OnTime,
-		OffTime:   crob.OffTime,
+		Count:       crob.Count,
+		OnTime:      crob.OnTime,
+		OffTime:     crob.OffTime,
 	}
 
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)
@@ -543,7 +543,7 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 	debugLog("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
 
 	cmd := &types.ControlOutput{
-		Group:        41, // Analog Output
+		Group:       41, // Analog Output
 		Variation:   variation,
 		Index:       index,
 		Value:       &types.AnalogCommandValue{Value: floatValue},
@@ -622,19 +622,19 @@ func (d *DefaultDataHandler) FreezeCounters(clear bool) error {
 
 // server is the internal implementation of Server
 type server struct {
-	config            *Config
-	state             ServerState
-	mu                sync.RWMutex
-	dataHandler       DataHandler
-	commandHandler    CommandHandler
+	config             *Config
+	state              ServerState
+	mu                 sync.RWMutex
+	dataHandler        DataHandler
+	commandHandler     CommandHandler
 	unsolicitedHandler UnsolicitedHandler
 
 	// Listener for accepting connections
 	listener net.Listener
 
 	// Track active connections
-	connections map[uint64]*outstationInstance
-	connCounter uint64
+	connections   map[uint64]*outstationInstance
+	connCounter   uint64
 	connectionsMu sync.RWMutex
 
 	// Context for graceful shutdown. DNP3-085: derived from the caller's
@@ -648,11 +648,11 @@ type server struct {
 
 // outstationInstance represents a single master connection
 type outstationInstance struct {
-	id        uint64
+	id         uint64
 	masterAddr net.Addr
 	outstation *outstation.Outstation
 	transport  transport.Handler
-	done      chan struct{}
+	done       chan struct{}
 }
 
 // NewServer creates a new Outstation server with the given configuration
@@ -662,12 +662,12 @@ func NewServer(config *Config) (Server, error) {
 	}
 
 	return &server{
-		config:            config,
-		state:             ServerStateDown,
-		dataHandler:       &DefaultDataHandler{},
-		commandHandler:    nil,
+		config:             config,
+		state:              ServerStateDown,
+		dataHandler:        &DefaultDataHandler{},
+		commandHandler:     nil,
 		unsolicitedHandler: nil,
-		connections:      make(map[uint64]*outstationInstance),
+		connections:        make(map[uint64]*outstationInstance),
 	}, nil
 }
 
@@ -814,7 +814,7 @@ func (s *server) handleConnection(conn net.Conn) {
 
 	// Create transport for this connection
 	tcpConfig := &transport.TCPConfig{
-		Address:         "",
+		Address:        "",
 		Port:           0,
 		ConnectTimeout: 5000,
 		ReceiveTimeout: 5000,
@@ -828,25 +828,25 @@ func (s *server) handleConnection(conn net.Conn) {
 	internalConfig := &outstation.Config{
 		OutstationAddress: s.config.OutstationAddress,
 		MasterAddress:     s.config.MasterAddress,
-		Timeout:         5000,
-		MaxEventBuffers: s.config.MaxEventBuffers,
-		Unsolicited:     s.config.UnsolicitedMode,
+		Timeout:           5000,
+		MaxEventBuffers:   s.config.MaxEventBuffers,
+		Unsolicited:       s.config.UnsolicitedMode,
 	}
 	inst := outstation.NewOutstation(internalConfig)
 	inst.SetTransport(t)
 	inst.Initialize()
 	inst.SetDataHandler(&internalDataHandler{
-		publicHandler:   s.dataHandler,
+		publicHandler:  s.dataHandler,
 		commandHandler: s.commandHandler,
 	})
 	inst.Start()
 
 	instance := &outstationInstance{
-		id:        connID,
+		id:         connID,
 		masterAddr: conn.RemoteAddr(),
 		outstation: inst,
 		transport:  t,
-		done:      make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 	s.connections[connID] = instance
 	s.connectionsMu.Unlock()
@@ -911,7 +911,7 @@ func (s *server) SetDataHandler(handler DataHandler) {
 	s.connectionsMu.Lock()
 	for _, inst := range s.connections {
 		inst.outstation.SetDataHandler(&internalDataHandler{
-			publicHandler:   handler,
+			publicHandler:  handler,
 			commandHandler: s.commandHandler,
 		})
 	}

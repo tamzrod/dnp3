@@ -200,12 +200,12 @@ func TestTCPDirectCommunication(t *testing.T) {
 	// DNP3 addresses
 	const (
 		outstationAddr = 1024
-		masterAddr    = 0xFFFF
+		masterAddr     = 0xFFFF
 	)
 
 	// Create outstation transport in server mode
 	serverTransport := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port,
 		ConnectTimeout: 5000,
 		ReceiveTimeout: 5000,
@@ -214,7 +214,7 @@ func TestTCPDirectCommunication(t *testing.T) {
 
 	// Create client transport
 	clientTransport := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port,
 		ConnectTimeout: 5000,
 		ReceiveTimeout: 5000,
@@ -357,7 +357,7 @@ func TestTCPTransportAcceptMultipleConnections(t *testing.T) {
 	// --- Connection 1 ---
 	// Create server transport 1
 	serverTransport1 := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port1,
 		ConnectTimeout: 2000,
 		ReceiveTimeout: 2000,
@@ -372,7 +372,7 @@ func TestTCPTransportAcceptMultipleConnections(t *testing.T) {
 
 	// Create client 1
 	client1 := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port1,
 		ConnectTimeout: 2000,
 		Server:         false,
@@ -407,7 +407,7 @@ func TestTCPTransportAcceptMultipleConnections(t *testing.T) {
 	// --- Connection 2 ---
 	// Create fresh server transport 2 for second connection on different port
 	serverTransport2 := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port2,
 		ConnectTimeout: 2000,
 		ReceiveTimeout: 2000,
@@ -422,7 +422,7 @@ func TestTCPTransportAcceptMultipleConnections(t *testing.T) {
 
 	// Create client 2
 	client2 := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port2,
 		ConnectTimeout: 2000,
 		Server:         false,
@@ -498,24 +498,24 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	// Set up custom data handler for the outstation using public API types
 	outstationServer.SetDataHandler(&comprehensiveDataHandler{
 		binaryInputs: []*types.BinaryInput{
-			{Value: true, Quality: types.QualityOnline},   // DI 0: ON
-			{Value: false, Quality: types.QualityOnline},  // DI 1: OFF
+			{Value: true, Quality: types.QualityOnline},  // DI 0: ON
+			{Value: false, Quality: types.QualityOnline}, // DI 1: OFF
 			{Value: true, Quality: types.QualityOnline},  // DI 2: ON
 			{Value: false, Quality: types.QualityOnline}, // DI 3: OFF
 		},
 		analogInputs: []*types.AnalogInput{
-			{Value: 100.5, Quality: types.QualityOnline},  // AI 0: 100.5
+			{Value: 100.5, Quality: types.QualityOnline}, // AI 0: 100.5
 			{Value: -25.0, Quality: types.QualityOnline}, // AI 1: -25.0
-			{Value: 0.0, Quality: types.QualityOnline},  // AI 2: 0.0
+			{Value: 0.0, Quality: types.QualityOnline},   // AI 2: 0.0
 			{Value: 999.9, Quality: types.QualityOnline}, // AI 3: 999.9
 		},
 		binaryOutputs: []*types.BinaryOutput{
-			{Value: true, Quality: types.QualityOnline},   // DO 0: ON
-			{Value: false, Quality: types.QualityOnline},  // DO 1: OFF
+			{Value: true, Quality: types.QualityOnline},  // DO 0: ON
+			{Value: false, Quality: types.QualityOnline}, // DO 1: OFF
 		},
 		analogOutputs: []*types.AnalogOutput{
-			{Value: 50.0, Quality: types.QualityOnline},   // AO 0: 50.0
-			{Value: 25.0, Quality: types.QualityOnline},  // AO 1: 25.0
+			{Value: 50.0, Quality: types.QualityOnline}, // AO 0: 50.0
+			{Value: 25.0, Quality: types.QualityOnline}, // AO 1: 25.0
 		},
 	})
 
@@ -548,7 +548,7 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 
 	// Create client transport (Master-side)
 	masterTransport := transport.NewTCPTransport(&transport.TCPConfig{
-		Address:         "localhost",
+		Address:        "localhost",
 		Port:           port,
 		ConnectTimeout: 5000,
 		ReceiveTimeout: 5000,
@@ -750,11 +750,11 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	// CROB (Control Relay Output Block)
 	doCommand := []byte{
 		10, 1, 0x07, 0x01, // Object header: Group 10, Var 1, Qualifier 7 (index), Count 1
-		0x00, 0x00,        // Index 0 (2 bytes)
-		0x01,               // Control code: LATCH_ON (NUL, NUL, ON, TS=0)
-		0x00, 0x00,        // Countdown/On-time (2 bytes)
-		0x00, 0x00,        // Off-time (2 bytes)
-		0x00,              // Status
+		0x00, 0x00, // Index 0 (2 bytes)
+		0x01,       // Control code: LATCH_ON (NUL, NUL, ON, TS=0)
+		0x00, 0x00, // Countdown/On-time (2 bytes)
+		0x00, 0x00, // Off-time (2 bytes)
+		0x00, // Status
 	}
 
 	doRequest := &al.APDU{
@@ -801,9 +801,9 @@ func TestMasterOutstationEndToEndComprehensive(t *testing.T) {
 	// Build DIRECT OPERATE request for analog output (Group 41, Variation 2)
 	aoCommand := []byte{
 		41, 2, 0x07, 0x01, // Object header: Group 41, Var 2, Qualifier 7, Count 1
-		0x00, 0x00,        // Index 0 (2 bytes)
+		0x00, 0x00, // Index 0 (2 bytes)
 		0x00, 0x00, 0x00, 0x00, // Value: 0.0 as float32
-		0x00,              // Status
+		0x00, // Status
 	}
 
 	aoRequest := &al.APDU{
@@ -1033,7 +1033,7 @@ func parseAnalogInputResponse(data []byte) []float64 {
 		}
 
 		for i := 0; i < count && offset < len(data)-4; i++ {
-			offset += 2 // skip index
+			offset += 2         // skip index
 			if variation == 1 { // 32-bit float with flags
 				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				result = append(result, float64(math.Float32frombits(bits)))
@@ -1113,7 +1113,7 @@ func parseAnalogOutputResponse(data []byte) []float64 {
 		offset += 4
 
 		for i := 0; i < count && offset < len(data)-4; i++ {
-			offset += 2 // skip index (LSB first)
+			offset += 2         // skip index (LSB first)
 			if variation == 1 { // 32-bit float with flags
 				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				result = append(result, float64(math.Float32frombits(bits)))

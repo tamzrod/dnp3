@@ -16,48 +16,48 @@ type DecodedFrame struct {
 
 // DecodedDLL represents decoded Data Link Layer.
 type DecodedDLL struct {
-	Direction   string // "Master→Outstation" or "Outstation→Master"
+	Direction    string // "Master→Outstation" or "Outstation→Master"
 	Primary      bool   // Primary (request) or Secondary (response)
 	FrameType    string // e.g., "Reset Link", "Confirmed User Data"
-	FCB         bool   // Frame count bit
-	FCV         bool   // Frame count valid
+	FCB          bool   // Frame count bit
+	FCV          bool   // Frame count valid
 	FunctionCode uint8
 	FunctionName string
-	Destination uint16
-	Source      uint16
-	Length      uint16
-	CRC         uint16
-	RawHex      string
+	Destination  uint16
+	Source       uint16
+	Length       uint16
+	CRC          uint16
+	RawHex       string
 }
 
 // DecodedTL represents decoded Transport Layer.
 type DecodedTL struct {
-	FIR bool // First fragment
-	FIN bool // Final fragment
-	CON bool // Confirmation required
-	UNS bool // Unsolicited
-	Seq  uint8
+	FIR    bool // First fragment
+	FIN    bool // Final fragment
+	CON    bool // Confirmation required
+	UNS    bool // Unsolicited
+	Seq    uint8
 	RawHex string
 }
 
 // DecodedAL represents decoded Application Layer.
 type DecodedAL struct {
-	FunctionCode   uint8
-	FunctionName   string
-	InternalInd1   uint8
-	InternalInd2   uint8
-	IINBits        []string
-	Objects        []ObjectHeader
-	RawHex         string
+	FunctionCode uint8
+	FunctionName string
+	InternalInd1 uint8
+	InternalInd2 uint8
+	IINBits      []string
+	Objects      []ObjectHeader
+	RawHex       string
 }
 
 // ObjectHeader represents an object header in AL.
 type ObjectHeader struct {
-	Group      uint8
-	Variation  uint8
-	Qualifier  uint8
-	Range      string
-	Count      uint16
+	Group     uint8
+	Variation uint8
+	Qualifier uint8
+	Range     string
+	Count     uint16
 }
 
 // Decoder decodes DNP3 protocol frames.

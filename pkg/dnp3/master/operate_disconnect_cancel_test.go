@@ -116,12 +116,12 @@ func newSlowCloseTransport() *slowCloseTransport {
 	return &slowCloseTransport{releaseCh: make(chan struct{})}
 }
 
-func (t *slowCloseTransport) Listen() error                   { return nil }
-func (t *slowCloseTransport) Accept() error                   { return nil }
-func (t *slowCloseTransport) Connect() error                  { return nil }
-func (t *slowCloseTransport) Send(data []byte) error          { return nil }
-func (t *slowCloseTransport) Receive() ([]byte, error)      { return nil, errors.New("closed") }
-func (t *slowCloseTransport) SetTimeout(ms int)              {}
+func (t *slowCloseTransport) Listen() error            { return nil }
+func (t *slowCloseTransport) Accept() error            { return nil }
+func (t *slowCloseTransport) Connect() error           { return nil }
+func (t *slowCloseTransport) Send(data []byte) error   { return nil }
+func (t *slowCloseTransport) Receive() ([]byte, error) { return nil, errors.New("closed") }
+func (t *slowCloseTransport) SetTimeout(ms int)        {}
 func (t *slowCloseTransport) Close() error {
 	<-t.releaseCh
 	return nil

@@ -43,7 +43,7 @@ func NewController(log *logger.Logger) *Controller {
 		state: &State{
 			ListenAddress:     "0.0.0.0",
 			ListenPort:        20000,
-			SimulationEnabled:  true,
+			SimulationEnabled: true,
 			UpdateRate:        time.Second,
 		},
 		simulator: sim,

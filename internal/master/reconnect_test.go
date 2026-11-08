@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	reconnectMasterAddr    uint16 = 0x0003
-	reconnectOutstationID  uint16 = 0x0004
+	reconnectMasterAddr   uint16 = 0x0003
+	reconnectOutstationID uint16 = 0x0004
 )
 
 // switchableTransport returns the secondary frames required by the link
@@ -118,5 +118,3 @@ func TestResetForReconnectClearsTLState(t *testing.T) {
 		t.Fatalf("reassembler BufferLen after reset = %d, want 0", m.reassembler.BufferLen())
 	}
 }
-
-

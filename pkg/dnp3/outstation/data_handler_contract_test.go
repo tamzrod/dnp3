@@ -27,8 +27,8 @@ func (h *minimalMVPDataHandler) GetCounters() []*types.Counter {
 // Non-MVP methods: nil / no-op per the v0 profile (DNP3-089).
 func (h *minimalMVPDataHandler) GetBinaryOutputs() []*types.BinaryOutput { return nil }
 func (h *minimalMVPDataHandler) GetAnalogOutputs() []*types.AnalogOutput { return nil }
-func (h *minimalMVPDataHandler) GetFrozenCounters() []*types.Counter      { return nil }
-func (h *minimalMVPDataHandler) FreezeCounters(clear bool) error           { return nil }
+func (h *minimalMVPDataHandler) GetFrozenCounters() []*types.Counter     { return nil }
+func (h *minimalMVPDataHandler) FreezeCounters(clear bool) error         { return nil }
 
 // TestMinimalMVPDataHandlerSatisfiesInterface verifies DNP3-089: a handler
 // implementing only the MVP-required methods satisfies the DataHandler

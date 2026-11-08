@@ -1,8 +1,8 @@
 package testutils
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -14,11 +14,11 @@ import (
 
 // TestResult holds the result of a test.
 type TestResult struct {
-	Name      string
-	Passed    bool
-	Duration  time.Duration
-	Error     error
-	Traces    []string
+	Name     string
+	Passed   bool
+	Duration time.Duration
+	Error    error
+	Traces   []string
 }
 
 // TestSuite is a collection of test results.
@@ -83,7 +83,7 @@ func (ts *TestSuite) Summary() {
 	fmt.Printf("Passed: %d\n", ts.PassCount())
 	fmt.Printf("Failed: %d\n", ts.FailCount())
 	fmt.Println("----------------------------------------")
-	
+
 	for _, r := range ts.results {
 		status := "PASS"
 		if !r.Passed {
@@ -107,17 +107,17 @@ func TestConnectionConnectDisconnect(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           1000,
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    1000,
+		MaxRetries: 1,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -166,17 +166,17 @@ func TestConnectionReconnect(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           1000,
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    1000,
+		MaxRetries: 1,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -209,17 +209,17 @@ func TestMultipleReconnect(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           500,
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    500,
+		MaxRetries: 1,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -251,17 +251,17 @@ func TestLinkStatus(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -290,17 +290,17 @@ func TestLinkReset(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -325,17 +325,17 @@ func TestReadBinaryInputs(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -388,17 +388,17 @@ func TestReadAnalogInputs(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -442,17 +442,17 @@ func TestReadCounters(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -500,17 +500,17 @@ func TestControlSelectOperate(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -554,17 +554,17 @@ func TestControlDirectOperate(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -610,11 +610,11 @@ func TestControlDirectOperate(t *testing.T) {
 // TestEventGeneration tests event generation and queueing.
 func TestEventGeneration(t *testing.T) {
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	o := outstation.NewOutstation(outstationConfig)
@@ -646,11 +646,11 @@ func TestEventGeneration(t *testing.T) {
 func TestEventBufferOverflow(t *testing.T) {
 	// Very small buffer for testing
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   10,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 10,
 	}
 
 	o := outstation.NewOutstation(outstationConfig)
@@ -677,17 +677,17 @@ func TestFreezeCounters(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -719,7 +719,7 @@ func TestFreezeCounters(t *testing.T) {
 
 	// Freeze counters
 	_, err = o.ProcessRequest(&al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncFreeze,
 	})
 	if err != nil {
@@ -738,17 +738,17 @@ func TestConfirmationRequired(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -780,7 +780,7 @@ func TestConfirmationRequired(t *testing.T) {
 
 	// Request with CON bit set
 	req := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, CON: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, CON: true, Seq: 1},
 		FuncCode: al.FuncRead,
 		Data:     []byte{60, 1, 0x07, 0x00}, // Binary inputs
 	}
@@ -807,17 +807,17 @@ func TestTimeoutBehavior(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           500, // Short timeout
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    500, // Short timeout
+		MaxRetries: 1,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -850,11 +850,11 @@ func TestInvalidAPDU(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	o := outstation.NewOutstation(outstationConfig)
@@ -879,17 +879,17 @@ func TestManyReads(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           1000,
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    1000,
+		MaxRetries: 1,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -930,11 +930,11 @@ func TestManyReads(t *testing.T) {
 // TestManyEvents tests generating many events.
 func TestManyEvents(t *testing.T) {
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   10000, // Large buffer
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 10000, // Large buffer
 	}
 
 	o := outstation.NewOutstation(outstationConfig)
@@ -980,8 +980,8 @@ func TraceFrame(data []byte, direction string) FrameInfo {
 	// Basic frame info (simplified)
 	return FrameInfo{
 		Direction: direction,
-		DataLen:  len(data),
-		RawData:  data,
+		DataLen:   len(data),
+		RawData:   data,
 	}
 }
 
@@ -1032,8 +1032,8 @@ func CreateTestMaster(outstationAddr uint16) (*master.Master, *MasterTransport) 
 	_, masterTransport, _ := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		MaxRetries:        2,
+		MasterAddress: 1,
+		MaxRetries:    2,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1046,11 +1046,11 @@ func CreateTestOutstation(masterAddr uint16) (*outstation.Outstation, *Outstatio
 	_, _, outstationTransport := NewBidirectionalTransport()
 
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     masterAddr,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   masterAddr,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	o := outstation.NewOutstation(outstationConfig)
@@ -1065,17 +1065,17 @@ func SetupConnectedPair() (*master.Master, *outstation.Outstation, *MasterTransp
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1120,17 +1120,17 @@ func TestWriteCROB(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1182,17 +1182,17 @@ func TestWriteAnalogInt16(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1236,17 +1236,17 @@ func TestWriteAnalogInt32(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1290,17 +1290,17 @@ func TestWriteAnalogFloat(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1344,17 +1344,17 @@ func TestWriteAnalogDouble(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           2000,
-		MaxRetries:        2,
+		MasterAddress: 1,
+
+		Timeout:    2000,
+		MaxRetries: 2,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1402,10 +1402,10 @@ func TestConfirmationTimeout(t *testing.T) {
 	_, masterTransport, _ := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           500, // Short timeout for test
-		MaxRetries:        1,
+		MasterAddress: 1,
+
+		Timeout:    500, // Short timeout for test
+		MaxRetries: 1,
 	}
 
 	m := master.NewMaster(masterConfig)
@@ -1440,17 +1440,17 @@ func TestConfirmationRetry(t *testing.T) {
 	_, masterTransport, outstationTransport := NewBidirectionalTransport()
 
 	masterConfig := &master.Config{
-		MasterAddress:     1,
-		
-		Timeout:           500,
-		MaxRetries:        3,
+		MasterAddress: 1,
+
+		Timeout:    500,
+		MaxRetries: 3,
 	}
 	outstationConfig := &outstation.Config{
-                OutstationAddress:     1024,
-		
-		MasterAddress:     1,
-		SBOTimeout:        5000,
-		MaxEventBuffers:   1000,
+		OutstationAddress: 1024,
+
+		MasterAddress:   1,
+		SBOTimeout:      5000,
+		MaxEventBuffers: 1000,
 	}
 
 	m := master.NewMaster(masterConfig)

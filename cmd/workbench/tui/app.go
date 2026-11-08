@@ -16,39 +16,39 @@ import (
 type Mode string
 
 const (
-	ModeMaster    Mode = "master"
+	ModeMaster     Mode = "master"
 	ModeOutstation Mode = "outstation"
 )
 
 // App represents the main TUI application.
 type App struct {
-	Mode    Mode
-	Layout  *Layout
-	Screen  *Screen
-	Input   *Input
-	Table   *Table
-	Log     *Log
-	Status  *StatusBar
+	Mode   Mode
+	Layout *Layout
+	Screen *Screen
+	Input  *Input
+	Table  *Table
+	Log    *Log
+	Status *StatusBar
 
 	// Data
-	dataMu    sync.RWMutex
-	dataRows  []Row
-	lastRows  []Row // For flicker reduction
+	dataMu   sync.RWMutex
+	dataRows []Row
+	lastRows []Row // For flicker reduction
 
 	// Redraw signaling
 	redrawCh chan struct{}
-	
+
 	// Callbacks
-	OnConnect             func()
-	OnDisconnect          func()
-	OnStart               func()
-	OnStop                func()
-	OnReadClass           func(class int)
-	OnOperate             func(index int, value bool)
-	OnAutoPollToggle     func()
-	OnAutoWriteToggle     func()
+	OnConnect              func()
+	OnDisconnect           func()
+	OnStart                func()
+	OnStop                 func()
+	OnReadClass            func(class int)
+	OnOperate              func(index int, value bool)
+	OnAutoPollToggle       func()
+	OnAutoWriteToggle      func()
 	OnSimulationModeToggle func()
-	OnQuit               func()
+	OnQuit                 func()
 
 	// State
 	running bool
@@ -319,12 +319,12 @@ func (a *App) handleKey(key Key, r rune) bool {
 // toggleMode toggles between Master and Outstation mode.
 func (a *App) toggleMode() {
 	a.Log.Info("Switching mode...")
-	
+
 	// Stop current operation
 	if a.OnStop != nil {
 		a.OnStop()
 	}
-	
+
 	// Toggle mode
 	if a.Mode == ModeMaster {
 		a.Mode = ModeOutstation
@@ -333,10 +333,10 @@ func (a *App) toggleMode() {
 		a.Mode = ModeMaster
 		a.Log.Info("Switched to Master mode")
 	}
-	
+
 	// Update status (always uppercase for consistency)
 	a.Status.Mode = strings.ToUpper(string(a.Mode))
-	
+
 	// Clear data table
 	a.Table.Clear()
 	a.UpdateData(nil)
@@ -391,7 +391,7 @@ func (a *App) drawTable() bool {
 	a.dataMu.RLock()
 	currentRows := a.dataRows
 	a.dataMu.RUnlock()
-	
+
 	// Only redraw if rows actually changed
 	if a.Table.SetRowsIfChanged(currentRows) {
 		a.Table.DrawSimple(s, tableBounds.Top+2)
@@ -495,7 +495,7 @@ func (a *App) showHelp() {
 	s.DrawBox(5, 10, 20, width-10, "HELP", "cyan")
 
 	var help []string
-	
+
 	if a.Mode == ModeMaster {
 		help = []string{
 			"q, Esc    Quit the application",
@@ -545,13 +545,13 @@ func (a *App) UpdateData(rows []Row) {
 func (a *App) UpdateDataIfChanged(rows []Row) bool {
 	a.dataMu.Lock()
 	defer a.dataMu.Unlock()
-	
+
 	// Quick length check
 	if len(rows) != len(a.dataRows) {
 		a.dataRows = rows
 		return true
 	}
-	
+
 	// Compare cell contents
 	for i := range rows {
 		if len(rows[i].Cells) != len(a.dataRows[i].Cells) {
@@ -565,7 +565,7 @@ func (a *App) UpdateDataIfChanged(rows []Row) bool {
 			}
 		}
 	}
-	
+
 	// No change
 	return false
 }

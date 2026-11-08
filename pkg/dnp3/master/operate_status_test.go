@@ -171,8 +171,11 @@ type pubIINOnlyTransport struct {
 	iin     al.IIN
 }
 
-func (t *pubIINOnlyTransport) Send(data []byte) error { t.lastSeq = extractPubRequestSeq(data); return nil }
-func (t *pubIINOnlyTransport) SetTimeout(ms int)      {}
+func (t *pubIINOnlyTransport) Send(data []byte) error {
+	t.lastSeq = extractPubRequestSeq(data)
+	return nil
+}
+func (t *pubIINOnlyTransport) SetTimeout(ms int) {}
 func (t *pubIINOnlyTransport) Receive() ([]byte, error) {
 	iinBytes := t.iin.Bytes()
 	apdu := &al.APDU{

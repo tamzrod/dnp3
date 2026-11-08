@@ -50,9 +50,9 @@ func TestSimulatorUpdate(t *testing.T) {
 	cfg := &Config{
 		BinaryInputUpdateRate:  10.0, // High rate for testing
 		AnalogInputVariance:    100.0,
-		CounterIncrementRate:   1.0,  // Always increment
+		CounterIncrementRate:   1.0, // Always increment
 		CounterIncrementAmount: 1,
-		TickInterval:          100 * time.Millisecond,
+		TickInterval:           100 * time.Millisecond,
 	}
 	sim := NewSimulator(cfg)
 	sim.AddDefaultPoints()
@@ -79,10 +79,10 @@ func TestSimulatorUpdate(t *testing.T) {
 func TestSimulatorBinaryToggle(t *testing.T) {
 	cfg := &Config{
 		BinaryInputUpdateRate:  100.0, // Very high rate
-		AnalogInputVariance:   0,
+		AnalogInputVariance:    0,
 		CounterIncrementRate:   0,
 		CounterIncrementAmount: 0,
-		TickInterval:          10 * time.Millisecond,
+		TickInterval:           10 * time.Millisecond,
 	}
 	sim := NewSimulator(cfg)
 	sim.AddDefaultPoints()

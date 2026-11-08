@@ -13,36 +13,36 @@ import (
 
 // Key types
 const (
-	KeyTypeMaster = iota // Master key used to derive session keys
-	KeyTypeSession       // Session key used for authentication
-	KeyTypeUpdate        // Update key used to change other keys
+	KeyTypeMaster  = iota // Master key used to derive session keys
+	KeyTypeSession        // Session key used for authentication
+	KeyTypeUpdate         // Update key used to change other keys
 )
 
 // Key represents an encryption key with metadata
 type Key struct {
-	Type       int           // Key type (master, session, update)
-	Role       sa.Role       // Role this key authorizes
-	Value      [16]byte      // 128-bit AES key
-	KeyVersion uint16        // Key version for tracking
-	UpdatedAt  uint32        // Last update timestamp
+	Type       int      // Key type (master, session, update)
+	Role       sa.Role  // Role this key authorizes
+	Value      [16]byte // 128-bit AES key
+	KeyVersion uint16   // Key version for tracking
+	UpdatedAt  uint32   // Last update timestamp
 }
 
 // KeyEntry represents an entry in the key table
 type KeyEntry struct {
 	Key
-	UserNumber  uint8    // User number (1-63)
-	Username    string   // Username for audit
+	UserNumber        uint8  // User number (1-63)
+	Username          string // Username for audit
 	ChallengeDuration uint16 // Max challenge age in seconds
-	MaxAuthFailures uint8  // Max authentication failures before lockout
-	AuthFailures     uint8  // Current authentication failure count
-	Locked           bool   // Whether the user is locked
+	MaxAuthFailures   uint8  // Max authentication failures before lockout
+	AuthFailures      uint8  // Current authentication failure count
+	Locked            bool   // Whether the user is locked
 }
 
 // KeyTable manages encryption keys for secure authentication
 type KeyTable struct {
 	mu      sync.RWMutex
 	entries map[uint8]*KeyEntry // User number -> Key entry
-	keys    map[int][16]byte     // Type -> Key value (for master/update keys)
+	keys    map[int][16]byte    // Type -> Key value (for master/update keys)
 }
 
 // NewKeyTable creates a new key table
@@ -57,28 +57,28 @@ func NewKeyTable() *KeyTable {
 func (kt *KeyTable) AddUser(userNumber uint8, username string, key [16]byte, role sa.Role, challengeDuration uint16) error {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	if userNumber == 0 || userNumber > 63 {
 		return fmt.Errorf("invalid user number: must be 1-63")
 	}
-	
+
 	if _, exists := kt.entries[userNumber]; exists {
 		return fmt.Errorf("user %d already exists", userNumber)
 	}
-	
+
 	entry := &KeyEntry{
 		Key: Key{
-			Type:        KeyTypeSession,
-			Role:        role,
-			Value:       key,
-			KeyVersion:  1,
+			Type:       KeyTypeSession,
+			Role:       role,
+			Value:      key,
+			KeyVersion: 1,
 		},
 		UserNumber:        userNumber,
-		Username:         username,
+		Username:          username,
 		ChallengeDuration: challengeDuration,
-		MaxAuthFailures:  3,
+		MaxAuthFailures:   3,
 	}
-	
+
 	kt.entries[userNumber] = entry
 	return nil
 }
@@ -87,7 +87,7 @@ func (kt *KeyTable) AddUser(userNumber uint8, username string, key [16]byte, rol
 func (kt *KeyTable) GetUser(userNumber uint8) (*KeyEntry, bool) {
 	kt.mu.RLock()
 	defer kt.mu.RUnlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	return entry, ok
 }
@@ -96,11 +96,11 @@ func (kt *KeyTable) GetUser(userNumber uint8) (*KeyEntry, bool) {
 func (kt *KeyTable) RemoveUser(userNumber uint8) bool {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	if _, exists := kt.entries[userNumber]; !exists {
 		return false
 	}
-	
+
 	delete(kt.entries, userNumber)
 	return true
 }
@@ -109,15 +109,15 @@ func (kt *KeyTable) RemoveUser(userNumber uint8) bool {
 func (kt *KeyTable) UpdateKey(userNumber uint8, newKey [16]byte) error {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	if !ok {
 		return sa.ErrKeyNotFound
 	}
-	
+
 	entry.Value = newKey
 	entry.KeyVersion++
-	
+
 	return nil
 }
 
@@ -125,15 +125,15 @@ func (kt *KeyTable) UpdateKey(userNumber uint8, newKey [16]byte) error {
 func (kt *KeyTable) SetMasterKey(userNumber uint8, masterKey [16]byte) error {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	if !ok {
 		return sa.ErrKeyNotFound
 	}
-	
+
 	entry.Key.Type = KeyTypeMaster
 	entry.Value = masterKey
-	
+
 	return nil
 }
 
@@ -141,7 +141,7 @@ func (kt *KeyTable) SetMasterKey(userNumber uint8, masterKey [16]byte) error {
 func (kt *KeyTable) GetMasterKey() ([16]byte, bool) {
 	kt.mu.RLock()
 	defer kt.mu.RUnlock()
-	
+
 	key, ok := kt.keys[KeyTypeMaster]
 	return key, ok
 }
@@ -150,7 +150,7 @@ func (kt *KeyTable) GetMasterKey() ([16]byte, bool) {
 func (kt *KeyTable) SetMasterKeyGlobal(key [16]byte) {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	kt.keys[KeyTypeMaster] = key
 }
 
@@ -158,17 +158,17 @@ func (kt *KeyTable) SetMasterKeyGlobal(key [16]byte) {
 func (kt *KeyTable) IncrementFailures(userNumber uint8) error {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	if !ok {
 		return sa.ErrKeyNotFound
 	}
-	
+
 	entry.AuthFailures++
 	if entry.AuthFailures >= entry.MaxAuthFailures {
 		entry.Locked = true
 	}
-	
+
 	return nil
 }
 
@@ -176,15 +176,15 @@ func (kt *KeyTable) IncrementFailures(userNumber uint8) error {
 func (kt *KeyTable) ResetFailures(userNumber uint8) error {
 	kt.mu.Lock()
 	defer kt.mu.Unlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	if !ok {
 		return sa.ErrKeyNotFound
 	}
-	
+
 	entry.AuthFailures = 0
 	entry.Locked = false
-	
+
 	return nil
 }
 
@@ -192,12 +192,12 @@ func (kt *KeyTable) ResetFailures(userNumber uint8) error {
 func (kt *KeyTable) IsLocked(userNumber uint8) bool {
 	kt.mu.RLock()
 	defer kt.mu.RUnlock()
-	
+
 	entry, ok := kt.entries[userNumber]
 	if !ok {
 		return true // Non-existent users are treated as locked
 	}
-	
+
 	return entry.Locked
 }
 
@@ -208,15 +208,15 @@ func DeriveSessionKey(masterKey [16]byte, challenge [sa.ChallengeSize]byte, user
 	if err != nil {
 		return [16]byte{}, fmt.Errorf("failed to create cipher: %w", err)
 	}
-	
+
 	// Use CTR-like mode for key derivation
 	iv := make([]byte, aes.BlockSize)
 	iv[0] = byte(userNumber)
 	copy(iv[1:13], challenge[:12])
-	
+
 	encrypted := make([]byte, 16)
 	cipher.NewCTR(block, iv).XORKeyStream(encrypted, encrypted)
-	
+
 	var sessionKey [16]byte
 	copy(sessionKey[:], encrypted)
 	return sessionKey, nil
@@ -238,13 +238,13 @@ func DeriveMACKey(sessionKey [16]byte) ([16]byte, error) {
 	if err != nil {
 		return [16]byte{}, fmt.Errorf("failed to create cipher: %w", err)
 	}
-	
+
 	// Use cipher's export function (not standard but works for derivation)
 	var macKey [16]byte
 	// Simple derivation: encrypt a fixed value
 	plaintext := [16]byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	block.Encrypt(macKey[:], plaintext[:])
-	
+
 	return macKey, nil
 }
 
@@ -252,7 +252,7 @@ func DeriveMACKey(sessionKey [16]byte) ([16]byte, error) {
 func (kt *KeyTable) UserCount() int {
 	kt.mu.RLock()
 	defer kt.mu.RUnlock()
-	
+
 	return len(kt.entries)
 }
 
@@ -260,7 +260,7 @@ func (kt *KeyTable) UserCount() int {
 func (kt *KeyTable) ListUsers() []uint8 {
 	kt.mu.RLock()
 	defer kt.mu.RUnlock()
-	
+
 	users := make([]uint8, 0, len(kt.entries))
 	for userNum := range kt.entries {
 		users = append(users, userNum)

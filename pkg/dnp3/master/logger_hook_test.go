@@ -14,8 +14,8 @@ import (
 
 // recordingLogger records every LogEvent it receives. Safe for concurrent use.
 type recordingLogger struct {
-	mu      sync.Mutex
-	events  []LogEvent
+	mu     sync.Mutex
+	events []LogEvent
 }
 
 func (l *recordingLogger) Log(e LogEvent) {

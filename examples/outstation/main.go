@@ -52,8 +52,8 @@ func (h *exampleDataHandler) GetCounters() []*types.Counter {
 // remaining DataHandler methods return empty for the non-MVP groups.
 func (h *exampleDataHandler) GetBinaryOutputs() []*types.BinaryOutput { return nil }
 func (h *exampleDataHandler) GetAnalogOutputs() []*types.AnalogOutput { return nil }
-func (h *exampleDataHandler) GetFrozenCounters() []*types.Counter      { return nil }
-func (h *exampleDataHandler) FreezeCounters(clear bool) error          { return nil }
+func (h *exampleDataHandler) GetFrozenCounters() []*types.Counter     { return nil }
+func (h *exampleDataHandler) FreezeCounters(clear bool) error         { return nil }
 
 // exampleCommandHandler accepts Group 12 Variation 1 direct binary control
 // (the only command profile in v0) and rejects analog commands.
@@ -73,8 +73,8 @@ func (h *exampleCommandHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*
 
 func main() {
 	cfg := outstation.NewConfig(
-		outstation.WithAddress(1024),      // outstation link address
-		outstation.WithMasterAddress(1),   // expected master link address
+		outstation.WithAddress(1024),    // outstation link address
+		outstation.WithMasterAddress(1), // expected master link address
 		outstation.WithTransport(dnp3.TCP, "0.0.0.0", 20000),
 		outstation.WithMaxConnections(1), // MVP single-master (DNP3-084)
 	)

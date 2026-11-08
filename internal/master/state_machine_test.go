@@ -33,11 +33,11 @@ func TestStateTransitionTableIllegal(t *testing.T) {
 	}{
 		{StateDisconnected, StateActive},      // must Connect first
 		{StateDisconnected, StateInitialized}, // must Connect + Initialize
-		{StateDisconnected, StateError},        // only via a send failure, not direct
-		{StateActive, StateConnecting},         // reconnect only from Error
-		{StateInitialized, StateConnected},     // backward into handshake state
-		{StateError, StateActive},              // Error must re-Connect, not jump
-		{StateError, StateInitialized},         // Error must re-Connect
+		{StateDisconnected, StateError},       // only via a send failure, not direct
+		{StateActive, StateConnecting},        // reconnect only from Error
+		{StateInitialized, StateConnected},    // backward into handshake state
+		{StateError, StateActive},             // Error must re-Connect, not jump
+		{StateError, StateInitialized},        // Error must re-Connect
 	}
 	for _, tc := range illegal {
 		m := NewMaster(nil)

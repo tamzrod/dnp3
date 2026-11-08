@@ -814,8 +814,6 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 			o.sendConfirmation(req.Control.Seq)
 		}
 	}
-
-	return nil
 }
 
 // sendConfirmation sends an application layer confirmation.

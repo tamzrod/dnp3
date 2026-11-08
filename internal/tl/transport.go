@@ -25,9 +25,9 @@ const MaxFragmentData = 250 - 1 // 249 bytes
 
 // Sequence number limits
 const (
-	SeqMax     = 63              // Maximum sequence number
-	SeqMod     = 64              // Sequence number modulus
-	SeqMask    = 0x3F           // Sequence number mask
+	SeqMax  = 63   // Maximum sequence number
+	SeqMod  = 64   // Sequence number modulus
+	SeqMask = 0x3F // Sequence number mask
 )
 
 // Transport header bit masks
@@ -38,9 +38,9 @@ const (
 
 // Transport errors
 var (
-	ErrMissingFirstFragment  = errors.New("received non-FIR fragment without prior FIR")
-	ErrSequenceMismatch      = errors.New("sequence number mismatch")
-	ErrDuplicateFragment     = errors.New("duplicate fragment received")
+	ErrMissingFirstFragment = errors.New("received non-FIR fragment without prior FIR")
+	ErrSequenceMismatch     = errors.New("sequence number mismatch")
+	ErrDuplicateFragment    = errors.New("duplicate fragment received")
 	ErrIncompleteMessage    = errors.New("incomplete message on close")
 	ErrBufferOverflow       = errors.New("reassembly buffer overflow")
 	ErrInvalidHeader        = errors.New("invalid transport header")
@@ -48,9 +48,9 @@ var (
 
 // Fragment represents a single transport fragment.
 type Fragment struct {
-	FIR bool // First fragment
-	FIN bool // Final fragment
-	Seq uint8 // Sequence number (0-63)
+	FIR  bool   // First fragment
+	FIN  bool   // Final fragment
+	Seq  uint8  // Sequence number (0-63)
 	Data []byte // Fragment data
 }
 
@@ -76,19 +76,19 @@ func (f *Fragment) SetHeader(h byte) {
 
 // Reassembler handles reassembly of transport fragments into complete messages.
 type Reassembler struct {
-	buf      []byte      // Reassembly buffer
-	expectedSeq uint8   // Expected sequence number
-	started  bool        // Have we received FIR?
-	complete bool        // Is message complete?
+	buf         []byte // Reassembly buffer
+	expectedSeq uint8  // Expected sequence number
+	started     bool   // Have we received FIR?
+	complete    bool   // Is message complete?
 }
 
 // NewReassembler creates a new fragment reassembler.
 func NewReassembler() *Reassembler {
 	return &Reassembler{
-		buf:        make([]byte, 0, 4096),
+		buf:         make([]byte, 0, 4096),
 		expectedSeq: 0,
-		started:    false,
-		complete:   false,
+		started:     false,
+		complete:    false,
 	}
 }
 
@@ -181,9 +181,9 @@ func (f *Fragmenter) Fragmentize(data []byte) []Fragment {
 	if fragCount == 0 {
 		// Empty message - single fragment with no data
 		fragments = append(fragments, Fragment{
-			FIR: true,
-			FIN: true,
-			Seq: f.seq,
+			FIR:  true,
+			FIN:  true,
+			Seq:  f.seq,
 			Data: nil,
 		})
 		f.seq = (f.seq + 1) % SeqMod
@@ -201,9 +201,9 @@ func (f *Fragmenter) Fragmentize(data []byte) []Fragment {
 		}
 
 		frag := Fragment{
-			FIR: isFirst,
-			FIN: isLast,
-			Seq: f.seq,
+			FIR:  isFirst,
+			FIN:  isLast,
+			Seq:  f.seq,
 			Data: data[start:end],
 		}
 		fragments = append(fragments, frag)
