@@ -189,3 +189,199 @@ func TestIntegrityPollSharesBudget(t *testing.T) {
 		t.Fatalf("integrity poll took %v; the per-group fallback must share the 150ms budget", elapsed)
 	}
 }
+
+// pubControlTransport is a scriptable transport.Handler for public Operate
+// tests: it counts Sends and returns either a valid G12V1 status response or a
+// missing-response error. It opens no socket, so tests stay offline.
+type pubControlTransport struct {
+	mu      sync.Mutex
+	sends   int
+	lastSeq uint8
+	status  byte
+	respond bool
+}
+
+func (t *pubControlTransport) Listen() error     { return nil }
+func (t *pubControlTransport) Accept() error     { return nil }
+func (t *pubControlTransport) Connect() error    { return nil }
+func (t *pubControlTransport) Close() error      { return nil }
+func (t *pubControlTransport) SetTimeout(ms int) {}
+
+func (t *pubControlTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.lastSeq = extractPubRequestSeq(data)
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *pubControlTransport) Receive() ([]byte, error) {
+	t.mu.Lock()
+	seq, st, respond := t.lastSeq, t.status, t.respond
+	t.mu.Unlock()
+	if !respond {
+		return nil, errors.New("no response")
+	}
+	return buildPubG12V1StatusResponse(seq, st), nil
+}
+
+func (t *pubControlTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
+
+func connectedOperateClient(t *testing.T, tr *pubControlTransport) *client {
+	t.Helper()
+	cc := clientWithTransport(t, tr)
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+	return cc
+}
+
+// TestOperateSingleShotUnderDefaultRetries (VEC-01 B4 F1) proves the PUBLIC
+// Operate path is single-shot even under the default retry policy
+// (RetryCount=3): a control whose response is missing is transmitted exactly
+// once and fails closed as UNKNOWN with the outstation quarantined.
+func TestOperateSingleShotUnderDefaultRetries(t *testing.T) {
+	tr := &pubControlTransport{respond: false}
+	cc := connectedOperateClient(t, tr)
+	if p := cc.internalMaster.RetryPolicy(); p == nil || p.TimeoutRetries < 1 {
+		t.Fatalf("test requires a retrying policy; got %+v", p)
+	}
+
+	_, err := cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if err == nil {
+		t.Fatal("expected fail-closed error for a missing response")
+	}
+	if !errors.Is(err, master.ErrControlOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("public control sent %d times under default retries, want exactly 1", got)
+	}
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("outstation not quarantined after unknown public control outcome")
+	}
+}
+
+// TestOperateAcknowledgedSingleShotNotQuarantined (VEC-01 B4 F1/F3) proves a
+// positively acknowledged public control is transmitted exactly once, returns a
+// response, and does NOT quarantine the outstation.
+func TestOperateAcknowledgedSingleShotNotQuarantined(t *testing.T) {
+	tr := &pubControlTransport{respond: true, status: 0}
+	cc := connectedOperateClient(t, tr)
+
+	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if err != nil {
+		t.Fatalf("acknowledged public control returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("acknowledged public control returned nil response")
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("acknowledged public control sent %d times, want exactly 1", got)
+	}
+	if cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("a positively acknowledged control must not quarantine the outstation")
+	}
+}
+
+// TestOperateSingleShotUnderWithRetryZero (VEC-01 B4 F1) proves the public
+// control is single-shot under an explicit WithRetry(0, ...) configuration
+// (zero is coerced to the default retry policy, so it must not be relied upon
+// as a one-shot fix): still exactly one send, still fail-closed + quarantined.
+func TestOperateSingleShotUnderWithRetryZero(t *testing.T) {
+	tr := &pubControlTransport{respond: false}
+	c, err := NewClient(NewConfig(WithRetry(0, 0)))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cc := c.(*client)
+	cc.transport = tr
+	cc.internalMaster.SetTransport(&transportAdapter{Handler: tr})
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+
+	_, err = cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if !errors.Is(err, master.ErrControlOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("control under WithRetry(0) sent %d times, want exactly 1", got)
+	}
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("outstation not quarantined under WithRetry(0) unknown outcome")
+	}
+}
+
+// malformedControlTransport returns bytes that are not a decodable DNP3 frame,
+// modelling a malformed/garbled control response. The control must fail closed
+// as UNKNOWN and quarantine the outstation (never a fabricated success).
+type malformedControlTransport struct {
+	mu    sync.Mutex
+	sends int
+}
+
+func (t *malformedControlTransport) Listen() error     { return nil }
+func (t *malformedControlTransport) Accept() error     { return nil }
+func (t *malformedControlTransport) Connect() error    { return nil }
+func (t *malformedControlTransport) Close() error      { return nil }
+func (t *malformedControlTransport) SetTimeout(ms int) {}
+func (t *malformedControlTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.mu.Unlock()
+	return nil
+}
+func (t *malformedControlTransport) Receive() ([]byte, error) {
+	return []byte{0xDE, 0xAD, 0xBE, 0xEF}, nil
+}
+func (t *malformedControlTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
+
+// TestOperateMalformedResponseFailsClosed (VEC-01 B4 F1/F3) proves a malformed
+// control response fails closed as UNKNOWN, is transmitted exactly once, and
+// quarantines the outstation.
+func TestOperateMalformedResponseFailsClosed(t *testing.T) {
+	tr := &malformedControlTransport{}
+	cc := clientWithTransport(t, tr)
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+
+	_, err := cc.Operate(context.Background(), &types.ControlOutput{
+		Group: 12, Variation: 1, Index: 0,
+		CommandType: types.DirectOperate,
+		Value:       &types.BinaryCommandValue{Value: true},
+	})
+	if err == nil {
+		t.Fatal("malformed control response must not be reported as success")
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("control sent %d times, want exactly 1", got)
+	}
+	if !cc.internalMaster.IsQuarantined(cc.config.OutstationAddress) {
+		t.Fatal("outstation not quarantined after malformed control response")
+	}
+}

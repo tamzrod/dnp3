@@ -368,3 +368,24 @@ Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §18. Gate B and the
 CURRENT remain **`TASK_BLOCKED`**.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## B4 F1–F3 addendum — coverage completion + toolchain re-provisioning (append-only, 2026-11-08)
+
+Fresh ephemeral runner continued the §18 offline implementation (no Go toolchain
+present). Re-provisioned pinned `go1.22.12 linux/amd64`, SHA-256
+`4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43` verified
+against the official `go.dev/dl` JSON index before extraction. Closed the
+remaining CURRENT item-6 regression gaps with deterministic offline tests:
+successful acknowledged CROB (internal + public), no-late-replay, public
+single-shot under default retries and under `WithRetry(0)`, and malformed
+response fail-closed. All in-memory; no sockets/listeners/peer.
+
+Gates re-run: `gofmt` clean, `go vet ./...` clean, `go build ./...` ok,
+`go test ./... -count=1` ok, `go test -race ./internal/master/... ./pkg/dnp3/master/...`
+ok, `./scripts/verify-mvp.sh` OK, `./scripts/verify-external-mvp.sh` OK.
+
+Result unchanged: **`B4_SAFETY_IMPLEMENTATION_PASS` (Go offline readiness only)**.
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. Full detail: §19 of
+`docs/verification/VEC-01-LAB-EXEC-001.md`.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

@@ -293,3 +293,84 @@ func TestReadBoundedByDeadline(t *testing.T) {
 		t.Fatalf("read took %v, want it bounded near the %v budget", elapsed, budget)
 	}
 }
+
+// countingStatusTransport echoes a valid G12V1 status response carrying the
+// given per-point command status for the request's SEQ, and records how many
+// times Send was called. It proves a positively acknowledged control is
+// transmitted exactly once and never quarantines.
+type countingStatusTransport struct {
+	mu      sync.Mutex
+	sends   int
+	lastSeq uint8
+	status  byte
+}
+
+func (t *countingStatusTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.lastSeq = extractRequestSeqForBuild(data)
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *countingStatusTransport) SetTimeout(ms int) {}
+
+func (t *countingStatusTransport) Receive() ([]byte, error) {
+	t.mu.Lock()
+	seq, st := t.lastSeq, t.status
+	t.mu.Unlock()
+	return buildG12V1StatusResponse(seq, st), nil
+}
+
+func (t *countingStatusTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
+
+// TestControlSuccessIsSingleShotNotQuarantined (F1/F3) proves a positively
+// acknowledged DirectOperate is transmitted exactly once, returns the real
+// success status, and does NOT quarantine the outstation (a known-good outcome
+// must not block future controls).
+func TestControlSuccessIsSingleShotNotQuarantined(t *testing.T) {
+	tr := &countingStatusTransport{status: uint8(CommandStatusSuccess)}
+	m := newControlMaster(t, tr)
+
+	status, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
+	if err != nil {
+		t.Fatalf("acknowledged control returned error: %v", err)
+	}
+	if status != CommandStatusSuccess {
+		t.Fatalf("status = %d, want CommandStatusSuccess", status)
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("acknowledged control sent %d times, want exactly 1", got)
+	}
+	if m.IsQuarantined(1) {
+		t.Fatal("a positively acknowledged control must not quarantine the outstation")
+	}
+}
+
+// TestControlNoLateReplayAfterOutcome (F3) proves the single-shot dispatch does
+// not replay the control after it has returned an UNKNOWN outcome: the send
+// count is stable once OperateWithStatus returns, and the outstation stays
+// quarantined rather than retrying in the background.
+func TestControlNoLateReplayAfterOutcome(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	if _, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn)); !errors.Is(err, ErrControlOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
+	}
+	base := tr.sendCount()
+	if base != 1 {
+		t.Fatalf("control sent %d times, want exactly 1", base)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := tr.sendCount(); got != base {
+		t.Fatalf("control replayed after returning: sends %d -> %d", base, got)
+	}
+	if !m.IsQuarantined(1) {
+		t.Fatal("outstation must remain quarantined after an UNKNOWN outcome")
+	}
+}

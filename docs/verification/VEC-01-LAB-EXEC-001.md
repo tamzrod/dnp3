@@ -1543,3 +1543,85 @@ semantics, latency, independent-peer behavior or real session was exercised;
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 19. Gate B4 F1–F3 addendum — coverage completion and toolchain re-provisioning (append-only, 2026-11-08)
+
+**Context.** This addendum continues the same owner-authorized B4 F1–F3 offline
+implementation (§18) in a **fresh ephemeral runner** whose working tree carried
+the §18 implementation. It is **offline only**: no TCP/DNP3 listener, socket,
+peer, CROB, namespace or capture. It (a) re-provisions the pinned Go toolchain
+because the ephemeral runner had none, and (b) closes the remaining required
+regression-matrix gaps from the CURRENT item 6. §18 remains authoritative for
+the correction design; §19 records the completed coverage and re-verification.
+
+### 19.1 Toolchain re-provisioning (checksum-verified, offline-staged)
+
+The ephemeral runner had **no Go toolchain** (`go`/`gofmt` absent; `$HOME/toolchain`
+empty). Provisioned `go1.22.12 linux/amd64` (matching §18 and `go.mod` `go 1.22.0`):
+
+- Downloaded `go1.22.12.linux-amd64.tar.gz` from `https://go.dev/dl/`.
+- Verified SHA-256 against the **official** `https://go.dev/dl/?mode=json` index:
+  `4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43` (size
+  68995422) — `sha256sum -c` **OK** before extraction.
+- Extracted to `$HOME/toolchain/go` (outside the Git repo); `go version` →
+  `go1.22.12 linux/amd64`. No repo dependency downloads or module fetches were
+  needed for execution (deps already present/cached).
+
+### 19.2 Added deterministic offline tests (CURRENT item 6 coverage)
+
+All use in-memory `transport.Handler` doubles; none open sockets/listeners or
+start the external OpenDNP3 peer.
+
+| Added test | Required case | Proves |
+|---|---|---|
+| `TestControlSuccessIsSingleShotNotQuarantined` (internal) | successful acknowledged CROB | exactly one send, real success status, **no** quarantine |
+| `TestControlNoLateReplayAfterOutcome` (internal) | no late replay | send count stable after return; quarantine persists |
+| `TestOperateSingleShotUnderDefaultRetries` (public) | no resend under default retries | exactly one send under `RetryCount=3`; fail-closed + quarantined |
+| `TestOperateSingleShotUnderWithRetryZero` (public) | no resend under `WithRetry(0)` | zero coerced to default but still exactly one send; quarantined |
+| `TestOperateAcknowledgedSingleShotNotQuarantined` (public) | successful acknowledged CROB | one send, non-nil response, **no** quarantine |
+| `TestOperateMalformedResponseFailsClosed` (public) | malformed/garbled response | fail-closed (never success), one send, quarantined |
+
+Already present from §18: missing-response single-shot, disconnect single-shot,
+deadline-bounded blocking wait, quarantine blocks further controls + survives
+reconnect + clears on `Disconnect`, pre-send failure no quarantine, explicit
+rejection ≠ UNKNOWN, read bounded by deadline, integrity-poll shared budget,
+connect budget (context and configured).
+
+**Coverage matrix status (CURRENT item 6).** Successful acknowledged CROB ✔,
+explicit reject ✔, timeout after possible send ✔, NACK/CRC/malformed ✔
+(malformed added here), no resend under `WithRetry(0)` ✔ and default retries ✔,
+pre-send cancellation vs post-send UNKNOWN ✔, blocked receive cancellation ✔
+(deadline-bounded), no late replay ✔, second control denied while unresolved ✔,
+bounded cleanup / persistent quarantine ✔, read-only bounded retry ✔, Class-0
+primary-failure + fallback sharing one deadline ✔, handshake stall ✔,
+disconnect/reconnect gating ✔.
+
+### 19.3 Gates re-run (this checkout, `go1.22.12`)
+
+`gofmt -l` clean · `git diff --check` clean · `go vet ./...` clean ·
+`go build ./...` ok · `go test ./... -count=1` all packages ok ·
+`go test -race ./internal/master/... ./pkg/dnp3/master/... -count=1` ok ·
+`./scripts/verify-mvp.sh` OK · `./scripts/verify-external-mvp.sh` OK (tiers 1–3).
+
+### 19.4 Updated file hashes (SHA-256, working-tree content)
+
+| File | SHA-256 |
+|---|---|
+| `internal/master/master.go` | `ad20f4bb7a8d894c37139849de5988b9af8eaa46dda272d1ab7f99088eb128e5` |
+| `pkg/dnp3/master/client.go` | `bd08543110e1ce8e127d16c422e8e81fb594805c958be41992d4e9f18384ca57` |
+| `internal/master/control_safety_test.go` | `10ce913ed2346e428c01541e990c1a4405d5edad7ed1d7c1746f9bf60605ef54` |
+| `pkg/dnp3/master/control_safety_test.go` | `2b87af557f1dca8f29cfa2cda0dba77e07273402fa9b68fb86ff5edd19154831` |
+| `internal/master/command_status_test.go` | `0b8e93031beea1d0a1c02a3441ae4fad85d3211bf4f59894e71a92a7c051c116` |
+
+### 19.5 Non-claims (unchanged)
+
+Classification remains **`B4_SAFETY_IMPLEMENTATION_PASS` (Go offline readiness
+only)** — not `B4_SAFETY_PASS`, not Gate B acceptance. Lower-level confirmed-link
+FCB/FCV retransmission and physical TCP send counts remain NOT_TESTED/UNVERIFIED;
+`pkg/transport/tcp.go` is unchanged. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
