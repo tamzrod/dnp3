@@ -1,10 +1,22 @@
 # DNP3 Implementation Handoff (MEXT Series)
 
-**Last updated:** 2026-08-12  
+**Historical MEXT checkpoint:** 2026-08-12  
+**Post-merge sync:** 2026-11-08  
 **Roadmap:** `active_work/MEXT_MASTER_ROADMAP.md`  
 **Profile:** `active_work/supported-profile.md`  
 **Acceptance:** `active_work/external-acceptance.md`  
 **Archived series:** `active_work/archive/`
+
+## Post-merge synchronization — 2026-11-08 (documentation-only)
+
+- **Main checkpoint:** PR #15 merged at `b38d7691aeb1adccf52fe665e368d4d77766977c`. Its GitHub Actions CI run on `main` completed successfully.
+- **Correction packages:** CWAL DNP3-056 removed unreachable code in `internal/outstation/outstation.go`; CWAL DNP3-057 ran `gofmt` on the 70 recorded Go files. Both are archived under `archive/active-work/` with evidence in `docs/verification/`. These CWAL numbers are separate from the historical internal-MVP task identifier DNP3-056.
+- **Latest checks:** PR #15 Lint/Documentation/Test all passed at its `fd45a58` head; `main` CI for the merge passed. The prior statement below about an outstanding `go vet` unreachable-code warning describes **historical MEXT-035 state only** and no longer applies to current `main`.
+- **Execution authorization:** `workflow/active_work/README.md` and root `handoff.md` agree on `CURRENT: NONE`, `QUEUED: NONE`, `Status: WORK_PACKAGE_READY`. No task is authorized. MEXT-040/041/042 are unpromoted post-gate backlog.
+- **Protocol boundary:** MEXT-035 verified the in-repo real-TCP v0 profile, not independent third-party VEC-01 interoperability, complete IEEE 1815 conformance, or production readiness. R4 remains open.
+- **Roadmap:** `active_work/MEXT_MASTER_ROADMAP.md` and `active_work/external-acceptance.md` synchronized to historical MEXT-035 completion and the merged correction; original microtask reports below remain historical evidence, not current execution authority.
+
+---
 
 ## Status
 
