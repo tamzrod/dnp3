@@ -5,7 +5,7 @@ Package: VEC-01-LAB-EXEC-001
 Branch: work
 CURRENT: VEC-01-LAB-EXEC-001
 QUEUED: NONE
-Status: TASK_READY
+Status: TASK_BLOCKED
 
 
 
@@ -110,6 +110,36 @@ matching markers in `workflow/active_work/README.md` and this file. Any actual
 VEC-01 campaign requires a separately owner-approved task and safety gates. PR
 creation, merge, release and field-device tests each require separate human
 authorization.
+
+## VEC-01-LAB-EXEC-001 execution attempt — TASK_BLOCKED (2026-11-08)
+The promoted isolated interoperability campaign was attempted and is **BLOCKED
+at Gate B**, so it did not execute. Startup readiness PASSED (markers match,
+`cwal-check.sh` OK, `origin/main` `02a58f76…` is the ancestor/merge-base of
+`origin/work`). Gate A PASSED: the disposable `/tmp/vec01-lab` staging had
+vanished, so the pinned peer was independently **re-produced** — OpenDNP3 3.1.2
+peeled tag `26b4c01e4839bbbda8866655e086471c4917ee53`, source tarball SHA-256
+`183cc292…`, all four dependencies re-hashed with matching SHA-256/SHA-1 — and a
+hermetic no-network build (`unshare -n`, FetchContent fully disconnected)
+reproduced `outstation-demo` `8ae8c841…` and `libopendnp3.a` `e2926474…`
+**byte-identically** (a first build at a different absolute path differed only by
+embedded source-path strings; rebuilding at the historical layout reproduced the
+pinned hashes exactly). Verified bytes are retained in the durable store
+`/workspace/vec01-lab-artifacts` (outside Git, outside `/tmp`) with a SHA-256
+manifest. Gate B then BLOCKED: the task mandates a **named independent reviewer**
+(distinct from the executor) to approve isolation / no-OT-reachability /
+simulator-only CROB targets **before any listener or packet**, and states *"No
+independent approval → TASK_BLOCKED and STOP. There is no autonomous
+self-approval."* No such reviewer exists in this environment (single session,
+no approver authority, no reviewer mechanism in governance), and the executor
+may not self-approve. Consequently **no listener, TCP session, DNP3 packet,
+capture or control occurred**; Gates C–E were not reached; the Go regression
+gates are NOT_RUN (Go toolchain absent, and the real-TCP gates are also
+prohibited pre-approval). CURRENT is retained with truthful `TASK_BLOCKED`
+evidence (no archive, no marker closure). Evidence:
+`docs/verification/VEC-01-LAB-EXEC-001.md`; index:
+`active_work/vec-01-opendnp3-lab-execution-evidence.md`. **VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** R4 status is unchanged and
+requires separate owner approval.
 
 ## Persistent branch rule (owner instruction, 2026-11-08)
 Use `work` for the remaining active roadmap, including subsequent separately human-approved CWAL packages. Do not switch branches by package. A stable branch name does not bypass task authorization, PR audit against `main`, CI, or merge approval. The superseded `docs/sync-mext-post-pr17-20261108` ref is not the active CWAL branch; retire it after confirming the new `work` tip.
