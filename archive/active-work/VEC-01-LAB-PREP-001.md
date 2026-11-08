@@ -1,3 +1,11 @@
+<!-- Archived after verified acceptance. Original task body preserved verbatim below. -->
+
+Archived: 2026-11-08
+Execution commit SHA: 08d3882a3b63010e21be6d4021593dda0c5cc4e3
+Promotion baseline: f165e8509436153dfa53ab68bb67c51be9a88b10 (merged PR #19)
+Verification evidence: docs/verification/VEC-01-LAB-PREP-001.md
+Go toolchain: go1.22.12 linux/amd64 (private install $HOME/sdk/go; official archive sha256 4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43)
+
 # VEC-01-LAB-PREP-001 — Independent OpenDNP3 peer laboratory preparation plan
 
 Status: CURRENT — HUMAN_PROMOTED
