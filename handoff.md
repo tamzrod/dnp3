@@ -1,20 +1,26 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: DNP3-PR15-FORMATTING-CORRECTION-001
-Branch: fix/dnp3-056-outstation-vet-cwal
-CURRENT: NONE
-QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Package: MEXT-POSTGATE-ROADMAP-001
+Branch: work/mext-postgate-roadmap
+CURRENT: MEXT-040
+QUEUED: MEXT-041
+Status: TASK_READY
 
-## Concise current handoff
-DNP3-057 completed and archived. Pre-fix `gofmt -l .` listed 70 tracked `.go` files (all in scope; no vendor/generated/third-party). `gofmt -w` was applied to exactly those paths; post-fix `gofmt -l .` is empty and the changed set equals the enumerated set. All 70 files are token-multiset identical to HEAD, proving the diff is formatting-only. No workflow, governance, dependency or DNP3-056 file was touched. Evidence: `docs/verification/DNP3-057.md`; archive: `archive/active-work/DNP3-057.md`.
+## Current authorization
+Owner-promoted docs-only post-gate package. Execute `workflow/active_work/MEXT-040.md` (SBO backlog deferral) on the designated clean branch after safe remote synchronization and `bash scripts/cwal-check.sh`. MEXT-041 is pre-promoted QUEUED and must not be read until MEXT-040 has passed all acceptance, been archived, and had its remote checkpoint verified. MEXT-042 is neither CURRENT nor QUEUED; do not auto-promote it.
 
-## Verification
-PASS: `gofmt -l .` empty, `git diff --check`, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./internal/outstation/...`, `./scripts/verify-external-mvp.sh` (Tiers 1-3). PR #15 CI checks after pushing may still be pending and are not claimed as passed here.
+## Historical baseline
+PR #15 merged at `b38d7691aeb1adccf52fe665e368d4d77766977c` with successful main CI; DNP3-056 and DNP3-057 are archived with verification evidence. MEXT-035 completed the tested in-repo v0 real-TCP Master gate, not independent third-party interoperability. R4/VEC-01 remains open.
 
-## Historical completed package
-DNP3-056 is archived and verified at implementation commit `f2568dd`. Main-ancestry synchronization commit `524b385` changed no file contents. Preserve completed evidence and archive.
+## Parallel roadmap-sync note
+PR #16 (MEXT historical roadmap sync) was open when this branch was cut from main. Do not modify `active_work/MEXT_MASTER_ROADMAP.md` or `active_work/handoff.md` in this package; reconcile any later main changes before a future PR. Roadmap status or older handoff narratives never override these marker blocks.
 
-## Next authorized action
-No task is promoted. Update existing PR #15 through branch commits only; do not create/merge another PR, write `main`, or issue any field-device controls. To continue, a human must promote a new package with matching markers.
+## Executor next actions
+1. On the assigned branch, fetch safely, confirm exact remote-tracking and local SHA, clean status, and run `bash scripts/cwal-check.sh`.
+2. Read only CURRENT MEXT-040; prepare the SBO **deferred backlog note**, no runtime/protocol changes; verify only the authorized documentation scope and document actual results.
+3. Commit/push, read back remote SHA and archive/evidence. Only after checkpoint and under this approved package promote QUEUED MEXT-041 to CURRENT; do not skip on failure.
+4. When MEXT-041 passes, archive/evidence, set `CURRENT: NONE`, `QUEUED: NONE`, `Status: WORK_PACKAGE_READY`, verify remote SHA and stop. No PR/merge/deploy/field tests without separate authorization.
+
+## Setup status
+TASK_READY only. No current task has been executed, no checks have been run, and no completed-task claims are made.
