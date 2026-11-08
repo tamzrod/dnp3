@@ -22,8 +22,14 @@ for i in "${!a[@]}"; do
 done
 [[ "${a[0]}" == "tamzrod/dnp3" ]] || fail "wrong repository"
 if [[ "${a[3]}" == "NONE" ]]; then
-  [[ "${a[2]}" == "NONE" && "${a[1]}" == "NONE" && "${a[4]}" == "NONE" ]] || fail "NONE CURRENT with inconsistent package/branch/queue"
-  [[ "${a[5]}" == "NO_CURRENT" || "${a[5]}" == "WORK_PACKAGE_READY" ]] || fail "unexpected empty-state status"
+  [[ "${a[4]}" == "NONE" ]] || fail "NONE CURRENT with nonempty queue"
+  if [[ "${a[5]}" == "NO_CURRENT" ]]; then
+    [[ "${a[2]}" == "NONE" && "${a[1]}" == "NONE" ]] || fail "NO_CURRENT with unexpected package/branch"
+  elif [[ "${a[5]}" == "WORK_PACKAGE_READY" ]]; then
+    [[ "${a[2]}" != "NONE" && "${a[2]}" != "main" && "${a[1]}" != "NONE" ]] || fail "completed package lacks work branch"
+  else
+    fail "unexpected empty-state status"
+  fi
   echo "CWAL CHECK OK: NO_CURRENT; no implementation authority"
   exit 0
 fi
