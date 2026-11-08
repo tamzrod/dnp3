@@ -1012,3 +1012,313 @@ fresh runner can reconstruct the lab without the ephemeral bytes.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 16. Gate B4 — static master safety audit (2026-11-08)
+
+**Authority:** owner-authorized "Gate B4 — static master safety audit only"
+addendum in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`. This is a
+**read-only, evidence-only** audit: no listener, Go master, compiled peer, CROB,
+TCP socket, DNS/probe, namespace, compilation, Go test or networked tool call
+was invoked. Execution SHA (branch `work`):
+`789ee9c231f83c286d77bc6d25cbb638e5915b9e`.
+
+**Verdict: `B4_STATIC_AUDIT_COMPLETE`** — all listed call paths were inspected
+and classified, including explicit **GAP** and **NOT_TESTED** where safety
+cannot be proven. This is **not** `B4_SAFETY_PASS`. Overall Gate B and the
+CURRENT remain `TASK_BLOCKED`. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
+
+### 16.1 CWAL startup
+
+Markers match (Repository `tamzrod/dnp3`, Package/CURRENT `VEC-01-LAB-EXEC-001`,
+Branch `work`, QUEUED `NONE`, Status `TASK_BLOCKED`). Local `work` fast-forwarded
+to `origin/work` = `789ee9c2…`; worktree clean; `bash scripts/cwal-check.sh` →
+`CWAL CHECK OK`. `main` = `02a58f76…` remains an ancestor of `work`.
+
+### 16.2 Traced public control path (with citations)
+
+| Step | Location |
+|---|---|
+| `Connect(ctx)` public race vs ctx | `pkg/dnp3/master/client.go:572-616` |
+| `connectBlocking` steps (outstation → dial → handshake → init) | `client.go:621-662` |
+| transport dial | `pkg/transport/tcp.go:126-158` (`DialContext` @141) |
+| internal `Connect` / link handshake | `internal/master/master.go:996-1035`; `performLinkHandshake` `1057-1075`; `sendResetLink` `1083+` |
+| `Read(ctx)` → internal send/recv | `client.go:757-870`; goroutine @805 |
+| `IntegrityPoll(ctx)` → multi-group read + per-group fallback | `client.go:877-962` |
+| `Operate(ctx)` → `OperateWithStatus` | `client.go:1605-1700`; goroutine @1659-1661 |
+| `OperateWithStatus` (DirectOperate request) | `master.go:1373-1398` |
+| generic retry loop (reads **and** controls) | `master.go:1621-1745` (`sendWithRetryAndGetResponse`) |
+| retry decision / delay | `master.go:485-506` (`retryDecision`), `1758-1780` (`retryAgain`, sleep @1778) |
+| retry policy construction | `master.go:445-472` (`DefaultRetryPolicy`) |
+| response timeout / confirm timeout | `master.go:1866-1878` (`waitForResponse`), `1808-1864` (`waitForConfirmation`) |
+| outstanding request guard / serialization | `master.go:822-832` (`beginRequest`), `834-838` (`endRequest`), `1631` (`reqMu.Lock`) |
+
+### 16.3 B4 safety matrix
+
+| # | Area | Finding | Class |
+|---|---|---|---|
+| F1 | Non-idempotent CROB retry | DirectOperate is sent through the **same** `sendWithRetryAndGetResponse` loop as reads (`master.go:1392` → `1621-1745`); on timeout/NACK/CRC/invalid-response `retryAgain` resends the control. `DefaultRetryPolicy` coerces `MaxRetries<1` to `MaxRetries` (`master.go:466-467`; `MaxRetries=3` @28), so `WithRetry(0,…)` does **not** disable control resends. Up to **3** resends of a non-idempotent control are possible; no idempotency/one-shot guard exists. | **GAP** |
+| F2 | Finite end-to-end budget | No aggregate wall-clock deadline. Dial uses `Timeout` (`tcp.go:138-141`); each `waitForResponse` uses `config.Timeout` (`master.go:1873`); `waitForConfirmation` uses `confirmTimeout` (`master.go:1813`); write deadline 2 s (`tcp.go:261`); retry sleep `RetryDelay` (`master.go:1778`). Worst case ≈ attempts × (timeout + delay) + handshake; not bounded by any single ceiling. `Validate` (`client.go:321-368`) does not impose one. | **GAP** |
+| F3 | Cancellation of outstanding op | `Read`/`Operate`/`Connect` race the internal call against `ctx.Done()` and return immediately (`client.go:812-814`, `1666-1667`, `596-598`), but the internal goroutine **keeps running**, holding `reqMu` (`master.go:1631`) and the outstanding marker (`beginRequest` 822 / `endRequest` 834) until the transport receive times out or the peer answers, and may retry. For a CROB this means a possibly-executed control is left **UNKNOWN**, and a same-outstation request meanwhile fails with `ErrRequestOutstanding` (`master.go:387,822-832`). | **GAP** |
+| F4 | Explicit non-success status handling | `resolveOperateStatus` (`master.go:1409-1435`) returns success only for a zero G12V1 status byte or a clear-IIN IIN-only echo; a truncated G12V1 object → `CommandStatusUnknown`; error IIN → mapped non-success. `mapCommandStatus` maps unknown → `ControlTimeout`, never success (`client.go:1703-1731`). TCP acceptance alone is never reported as command success. | **PROVEN_STATIC** |
+| F5 | v0 control gate | SBO and DirectOperateNoResponse are rejected before any wire traffic (`client.go:1620-1634`). | **PROVEN_STATIC** |
+| F6 | Disconnect vs retry | Disconnects are classified (`master.go:510+`) and never retried (`retryDecision` returns false for `ClassDisconnect`, `master.go:498-499`). | **PROVEN_STATIC** |
+| F7 | Reconnect / background replay | No automatic-reconnect goroutine exists (grep of `internal/master/master.go`, `pkg/dnp3/master/client.go`); `markTransportDisconnected` only tears down. The idle monitor (`master.go:904-935`) only closes the session. No background control replay on a new socket. | **PROVEN_STATIC** |
+| F8 | Retry/timeout semantics verification | `Timeout`/`RetryCount`/`RetryDelay`/`IdleTimeout` are marked "Defer — requires lifecycle/timeout verification" (`client.go:159-176`); no test asserts a control retry count (no `MaxRetries`/`RetryCount` assertion in `internal/master/control_vector_test.go` or `pkg/dnp3/master/operate_status_test.go`). | **NOT_TESTED** |
+
+**Ambiguity boundary (F1/F3).** On any timeout, cancellation, disconnect after a
+possible send, or malformed/absent response, the outcome of a G12V1 DirectOperate
+must be treated as **UNKNOWN / INDETERMINATE** — not automatic FAILURE, SUCCESS,
+or permission to resend. An explicit non-success command status (F4) is a
+*reported* remote result and is distinct from an *unknown* remote execution
+outcome. No silent second CROB is triggered by this audit; reconciliation is a
+separate future authorization.
+
+**Fail-closed requirements to define (not implemented here):** at most one
+outstanding control per configured outstation; no post-cancel background control
+replay; explicit uncertain-state/reconnect policy; bounded transport cleanup;
+a single common operation deadline that no nested retry/fallback resets.
+
+**Suggested measurable lab ceilings (suggested, NOT existing guarantees):**
+connect ≤ 5 s; whole Class-0 read ≤ 10 s; one DirectOperate ≤ 5 s — each subject
+to explicit verification and safe cancellation in a later authorized gate.
+
+### 16.4 Independent C++ simulator safety and B3 artifact retention
+
+- **B3 patch bytes recovered (no network/namespace/execution).**
+  `b3-lab-demo.patch` (7687 bytes) is present at
+  `/tmp/vec01-b3/artifacts/b3-lab-demo.patch` and
+  `/workspace/vec01-lab-artifacts/gate-b-b3-static/b3-lab-demo.patch`; its
+  SHA-256 is `1758ad1c8999f1b948a3773aa82ce823b17b8cdefc73072764c0818fa33b8241`,
+  **matching** the recorded value. Because `/workspace` and `/tmp` persistence
+  across ephemeral runners is unverified, the full non-secret patch content is
+  reproduced below for a truly persistent (Git) record.
+- **Handler static re-confirmation (source-only, not execution proof):**
+  `LabCrobCommandHandler` accepts only `OperateType::DirectOperate` (patch
+  line 59) with `OperationType::LATCH_ON`/`LATCH_OFF` (line 72); rejects SBO and
+  analog outputs with `NOT_SUPPORTED`; returns `OUT_OF_RANGE` for index ≠ 0
+  (line 109) and `FORMAT_ERROR` for `count != 1` (line 117); keeps a single
+  in-memory `state_` and returns `SUCCESS` only when `observed == requested`
+  (line 77). No hardware, GPIO, field bus, Modbus, OT interface or unsolicited
+  output.
+
+**B3 patch content (verbatim, non-secret):**
+
+```diff
+--- src/opendnp3-3.1.2/cpp/examples/outstation/main.cpp	2022-04-22 17:01:02.000000000 +0000
++++ src/opendnp3-3.1.2-b3/cpp/examples/outstation/main.cpp	2026-11-08 10:54:37.063022946 +0000
+@@ -25,8 +25,12 @@
+ #include <opendnp3/outstation/IUpdateHandler.h>
+ #include <opendnp3/outstation/SimpleCommandHandler.h>
+ #include <opendnp3/outstation/UpdateBuilder.h>
++#include <opendnp3/gen/StaticCounterVariation.h>
++#include <opendnp3/gen/StaticTypeBitmask.h>
++#include <opendnp3/outstation/StaticTypeBitfield.h>
+
+ #include <iostream>
++#include <memory>
+ #include <string>
+ #include <thread>
+
+@@ -37,13 +41,107 @@
+ {
+     DatabaseConfig config(10); // 10 of each type with default settings
+
+-    config.analog_input[0].clazz = PointClass::Class2;
+-    config.analog_input[0].svariation = StaticAnalogVariation::Group30Var5;
+-    config.analog_input[0].evariation = EventAnalogVariation::Group32Var7;
+-
++    // VEC-01 lab v0 subset: exact static variations for index 0.
++    // The stock Group30Var5 / Class2 analog override is removed.
++    config.binary_input[0].svariation = StaticBinaryVariation::Group1Var1;
++    config.analog_input[0].clazz = PointClass::Class0;
++    config.analog_input[0].svariation = StaticAnalogVariation::Group30Var1;
++    config.counter[0].svariation = StaticCounterVariation::Group20Var1;
++
+     return config;
+ }
+
++// VEC-01 lab: dedicated memory-only G12V1 CROB handler for simulated BO[0].
++// Supports ONLY a single DirectOperate latch on/off at index 0. It rejects
++// select-before-operate, direct-operate-no-ack, wrong indices, unsupported
++// control codes, multi-operation counts and all analog outputs. It returns
++// SUCCESS only after the in-memory BO[0] state has actually been mutated.
++class LabCrobCommandHandler final : public ICommandHandler
++{
++public:
++    LabCrobCommandHandler() : state_(false) {}
++
++    void Begin() override {}
++    void End() override {}
++
++    // Select is not part of the v0 direct-operate subset; reject SBO explicitly.
++    CommandStatus Select(const ControlRelayOutputBlock&, uint16_t) override
++    {
++        return CommandStatus::NOT_SUPPORTED;
++    }
++
++    CommandStatus Operate(const ControlRelayOutputBlock& command,
++                          uint16_t index,
++                          IUpdateHandler& /*handler*/,
++                          OperateType opType) override
++    {
++        // Only a direct operate is accepted; SBO and no-ack are rejected.
++        if (opType != OperateType::DirectOperate)
++        {
++            return CommandStatus::NOT_SUPPORTED;
++        }
++
++        const auto status = Validate(command, index);
++        if (status != CommandStatus::SUCCESS)
++        {
++            return status;
++        }
++
++        // Memory-only simulated output state. SUCCESS is returned only after the
++        // state has been written and read back equal to the requested value.
++        const bool requested = (command.opType == OperationType::LATCH_ON);
++        state_ = requested;
++        const bool observed = state_;
++        std::cout << "[LAB] BO[0] direct-operate LATCH_" << (requested ? "ON" : "OFF")
++                  << " -> state=" << (observed ? "true" : "false") << std::endl;
++        return (observed == requested) ? CommandStatus::SUCCESS : CommandStatus::HARDWARE_ERROR;
++    }
++
++    // Analog outputs (Group 41) are outside the v0 subset.
++    CommandStatus Select(const AnalogOutputInt16&, uint16_t) override { return CommandStatus::NOT_SUPPORTED; }
++    CommandStatus Operate(const AnalogOutputInt16&, uint16_t, IUpdateHandler&, OperateType) override
++    {
++        return CommandStatus::NOT_SUPPORTED;
++    }
++    CommandStatus Select(const AnalogOutputInt32&, uint16_t) override { return CommandStatus::NOT_SUPPORTED; }
++    CommandStatus Operate(const AnalogOutputInt32&, uint16_t, IUpdateHandler&, OperateType) override
++    {
++        return CommandStatus::NOT_SUPPORTED;
++    }
++    CommandStatus Select(const AnalogOutputFloat32&, uint16_t) override { return CommandStatus::NOT_SUPPORTED; }
++    CommandStatus Operate(const AnalogOutputFloat32&, uint16_t, IUpdateHandler&, OperateType) override
++    {
++        return CommandStatus::NOT_SUPPORTED;
++    }
++    CommandStatus Select(const AnalogOutputDouble64&, uint16_t) override { return CommandStatus::NOT_SUPPORTED; }
++    CommandStatus Operate(const AnalogOutputDouble64&, uint16_t, IUpdateHandler&, OperateType) override
++    {
++        return CommandStatus::NOT_SUPPORTED;
++    }
++
++    bool OutputState() const { return state_; }
++
++private:
++    CommandStatus Validate(const ControlRelayOutputBlock& command, uint16_t index) const
++    {
++        if (index != 0)
++        {
++            return CommandStatus::OUT_OF_RANGE;
++        }
++        if (command.opType != OperationType::LATCH_ON && command.opType != OperationType::LATCH_OFF)
++        {
++            return CommandStatus::NOT_SUPPORTED;
++        }
++        if (command.count != 1)
++        {
++            return CommandStatus::FORMAT_ERROR;
++        }
++        return CommandStatus::SUCCESS;
++    }
++
++    bool state_;
++};
++
+ struct State
+ {
+     uint32_t count = 0;
+@@ -73,7 +171,7 @@
+     auto channel = std::shared_ptr<IChannel>(nullptr);
+     try
+     {
+-        channel = manager.AddTCPServer("server", logLevels, ServerAcceptMode::CloseExisting, IPEndpoint("0.0.0.0", 20000),
++        channel = manager.AddTCPServer("server", logLevels, ServerAcceptMode::CloseExisting, IPEndpoint("10.77.0.2", 20000),
+                                        PrintingChannelListener::Create());
+     }
+     catch(const std::exception& e)
+@@ -92,23 +190,41 @@
+     // you can override an default outstation parameters here
+     // in this example, we've enabled the oustation to use unsolicted reporting
+     // if the master enables it
+-    config.outstation.params.allowUnsolicited = true;
++    config.outstation.params.allowUnsolicited = false;
++
++    // VEC-01 lab: restrict Class-0 (G60V1 all-objects) to the in-profile static
++    // types only, so no out-of-profile Class-0 objects are emitted.
++    config.outstation.params.typesAllowedInClass0 = StaticTypeBitField(
++        static_cast<uint16_t>(StaticTypeBitmask::BinaryInput)
++        | static_cast<uint16_t>(StaticTypeBitmask::AnalogInput)
++        | static_cast<uint16_t>(StaticTypeBitmask::Counter));
+
+     // You can override the default link layer settings here
+     // in this example we've changed the default link layer addressing
+-    config.link.LocalAddr = 10;
+-    config.link.RemoteAddr = 1;
++    config.link.LocalAddr = 4;
++    config.link.RemoteAddr = 3;
+     config.link.KeepAliveTimeout = TimeDuration::Max();
+
+     // Create a new outstation with a log level, command handler, and
+     // config info this	returns a thread-safe interface used for
+     // updating the outstation's database.
+-    auto outstation = channel->AddOutstation("outstation", SuccessCommandHandler::Create(),
++    auto crob = std::make_shared<LabCrobCommandHandler>();
++    auto outstation = channel->AddOutstation("outstation", crob,
+                                              app, config);
+
+     // Enable the outstation and start communications
+     outstation->Enable();
+
++    // VEC-01 lab: initialize the memory-backed static database to the fixed
++    // ground truth before any protocol use: BI[0]=true, AI[0]=2300, CT[0]=42.
++    {
++        UpdateBuilder init;
++        init.Update(Binary(true), 0, EventMode::Suppress);
++        init.Update(Analog(2300.0), 0, EventMode::Suppress);
++        init.Update(Counter(42), 0, EventMode::Suppress);
++        outstation->Apply(init.Build());
++    }
++
+     // variables used in example loop
+     string input;
+     State state;
+```
+
+**B3 patch persistence status:** the patch bytes were **recovered** in this run
+(matching SHA-256), so the prior `B3_PATCH_BYTES_NOT_AVAILABLE` risk does not
+apply at this checkpoint; the verbatim content above makes it permanently
+recoverable from Git. `/workspace`/`/tmp` durability across ephemeral runners
+remains **unverified**.
+
+**Whitespace normalization of the inlined copy.** The byte-exact patch contains
+blank/context lines carrying a single trailing space (inherent to the unified
+diff). To keep the repository's required `git diff --check` gate clean, the
+inlined copy above has **trailing whitespace stripped from blank/context lines
+only**; no code token changed. The authoritative byte-exact original remains the
+external artifact (`b3-lab-demo.patch`, 7687 bytes, SHA-256
+`1758ad1c8999f1b948a3773aa82ce823b17b8cdefc73072764c0818fa33b8241`). This is
+recorded as an explicit, minor divergence, not a silent one.
+
+### 16.5 Evidence checkpoint, non-claims and next gate
+
+- This audit made **no** code change and ran **no** protocol/physical activity.
+  Only the two allowlisted evidence documents and the two marker files were
+  updated; both top markers remain `Status: TASK_BLOCKED`; CURRENT not archived.
+- `B4_STATIC_AUDIT_COMPLETE` means the listed paths were actually inspected and
+  classified; it is **not** `B4_SAFETY_PASS`. F1–F3 are **findings requiring a
+  future owner-authorized correction**, not permission to waive or patch them.
+- Mandatory Go gates remain **NOT_RUN**; Gates C/D/E, real interoperability, raw
+  PCAP, capture-derived `.vec`, R4 closure, PR and merge remain separately
+  authorized-only.
+- Static audit cannot prove runtime retry counts, actual cancellation cleanup
+  timing, or real wire behavior: those remain **NOT_TESTED**.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

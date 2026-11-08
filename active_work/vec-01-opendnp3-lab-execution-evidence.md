@@ -262,3 +262,39 @@ procedure and digests. No listener, TCP/DNP3, CROB, PCAP, external probe or
 networked Go suite ran.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Gate B4 — static master safety audit (2026-11-08)
+
+Owner-authorized "Gate B4 — static master safety audit only" addendum. Read-only,
+evidence-only; **no execution**. Execution SHA `789ee9c2…` (branch `work`).
+Overall Gate B and the CURRENT remain **`TASK_BLOCKED`**.
+**`B4_STATIC_AUDIT_COMPLETE`** (not `B4_SAFETY_PASS`).
+
+| Area | Class | Note |
+|------|-------|------|
+| Non-idempotent CROB retry (F1) | **GAP** | DirectOperate shares the generic retry loop; `RetryCount=0` coerced to `MaxRetries=3`; up to 3 control resends, no one-shot guard |
+| Finite end-to-end budget (F2) | **GAP** | No aggregate deadline; worst case ≈ attempts × (timeout + delay); `Validate` imposes no ceiling |
+| Cancellation of outstanding op (F3) | **GAP** | Public ctx cancel returns but the internal goroutine keeps `reqMu` + outstanding marker; a possibly-executed CROB is left UNKNOWN |
+| Explicit non-success status (F4) | PROVEN_STATIC | Unknown → ControlTimeout, never success; truncation never success |
+| v0 control gate (F5) | PROVEN_STATIC | SBO / DirectOperateNoResponse rejected pre-wire |
+| Disconnect not retried (F6) | PROVEN_STATIC | `ClassDisconnect` short-circuits retry |
+| No background control replay (F7) | PROVEN_STATIC | No auto-reconnect goroutine; idle monitor only closes |
+| Retry/timeout semantics (F8) | NOT_TESTED | Marked "Defer"; no control-retry-count test |
+
+Citations: `pkg/dnp3/master/client.go:572-616,621-662,757-870,877-962,1605-1700,1620-1634,1703-1731`;
+`internal/master/master.go:822-838,996-1035,1373-1398,1409-1435,1621-1745,1758-1780,1808-1878,904-935`;
+`pkg/transport/tcp.go:126-158,249-360,425-448`.
+
+**Ambiguity boundary:** any timeout/cancel/disconnect-after-send/absent response
+on a G12V1 DirectOperate is **UNKNOWN / INDETERMINATE**, never automatic
+FAILURE/SUCCESS/resend. F1–F3 require a future owner-authorized correction.
+
+**B3 artifact retention:** `b3-lab-demo.patch` recovered (7687 bytes), SHA-256
+`1758ad1c…` **matches**; its full non-secret content is now inlined in
+`docs/verification/VEC-01-LAB-EXEC-001.md` §16.4 for a persistent Git record.
+`/workspace`/`/tmp` durability across runners remains unverified. Mandatory Go
+gates remain **NOT_RUN**.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

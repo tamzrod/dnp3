@@ -97,6 +97,23 @@ test ran; Go gates **NOT_RUN**. Evidence (outside Git, SHA-256 manifest):
 **NOT verified**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §15. B4 and
 Gates C/D/E remain separately authorized-only.
 
+### Gate B4 — static master safety audit (2026-11-08)
+Owner-authorized "Gate B4 — static master safety audit only" addendum executed at
+SHA `789ee9c231f83c286d77bc6d25cbb638e5915b9e`. **Read-only, evidence-only; no
+execution.** Traced `Connect`/`Read`/`IntegrityPoll`/`Operate` with line
+citations and classified: **GAP** — non-idempotent G12V1 DirectOperate shares the
+generic retry loop (up to 3 resends; `RetryCount=0` coerced to `MaxRetries`), no
+single end-to-end deadline, and public `ctx` cancellation returns while the
+internal goroutine keeps `reqMu`/outstanding and may leave a possibly-executed
+CROB **UNKNOWN**; **PROVEN_STATIC** — unknown status never success, SBO/no-ack
+rejected pre-wire, disconnects not retried, no background control replay;
+**NOT_TESTED** — retry/timeout semantics. Verdict **`B4_STATIC_AUDIT_COMPLETE`**
+(not `B4_SAFETY_PASS`). B3 `b3-lab-demo.patch` recovered and SHA-256-matched,
+now inlined verbatim in the tracked verification §16.4. Overall Gate B and the
+CURRENT remain **`TASK_BLOCKED`**; Go gates **NOT_RUN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §16. Gate B full acceptance,
+Gates C/D/E, B4 implementation and R4 closure remain separately authorized-only.
+
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 
