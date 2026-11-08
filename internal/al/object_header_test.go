@@ -203,9 +203,9 @@ func TestDecodeObjectHeaderTruncated(t *testing.T) {
 		data []byte
 	}{
 		{"empty", []byte{}},
-		{"3bytes", []byte{0x01, 0x01, 0x06}}, // need 4
-		{"range16 short", []byte{0x01, 0x01, 0x28, 0x00, 0x00, 0x00}},     // need 7
-		{"count16 short", []byte{0x1E, 0x01, 0x27, 0x2C}},                  // need 5
+		{"3bytes", []byte{0x01, 0x01, 0x06}},                          // need 4
+		{"range16 short", []byte{0x01, 0x01, 0x28, 0x00, 0x00, 0x00}}, // need 7
+		{"count16 short", []byte{0x1E, 0x01, 0x27, 0x2C}},             // need 5
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

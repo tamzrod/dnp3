@@ -18,7 +18,7 @@ type Config struct {
 
 	// Layout settings (UX Standard Section 8.2)
 	Layout LayoutConfig `json:"layout"`
-	
+
 	// Appearance settings
 	Appearance AppearanceConfig `json:"appearance"`
 
@@ -34,12 +34,12 @@ type Config struct {
 
 // WindowConfig stores window geometry.
 type WindowConfig struct {
-	Width   int  `json:"width"`
-	Height  int  `json:"height"`
-	X       int  `json:"x"`
-	Y       int  `json:"y"`
-	Max     bool `json:"maximized"`
-	Full    bool `json:"fullscreen"`
+	Width  int  `json:"width"`
+	Height int  `json:"height"`
+	X      int  `json:"x"`
+	Y      int  `json:"y"`
+	Max    bool `json:"maximized"`
+	Full   bool `json:"fullscreen"`
 }
 
 // LayoutConfig stores panel layout state.
@@ -56,15 +56,15 @@ type AppearanceConfig struct {
 
 // RecentConnection stores a recent connection target.
 type RecentConnection struct {
-	Name      string    `json:"name"`
-	Address   string    `json:"address"`
-	Port      int       `json:"port"`
-	LastUsed  time.Time `json:"lastUsed"`
+	Name     string    `json:"name"`
+	Address  string    `json:"address"`
+	Port     int       `json:"port"`
+	LastUsed time.Time `json:"lastUsed"`
 }
 
 // BehaviorConfig stores user behavior preferences.
 type BehaviorConfig struct {
-	AutoScroll       bool `json:"autoScroll"`
+	AutoScroll        bool `json:"autoScroll"`
 	ConfirmDisconnect bool `json:"confirmDisconnect"`
 }
 
@@ -81,7 +81,7 @@ func Default() *Config {
 		Window: WindowConfig{
 			Width:  1200,
 			Height: 800,
-			X:      -1,  // -1 means center on screen
+			X:      -1, // -1 means center on screen
 			Y:      -1,
 			Max:    false,
 			Full:   false,
@@ -96,7 +96,7 @@ func Default() *Config {
 		},
 		RecentConnections: make([]RecentConnection, 0),
 		Behavior: BehaviorConfig{
-			AutoScroll:       true,
+			AutoScroll:        true,
 			ConfirmDisconnect: false,
 		},
 		LastConnection: LastConnectionConfig{

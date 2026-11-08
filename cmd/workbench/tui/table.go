@@ -6,9 +6,9 @@ import (
 
 // Column represents a table column.
 type Column struct {
-	Title    string
-	Width    int
-	Align    string // "left", "center", "right"
+	Title string
+	Width int
+	Align string // "left", "center", "right"
 }
 
 // Row represents a data row.
@@ -63,7 +63,7 @@ func (t *Table) SetRowsIfChanged(rows []Row) bool {
 		t.SetRows(rows)
 		return true
 	}
-	
+
 	// Check if any cell content changed
 	for i := range rows {
 		if !rowsEqual(rows[i], t.Rows[i]) {
@@ -71,7 +71,7 @@ func (t *Table) SetRowsIfChanged(rows []Row) bool {
 			return true
 		}
 	}
-	
+
 	// No change needed
 	return false
 }
@@ -184,7 +184,7 @@ func (t *Table) Draw(s *Screen) {
 			if j < len(t.Columns) {
 				width := t.Columns[j].Width
 				cellText := PadRight(cell, width)
-				
+
 				if isSelected {
 					s.PrintStyled(y, x, cellText, "white", "reverse")
 				} else if isCursor {
@@ -265,7 +265,7 @@ func (t *Table) DrawSimple(s *Screen, startY int) {
 		if y > t.Bounds.Bottom {
 			break
 		}
-		
+
 		line := ""
 		for j, cell := range row.Cells {
 			if j > 0 {
@@ -275,7 +275,7 @@ func (t *Table) DrawSimple(s *Screen, startY int) {
 				line += PadRight(cell, t.Columns[j].Width)
 			}
 		}
-		
+
 		if i == t.Selected {
 			s.PrintStyled(y, 1, line, "white", "reverse")
 		} else if i == t.Cursor {

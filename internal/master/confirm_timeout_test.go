@@ -12,8 +12,8 @@ import (
 // canned frame per Receive (cycling). Used to verify which timeout budget
 // each code path applies (DNP3-066).
 type timeoutRecorderTransport struct {
-	frames    [][]byte
-	idx       int
+	frames      [][]byte
+	idx         int
 	lastTimeout int
 }
 

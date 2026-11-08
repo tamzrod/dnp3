@@ -41,13 +41,13 @@ import (
 // recordingDataHandler records which MVP getters were called and serves a
 // fixed set of points so the outstation-side can be observed.
 type recordingDataHandler struct {
-	mu             sync.Mutex
-	binaryCalled   int
-	analogCalled   int
-	counterCalled  int
-	binaryInputs   []*types.BinaryInput
-	analogInputs   []*types.AnalogInput
-	counters       []*types.Counter
+	mu            sync.Mutex
+	binaryCalled  int
+	analogCalled  int
+	counterCalled int
+	binaryInputs  []*types.BinaryInput
+	analogInputs  []*types.AnalogInput
+	counters      []*types.Counter
 }
 
 func (h *recordingDataHandler) GetBinaryInputs() []*types.BinaryInput {
@@ -71,10 +71,10 @@ func (h *recordingDataHandler) GetCounters() []*types.Counter {
 	return h.counters
 }
 
-func (h *recordingDataHandler) GetBinaryOutputs() []*types.BinaryOutput  { return nil }
-func (h *recordingDataHandler) GetAnalogOutputs() []*types.AnalogOutput  { return nil }
-func (h *recordingDataHandler) GetFrozenCounters() []*types.Counter       { return nil }
-func (h *recordingDataHandler) FreezeCounters(clear bool) error           { return nil }
+func (h *recordingDataHandler) GetBinaryOutputs() []*types.BinaryOutput { return nil }
+func (h *recordingDataHandler) GetAnalogOutputs() []*types.AnalogOutput { return nil }
+func (h *recordingDataHandler) GetFrozenCounters() []*types.Counter     { return nil }
+func (h *recordingDataHandler) FreezeCounters(clear bool) error         { return nil }
 
 // recordingCommandHandler records the dispatched control command so the
 // outstation-side dispatch can be asserted.

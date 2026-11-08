@@ -35,9 +35,9 @@ func (l Level) String() string {
 // Entry represents a log entry.
 type Entry struct {
 	Timestamp time.Time
-	Level    Level
-	Message  string
-	Source   string
+	Level     Level
+	Message   string
+	Source    string
 }
 
 // LogCallback is called when a new log entry is created.
@@ -56,10 +56,10 @@ type Logger struct {
 // Buffer is a circular buffer for log entries.
 type Buffer struct {
 	entries []Entry
-	size   int
-	head   int
-	count  int
-	mu     sync.RWMutex
+	size    int
+	head    int
+	count   int
+	mu      sync.RWMutex
 }
 
 // New creates a new logger.
@@ -139,7 +139,7 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 		Timestamp: time.Now(),
 		Level:     level,
 		Message:   fmt.Sprintf(format, args...),
-		Source:   l.source,
+		Source:    l.source,
 	}
 
 	l.entries = append(l.entries, entry)
@@ -156,7 +156,7 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 func (l *Logger) Entries() []Entry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	result := make([]Entry, len(l.entries))
 	copy(result, l.entries)
 	return result
@@ -170,7 +170,7 @@ func (l *Logger) Recent(n int) []Entry {
 	if n > len(l.entries) {
 		n = len(l.entries)
 	}
-	
+
 	start := len(l.entries) - n
 	result := make([]Entry, n)
 	copy(result, l.entries[start:])
@@ -212,7 +212,7 @@ func (b *Buffer) Entries() []Entry {
 	}
 
 	result := make([]Entry, b.count)
-	
+
 	if b.count < b.size {
 		// Buffer not full yet
 		copy(result, b.entries[:b.count])
@@ -223,7 +223,7 @@ func (b *Buffer) Entries() []Entry {
 			result[i] = b.entries[idx]
 		}
 	}
-	
+
 	return result
 }
 

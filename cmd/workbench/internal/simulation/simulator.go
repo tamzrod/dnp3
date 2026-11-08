@@ -27,10 +27,10 @@ type Config struct {
 // DefaultConfig returns a sensible default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		BinaryInputUpdateRate:  0.3,  // 0.3 flips per second (slower)
-		AnalogInputVariance:    5.0,  // ±5 units per tick
-		CounterIncrementRate:   1.0,  // 100% chance per tick (always increment)
-		CounterIncrementAmount:  1,    // Increment by 1
+		BinaryInputUpdateRate:  0.3, // 0.3 flips per second (slower)
+		AnalogInputVariance:    5.0, // ±5 units per tick
+		CounterIncrementRate:   1.0, // 100% chance per tick (always increment)
+		CounterIncrementAmount: 1,   // Increment by 1
 		TickInterval:           500 * time.Millisecond,
 	}
 }
@@ -42,12 +42,12 @@ type SimulatedPoint interface {
 
 // BinaryInputSimulation simulates a binary input point
 type BinaryInputSimulation struct {
-	Index       uint16
-	Value       bool
-	Quality     types.QualityFlags
-	Time        *types.Timestamp
-	FlipTimer   float64 // Time until next flip
-	UpdateRate  float64 // Flips per second
+	Index      uint16
+	Value      bool
+	Quality    types.QualityFlags
+	Time       *types.Timestamp
+	FlipTimer  float64 // Time until next flip
+	UpdateRate float64 // Flips per second
 }
 
 // NewBinaryInputSimulation creates a new binary input simulation
@@ -85,13 +85,13 @@ func (b *BinaryInputSimulation) ToBinaryInput() *types.BinaryInput {
 
 // AnalogInputSimulation simulates an analog input point
 type AnalogInputSimulation struct {
-	Index     uint16
-	Value     float64
-	MinValue  float64
-	MaxValue  float64
-	Variance  float64
-	Quality   types.QualityFlags
-	Time      *types.Timestamp
+	Index    uint16
+	Value    float64
+	MinValue float64
+	MaxValue float64
+	Variance float64
+	Quality  types.QualityFlags
+	Time     *types.Timestamp
 }
 
 // NewAnalogInputSimulation creates a new analog input simulation
@@ -112,13 +112,13 @@ func (a *AnalogInputSimulation) Update(cfg *Config) {
 	// Random drift within variance
 	drift := (rand.Float64()*2 - 1) * cfg.AnalogInputVariance
 	newValue := a.Value + drift
-	
+
 	// Clamp to range
 	newValue = math.Max(a.MinValue, math.Min(a.MaxValue, newValue))
-	
+
 	// Round to 2 decimal places
 	newValue = math.Round(newValue*100) / 100
-	
+
 	// Only update timestamp if value actually changed
 	if newValue != a.Value {
 		a.Time = (&types.Timestamp{}).Now()
@@ -138,10 +138,10 @@ func (a *AnalogInputSimulation) ToAnalogInput() *types.AnalogInput {
 
 // CounterSimulation simulates a counter point
 type CounterSimulation struct {
-	Index    uint16
-	Value    uint32
-	Quality  types.QualityFlags
-	Time     *types.Timestamp
+	Index   uint16
+	Value   uint32
+	Quality types.QualityFlags
+	Time    *types.Timestamp
 }
 
 // NewCounterSimulation creates a new counter simulation
@@ -207,12 +207,12 @@ func (b *BinaryOutputSimulation) GetTime() *types.Timestamp {
 
 // AnalogOutputSimulation simulates an analog output point (for control operations)
 type AnalogOutputSimulation struct {
-	Index     uint16
-	Value     float64
-	MinValue  float64
-	MaxValue  float64
-	Quality   types.QualityFlags
-	Time      *types.Timestamp
+	Index    uint16
+	Value    float64
+	MinValue float64
+	MaxValue float64
+	Quality  types.QualityFlags
+	Time     *types.Timestamp
 }
 
 // NewAnalogOutputSimulation creates a new analog output simulation
@@ -290,10 +290,10 @@ func (s *Simulator) AddDefaultPoints() {
 	analogConfigs := []struct {
 		initial, min, max float64
 	}{
-		{100.0, 0.0, 200.0},    // Temperature-like
-		{50.0, -50.0, 150.0},    // Pressure-like
-		{25.0, 0.0, 100.0},     // Flow rate-like
-		{0.0, -100.0, 100.0},    // Bidirectional
+		{100.0, 0.0, 200.0},  // Temperature-like
+		{50.0, -50.0, 150.0}, // Pressure-like
+		{25.0, 0.0, 100.0},   // Flow rate-like
+		{0.0, -100.0, 100.0}, // Bidirectional
 	}
 	for i, cfg := range analogConfigs {
 		sim := NewAnalogInputSimulation(uint16(i), cfg.initial, cfg.min, cfg.max)
@@ -318,8 +318,8 @@ func (s *Simulator) AddDefaultPoints() {
 	aoConfigs := []struct {
 		initial, min, max float64
 	}{
-		{50.0, 0.0, 100.0},    // Setpoint-like
-		{25.0, 0.0, 50.0},     // Smaller range
+		{50.0, 0.0, 100.0}, // Setpoint-like
+		{25.0, 0.0, 50.0},  // Smaller range
 	}
 	for i, cfg := range aoConfigs {
 		s.AnalogOutputs = append(s.AnalogOutputs, NewAnalogOutputSimulation(
@@ -348,7 +348,7 @@ func (s *Simulator) Start() {
 func (s *Simulator) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if !s.running {
 		return
 	}

@@ -30,11 +30,11 @@ func newBlockingTransport() *blockingTransport {
 	}
 }
 
-func (t *blockingTransport) Listen() error                   { return nil }
-func (t *blockingTransport) Accept() error                   { return nil }
-func (t *blockingTransport) Send(data []byte) error         { return nil }
-func (t *blockingTransport) Receive() ([]byte, error)      { return nil, errors.New("closed") }
-func (t *blockingTransport) SetTimeout(ms int)              {}
+func (t *blockingTransport) Listen() error            { return nil }
+func (t *blockingTransport) Accept() error            { return nil }
+func (t *blockingTransport) Send(data []byte) error   { return nil }
+func (t *blockingTransport) Receive() ([]byte, error) { return nil, errors.New("closed") }
+func (t *blockingTransport) SetTimeout(ms int)        {}
 func (t *blockingTransport) Connect() error {
 	select {
 	case t.connectCalled <- struct{}{}:

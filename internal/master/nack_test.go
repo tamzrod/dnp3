@@ -46,9 +46,9 @@ func (t *nackAlwaysTransport) SetTimeout(ms int) {}
 // nackThenOKTransport NACKs the first N response(s), then returns a valid
 // application response echoing the request SEQ. Proves NACK retry recovers.
 type nackThenOKTransport struct {
-	sent    [][]byte
-	nacks   int
-	served  int
+	sent   [][]byte
+	nacks  int
+	served int
 }
 
 func (t *nackThenOKTransport) Send(data []byte) error {

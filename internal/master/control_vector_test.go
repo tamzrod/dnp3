@@ -11,7 +11,9 @@ func TestBuildCROBRequestGoldenVector(t *testing.T) {
 	crob := &CROB{Code: CROBCodeLatchOn, Count: 1, OnTime: 1000, OffTime: 2000, Status: 0}
 	got := buildCROBRequest(0x1234, crob)
 	want, err := hex.DecodeString("0c01000134120801e8030000d007000000")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(got) != string(want) {
 		t.Fatalf("CROB bytes = %X, want %X", got, want)
 	}
@@ -115,8 +117,8 @@ func TestBuildCROBRequestTimeLSBBoundary(t *testing.T) {
 func TestBuildControlRequestCROBBoolMapping(t *testing.T) {
 	m := &Master{}
 	cases := []struct {
-		name    string
-		value   interface{}
+		name     string
+		value    interface{}
 		wantCode byte
 	}{
 		{"true -> LATCH_ON", true, CROBCodeLatchOn},

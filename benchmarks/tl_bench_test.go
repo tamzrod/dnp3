@@ -82,9 +82,9 @@ func BenchmarkReassembleMultiFragment(b *testing.B) {
 // BenchmarkEncodeFragment measures fragment encoding
 func BenchmarkEncodeFragment(b *testing.B) {
 	fragment := tl.Fragment{
-		FIR: true,
-		FIN: true,
-		Seq: 0,
+		FIR:  true,
+		FIN:  true,
+		Seq:  0,
 		Data: make([]byte, 100),
 	}
 
@@ -97,9 +97,9 @@ func BenchmarkEncodeFragment(b *testing.B) {
 // BenchmarkDecodeFragment measures fragment decoding
 func BenchmarkDecodeFragment(b *testing.B) {
 	fragment := tl.Fragment{
-		FIR: true,
-		FIN: true,
-		Seq: 0,
+		FIR:  true,
+		FIN:  true,
+		Seq:  0,
 		Data: make([]byte, 100),
 	}
 	encoded := tl.EncodeFragment(fragment)

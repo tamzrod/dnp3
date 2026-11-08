@@ -21,9 +21,9 @@ type MockTransport struct {
 // NewMockTransport creates a new mock transport.
 func NewMockTransport() *MockTransport {
 	return &MockTransport{
-		sendQueue: list.New(),
-		timeoutMs: 1000,
-		latency:   0,
+		sendQueue:  list.New(),
+		timeoutMs:  1000,
+		latency:    0,
 		packetLoss: 0,
 	}
 }
@@ -69,11 +69,11 @@ func (t *MockTransport) Receive() ([]byte, error) {
 	// Wait for data
 	if t.sendQueue.Len() == 0 {
 		t.mu.Unlock()
-		
+
 		// Wait with timeout
 		timeout := time.Duration(t.timeoutMs) * time.Millisecond
 		deadline := time.Now().Add(timeout)
-		
+
 		for time.Now().Before(deadline) {
 			t.mu.Lock()
 			if t.sendQueue.Len() > 0 {
@@ -83,7 +83,7 @@ func (t *MockTransport) Receive() ([]byte, error) {
 			t.mu.Unlock()
 			time.Sleep(10 * time.Millisecond)
 		}
-		
+
 		t.mu.Lock()
 		if t.sendQueue.Len() == 0 {
 			t.mu.Unlock()
@@ -199,19 +199,19 @@ type OutstationTransport struct {
 // NewBidirectionalTransport creates a new bidirectional transport.
 func NewBidirectionalTransport() (*BidirectionalTransport, *MasterTransport, *OutstationTransport) {
 	pair := NewMockTransportPair()
-	
+
 	bt := &BidirectionalTransport{pair: pair}
-	
+
 	masterTransport := &MasterTransport{
 		send: pair.MasterToOutstation,
 		recv: pair.OutstationToMaster,
 	}
-	
+
 	outstationTransport := &OutstationTransport{
 		send: pair.OutstationToMaster,
 		recv: pair.MasterToOutstation,
 	}
-	
+
 	return bt, masterTransport, outstationTransport
 }
 

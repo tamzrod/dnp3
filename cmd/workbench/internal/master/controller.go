@@ -27,13 +27,13 @@ type State struct {
 
 // Controller handles Master-specific operations.
 type Controller struct {
-	mu          sync.RWMutex
-	session     *session.MasterSession
-	logger      *logger.Logger
-	state       *State
-	autoPollCh  chan bool
-	autoWriteCh chan bool
-	autoPollCtx context.Context
+	mu             sync.RWMutex
+	session        *session.MasterSession
+	logger         *logger.Logger
+	state          *State
+	autoPollCh     chan bool
+	autoWriteCh    chan bool
+	autoPollCtx    context.Context
 	autoPollCancel context.CancelFunc
 }
 
@@ -41,18 +41,18 @@ type Controller struct {
 func NewController(log *logger.Logger) *Controller {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Controller{
-		logger:        log,
+		logger: log,
 		state: &State{
-			Connection:        session.StateDisconnected,
-			Address:           "127.0.0.1",
-			Port:              20000,
-			AutoPollEnabled:   false,
-			AutoWriteEnabled:  false,
-			SimulationMode:    false,
+			Connection:       session.StateDisconnected,
+			Address:          "127.0.0.1",
+			Port:             20000,
+			AutoPollEnabled:  false,
+			AutoWriteEnabled: false,
+			SimulationMode:   false,
 		},
-		autoPollCh:    make(chan bool, 1),
-		autoWriteCh:   make(chan bool, 1),
-		autoPollCtx:   ctx,
+		autoPollCh:     make(chan bool, 1),
+		autoWriteCh:    make(chan bool, 1),
+		autoPollCtx:    ctx,
 		autoPollCancel: cancel,
 	}
 }
@@ -89,13 +89,13 @@ func (c *Controller) EnableAutoPoll(enabled bool) {
 		c.state.SimulationMode = false
 	}
 	c.mu.Unlock()
-	
+
 	if enabled && !wasEnabled {
 		c.logger.Info("Auto-poll ENABLED (1 second interval)")
 	} else if !enabled && wasEnabled {
 		c.logger.Info("Auto-poll DISABLED")
 	}
-	
+
 	// Signal to auto-poll handler
 	select {
 	case c.autoPollCh <- enabled:
@@ -126,13 +126,13 @@ func (c *Controller) EnableAutoWrite(enabled bool) {
 		c.state.SimulationMode = false
 	}
 	c.mu.Unlock()
-	
+
 	if enabled && !wasEnabled {
 		c.logger.Info("Auto-write ENABLED (random operate)")
 	} else if !enabled && wasEnabled {
 		c.logger.Info("Auto-write DISABLED")
 	}
-	
+
 	// Signal to auto-write handler
 	// Use non-blocking send with buffered channel; if full, handler already has latest state
 	select {
@@ -163,13 +163,13 @@ func (c *Controller) EnableSimulationMode(enabled bool) {
 	c.state.AutoPollEnabled = enabled
 	c.state.AutoWriteEnabled = enabled
 	c.mu.Unlock()
-	
+
 	if enabled {
 		c.logger.Info("Simulation mode ENABLED")
 	} else {
 		c.logger.Info("Simulation mode DISABLED")
 	}
-	
+
 	// Signal to handlers
 	select {
 	case c.autoPollCh <- enabled:
@@ -192,7 +192,7 @@ func (c *Controller) IsSimulationModeEnabled() bool {
 func (c *Controller) handleAutoPoll() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-c.autoPollCtx.Done():
@@ -216,7 +216,7 @@ func (c *Controller) handleAutoPoll() {
 			enabled := c.state.AutoPollEnabled
 			s := c.session
 			c.mu.RUnlock()
-			
+
 			if enabled && s != nil {
 				c.doAutoRead()
 			}
@@ -229,14 +229,14 @@ func (c *Controller) doAutoRead() {
 	c.mu.RLock()
 	s := c.session
 	c.mu.RUnlock()
-	
+
 	if s == nil {
 		return
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	cmd := &session.ReadCommand{
 		Groups: []types.GroupRequest{
 			// Request event variations to get timestamps (Point Time)
@@ -247,14 +247,14 @@ func (c *Controller) doAutoRead() {
 			{Group: 40, Variation: 1}, // Analog Output (static)
 		},
 	}
-	
+
 	c.logger.Info("Auto-read: sending READ Class 0")
 	resp, err := s.SendCommand(ctx, cmd)
 	if err != nil {
 		c.logger.Error("Auto-read failed: %v", err)
 		return
 	}
-	
+
 	c.handleResponse(resp)
 	c.logger.Info("Auto-read: %d BI, %d AI, %d CTR, %d BO, %d AO",
 		len(resp.BinaryInputs), len(resp.AnalogInputs), len(resp.Counters),
@@ -280,12 +280,12 @@ func (c *Controller) handleAutoWrite() {
 			default:
 				// Channel full, auto-poll already signaled
 			}
-			
+
 			// Random interval between 1-3 seconds for writes
 			interval := time.Duration(1+rand.Intn(3)) * time.Second
 			ticker := time.NewTicker(interval)
-			
-			autoWriteLoop:
+
+		autoWriteLoop:
 			for {
 				select {
 				case <-c.autoPollCtx.Done():
@@ -312,7 +312,7 @@ func (c *Controller) handleAutoWrite() {
 					enabled := c.state.AutoWriteEnabled
 					s := c.session
 					c.mu.RUnlock()
-					
+
 					if enabled && s != nil {
 						c.doRandomOperate()
 					}
@@ -328,15 +328,15 @@ func (c *Controller) doRandomOperate() {
 	s := c.session
 	resp := c.state.LastResponse
 	c.mu.RUnlock()
-	
+
 	if s == nil {
 		return
 	}
-	
+
 	// Determine available BO/AO indices from last response
-	boCount := 2  // Default count
-	aoCount := 2  // Default count
-	
+	boCount := 2 // Default count
+	aoCount := 2 // Default count
+
 	if resp != nil {
 		// BO indices come from BinaryOutputs if available
 		if len(resp.BinaryOutputs) > 0 {
@@ -346,17 +346,17 @@ func (c *Controller) doRandomOperate() {
 			aoCount = len(resp.AnalogOutputs)
 		}
 	}
-	
+
 	// Randomly choose: 70% BO operate, 30% AO operate
 	if rand.Float64() < 0.7 {
 		// Binary Output operate
 		index := uint16(rand.Intn(boCount))
 		value := rand.Float64() < 0.5
-		
+
 		c.mu.RLock()
 		c.logger.Info("Auto-write: BO%d = %v", index, value)
 		c.mu.RUnlock()
-		
+
 		cmd := &session.OperateCommand{
 			Group:             12, // Binary Output
 			Variation:         1,
@@ -364,19 +364,19 @@ func (c *Controller) doRandomOperate() {
 			Value:             value,
 			SelectThenOperate: false, // Use DirectOperate for reliability
 		}
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		opResp, err := s.SendCommand(ctx, cmd)
 		if err != nil {
 			c.handleError("Auto-write failed: %v", err)
 			return
 		}
-		
+
 		// Handle operate response (logs the operate result)
 		c.handleResponse(opResp)
-		
+
 		// Now read data to update the UI with current values
 		c.doAutoRead()
 	} else {
@@ -384,11 +384,11 @@ func (c *Controller) doRandomOperate() {
 		index := uint16(rand.Intn(aoCount))
 		// Random value in a reasonable range (0-100)
 		value := float64(rand.Intn(101))
-		
+
 		c.mu.RLock()
 		c.logger.Info("Auto-write: AO%d = %.2f", index, value)
 		c.mu.RUnlock()
-		
+
 		cmd := &session.OperateCommand{
 			Group:             41, // Analog Output
 			Variation:         9,  // Variation 9 = 32-bit float (matches float64 encoding)
@@ -396,19 +396,19 @@ func (c *Controller) doRandomOperate() {
 			Value:             value,
 			SelectThenOperate: false, // Use DirectOperate for reliability
 		}
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		opResp, err := s.SendCommand(ctx, cmd)
 		if err != nil {
 			c.handleError("Auto-write failed: %v", err)
 			return
 		}
-		
+
 		// Handle operate response (logs the operate result)
 		c.handleResponse(opResp)
-		
+
 		// Now read data to update the UI with current values
 		c.doAutoRead()
 	}

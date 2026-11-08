@@ -25,8 +25,6 @@ var (
 	updateCh chan struct{}
 )
 
-
-
 func main() {
 	// Parse command-line flags
 	modeStr := flag.String("mode", "master", "Operating mode: master or outstation")
@@ -166,7 +164,7 @@ func setupMaster(app *tui.App, address string, port int) {
 			app.LogError("Not connected - cannot enable auto-write")
 			return
 		}
-		
+
 		if ctrl.IsAutoWriteEnabled() {
 			ctrl.EnableAutoWrite(false)
 			app.LogInfo("Auto-write DISABLED")
@@ -189,7 +187,7 @@ func setupMaster(app *tui.App, address string, port int) {
 			app.LogError("Not connected - cannot enable simulation mode")
 			return
 		}
-		
+
 		if ctrl.IsSimulationModeEnabled() {
 			ctrl.EnableSimulationMode(false)
 			app.LogInfo("Simulation mode DISABLED")

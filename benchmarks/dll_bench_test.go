@@ -35,10 +35,10 @@ func BenchmarkCRC16Small(b *testing.B) {
 func BenchmarkFrameEncode(b *testing.B) {
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  1,
@@ -61,10 +61,10 @@ func BenchmarkFrameEncodeLargeData(b *testing.B) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  1,
@@ -82,10 +82,10 @@ func BenchmarkFrameEncodeLargeData(b *testing.B) {
 func BenchmarkFrameDecode(b *testing.B) {
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  1,
@@ -110,10 +110,10 @@ func BenchmarkFrameDecodeLargeData(b *testing.B) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  1,
@@ -133,10 +133,10 @@ func BenchmarkFrameDecodeLargeData(b *testing.B) {
 func BenchmarkFrameResetLinkEncode(b *testing.B) {
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  false,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      false,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncResetLinkStations,
 		},
 		SrcAddr:  1,
@@ -153,9 +153,9 @@ func BenchmarkFrameResetLinkEncode(b *testing.B) {
 func BenchmarkFrameACKEncode(b *testing.B) {
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  false,
-			PRM:  false,
-			DFC:  false,
+			DIR:      false,
+			PRM:      false,
+			DFC:      false,
 			FuncCode: frame.FuncAck,
 		},
 		SrcAddr:  1024,
@@ -171,11 +171,11 @@ func BenchmarkFrameACKEncode(b *testing.B) {
 // BenchmarkControlByteToByte measures control byte encoding
 func BenchmarkControlByteToByte(b *testing.B) {
 	c := frame.Control{
-		DIR:       true,
-		PRM:       true,
-		FCB:       false,
-		FCV:       true,
-		FuncCode:  frame.FuncConfirmedUserData,
+		DIR:      true,
+		PRM:      true,
+		FCB:      false,
+		FCV:      true,
+		FuncCode: frame.FuncConfirmedUserData,
 	}
 
 	b.ResetTimer()

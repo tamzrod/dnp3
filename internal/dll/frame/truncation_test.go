@@ -79,15 +79,15 @@ func TestDecodeRejectsClaimedLengthMismatch(t *testing.T) {
 // MaxDataSize constant is the spec value (DNP3-027).
 func TestDecodeRejectsOversize(t *testing.T) {
 	// Build a max-size frame (250 data bytes) using the package's own CRC.
-	const dataLen = MaxDataSize // 250
+	const dataLen = MaxDataSize   // 250
 	data := make([]byte, dataLen) // zero payload
 	// Header prefix: sync(2) + length(1) + control(1) + dest(2) + src(2) = 8.
 	hdr := []byte{
-		0x05, 0x64,                  // sync
-		byte(5 + dataLen),           // length = 5 + 250 = 255
-		0x44,                        // control: DIR=0,PRM=0,Func=4
-		0x01, 0x00,                  // dest = 1
-		0x02, 0x00,                  // src = 2
+		0x05, 0x64, // sync
+		byte(5 + dataLen), // length = 5 + 250 = 255
+		0x44,              // control: DIR=0,PRM=0,Func=4
+		0x01, 0x00,        // dest = 1
+		0x02, 0x00, // src = 2
 	}
 	hdrCRC := crc.CRC16(hdr)
 	buf := make([]byte, 0, EncodedSize(dataLen))
@@ -112,4 +112,3 @@ func TestDecodeRejectsOversize(t *testing.T) {
 		t.Fatalf("MaxDataSize = %d, want 250", MaxDataSize)
 	}
 }
-

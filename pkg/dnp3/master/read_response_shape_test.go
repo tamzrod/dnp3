@@ -86,7 +86,7 @@ func buildUnsupportedOnlyResponse(seq uint8) []byte {
 // singleGroupTransport returns a canned response carrying one MVP group
 // (echoing the request SEQ) for the public Read shape test (DNP3-035).
 type singleGroupTransport struct {
-	group  uint8
+	group   uint8
 	lastSeq uint8
 }
 

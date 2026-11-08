@@ -82,4 +82,3 @@ func TestReadAfterDisconnectReturnsNotConnected(t *testing.T) {
 		t.Fatalf("second Read error = %v, want ErrNotConnected", err)
 	}
 }
-

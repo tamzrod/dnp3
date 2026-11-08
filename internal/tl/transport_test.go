@@ -13,11 +13,11 @@ func TestFragmentHeader(t *testing.T) {
 		seq      uint8
 		expected byte
 	}{
-		{"Single Fragment", true, true, 0, 0xC0},  // FIR + FIN
+		{"Single Fragment", true, true, 0, 0xC0}, // FIR + FIN
 		{"First of Multi", true, false, 0, 0x80},
 		{"Middle Fragment", false, false, 5, 0x05},
 		{"Final Fragment", false, true, 10, 0x4A},
-		{"Max Seq", true, true, 63, 0xFF},         // 0xC0 | 0x3F
+		{"Max Seq", true, true, 63, 0xFF}, // 0xC0 | 0x3F
 	}
 
 	for _, tt := range tests {
@@ -38,11 +38,11 @@ func TestFragmentHeader(t *testing.T) {
 
 func TestSetHeader(t *testing.T) {
 	tests := []struct {
-		name        string
-		header      byte
-		wantFIR     bool
-		wantFIN     bool
-		wantSeq     uint8
+		name    string
+		header  byte
+		wantFIR bool
+		wantFIN bool
+		wantSeq uint8
 	}{
 		{"Single Fragment", 0xC0, true, true, 0},
 		{"First of Multi", 0x80, true, false, 0},

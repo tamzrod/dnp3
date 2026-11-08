@@ -64,39 +64,63 @@ func TestPayloadCRCBoundaryVectors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			payload := make([]byte, tt.dataLen)
-			for i := range payload { payload[i] = byte(i) }
+			for i := range payload {
+				payload[i] = byte(i)
+			}
 			encoded, err := Encode(&Frame{Control: Control{DIR: true, PRM: true, FuncCode: FuncUnconfirmedUserData}, DestAddr: 4, SrcAddr: 3, Data: payload})
-			if err != nil { t.Fatalf("encode: %v", err) }
-			if len(encoded) != tt.frameSize { t.Fatalf("frame size = %d, want %d", len(encoded), tt.frameSize) }
+			if err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			if len(encoded) != tt.frameSize {
+				t.Fatalf("frame size = %d, want %d", len(encoded), tt.frameSize)
+			}
 			gotHeader := uint16(encoded[8]) | uint16(encoded[9])<<8
-			if gotHeader != tt.headerCRC { t.Fatalf("header CRC = %04X, want %04X", gotHeader, tt.headerCRC) }
+			if gotHeader != tt.headerCRC {
+				t.Fatalf("header CRC = %04X, want %04X", gotHeader, tt.headerCRC)
+			}
 			offset := 10
 			for i, want := range tt.payloadCRC {
 				blockLen := 16
-				if remaining := tt.dataLen - i*16; remaining < blockLen { blockLen = remaining }
+				if remaining := tt.dataLen - i*16; remaining < blockLen {
+					blockLen = remaining
+				}
 				crcOffset := offset + blockLen
 				got := uint16(encoded[crcOffset]) | uint16(encoded[crcOffset+1])<<8
-				if got != want { t.Fatalf("payload CRC[%d] = %04X, want %04X", i, got, want) }
+				if got != want {
+					t.Fatalf("payload CRC[%d] = %04X, want %04X", i, got, want)
+				}
 				offset += blockLen + 2
 			}
 			decoded, err := Decode(encoded)
-			if err != nil { t.Fatalf("decode encoded vector: %v", err) }
-			if !bytes.Equal(decoded.Data, payload) { t.Fatalf("decoded payload = %x, want %x", decoded.Data, payload) }
+			if err != nil {
+				t.Fatalf("decode encoded vector: %v", err)
+			}
+			if !bytes.Equal(decoded.Data, payload) {
+				t.Fatalf("decoded payload = %x, want %x", decoded.Data, payload)
+			}
 		})
 	}
 }
 
 func TestDecodeRejectsCorruptedPayloadBlocks(t *testing.T) {
 	payload := make([]byte, 33)
-	for i := range payload { payload[i] = byte(i) }
+	for i := range payload {
+		payload[i] = byte(i)
+	}
 	encoded, err := Encode(&Frame{Control: Control{DIR: true, PRM: true, FuncCode: FuncUnconfirmedUserData}, DestAddr: 4, SrcAddr: 3, Data: payload})
-	if err != nil { t.Fatalf("encode: %v", err) }
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
 	for block := 0; block < 3; block++ {
 		corrupt := append([]byte(nil), encoded...)
 		crcOffset := 10 + block*18 + 16
-		if block == 2 { crcOffset = 10 + 2*18 + 1 }
+		if block == 2 {
+			crcOffset = 10 + 2*18 + 1
+		}
 		corrupt[crcOffset] ^= 0x01
-		if _, err := Decode(corrupt); err == nil { t.Fatalf("Decode accepted corrupted payload block %d", block) }
+		if _, err := Decode(corrupt); err == nil {
+			t.Fatalf("Decode accepted corrupted payload block %d", block)
+		}
 	}
 }
 

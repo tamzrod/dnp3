@@ -15,7 +15,7 @@ import (
 // AL encode → TL fragment → DLL encode
 func TestProtocolStackMasterToOutstation(t *testing.T) {
 	apdu := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 1},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncRead,
 		Data:     []byte{0x0C, 0x01, 0x07, 0x00},
 	}
@@ -36,7 +36,7 @@ func TestProtocolStackMasterToOutstation(t *testing.T) {
 	for i, frag := range fragments {
 		tlEncoded := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+			Control:  frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1024, SrcAddr: 1,
 			Data: tlEncoded,
 		}
@@ -65,7 +65,7 @@ func TestProtocolStackMasterToOutstation(t *testing.T) {
 // DLL decode → TL reassemble → AL decode
 func TestProtocolStackOutstationToMaster(t *testing.T) {
 	origApdu := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 5},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 5},
 		FuncCode: al.FuncResponse,
 		Data:     []byte{0x01, 0x02, 0x03, 0x04, 0x05},
 	}
@@ -79,7 +79,7 @@ func TestProtocolStackOutstationToMaster(t *testing.T) {
 	for _, frag := range fragments {
 		tlEncoded := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserData},
+			Control:  frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1, SrcAddr: 1024,
 			Data: tlEncoded,
 		}
@@ -132,7 +132,7 @@ func TestProtocolStackOutstationToMaster(t *testing.T) {
 func TestProtocolStackRoundTrip(t *testing.T) {
 	// Master request
 	masterApdu := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 3},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 3},
 		FuncCode: al.FuncRead,
 		Data:     []byte{0x0C, 0x01, 0x07, 0x00},
 	}
@@ -146,7 +146,7 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 	for _, frag := range frags {
 		tlEnc := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+			Control:  frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1024, SrcAddr: 1, Data: tlEnc,
 		}
 		enc, _ := frame.Encode(dllFr)
@@ -190,7 +190,7 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 
 	// OUTSTATION responds
 	respApdu := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: recvApdu.Control.Seq},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: recvApdu.Control.Seq},
 		FuncCode: al.FuncResponse,
 		Data:     []byte{0x01, 0x02, 0x03},
 	}
@@ -202,7 +202,7 @@ func TestProtocolStackRoundTrip(t *testing.T) {
 	for _, frag := range respFrags {
 		tlEnc := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
+			Control:  frame.Control{DIR: false, PRM: false, FuncCode: frame.FuncConfirmedUserDataR},
 			DestAddr: 1, SrcAddr: 1024, Data: tlEnc,
 		}
 		enc, _ := frame.Encode(dllFr)
@@ -265,7 +265,7 @@ func TestProtocolStackMultiFragment(t *testing.T) {
 	}
 
 	apdu := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 7},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 7},
 		FuncCode: al.FuncRead,
 		Data:     largeData,
 	}
@@ -295,7 +295,7 @@ func TestProtocolStackMultiFragment(t *testing.T) {
 		t.Logf("Fragment %d: TL encoded len=%d", i, len(tlEnc))
 
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+			Control:  frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1024, SrcAddr: 1, Data: tlEnc,
 		}
 		dllEnc, err := frame.Encode(dllFr)
@@ -318,7 +318,7 @@ func TestProtocolStackMultiFragment(t *testing.T) {
 	for i, frag := range frags {
 		tlEnc := tl.EncodeFragment(frag)
 		dllFr := &frame.Frame{
-			Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+			Control:  frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 			DestAddr: 1024, SrcAddr: 1, Data: tlEnc,
 		}
 		dllEnc, _ := frame.Encode(dllFr)
@@ -350,7 +350,7 @@ func TestProtocolStackOutstationDirectProcessing(t *testing.T) {
 	ost.Start()
 
 	request := &al.APDU{
-		Control: al.AppControl{FIR: true, FIN: true, Seq: 2},
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 2},
 		FuncCode: al.FuncRead,
 		Data:     []byte{0x0C, 0x01, 0x07, 0x00},
 	}
@@ -391,7 +391,7 @@ func TestProtocolStackFrameValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &frame.Frame{
-				Control: frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
+				Control:  frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncConfirmedUserData},
 				DestAddr: tt.destAddr, SrcAddr: 1,
 				Data: []byte{0x01},
 			}

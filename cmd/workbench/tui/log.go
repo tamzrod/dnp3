@@ -15,8 +15,8 @@ type LogEntry struct {
 
 // Log represents the log display.
 type Log struct {
-	mu       sync.RWMutex
-	entries  []LogEntry
+	mu      sync.RWMutex
+	entries []LogEntry
 	maxSize int
 	bounds  Rect
 }
@@ -24,9 +24,9 @@ type Log struct {
 // NewLog creates a new log display.
 func NewLog(bounds Rect) *Log {
 	return &Log{
-		entries:  []LogEntry{},
-		maxSize:  100,
-		bounds:   bounds,
+		entries: []LogEntry{},
+		maxSize: 100,
+		bounds:  bounds,
 	}
 }
 

@@ -44,10 +44,10 @@ func TestCRC16KnownValues(t *testing.T) {
 func createResetLinkFrame(srcAddr, dstAddr uint16) *frame.Frame {
 	return &frame.Frame{
 		Control: frame.Control{
-			DIR:  false, // Outstation to master
-			PRM:  true,  // Primary station
-			FCB:  false,
-			FCV:  false,
+			DIR:      false, // Outstation to master
+			PRM:      true,  // Primary station
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncResetLinkStations,
 		},
 		SrcAddr:  srcAddr,
@@ -59,10 +59,10 @@ func createResetLinkFrame(srcAddr, dstAddr uint16) *frame.Frame {
 func createConfirmedUserDataFrame(srcAddr, dstAddr uint16, data []byte) *frame.Frame {
 	return &frame.Frame{
 		Control: frame.Control{
-			DIR:  true, // Master to outstation
-			PRM:  true,
-			FCB:  false,
-			FCV:  true,
+			DIR:      true, // Master to outstation
+			PRM:      true,
+			FCB:      false,
+			FCV:      true,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  srcAddr,
@@ -75,9 +75,9 @@ func createConfirmedUserDataFrame(srcAddr, dstAddr uint16, data []byte) *frame.F
 func createACKFrame(srcAddr, dstAddr uint16) *frame.Frame {
 	return &frame.Frame{
 		Control: frame.Control{
-			DIR:  false,
-			PRM:  false,
-			DFC:  false,
+			DIR:      false,
+			PRM:      false,
+			DFC:      false,
 			FuncCode: frame.FuncAck,
 		},
 		SrcAddr:  srcAddr,
@@ -89,9 +89,9 @@ func createACKFrame(srcAddr, dstAddr uint16) *frame.Frame {
 func createNACKFrame(srcAddr, dstAddr uint16) *frame.Frame {
 	return &frame.Frame{
 		Control: frame.Control{
-			DIR:  false,
-			PRM:  false,
-			DFC:  false,
+			DIR:      false,
+			PRM:      false,
+			DFC:      false,
 			FuncCode: frame.FuncNack,
 		},
 		SrcAddr:  srcAddr,
@@ -103,9 +103,9 @@ func createNACKFrame(srcAddr, dstAddr uint16) *frame.Frame {
 func createLinkStatusFrame(srcAddr, dstAddr uint16) *frame.Frame {
 	return &frame.Frame{
 		Control: frame.Control{
-			DIR:  false,
-			PRM:  false,
-			DFC:  false,
+			DIR:      false,
+			PRM:      false,
+			DFC:      false,
 			FuncCode: frame.FuncLinkStatus,
 		},
 		SrcAddr:  srcAddr,
@@ -164,10 +164,10 @@ func TestFrameConfirmedUserData(t *testing.T) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  srcAddr,
@@ -260,10 +260,10 @@ func TestFrameBroadcast(t *testing.T) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  srcAddr,
@@ -298,10 +298,10 @@ func TestFrameInvalidCRC(t *testing.T) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  srcAddr,
@@ -328,10 +328,10 @@ func TestFrameInvalidCRC(t *testing.T) {
 // TestFrameTooShort tests that frames that are too short are rejected
 func TestFrameTooShort(t *testing.T) {
 	shortFrames := [][]byte{
-		{0x05, 0x64},                           // Only sync bytes
-		{0x05, 0x64, 0x00},                     // Missing bytes
-		{0x05},                                  // Single byte
-		{},                                      // Empty
+		{0x05, 0x64},       // Only sync bytes
+		{0x05, 0x64, 0x00}, // Missing bytes
+		{0x05},             // Single byte
+		{},                 // Empty
 	}
 
 	for _, data := range shortFrames {
@@ -359,10 +359,10 @@ func TestAddressRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &frame.Frame{
 				Control: frame.Control{
-					DIR:  true,
-					PRM:  true,
-					FCB:  false,
-					FCV:  false,
+					DIR:      true,
+					PRM:      true,
+					FCB:      false,
+					FCV:      false,
 					FuncCode: frame.FuncConfirmedUserData,
 				},
 				SrcAddr:  0,
@@ -399,7 +399,7 @@ func TestCRCRoundTrip(t *testing.T) {
 
 	for _, data := range testData {
 		crcVal := crc.CRC16(data)
-		
+
 		// Verify CRC is correctly calculated (should not be zero for non-empty)
 		if crcVal == 0 && len(data) > 0 {
 			t.Errorf("CRC16(%v) returned 0, unlikely for non-empty data", data)
@@ -420,10 +420,10 @@ func TestMaxDataSize(t *testing.T) {
 
 	f := &frame.Frame{
 		Control: frame.Control{
-			DIR:  true,
-			PRM:  true,
-			FCB:  false,
-			FCV:  false,
+			DIR:      true,
+			PRM:      true,
+			FCB:      false,
+			FCV:      false,
 			FuncCode: frame.FuncConfirmedUserData,
 		},
 		SrcAddr:  1,
@@ -463,7 +463,7 @@ func TestConformanceSuite(t *testing.T) {
 	}
 
 	t.Logf("DLL Conformance Suite: %d tests", len(tests))
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, tt.fn)
 	}

@@ -15,6 +15,7 @@ import (
 //     (buildControlRequest)
 //   - 0x28 range16      — ranged reads (buildRangedReadRequest)
 //   - 0x07 count8       — event-class polls (buildPollRequest)
+//
 // Everything else must be rejected by al.ObjectHeader.Encode (see
 // TestEncodeObjectHeaderUnsupportedQualifier in package al).
 var v0RequestQualifiers = map[uint8]struct{}{

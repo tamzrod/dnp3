@@ -26,23 +26,23 @@ func (e *ChallengeError) Error() string {
 }
 
 var (
-	ErrChallengeExpired = &ChallengeError{"ERR_EXPIRED", "challenge has expired"}
-	ErrChallengeUsed    = &ChallengeError{"ERR_USED", "challenge has already been used"}
+	ErrChallengeExpired  = &ChallengeError{"ERR_EXPIRED", "challenge has expired"}
+	ErrChallengeUsed     = &ChallengeError{"ERR_USED", "challenge has already been used"}
 	ErrChallengeNotFound = &ChallengeError{"ERR_NOT_FOUND", "challenge not found"}
 )
 
 // PendingChallenge represents a challenge that has been sent but not yet responded to
 type PendingChallenge struct {
-	Challenge    *sa.Challenge
-	IssuedAt     time.Time
-	ExpiresAt    time.Time
-	Used         bool
+	Challenge *sa.Challenge
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+	Used      bool
 }
 
 // Manager handles challenge generation and validation
 type Manager struct {
 	challengeTimeout time.Duration
-	challenges      map[uint8]*PendingChallenge
+	challenges       map[uint8]*PendingChallenge
 	maxChallenges    int
 }
 
@@ -50,8 +50,8 @@ type Manager struct {
 func NewManager(timeout time.Duration) *Manager {
 	return &Manager{
 		challengeTimeout: timeout,
-		challenges:      make(map[uint8]*PendingChallenge),
-		maxChallenges:   256, // Max 256 pending challenges
+		challenges:       make(map[uint8]*PendingChallenge),
+		maxChallenges:    256, // Max 256 pending challenges
 	}
 }
 
@@ -61,7 +61,7 @@ func (m *Manager) GenerateChallenge(seq uint8, role sa.Role) (*sa.Challenge, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate challenge: %w", err)
 	}
-	
+
 	// Store as pending challenge
 	pending := &PendingChallenge{
 		Challenge: challenge,
@@ -69,12 +69,12 @@ func (m *Manager) GenerateChallenge(seq uint8, role sa.Role) (*sa.Challenge, err
 		ExpiresAt: time.Now().Add(m.challengeTimeout),
 		Used:      false,
 	}
-	
+
 	// Clean up old challenges if needed
 	m.cleanup()
-	
+
 	m.challenges[seq] = pending
-	
+
 	return challenge, nil
 }
 
@@ -84,31 +84,31 @@ func (m *Manager) ValidateResponse(seq uint8, mac [sa.MACSize]byte, sessionKey [
 	if !ok {
 		return ErrChallengeNotFound
 	}
-	
+
 	// Check if challenge is expired
 	if time.Now().After(pending.ExpiresAt) {
 		delete(m.challenges, seq)
 		return ErrChallengeExpired
 	}
-	
+
 	// Check if challenge was already used (anti-replay)
 	if pending.Used {
 		return ErrChallengeUsed
 	}
-	
+
 	// Mark as used
 	pending.Used = true
-	
+
 	// Build data to verify: challenge bytes + auth data
 	dataToVerify := make([]byte, 0, sa.ChallengeSize+len(authData))
 	dataToVerify = append(dataToVerify, pending.Challenge.ChallengeData[:]...)
 	dataToVerify = append(dataToVerify, authData...)
-	
+
 	// Verify MAC
 	if !sa.VerifyMAC(dataToVerify, sessionKey, mac) {
 		return sa.ErrInvalidMAC
 	}
-	
+
 	return nil
 }
 
@@ -118,13 +118,13 @@ func (m *Manager) GetChallenge(seq uint8) (*PendingChallenge, bool) {
 	if !ok {
 		return nil, false
 	}
-	
+
 	// Check if expired
 	if time.Now().After(pending.ExpiresAt) {
 		delete(m.challenges, seq)
 		return nil, false
 	}
-	
+
 	return pending, true
 }
 

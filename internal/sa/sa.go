@@ -76,7 +76,7 @@ func aesCMAC(key []byte, message []byte) ([]byte, error) {
 	}
 
 	messageLen := len(message)
-	
+
 	var X [16]byte
 
 	// Process all complete blocks
@@ -121,9 +121,9 @@ func aesCMAC(key []byte, message []byte) ([]byte, error) {
 
 // Security levels as defined in IEEE 1815-2012
 const (
-	SecurityLevelNone     = 0 // No authentication
+	SecurityLevelNone      = 0 // No authentication
 	SecurityLevelChallenge = 1 // Challenge-response only
-	SecurityLevelMAC      = 2  // Per-message authentication
+	SecurityLevelMAC       = 2 // Per-message authentication
 )
 
 // Maximum challenge size (128 bits)
@@ -134,12 +134,12 @@ const MACSize = 16
 
 // Authentication error codes
 var (
-	ErrInvalidMAC          = fmt.Errorf("invalid MAC")
-	ErrChallengeExpired    = fmt.Errorf("challenge expired")
-	ErrInvalidChallenge    = fmt.Errorf("invalid challenge")
-	ErrSessionNotActive    = fmt.Errorf("session not active")
-	ErrKeyNotFound        = fmt.Errorf("key not found")
-	ErrInvalidRole        = fmt.Errorf("invalid role")
+	ErrInvalidMAC           = fmt.Errorf("invalid MAC")
+	ErrChallengeExpired     = fmt.Errorf("challenge expired")
+	ErrInvalidChallenge     = fmt.Errorf("invalid challenge")
+	ErrSessionNotActive     = fmt.Errorf("session not active")
+	ErrKeyNotFound          = fmt.Errorf("key not found")
+	ErrInvalidRole          = fmt.Errorf("invalid role")
 	ErrAuthenticationFailed = fmt.Errorf("authentication failed")
 )
 
@@ -147,10 +147,10 @@ var (
 type Role uint8
 
 const (
-	RoleRemote Role = iota // Basic read operations
-	RoleLevel1             // Non-critical controls
-	RoleLevel2             // Critical controls
-	RoleManager            // Configuration, key management
+	RoleRemote  Role = iota // Basic read operations
+	RoleLevel1              // Non-critical controls
+	RoleLevel2              // Critical controls
+	RoleManager             // Configuration, key management
 )
 
 // String returns the role name
@@ -188,8 +188,8 @@ func RoleFromUint8(v uint8) (Role, error) {
 // Challenge represents an authentication challenge
 type Challenge struct {
 	ChallengeData [ChallengeSize]byte // 128-bit random challenge
-	Seq          uint8               // Challenge sequence number
-	Role         Role                // Role being authenticated
+	Seq           uint8               // Challenge sequence number
+	Role          Role                // Role being authenticated
 }
 
 // NewChallenge generates a new random challenge
@@ -227,9 +227,9 @@ func (c *Challenge) Bytes() []byte {
 
 // AuthenticationRequest represents an AUTHENTICATE request
 type AuthRequest struct {
-	Seq       uint8   // Authentication sequence number
-	UserNumber uint8   // User number
-	MAC       [MACSize]byte // Message Authentication Code
+	Seq        uint8         // Authentication sequence number
+	UserNumber uint8         // User number
+	MAC        [MACSize]byte // Message Authentication Code
 }
 
 // NewAuthRequest creates a new authentication request
@@ -243,9 +243,9 @@ func NewAuthRequest(seq, userNumber uint8, mac [MACSize]byte) *AuthRequest {
 
 // AuthenticationConfirm represents an AUTHENTICATE_CONFIRM
 type AuthConfirm struct {
-	Seq       uint8   // Authentication sequence number
-	UserNumber uint8   // User number
-	MAC       [MACSize]byte // Message Authentication Code
+	Seq        uint8         // Authentication sequence number
+	UserNumber uint8         // User number
+	MAC        [MACSize]byte // Message Authentication Code
 }
 
 // NewAuthConfirm creates a new authentication confirm
@@ -263,7 +263,7 @@ func CalculateMAC(data []byte, key [16]byte) ([16]byte, error) {
 	if err != nil {
 		return [16]byte{}, fmt.Errorf("failed to calculate CMAC: %w", err)
 	}
-	
+
 	var result [16]byte
 	copy(result[:], mac)
 	return result, nil
@@ -275,7 +275,7 @@ func VerifyMAC(data []byte, key [16]byte, expectedMAC [16]byte) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// Constant-time comparison to prevent timing attacks
 	var diff byte
 	for i := 0; i < 16; i++ {

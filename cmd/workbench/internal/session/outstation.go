@@ -95,11 +95,11 @@ func NewOutstationSession(log Logger) (*OutstationSession, error) {
 	sim.AddDefaultPoints()
 
 	s := &OutstationSession{
-		state:        StateDisconnected,
-		events:       make(chan SessionEvent, 100),
-		log:          log,
-		dataHandler:  &outstationDataHandler{},
-		simulator:    sim,
+		state:       StateDisconnected,
+		events:      make(chan SessionEvent, 100),
+		log:         log,
+		dataHandler: &outstationDataHandler{},
+		simulator:   sim,
 	}
 	s.dataHandler.session = s
 	return s, nil

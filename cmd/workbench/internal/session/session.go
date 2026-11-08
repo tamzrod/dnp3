@@ -73,15 +73,15 @@ func (c *OperateCommand) Type() string { return "OPERATE" }
 
 // Response represents a DNP3 response.
 type Response struct {
-	IIN             [2]byte
-	BinaryInputs    []*types.BinaryInput
-	AnalogInputs    []*types.AnalogInput
-	Counters        []*types.Counter
-	FrozenCounters  []*types.FrozenCounter
-	BinaryOutputs   []*types.BinaryOutput
-	AnalogOutputs   []*types.AnalogOutput
-	Timestamp       time.Time
-	Error           error
+	IIN            [2]byte
+	BinaryInputs   []*types.BinaryInput
+	AnalogInputs   []*types.AnalogInput
+	Counters       []*types.Counter
+	FrozenCounters []*types.FrozenCounter
+	BinaryOutputs  []*types.BinaryOutput
+	AnalogOutputs  []*types.AnalogOutput
+	Timestamp      time.Time
+	Error          error
 }
 
 // SessionEvent represents an event from the session.
@@ -111,13 +111,13 @@ type Logger interface {
 
 // MasterSession represents a DNP3 Master session.
 type MasterSession struct {
-	mu        sync.RWMutex
-	address   string
-	port      int
-	state     ConnectionState
-	client    master.Client
-	events    chan SessionEvent
-	log       Logger
+	mu      sync.RWMutex
+	address string
+	port    int
+	state   ConnectionState
+	client  master.Client
+	events  chan SessionEvent
+	log     Logger
 }
 
 // NewMasterSession creates a new Master session.
@@ -337,4 +337,3 @@ func (s *MasterSession) Close() error {
 func (s *MasterSession) Transport() interface{} {
 	return nil
 }
-

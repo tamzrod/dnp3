@@ -23,7 +23,7 @@ func newBlockingTransport() *blockingTransport {
 }
 
 func (t *blockingTransport) Send(data []byte) error { return nil }
-func (t *blockingTransport) SetTimeout(ms int)     {}
+func (t *blockingTransport) SetTimeout(ms int)      {}
 
 func (t *blockingTransport) Receive() ([]byte, error) {
 	// Block until the test releases the held request.

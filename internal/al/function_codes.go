@@ -4,10 +4,10 @@ package al
 // Reference: IEEE 1815-2012 Section 7.2
 const (
 	// Response codes (outstation to master)
-	FuncConfirm               = 0  // Deprecated, use separate confirmation
-	FuncResponse              = 0  // Response with data
-	FuncUnsolicitedResponse   = 1  // Unsolicited response
-	FuncNoAck                 = 127 // No acknowledgment required
+	FuncConfirm             = 0   // Deprecated, use separate confirmation
+	FuncResponse            = 0   // Response with data
+	FuncUnsolicitedResponse = 1   // Unsolicited response
+	FuncNoAck               = 127 // No acknowledgment required
 
 	// Master to outstation codes
 	FuncRead                  = 2  // Read data
@@ -91,11 +91,11 @@ func FunctionCodeName(code uint8) string {
 	if name, ok := names[code]; ok {
 		return name
 	}
-	
+
 	if code >= 64 && code <= 127 {
 		return "MANUFACTURER_SPECIFIC"
 	}
-	
+
 	return "UNKNOWN"
 }
 
@@ -105,17 +105,17 @@ func IsValidFunctionCode(code uint8) bool {
 	if code == FuncResponse || code == FuncUnsolicitedResponse || code == FuncNoAck {
 		return true
 	}
-	
+
 	// Master to outstation codes
 	if code >= FuncCodeMinMaster && code <= FuncCodeMaxMaster {
 		return true
 	}
-	
+
 	// Manufacturer-specific codes
 	if code >= FuncCodeMinMfr && code <= FuncCodeMaxMfr {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -197,12 +197,12 @@ func Category(code uint8) FunctionCodeCategory {
 	if IsFileFunction(code) {
 		return CategoryFile
 	}
-	if code == FuncEnableUnsolicited || 
-	   code == FuncDisableUnsolicited ||
-	   code == FuncAssignClass ||
-	   code == FuncGetIdentifier ||
-	   code == FuncGetLabel ||
-	   code == FuncGetDescription {
+	if code == FuncEnableUnsolicited ||
+		code == FuncDisableUnsolicited ||
+		code == FuncAssignClass ||
+		code == FuncGetIdentifier ||
+		code == FuncGetLabel ||
+		code == FuncGetDescription {
 		return CategoryConfiguration
 	}
 	return CategoryOther

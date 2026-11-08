@@ -103,7 +103,7 @@ var legalStateTransitions = map[State]map[State]bool{
 	},
 	StateError: {
 		StateConnecting:   true, // reconnect
-		StateDisconnected:  true,
+		StateDisconnected: true,
 	},
 }
 
@@ -571,10 +571,10 @@ const DefaultConfirmTimeout = 2000
 // DefaultConfig returns default master configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		MasterAddress: 0xFFFF, // Master uses broadcast or specific address
-		Timeout:       DefaultTimeout,
-		MaxRetries:    MaxRetries,
-		RetryDelay:    100,
+		MasterAddress:  0xFFFF, // Master uses broadcast or specific address
+		Timeout:        DefaultTimeout,
+		MaxRetries:     MaxRetries,
+		RetryDelay:     100,
 		ConfirmTimeout: DefaultConfirmTimeout,
 	}
 
@@ -602,7 +602,7 @@ type Master struct {
 	// instead of blocking behind reqMu indefinitely (DNP3-040). Different
 	// outstations still queue via reqMu. Guarded by outstandingMu.
 	outstanding   map[uint16]struct{}
-	outstandingMu  sync.Mutex
+	outstandingMu sync.Mutex
 
 	// idleTimeout is the configured keep-alive/idle threshold (DNP3-042). A
 	// non-positive value disables idle monitoring.
@@ -694,14 +694,14 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:        config,
-		state:         StateDisconnected,
-		outstations:   make(map[uint16]*Outstation),
-		fragmenter:    tl.NewFragmenter(),
-		reassembler:   tl.NewReassembler(),
-		retryPolicy:   DefaultRetryPolicy(config),
-		outstanding:   make(map[uint16]struct{}),
-		idleTimeout:   time.Duration(config.IdleTimeout) * time.Millisecond,
+		config:         config,
+		state:          StateDisconnected,
+		outstations:    make(map[uint16]*Outstation),
+		fragmenter:     tl.NewFragmenter(),
+		reassembler:    tl.NewReassembler(),
+		retryPolicy:    DefaultRetryPolicy(config),
+		outstanding:    make(map[uint16]struct{}),
+		idleTimeout:    time.Duration(config.IdleTimeout) * time.Millisecond,
 		confirmTimeout: confirmTimeoutFromConfig(config),
 	}
 }
@@ -1404,11 +1404,12 @@ func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, 
 // resolveOperateStatus determines the per-point command status for a
 // DirectOperate/Operate response (MEXT-012, fixing R1). A response is a
 // success when EITHER:
-//   (a) it carries a G12V1 object whose per-point status byte is 0
-//   (CommandStatusSuccess), or
-//   (b) it carries no G12V1 object (an IIN-only echo) and the IIN has no
-//   error bits — real outstations may omit the G12V1 status echo on a valid
-//   Direct-Operate success.
+//
+//	(a) it carries a G12V1 object whose per-point status byte is 0
+//	(CommandStatusSuccess), or
+//	(b) it carries no G12V1 object (an IIN-only echo) and the IIN has no
+//	error bits — real outstations may omit the G12V1 status echo on a valid
+//	Direct-Operate success.
 //
 // A non-zero status byte is surfaced as-is (never success). An IIN-only
 // response with error IIN is a failure (never success). A truncated G12V1
@@ -1537,8 +1538,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 			// Data link layer frame (DNP3-057: set FCB + FCV on confirmed data)
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true,  // Master-to-Outstation
-					PRM:      true,  // Primary station
+					DIR:      true, // Master-to-Outstation
+					PRM:      true, // Primary station
 					FCB:      fcb,
 					FCV:      true,
 					FuncCode: frame.FuncConfirmedUserData,
@@ -1661,8 +1662,8 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			// Data link layer frame (DNP3-057: set FCB + FCV on confirmed data)
 			dllFrame := &frame.Frame{
 				Control: frame.Control{
-					DIR:      true,  // Master-to-Outstation
-					PRM:      true,  // Primary station
+					DIR:      true, // Master-to-Outstation
+					PRM:      true, // Primary station
 					FCB:      fcb,
 					FCV:      true,
 					FuncCode: frame.FuncConfirmedUserData,
@@ -1953,8 +1954,8 @@ func (m *Master) sendApplicationConfirm(seq uint8, outstationID uint16) error {
 		tlEncoded := tl.EncodeFragment(frag)
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
-				DIR:      true,  // Master-to-Outstation
-				PRM:      true,  // Primary station
+				DIR:      true, // Master-to-Outstation
+				PRM:      true, // Primary station
 				FuncCode: frame.FuncUnconfirmedUserData,
 			},
 			DestAddr: outstationID,

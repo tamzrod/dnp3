@@ -7,8 +7,9 @@ import (
 // Test vectors for CRC-16/DNP
 //
 // Authority: CRC Catalogue (reveng.sourceforge.io)
-//   CRC-16/DNP: poly=0x3D65, init=0x0000, refin=true, refout=true, xorout=0xFFFF
-//   Canonical check value: CRC("123456789") = 0xEA82
+//
+//	CRC-16/DNP: poly=0x3D65, init=0x0000, refin=true, refout=true, xorout=0xFFFF
+//	Canonical check value: CRC("123456789") = 0xEA82
 //
 // Verification sources:
 //   - CRC Catalogue: Industry-standard CRC reference parameters
