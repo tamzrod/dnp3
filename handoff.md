@@ -1,20 +1,44 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: DNP3-PR15-FORMATTING-CORRECTION-001
-Branch: fix/dnp3-056-outstation-vet-cwal
+Package: DNP3-POSTGATE-VERIFICATION-CORRECTION-001
+Branch: work/mext-postgate-roadmap
 CURRENT: NONE
 QUEUED: NONE
 Status: WORK_PACKAGE_READY
 
-## Concise current handoff
-DNP3-057 completed and archived. Pre-fix `gofmt -l .` listed 70 tracked `.go` files (all in scope; no vendor/generated/third-party). `gofmt -w` was applied to exactly those paths; post-fix `gofmt -l .` is empty and the changed set equals the enumerated set. All 70 files are token-multiset identical to HEAD, proving the diff is formatting-only. No workflow, governance, dependency or DNP3-056 file was touched. Evidence: `docs/verification/DNP3-057.md`; archive: `archive/active-work/DNP3-057.md`.
+## Package closure
+The Go verification correction is complete. DNP3-058 executed the mandatory Go
+gates that MEXT-040/041 had truthfully recorded as NOT_RUN, on execution SHA
+`2afbeb5acf0fce9126edb122290b29ba3f532151` with a provisioned official Go
+1.22.12 toolchain (private install; official archive sha256 verified). Every
+required check PASSED, including `go vet ./...`, `go build ./...`,
+`go test ./... -count=1`, `go test -race ./internal/outstation/...`,
+`./scripts/verify-mvp.sh`, `./scripts/verify-external-mvp.sh` (Tiers 1-3), and the
+CI-equivalent `go test -race -coverprofile ./...`. Evidence: `docs/verification/DNP3-058.md`;
+archive: `archive/active-work/DNP3-058.md`. `CURRENT: NONE` forbids further
+implementation until a human promotes a new package. MEXT-042 remains
+unpromoted and requires separate human approval.
 
-## Verification
-PASS: `gofmt -l .` empty, `git diff --check`, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./internal/outstation/...`, `./scripts/verify-external-mvp.sh` (Tiers 1-3). PR #15 CI checks after pushing may still be pending and are not claimed as passed here.
+## Historical baseline
+PR #15 merged at `b38d7691aeb1adccf52fe665e368d4d77766977c` with successful main
+CI. MEXT-040/041 (SBO and events/unsolicited deferral stubs) completed at remote
+checkpoint `16ef1f7278b44f6a005edcfe076b376c0551bb38`; their evidence remains
+truthful (Go NOT_RUN at that time) and is not rewritten. DNP3-056/057 are archived
+with verification evidence. MEXT-035 completed the tested in-repo v0 real-TCP
+Master gate, not independent third-party interoperability. R4/VEC-01 remains open.
 
-## Historical completed package
-DNP3-056 is archived and verified at implementation commit `f2568dd`. Main-ancestry synchronization commit `524b385` changed no file contents. Preserve completed evidence and archive.
+## Parallel roadmap-sync note
+PR #16 (MEXT historical roadmap sync) was open when this branch was cut from main.
+Do not modify `active_work/MEXT_MASTER_ROADMAP.md` or `active_work/handoff.md` in
+this package; reconcile any later main changes before a future PR.
 
-## Next authorized action
-No task is promoted. Update existing PR #15 through branch commits only; do not create/merge another PR, write `main`, or issue any field-device controls. To continue, a human must promote a new package with matching markers.
+## Next actions
+No task is promoted. A future task (for example MEXT-042) requires a new
+human-promoted package with matching markers before any work begins. No PR, merge,
+deploy or field test is authorized by this package.
+
+## Setup status
+Package complete. DNP3-058 passed all mandatory Go gates with actual execution,
+was archived with evidence, and is remotely checkpointed. No implementation,
+runtime, protocol, supported-profile, CI or dependency change was made.
