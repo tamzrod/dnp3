@@ -69,3 +69,22 @@ topology; peer configured to v0 variations with a verifiable simulator-only
 BO[0]; and owner authorization to proceed. Until then: `TASK_BLOCKED`.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## Owner correction — objective Gate B replaces reviewer sign-off (2026-11-08)
+
+This note supersedes the **prospective reviewer/signature requirement** in the older Gate B notes above. The older statements accurately describe the prior TASK_BLOCKED reason at that point in history; they are not current authority. Under the owner-amended CURRENT, technical **PASS / FAIL / NOT_TESTED** evidence, not additional-person approval, determines readiness.
+
+| Objective Gate B requirement | Current evidence | Disposition |
+|---|---|---|
+| No internet or production/OT egress; non-routed isolated lab | Existing Kubernetes pod routed, internet egress, forwarding enabled; no safe isolated segment demonstrated | **FAIL** |
+| Outstation listener only on lab interface and correct 3/4 link addresses | Stock demo binds `0.0.0.0:20000`, uses 10/1; proposed safe config not yet proven | **NOT_TESTED / BLOCKED** |
+| Exact v0 G1V1/G30V1/G20V1 static variations | Stock demo observed G1V2/G30V5, exact v0 response not demonstrated | **FAIL / NOT_TESTED** |
+| Memory-only BO[0] with observable CROB result | No verified target; stock demo status echo only | **FAIL** |
+| Finite deadlines and no blind control retry | Required but not proven on an executable isolated setup | **NOT_TESTED** |
+| Pinned peer artifacts and hash integrity | Previously recorded reproducible matching binaries | **Recorded PASS; rehash at use** |
+
+Gate C/D/E and all previously unrun Go checks remain **NOT_TESTED**, not PASS. JR must not operate the peer until objective Gate B checks PASS in a demonstrably isolated environment. Preserve original raw PCAP and trace-derived `.vec` only when later authorized execution actually occurs. No mandatory external reviewer/signature. No master-code fixes, new scope, self-certification of full IEEE 1815, production access or R4 closure.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
