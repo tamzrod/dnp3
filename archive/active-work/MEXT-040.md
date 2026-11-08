@@ -1,3 +1,10 @@
+<!-- Archived after verified acceptance. Original task body preserved verbatim below. -->
+
+Archived: 2026-11-08
+Base commit (before change): a753c3285cc9cbd571b36eaf940aae3e215cea9a
+Fix commit: branch head of work/mext-postgate-roadmap
+Verification evidence: docs/verification/MEXT-040.md
+
 # MEXT-040 — Post-gate SBO profile backlog stub
 
 Status: CURRENT — HUMAN_PROMOTED
