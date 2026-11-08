@@ -1,13 +1,17 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: MEXT-THIRD-PARTY-CAPTURE-PROCEDURE-001
+Package: DNP3-MEXT042-PROVENANCE-CORRECTION-001
 Branch: work
-CURRENT: NONE
+CURRENT: DNP3-060
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_READY
 
 
+
+
+## CURRENT DNP3-060 — limited historical evidence correction
+Owner-promoted on 2026-11-08, permanent branch `work`. The only active task is `workflow/active_work/DNP3-060.md`: correct the two inaccurate PR #18 base SHA labels in MEXT-042 evidence/archive without changing historical test results. The underlying MEXT-042 procedure remains completed and third-party VEC-01/R4 remains OPEN. Every mandated Go check must actually run and PASS, including private Go installation fallback. No other implementation, PR or merge is authorized by this promotion; this is TASK_READY only, not a completed correction.
 
 ## Package closure — MEXT-042 (2026-11-08)
 The independent third-party capture procedure package is complete as
