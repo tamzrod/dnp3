@@ -1,13 +1,14 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: NONE
-Branch: NONE
-CURRENT: NONE
+Package: DNP3-VET-CORRECTION-001
+Branch: fix/dnp3-056-outstation-vet-cwal
+CURRENT: DNP3-056
 QUEUED: NONE
-Status: NO_CURRENT
+Status: TASK_READY
 
 ## Concise handoff
-Workflow installation is proposed; no microtask execution has been authorized or started. On a later human-approved package, record only the active task, designated branch/remote SHA, verified tests, remaining steps, blockers and the next authorized action.
+Human-authorized CURRENT correction: DNP3-056. Task file at `workflow/active_work/DNP3-056.md`; fix the one unreachable `return nil` in `internal/outstation/outstation.go` and verify without altering runtime behavior. Branch created from `docs/dnp3-agent-rules` because the CWAL governance overlay is not yet merged to main; PR #13 remains separate. PR #14 was closed unmerged.
 
-Do not use this narrative to override the matching markers in `workflow/active_work/README.md`, approved KDE decisions, or the CURRENT task body.
+## Next action
+Check out this branch cleanly; fetch and compare remote SHA, run `bash scripts/cwal-check.sh`, execute CURRENT only, run required tests, record truthful evidence, then archive and remotely checkpoint after success. No new PR or merge until separately authorized.
