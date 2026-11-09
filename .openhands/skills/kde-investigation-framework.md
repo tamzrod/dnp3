@@ -14,13 +14,13 @@ This repository operates under the Knowledge-Driven Engineering (KDE) Laboratory
 
 ## Core Rules
 
-1. **Laboratory Investigation**: Every prompt must be treated as a Laboratory Investigation when the KDE Engine is running.
+1. **Explicit investigation route only**: Use this methodology when a human requests a KDE investigation or experiment. Do not reinterpret `operation cwal`, `PLAN`, `CHECK`, governance maintenance, or ordinary implementation as laboratory investigations simply because a KDE runtime is installed or running.
 
-2. **File Protection**: No files outside the `/laboratory/` directory may be edited without explicit human approval. Exception: runtime operation files in `/runtime/` may be modified during engine operations. This rule is also governed by engine running state - protections end when the engine stops.
+2. **File protection and approval**: KDE investigation artifacts remain governed by applicable KDE protection rules. No file outside the human-approved route's exact edit allowlist may be modified. An explicitly human-promoted CWAL CURRENT is separate implementation authorization, never a general bypass of KDE policy. Stopping KDE does not waive repository safety or approval rules.
 
 ## Investigation Protocol
 
-When conducting investigations:
+For explicitly selected KDE investigations only:
 
 1. **Acknowledge the Five Core Principles** before any work
 2. **Follow the Bootstrap Sequence** for each session
@@ -55,3 +55,11 @@ print(format_report(report))
 ```
 
 > **Note**: The `sys.path.insert(0, '.kde')` is required because the KDE runtime modules are located at `.kde/runtime/`, which is not in the default Python path.
+
+## Route precedence (GOV-RECON-001)
+
+- `operation cwal`: follow `AGENTS.md`, `operation cwal.md`, the six matching CURRENT markers and exactly the human-promoted CURRENT; do not run a KDE investigation or auto-bootstrap by default.
+- `PLAN` / `CHECK`: read-only design / independent audit. No implementation authority.
+- `start engine` / explicit KDE investigation: follow approved KDE governance and session permissions. Runtime readiness alone cannot authorize edits or installs.
+- Governance maintenance: requires a separate human-approved scope, branch and file allowlist; never modifies an active CWAL CURRENT or its markers.
+- On conflicting instructions, preserve the stricter safety prohibition and stop for human resolution. Never self-promote or auto-continue.

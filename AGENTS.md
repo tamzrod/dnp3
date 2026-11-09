@@ -54,7 +54,7 @@ go build ./...
 - If verification cannot be completed, label the PR blocked or unverified; do not invent results.
 
 ## Branching, reviews, and changes
-- Use narrow feature or fix branches and clear, conventional commit messages.
+- Use narrow feature or fix branches for ordinary development. **Exception:** human-promoted Operation CWAL uses its exact designated branch (currently permanent `work` for VEC-01); governance maintenance may use a separately human-approved isolated maintenance branch. Never infer authority to switch or merge.
 - PRs must describe the problem, scope, design approval/evidence, tests, risk and rollback, and supported-profile/documentation impact.
 - No force-push to shared branches, no bypass of branch protection, no agent self-merge, and no unauthorized changes to governance, CI, release, or security policy.
 - Do not modify production devices or issue real SCADA controls as part of automated tests. Use deterministic simulators, fixtures, and isolated test endpoints.
@@ -63,3 +63,12 @@ go build ./...
 - `active_work/supported-profile.md` and its evidence references define verified versus unsupported behavior.
 - Update relevant docs with implementation, but do not rewrite history or portray planned features as implemented.
 - Existing documents can be stale; if documents conflict, surface the discrepancy for maintainer resolution rather than silently overwriting authoritative governance.
+
+## Explicit workflow routing and precedence (GOV-RECON-001)
+
+- **Human approval is required** to promote, expand or close a task or to change KDE governance. An initialized KDE engine, a healthy bootstrap, an agent skill or a successful CWAL marker check grants **no** standalone implementation authority.
+- **KDE scientific/governance authority remains intact:** approved architectural decisions, investigation methodology and artifact protection govern their respective domains. **CWAL** coordinates only the exact scope of a human-promoted CURRENT, consistent with those decisions. Neither silently overrides the other; report irreconcilable conflicts as PUSHBACK.
+- **Route by explicit human intent:** `operation cwal` executes only authorized CURRENT; `PLAN` is read-only design; `CHECK` is read-only audit; `start engine` starts KDE only within allowed startup boundaries; governance maintenance uses separately authorized scope. Do not convert all agent prompts to KDE investigations.
+- **Task-specific safety restrictions win over generic checklists:** if CURRENT prohibits a broad suite, integration socket, dependency download, bootstrap or task closure, do not run it. Report NOT_RUN rather than silently bypassing a prohibition to satisfy the general checks above.
+- **Closure and branch precedence:** a generic CWAL archive/queue instruction does not override explicit CURRENT TASK_BLOCKED/no-archive/no-PR restrictions. The exact human-approved branch governs CWAL execution; no auto-promotion or merge.
+- **Startup safety:** `.openhands/setup.sh` is observation-only. It must not provision dependencies or execute tests; user-approved provisioning must be an explicit separate workflow.

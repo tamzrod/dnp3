@@ -26,7 +26,7 @@ Execute only a **human-promoted, bounded CURRENT microtask**, with evidence-base
 4. Run task-defined checks and appropriate `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and `./scripts/verify-external-mvp.sh` where applicable. Run race/negative/golden-wire/integration tests when relevant. Record actual PASS, FAIL, NOT_RUN. A test not executed is not evidence.
 5. Partial safe progress may be committed and pushed to the designated branch as `TASK_IN_PROGRESS`, leaving CURRENT untouched. Record a concise handoff of exact completed work and blockers.
 6. On full acceptance, archive CURRENT under `archive/active-work/<ID>.md` preserving original task requirements; add `docs/verification/<ID>.md` with commands/results, evidence, limitations, SHA; update both current-state marker blocks consistently; commit and push to the designated branch.
-7. Fetch/read back the actual remote SHA, archived task and both current-state markers. Only then report `TASK_CHECKPOINTED`. Promote the next **already human-promoted QUEUED** task in the same verified checkpoint if explicitly authorized; read the next task body only after its prior checkpoint is confirmed.
+7. Fetch/read back the actual remote SHA, archived task (only when archiving was expressly allowed) and both current-state markers. Only then report `TASK_CHECKPOINTED` when authorized acceptance is genuinely complete. Promote the next **already human-promoted QUEUED** task in the same verified checkpoint if explicitly authorized; read the next task body only after its prior checkpoint is confirmed.
 8. On failure keep CURRENT unchanged (apart from truthful `TASK_BLOCKED` status/evidence) and stop. Never skip to a later queued task.
 
 ## DNP3-specific acceptance
@@ -43,3 +43,11 @@ Execute only a **human-promoted, bounded CURRENT microtask**, with evidence-base
 - Recovery reads only current remote branch/SHA, markers, CURRENT, last concise checkpoint and required unresolved tests. Do not replay archived work.
 
 **Loop:** current markers → current task → smallest necessary context → tests → verified remote checkpoint → next pre-promoted task or stop.
+
+## Scope precedence and separate governance maintenance (GOV-RECON-001)
+
+1. This operational workflow remains subordinate to approved KDE governance and **human owner approval**; `AGENTS.md` is a checklist, not an additional grant. The active CURRENT's latest explicit owner-approved addendum may further **restrict** implementation paths, checks, test selection, closure and milestone acceptance. A task-specific exception may authorize a narrowly identified activity otherwise prohibited by an earlier CURRENT addendum, but cannot silently bypass higher-level KDE governance or external safety constraints.
+2. The generic archive, `TASK_CHECKPOINTED` and next-task rules apply **only when CURRENT explicitly permits closure**. If CURRENT is `TASK_BLOCKED` and forbids archival, keep it and the six matching markers unchanged. Report a bounded checkpoint or PUSHBACK without manufacturing full acceptance.
+3. Startup/verification commands are **scope-gated**: a test suite containing real TCP, live protocol exchanges or dependency fetches is prohibited when the specific CURRENT permits only offline in-memory tests, even if a generic checklist recommends it. Report skipped gates as `NOT_RUN` with the reason. `scripts/cwal-check.sh` checks state consistency, not comprehensive authorization or safety.
+4. **Parallel governance maintenance is NOT a second CWAL CURRENT.** It requires its own explicit human approval, isolated maintenance branch, strict allowlist and independent CHECK. It may not alter the active CURRENT, marker blocks, or test evidence, and is never automatically merged. Human approval is required for integrating any governance-affecting change.
+5. Distinct routes: `operation cwal` = current implementation; `PLAN` = read-only design; `CHECK` = independent read-only audit; `start engine` = KDE startup subject to explicit environment permissions. No runtime-ready state auto-promotes a task.

@@ -37,7 +37,7 @@ This directory contains Runtime configuration artifacts that define how KDE init
 | Field | Value |
 |-------|-------|
 | Default Engine | KDE-ENGINE-002 (Beta) |
-| Default Seed | SEED-001 (Genesis) |
+| Default Seed | SEED-003 (Bootstrap Validation) |
 | Default Status | YES |
 
 ---
@@ -56,10 +56,14 @@ This directory contains Runtime configuration artifacts that define how KDE init
 
 | Document | Purpose |
 |----------|---------|
-| [/engines/current.md](/workspace/project/kde/engines/current.md) | Engine registry (shows Status vs Default) |
-| [/laboratory/LABORATORY-RULES.md](/workspace/project/kde/laboratory/LABORATORY-RULES.md) | Laboratory Rules (includes Human Authority directive) |
+| [Engine registry](../../engines/current.md) | Verified repository-relative engine registry (status versus default) |
+| [KDE governance hierarchy](../GOVERNANCE-HIERARCHY.md) | Verified human-approval and authority definitions; former `/workspace/project/kde/laboratory/LABORATORY-RULES.md` is absent and must not be inferred |
 
 ---
 
 **Authority**: Human Authority
 **Immutable by KDE**: YES
+
+## Documentation precedence (GOV-RECON-001)
+
+This page summarizes KDE runtime settings; the approved `.kde/governance/runtime/defaults.yaml` defines the actual default engine and seed. Do not change approved defaults by editing this README. Engine readiness does not authorize a CWAL CURRENT, code changes, dependency installation or governance promotion.

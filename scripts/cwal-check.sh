@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Non-mutating Operation CWAL current-state gate.
+# PASS here validates marker/checkout consistency ONLY: not KDE approval,
+# current task allowlist, network-free tests, dependency permissions, or safety.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
@@ -30,7 +32,7 @@ if [[ "${a[3]}" == "NONE" ]]; then
   else
     fail "unexpected empty-state status"
   fi
-  echo "CWAL CHECK OK: NO_CURRENT; no implementation authority"
+  echo "CWAL CHECK OK: NO_CURRENT; no implementation authority (state consistency only)"
   exit 0
 fi
 [[ "${a[1]}" != "NONE" && "${a[2]}" != "NONE" ]] || fail "CURRENT lacks package or branch"
@@ -42,4 +44,4 @@ fi
 [[ -z "$(git status --porcelain)" ]] || fail "working tree dirty; preserve and reconcile safely"
 git rev-parse --verify "refs/remotes/origin/${a[2]}" >/dev/null 2>&1 || fail "missing local remote-tracking branch; fetch safely"
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse "refs/remotes/origin/${a[2]}")" ]] || fail "local/remote-tracking SHA mismatch; fetch and reconcile"
-echo "CWAL CHECK OK: CURRENT=${a[3]} branch=${a[2]} (remote freshness requires explicit fetch)"
+echo "CWAL CHECK OK: CURRENT=${a[3]} branch=${a[2]} (STATE ONLY; remote freshness requires explicit fetch; verify CURRENT scope and KDE approval separately)"
