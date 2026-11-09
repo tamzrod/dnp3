@@ -1781,3 +1781,150 @@ Gate B and the CURRENT remain **`TASK_BLOCKED`**.
 
 **No protocol execution occurred in this corrective pass. VEC-01 NOT EXECUTED /
 R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+## 22. Gate B4 F2/F3 second corrective implementation checkpoint (append-only, 2026-11-09)
+
+Executed under the owner authorization "B4 F2/F3 second corrective CWAL"
+(`workflow/active_work/VEC-01-LAB-EXEC-001.md`, appended by the
+owner-authorized governance actor) on branch `work`, HEAD
+`9979c6c5a3845f2b9c5676311be0b1305585fabb` ("docs(cwal): owner-authorize
+bounded second B4 F2/F3 offline corrective"). **Bounded offline Go correction
+only.** No protocol execution, no sockets/listeners, no peer, no PR/merge.
+
+**Baseline provenance limitation.** The authorization names pinned baseline
+`f87fde1d8110f63ce1e1a20e13a28165c54f402b`. This clone is **shallow**
+(`git rev-parse --is-shallow-repository` = `true`) and that object is **not
+present**; the executed tree is the authorizing commit `9979c6c` (local `work` ==
+`origin/work`). Recorded truthfully as a limitation; the change set is confined
+to the allowlist below.
+
+### 22.1 Corrections implemented (F2-R2, F3-R2A, F3-R2B)
+
+**F2-R2 — active public Connect deadline and stale-worker fencing
+(`pkg/dnp3/master/client.go`).** Public `Connect(ctx)` derives one effective
+whole-connect deadline at entry (earlier of the caller deadline and the
+configured `ConnectTimeout`) and now races the blocking worker against **both**
+`ctx.Done()` **and** that deadline via a timer, so an uncooperative dial that
+blocks past budget fails timely even for `context.Background()`. Each attempt
+captures a `connectGen` at entry; a superseded attempt cannot commit `Active`
+(state commit is generation-checked), and `Disconnect`/`abortConnect` bump the
+generation. `abortConnect` performs best-effort teardown (`cleanupConnect`) and
+does not claim the outstanding worker's underlying I/O was killed. The existing
+whole-budget sharing across dial/handshake/init (F2, §21) is retained.
+
+**F3-R2A — atomic session/send admission and teardown linearization
+(`internal/master/master.go`).** The former separate `sessionStillCurrent(gen)`
+check and `transport.Send` are replaced by a single linearization point,
+`beginTransmit(gen, outstation)`, executed under the safety lock; it refuses a
+send when the outstation is quarantined or the session generation advanced, and
+otherwise marks the gate `sending`. `Disconnect` bumps `sessionGen` under the
+same lock, so a worker cannot **start** a transmission after teardown linearizes
+(the check-and-mark is atomic w.r.t. `Disconnect`). The `sending` marker is
+cleared by `endTransmit` after the single-shot transmission; the safety lock is
+never held across `transport.Send`.
+
+**F3-R2B — atomic UNKNOWN admission and unresolved-worker fence
+(`internal/master/master.go`).** A single `safetyMu` leaf lock now guards the
+quarantine map, the control gates, the session generation and a new
+`sessionUnresolved` fence, so quarantine admission and worker admission are one
+atomic decision (`acquireControlGate`). `Disconnect` fences any outstanding
+worker; an **in-flight** send (`sending`) additionally quarantines the outstation
+because its outcome is ambiguous, while a not-yet-sent worker is a definite
+NOT_SENT. A fresh `ConnectContext` is refused (`ErrSessionUnresolved`) while a
+prior worker is unresolved; the fence is lifted only when the worker terminates
+(`release`), never a quarantine. `abandonSession`/`finishSession` were folded
+into the fence/release path. The quarantine remains persistent across
+`Disconnect`, reconnect, late completion and request-marker cleanup (§21.1
+retained); `ClearQuarantine` exists only for a future separately approved
+reconciliation protocol.
+
+**Lock-order / deadlock note.** `safetyMu` is a leaf lock: it is never held
+across a blocking transport `Send`, nor while acquiring `reqMu`,
+`outstandingMu` or `mu`. `acquireControlGate`/`beginTransmit`/`endTransmit`/
+`Disconnect` take only `safetyMu` (and `Disconnect` takes `mu` separately, never
+nested). A concurrent-teardown map-write race in `Disconnect` (unsynchronized
+`m.outstations` assignment) was moved under `mu` — a latent data race surfaced by
+the new deterministic tests and now fixed.
+
+**`pkg/transport/tcp.go` was not modified** — no correction required it.
+
+### 22.2 Added deterministic offline tests (channel/barrier-driven; no sockets)
+
+`internal/master/control_safety_test.go`:
+- `TestControlDisconnectDuringBlockedSendFencesOutstation` (F3-R2A/R2B, case e):
+  `Disconnect` during a blocked `Send` fences + quarantines; a fresh control is
+  refused; after the worker terminates the fence clears but the quarantine
+  persists; exactly one send occurred.
+- `TestControlConnectRefusedWhileUnresolved` (F3-R2B, case b/g): a fresh
+  `ConnectContext` is refused (`ErrSessionUnresolved`) while the worker is
+  unresolved and succeeds-in-fence-clearing once it terminates.
+- `TestControlDisconnectBetweenAdmissionAndSendBlocksLateStart` (F3-R2A, case d):
+  a not-yet-transmitted worker is a definite NOT_SENT after teardown (no
+  transmission, no quarantine).
+- `TestControlQuarantineAdmissionAtomic` (F3-R2B, case f): 32 concurrent controls
+  after an UNKNOWN are all refused `ErrControlQuarantined` with zero additional
+  transmissions.
+- `blockingSendTransport` extended to count sends (`sendCount`).
+
+`pkg/dnp3/master/control_safety_test.go`:
+- `TestConnectDeadlineBoundsBlockingDialNoContext` (F2-R2, case a): with
+  `context.Background()` and a dial that blocks past the 150 ms budget, `Connect`
+  returns `dnp3.ErrTimeout` near budget, leaves `Disconnected`, and a late worker
+  completion does not commit `Active`.
+
+### 22.3 Permitted offline gates actually run (this checkout, `go1.22.12`)
+
+Environment: `GOPROXY=off` (offline; module cache present). Working tree =
+HEAD `9979c6c` + the four modified files below.
+
+| Command | Result |
+|---|---|
+| `gofmt -l .` | PASS (empty) |
+| `git diff --check` | PASS (clean) |
+| `go vet ./internal/master ./pkg/dnp3/master` | PASS (exit 0) |
+| `go build ./internal/master ./pkg/dnp3/master` | PASS (exit 0) |
+| `go test -count=1 -run '^(TestControl…\|TestRead…\|TestOperate…\|TestConnect…\|TestClient…\|TestIntegrityPoll…)$' ./internal/master ./pkg/dnp3/master` | PASS (`internal/master` 0.317s; `pkg/dnp3/master` 1.864s) |
+| `go test -race -count=1` (same selectors, same packages) | PASS (`internal/master` 1.336s; `pkg/dnp3/master` 2.890s) |
+
+**NOT_RUN (prohibited by the addendum item 8):** `go test ./...`,
+`go build ./...` (workspace-wide), `./scripts/verify-mvp.sh`,
+`./scripts/verify-external-mvp.sh`, `test/integration`, any real/simulated
+TCP/DNP3 peer, listener, session, CROB/operate execution, network/OT access,
+dependency download, CI/PR, merge/rebase. Selectors were individually inspected
+to perform no network/peer activity before running.
+
+### 22.4 Files changed and SHA-256 (working-tree content, this checkout)
+
+| File | SHA-256 |
+|---|---|
+| `internal/master/master.go` | `e72a7349e710da400286eb8cc2bce0d1352f065bd355e93dd0d6bded4aaeeaed` |
+| `pkg/dnp3/master/client.go` | `f83779274d669849d795ea83c2be1d35236ad3455433e437a5e6d6121c3ab021` |
+| `internal/master/control_safety_test.go` | `6063126c5a3d6cfa15e13167b770b7f0f9b43fa16aa536d3af9288b9fba92eaf` |
+| `pkg/dnp3/master/control_safety_test.go` | `d056c1dd04a4336922e6ab9d805df0f5c81c62880fe489990f541de1641dd358` |
+| `pkg/transport/tcp.go` | unchanged (`7a67dbda4ee26d46a9992fa4d67d003513f47e2dae7fc62dea16e85b78431bf5`) |
+
+Diff summary: `4 files changed, 512 insertions(+), 113 deletions(-)`.
+
+### 22.5 Classification, limitations and unresolved claims
+
+Classification: **`B4_SAFETY_CORRECTION_PASS` (Go offline safety readiness
+only)** for the second corrective scope. This supersedes, and truthfully
+reconciles, the earlier JR-reported `B4_SAFETY_CORRECTION_PASS` as a
+**historical reported assertion** (now reinforced by the F2-R2/F3-R2A/F3-R2B
+barriers). It is **not** independent acceptance and **not** `B4_SAFETY_PASS`.
+
+**Unresolved / NOT_TESTED (unchanged boundary).**
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED**.
+- An **uncooperative custom transport** whose `Send`/dial cannot be aborted keeps
+  the fail-closed gate/fence held for as long as the worker blocks; this is the
+  intended fail-closed behavior, not proof of hard worker termination. Real
+  `TCPTransport` dials are cancellable via `Close` (pre-existing), but real-wire
+  latency/semantics remain **NOT_TESTED**.
+- Baseline object `f87fde1…` absent in this shallow clone (see above).
+- Go offline readiness only; **not** Gate B acceptance, not interoperability, not
+  certification.
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. **No protocol execution
+occurred in this corrective pass. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

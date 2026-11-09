@@ -391,6 +391,8 @@ func TestControlNoLateReplayAfterOutcome(t *testing.T) {
 // It records that a send was entered so a test can prove the worker is blocked
 // mid-send and that the fail-closed gate stays held.
 type blockingSendTransport struct {
+	mu        sync.Mutex
+	sends     int
 	entered   chan struct{}
 	releaseCh chan struct{}
 	once      sync.Once
@@ -401,6 +403,9 @@ func newBlockingSendTransport() *blockingSendTransport {
 }
 
 func (t *blockingSendTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.mu.Unlock()
 	t.once.Do(func() { close(t.entered) })
 	<-t.releaseCh
 	return nil
@@ -408,6 +413,11 @@ func (t *blockingSendTransport) Send(data []byte) error {
 func (t *blockingSendTransport) SetTimeout(ms int)        {}
 func (t *blockingSendTransport) Receive() ([]byte, error) { return nil, errors.New("no response") }
 func (t *blockingSendTransport) release()                 { close(t.releaseCh) }
+func (t *blockingSendTransport) sendCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.sends
+}
 
 // TestControlWorkerGateHeldWhileBlockedSend (F3) proves the control gate stays
 // held while a worker is blocked in an uncooperative send: a second control is
@@ -558,5 +568,184 @@ func TestControlAmbiguousSendFailureQuarantines(t *testing.T) {
 	}
 	if !m.IsQuarantined(1) {
 		t.Fatal("an ambiguous send failure must quarantine the outstation")
+	}
+}
+
+// TestControlDisconnectDuringBlockedSendFencesOutstation (F3-R2A/R2B) proves the
+// send-admission/teardown linearization: while a worker is blocked mid-Send, a
+// Disconnect must (a) fence the outstation as unresolved (the in-flight send is
+// ambiguous), (b) quarantine it, and (c) keep a fresh control refused — so no
+// late or replacement send can occur. After the worker terminates the unresolved
+// fence is lifted, but the quarantine persists.
+func TestControlDisconnectDuringBlockedSendFencesOutstation(t *testing.T) {
+	tr := newBlockingSendTransport()
+	m := newControlMaster(t, tr)
+
+	type res struct {
+		status CommandStatus
+		err    error
+	}
+	done := make(chan res, 1)
+	go func() {
+		s, err := m.OperateWithStatusContext(context.Background(), 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(2*time.Second))
+		done <- res{s, err}
+	}()
+
+	select {
+	case <-tr.entered:
+	case <-time.After(time.Second):
+		t.Fatal("control send never entered")
+	}
+
+	// The send is in flight: tear the session down. The outstation must be fenced
+	// as unresolved and quarantined because the send outcome is now ambiguous.
+	if err := m.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if !m.sessionUnresolvedFor(1) {
+		t.Fatal("Disconnect during an in-flight send must fence the outstation as unresolved")
+	}
+	if !m.IsQuarantined(1) {
+		t.Fatal("Disconnect during an in-flight send must quarantine the outstation")
+	}
+	if m.anySessionUnresolved() == false {
+		t.Fatal("a fresh connect must be refused while a worker is unresolved")
+	}
+	m.SetState(StateInitialized)
+
+	// A fresh control is refused before any transmission (still gated).
+	if _, err := m.OperateWithStatusContext(context.Background(), 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second)); err == nil {
+		t.Fatal("control after teardown-during-send must be refused")
+	}
+	if got := tr.sendCount(); got != 1 {
+		t.Fatalf("no second transmission is allowed; sends = %d, want 1", got)
+	}
+
+	// Let the blocked send complete; the worker terminates, lifting the unresolved
+	// fence (but never the quarantine).
+	tr.release()
+	if r := <-done; !errors.Is(r.err, ErrControlOutcomeUnknown) {
+		t.Fatalf("worker result err = %v, want ErrControlOutcomeUnknown", r.err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for m.sessionUnresolvedFor(1) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if m.sessionUnresolvedFor(1) {
+		t.Fatal("unresolved fence must be lifted once the worker terminates")
+	}
+	if !m.IsQuarantined(1) {
+		t.Fatal("the UNKNOWN quarantine must persist after the worker terminates")
+	}
+}
+
+// TestControlConnectRefusedWhileUnresolved (F3-R2B) proves a fresh Connect is
+// refused fail-closed while a control worker from a torn-down session remains
+// outstanding, so a late send cannot contaminate a replacement session.
+func TestControlConnectRefusedWhileUnresolved(t *testing.T) {
+	tr := newBlockingSendTransport()
+	m := newControlMaster(t, tr)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := m.OperateWithStatusContext(context.Background(), 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(2*time.Second))
+		done <- err
+	}()
+	select {
+	case <-tr.entered:
+	case <-time.After(time.Second):
+		t.Fatal("control send never entered")
+	}
+	if err := m.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+
+	// A fresh connect is refused while the worker is unresolved.
+	if err := m.ConnectContext(context.Background(), time.Second); !errors.Is(err, ErrSessionUnresolved) {
+		t.Fatalf("ConnectContext while unresolved = %v, want ErrSessionUnresolved", err)
+	}
+
+	tr.release()
+	<-done
+	deadline := time.Now().Add(time.Second)
+	for m.anySessionUnresolved() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if m.anySessionUnresolved() {
+		t.Fatal("unresolved fence must clear after the worker terminates")
+	}
+}
+
+// TestControlDisconnectBetweenAdmissionAndSendBlocksLateStart (F3-R2A) proves a
+// worker admitted in one session that has not yet transmitted is a definite
+// NOT_SENT after a Disconnect (the linearization point refuses the send) and
+// does not quarantine the outstation (no send occurred, so the outcome is not
+// ambiguous).
+func TestControlDisconnectBetweenAdmissionAndSendBlocksLateStart(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	gen, release, err := m.AcquireControlGate(1)
+	if err != nil {
+		t.Fatalf("AcquireControlGate: %v", err)
+	}
+	defer release()
+
+	// The worker has not transmitted yet. Tear the session down first.
+	if err := m.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	m.SetState(StateInitialized)
+
+	if _, err := m.OperateWithStatusGated(context.Background(), gen, 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second)); err == nil {
+		t.Fatal("a stale-session control must be refused at the admission point")
+	}
+	if got := tr.sendCount(); got != 0 {
+		t.Fatalf("a stale-session control must not transmit; sends = %d", got)
+	}
+	if m.IsQuarantined(1) {
+		t.Fatal("a definite pre-send (not-yet-transmitted) failure must not quarantine")
+	}
+}
+
+// TestControlQuarantineAdmissionAtomic (F3-R2B) proves UNKNOWN admission is
+// atomic: a quarantine established concurrently with worker admission can never
+// allow a second send. Once quarantined, a fresh admission is refused before any
+// transmission even under concurrent attempts.
+func TestControlQuarantineAdmissionAtomic(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	// Establish the UNKNOWN quarantine.
+	if _, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn)); !errors.Is(err, ErrControlOutcomeUnknown) {
+		t.Fatalf("first control = %v, want ErrControlOutcomeUnknown", err)
+	}
+	base := tr.sendCount()
+	if base != 1 {
+		t.Fatalf("first control sends = %d, want 1", base)
+	}
+
+	// Concurrently attempt many further controls: all must be refused by the
+	// quarantine and none may transmit.
+	const n = 32
+	var wg sync.WaitGroup
+	wg.Add(n)
+	refused := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
+			refused <- err
+		}()
+	}
+	wg.Wait()
+	close(refused)
+	for err := range refused {
+		if !errors.Is(err, ErrControlQuarantined) {
+			t.Fatalf("concurrent control error = %v, want ErrControlQuarantined", err)
+		}
+	}
+	if got := tr.sendCount(); got != base {
+		t.Fatalf("a quarantined outstation transmitted %d extra controls; sends = %d, want %d", got-base, got, base)
 	}
 }

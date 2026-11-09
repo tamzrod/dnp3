@@ -494,6 +494,12 @@ type client struct {
 	// Reads it issues must not themselves trigger a nested auto-poll even if
 	// their responses also carry the DeviceRestart bit. Guarded by c.mu.
 	autoIntegrityActive bool
+
+	// connectGen is bumped at each public Connect entry (VEC-01 B4 F2-R2). A
+	// connect attempt is identified by the generation it captured at entry; a
+	// superseded attempt must not mutate client state or place a late socket
+	// into a replacement session. Guarded by c.mu.
+	connectGen uint64
 }
 
 // sendAndReceive sends a request and receives a response, returning parsed data
@@ -639,23 +645,46 @@ func (c *client) Connect(ctx context.Context) error {
 		deadline = dl
 	}
 
+	// VEC-01 B4 F2-R2: identify this attempt so a superseded attempt cannot
+	// commit success or leave a late socket in a replacement session.
+	c.mu.Lock()
+	c.connectGen++
+	gen := c.connectGen
+	c.mu.Unlock()
+
 	// Run the blocking connect steps on a goroutine so we can race them
-	// against ctx.Done(). The goroutine owns the transport/master for the
-	// duration of the attempt.
+	// against ctx.Done() AND the whole-connect deadline. The goroutine owns
+	// the transport/master for the duration of the attempt.
 	type connectResult struct{ err error }
 	done := make(chan connectResult, 1)
 	go func() {
 		done <- connectResult{err: c.connectBlocking(ctx, deadline)}
 	}()
 
+	// The attempt is bounded by the earlier of the caller's context and the
+	// whole-connect deadline. Bounding on the deadline (not only ctx.Done())
+	// makes Connect fail timely even for context.Background() and an
+	// uncooperative transport whose dial blocks beyond budget. Teardown is
+	// best-effort and the superseded worker stays fenced by its attempt
+	// generation, so it cannot place a late socket into a replacement session.
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		// Caller cancelled. Tear down anything the goroutine may have stood up
-		// so no live connection remains, then mark the client disconnected.
-		c.abortConnect()
+		c.abortConnect(gen)
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case <-timer.C:
+		c.abortConnect(gen)
+		return fmt.Errorf("%w: connect budget exhausted", dnp3.ErrTimeout)
 	case res := <-done:
 		c.mu.Lock()
+		if gen != c.connectGen {
+			// A newer attempt (or an explicit Disconnect) superseded this one;
+			// do not commit its result.
+			c.mu.Unlock()
+			c.emitLog(LogWarn, "connect", "superseded connect attempt", nil)
+			return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
+		}
 		if res.err != nil {
 			c.state = dnp3.StateError
 		} else {
@@ -727,15 +756,23 @@ func (c *client) connectBlocking(ctx context.Context, deadline time.Time) error 
 	return nil
 }
 
-// abortConnect is invoked when Connect observes ctx cancellation. It tears down
-// any transport/master resources the background connect may have established
-// and resets the client state to Disconnected. Best-effort: errors are ignored
-// because the caller is already returning a cancellation error.
-func (c *client) abortConnect() {
-	c.cleanupConnect()
+// abortConnect is invoked when Connect observes ctx cancellation or the
+// whole-connect budget being exhausted. It bumps the attempt generation so any
+// in-flight worker is superseded (its late completion cannot commit), resets
+// the client state to Disconnected, and tears down any transport/master the
+// attempt may have stood up. Best-effort: teardown errors are ignored because
+// the caller is already returning a failure.
+func (c *client) abortConnect(gen uint64) {
 	c.mu.Lock()
+	if gen == c.connectGen {
+		c.connectGen++
+	}
 	c.state = dnp3.StateDisconnected
 	c.mu.Unlock()
+	// The teardown itself is bounded for the real transport (Close aborts a
+	// stuck dial) and for an uncooperative transport Close returns without
+	// blocking; the superseded worker stays fenced by its attempt generation.
+	c.cleanupConnect()
 }
 
 // cleanupConnect closes the internal master and transport, swallowing errors.
@@ -753,6 +790,11 @@ func (c *client) cleanupConnect() {
 // client state is still reset to Disconnected so it is not left stuck in a
 // connecting/active state; the background teardown completes best-effort.
 func (c *client) Disconnect(ctx context.Context) error {
+	// VEC-01 B4 F2-R2: supersede any in-flight connect attempt so a late
+	// completion cannot commit Active after an explicit teardown.
+	c.mu.Lock()
+	c.connectGen++
+	c.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		// Even on a pre-cancelled context, reset state so the client is not
 		// left in an indeterminate state.

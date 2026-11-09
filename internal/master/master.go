@@ -436,6 +436,13 @@ var (
 	// F3). It is distinct from a definite pre-send failure and from an explicit
 	// remote rejection (which is a valid response carrying a failure status).
 	ErrControlOutcomeUnknown = errors.New("control outcome unknown")
+
+	// ErrSessionUnresolved indicates the outstation has an outstanding control
+	// worker (e.g. blocked in an uncooperative Send) whose session was torn
+	// down. A fresh Connect or control admission for that outstation is refused
+	// fail-closed until the worker terminates, so a late send cannot contaminate
+	// a replacement session (VEC-01 B4 F3 second corrective addendum).
+	ErrSessionUnresolved = errors.New("session unresolved: prior control worker outstanding")
 )
 
 // RetryClass classifies a transport/protocol error to drive the retry policy
@@ -707,41 +714,54 @@ type Master struct {
 	// public Read path, resolved from Config.ReadTimeout.
 	readTimeout time.Duration
 
-	// quarantine tracks per-outstation control-safety quarantine state
-	// (VEC-01 B4 F3). An outstation is quarantined when a control's outcome is
+	// safetyMu guards the per-outstation control-safety state (VEC-01 B4
+	// F2/F3 second corrective addendum): quarantine, control-worker gates,
+	// the session generation and the unresolved-worker fence. A single lock
+	// makes UNKNOWN/quarantine state, worker admission and the session-validity
+	// check ONE atomic decision, so a quarantine established by an
+	// ambiguous/cancelled control cannot race with a fresh admission and a
+	// worker admitted in one session cannot transmit after that session's
+	// teardown has linearized. safetyMu is a leaf lock: it is never held across
+	// a possibly-blocking transport Send, nor while acquiring
+	// reqMu/outstandingMu/mu, so admission cannot deadlock the request path.
+	safetyMu sync.Mutex
+	// quarantine tracks per-outstation control-safety quarantine state. An
+	// outstation is quarantined when a control's outcome is
 	// UNKNOWN/indeterminate (cancellation, deadline, disconnect after a
 	// possible send, or a malformed/missing response). While quarantined, no
 	// new control may be issued and the quarantine is PERSISTENT: it is never
 	// released automatically by Disconnect, reconnect, a failed connect, late
-	// worker completion or request-marker cleanup (VEC-01 B4 F2/F3 corrective
-	// addendum). Without a separately owner-approved reconciliation protocol an
-	// UNKNOWN outcome stays quarantined indefinitely.
-	// Guarded by quarantineMu, which is independent of reqMu so the state can
-	// be read/updated without touching the request serialization locks.
-	quarantine   map[uint16]bool
-	quarantineMu sync.Mutex
-
-	// controlMu guards controlGates and sessionGen. It is a leaf lock: it is
-	// never held while acquiring reqMu, quarantineMu or mu, so a control
-	// admission check cannot deadlock against the request path.
-	controlMu sync.Mutex
-	// controlGates tracks per-outstation control-worker ownership (VEC-01 B4
-	// F3). A non-idempotent control is admitted only when no worker is active
-	// for the outstation; the worker records the session generation it began
-	// in so a stale worker from a torn-down session cannot send through a
-	// reconnected one.
+	// worker completion or request-marker cleanup. Without a separately
+	// owner-approved reconciliation protocol an UNKNOWN outcome stays
+	// quarantined indefinitely.
+	quarantine map[uint16]bool
+	// controlGates tracks per-outstation control-worker ownership. A
+	// non-idempotent control is admitted only when no worker is active for the
+	// outstation; the worker records the session generation it began in so a
+	// stale worker from a torn-down session cannot send through a reconnected
+	// one. A gate is removed from the map once it is fully idle (no active
+	// worker, no in-flight send) so the map cannot grow unbounded.
 	controlGates map[uint16]*controlGate
 	// sessionGen is bumped on every Disconnect so a control worker started in a
 	// previous session can detect that its session is gone and refuse to send.
 	sessionGen uint64
+	// sessionUnresolved records outstation IDs for which a control worker
+	// remains outstanding (e.g. blocked in an uncooperative Send) after its
+	// session was torn down. Until that worker terminates, a fresh
+	// Connect/admission for the outstation is refused fail-closed so a late
+	// send cannot contaminate a replacement session. Guarded by safetyMu.
+	sessionUnresolved map[uint16]bool
 }
 
-// controlGate records the control-worker ownership of a single outstation
-// (VEC-01 B4 F3). active is true while a control worker holds the gate; gen is
-// the session generation in which that worker began.
+// controlGate records the control-worker ownership of a single outstation.
+// active is true while a control worker holds the gate; gen is the session
+// generation in which that worker began; sending is true while an admitted
+// transmission is in flight (so teardown can fence a possible send and the
+// gate is retained until the send completes). Guarded by safetyMu.
 type controlGate struct {
-	active bool
-	gen    uint64
+	active  bool
+	sending bool
+	gen     uint64
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -801,20 +821,21 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:         config,
-		state:          StateDisconnected,
-		outstations:    make(map[uint16]*Outstation),
-		fragmenter:     tl.NewFragmenter(),
-		reassembler:    tl.NewReassembler(),
-		retryPolicy:    DefaultRetryPolicy(config),
-		outstanding:    make(map[uint16]struct{}),
-		idleTimeout:    time.Duration(config.IdleTimeout) * time.Millisecond,
-		confirmTimeout: confirmTimeoutFromConfig(config),
-		connectTimeout: connectTimeoutFromConfig(config),
-		operateTimeout: operateTimeoutFromConfig(config),
-		readTimeout:    readTimeoutFromConfig(config),
-		quarantine:     make(map[uint16]bool),
-		controlGates:   make(map[uint16]*controlGate),
+		config:            config,
+		state:             StateDisconnected,
+		outstations:       make(map[uint16]*Outstation),
+		fragmenter:        tl.NewFragmenter(),
+		reassembler:       tl.NewReassembler(),
+		retryPolicy:       DefaultRetryPolicy(config),
+		outstanding:       make(map[uint16]struct{}),
+		idleTimeout:       time.Duration(config.IdleTimeout) * time.Millisecond,
+		confirmTimeout:    confirmTimeoutFromConfig(config),
+		connectTimeout:    connectTimeoutFromConfig(config),
+		operateTimeout:    operateTimeoutFromConfig(config),
+		readTimeout:       readTimeoutFromConfig(config),
+		quarantine:        make(map[uint16]bool),
+		controlGates:      make(map[uint16]*controlGate),
+		sessionUnresolved: make(map[uint16]bool),
 	}
 }
 
@@ -985,12 +1006,18 @@ func (m *Master) HasOutstandingRequest(outstationID uint16) bool {
 	return ok
 }
 
+// quarantineOutstationLocked marks outstationID as control-quarantined under
+// safetyMu. The caller must hold safetyMu.
+func (m *Master) quarantineOutstationLocked(outstationID uint16) {
+	m.quarantine[outstationID] = true
+}
+
 // quarantineOutstation marks outstationID as control-quarantined because a
 // control's outcome is UNKNOWN/indeterminate (VEC-01 B4 F3).
 func (m *Master) quarantineOutstation(outstationID uint16) {
-	m.quarantineMu.Lock()
-	m.quarantine[outstationID] = true
-	m.quarantineMu.Unlock()
+	m.safetyMu.Lock()
+	m.quarantineOutstationLocked(outstationID)
+	m.safetyMu.Unlock()
 }
 
 // clearQuarantine releases the control-safety quarantine for outstationID. It
@@ -1000,9 +1027,9 @@ func (m *Master) quarantineOutstation(outstationID uint16) {
 // possibly-executed control. It exists only for a future explicitly approved
 // reconciliation path and for tests that need a clean slate.
 func (m *Master) clearQuarantine(outstationID uint16) {
-	m.quarantineMu.Lock()
+	m.safetyMu.Lock()
 	delete(m.quarantine, outstationID)
-	m.quarantineMu.Unlock()
+	m.safetyMu.Unlock()
 }
 
 // ClearQuarantine releases the control-safety quarantine for outstationID. It
@@ -1026,31 +1053,29 @@ func (m *Master) QuarantineOutstation(outstationID uint16) {
 // IsQuarantined reports whether outstationID is currently control-quarantined
 // (VEC-01 B4 F3). Exposed for tests and diagnostics.
 func (m *Master) IsQuarantined(outstationID uint16) bool {
-	m.quarantineMu.Lock()
-	defer m.quarantineMu.Unlock()
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
 	return m.quarantine[outstationID]
 }
 
-// currentSessionGen returns the current session generation under controlMu.
-func (m *Master) currentSessionGen() uint64 {
-	m.controlMu.Lock()
-	defer m.controlMu.Unlock()
-	return m.sessionGen
-}
-
 // acquireControlGate admits a single non-idempotent control for outstationID
-// (VEC-01 B4 F3). It fails closed if the outstation is quarantined (UNKNOWN
-// outcome outstanding) or if a control worker is already active. On success it
-// records the current session generation so a later session change can be
-// detected, and returns the generation plus a release function the worker must
+// (VEC-01 B4 F3 second corrective addendum). Under one safetyMu critical
+// section it atomically (a) refuses admission when the outstation is
+// quarantined (UNKNOWN outcome outstanding), when another worker holds the gate,
+// or when the outstation has an unresolved worker from a torn-down session, and
+// (b) records the current session generation so a later session change can be
+// detected. It returns the generation plus a release function the worker must
 // call when it terminates. The release function clears the active flag but
 // NEVER releases a quarantine — an UNKNOWN outcome persists independently.
 func (m *Master) acquireControlGate(outstationID uint16) (uint64, func(), error) {
-	if m.IsQuarantined(outstationID) {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	if m.quarantine[outstationID] {
 		return 0, nil, fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
 	}
-	m.controlMu.Lock()
-	defer m.controlMu.Unlock()
+	if m.sessionUnresolved[outstationID] {
+		return 0, nil, fmt.Errorf("%w: 0x%04X", ErrSessionUnresolved, outstationID)
+	}
 	g, ok := m.controlGates[outstationID]
 	if !ok {
 		g = &controlGate{}
@@ -1063,32 +1088,78 @@ func (m *Master) acquireControlGate(outstationID uint16) (uint64, func(), error)
 	g.gen = m.sessionGen
 	gen := g.gen
 	release := func() {
-		m.controlMu.Lock()
+		m.safetyMu.Lock()
 		if cg, ok := m.controlGates[outstationID]; ok {
 			cg.active = false
+			if !cg.sending {
+				delete(m.controlGates, outstationID)
+			}
 		}
-		m.controlMu.Unlock()
+		// The worker has terminated, so it is no longer an outstanding worker
+		// for a torn-down session: lift the unresolved fence (but never a
+		// quarantine).
+		delete(m.sessionUnresolved, outstationID)
+		m.safetyMu.Unlock()
 	}
 	return gen, release, nil
 }
 
-// sessionStillCurrent reports whether gen is still the current session
-// generation (VEC-01 B4 F3). A control worker uses it immediately before any
-// transmission to refuse to send through a session that has been torn down and
-// possibly replaced.
-func (m *Master) sessionStillCurrent(gen uint64) bool {
-	m.controlMu.Lock()
-	defer m.controlMu.Unlock()
-	return gen == m.sessionGen
+// beginTransmit is the single linearization point for "this worker may
+// transmit through session gen" (VEC-01 B4 F3-R2A). Under safetyMu it verifies
+// that the outstation is not quarantined and that the session is still current,
+// then marks the gate as sending. The check and the marking are atomic with
+// respect to Disconnect (which bumps the session generation under the same
+// lock), so a worker cannot START a transmission after its session's teardown
+// has linearized. A nil error means the send is admitted; callers must pair it
+// with endTransmit. A non-nil error is a definite NOT_SENT refusal.
+func (m *Master) beginTransmit(gen uint64, outstationID uint16) error {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	if m.quarantine[outstationID] {
+		return fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
+	}
+	if gen != m.sessionGen {
+		return fmt.Errorf("%w: session changed before control send", ErrOperationDeadlineExceeded)
+	}
+	g, ok := m.controlGates[outstationID]
+	if !ok {
+		g = &controlGate{}
+		m.controlGates[outstationID] = g
+	}
+	g.sending = true
+	return nil
 }
 
-// hasActiveControl reports whether a control worker currently holds the gate
-// for outstationID (VEC-01 B4 F3). Used for diagnostics/tests.
-func (m *Master) hasActiveControl(outstationID uint16) bool {
-	m.controlMu.Lock()
-	defer m.controlMu.Unlock()
-	g, ok := m.controlGates[outstationID]
-	return ok && g.active
+// endTransmit clears the in-flight send marker under safetyMu and drops the
+// gate if the worker has also released it (so the gate map does not grow
+// unbounded). Safe to call only after a beginTransmit that returned true.
+func (m *Master) endTransmit(outstationID uint16) {
+	m.safetyMu.Lock()
+	if g, ok := m.controlGates[outstationID]; ok {
+		g.sending = false
+		if !g.active {
+			delete(m.controlGates, outstationID)
+		}
+	}
+	m.safetyMu.Unlock()
+}
+
+// anySessionUnresolved reports whether any outstation has an unresolved control
+// worker from a torn-down session (VEC-01 B4 F3-R2B). A fresh Connect is
+// refused while this is true.
+func (m *Master) anySessionUnresolved() bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	return len(m.sessionUnresolved) > 0
+}
+
+// sessionUnresolvedFor reports whether outstationID has an unresolved control
+// worker from a torn-down session (VEC-01 B4 F3-R2B). Exposed for
+// tests/diagnostics.
+func (m *Master) sessionUnresolvedFor(outstationID uint16) bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	return m.sessionUnresolved[outstationID]
 }
 
 // HasActiveControl reports whether a control worker currently holds the gate
@@ -1096,7 +1167,10 @@ func (m *Master) hasActiveControl(outstationID uint16) bool {
 // supervising caller can observe that a worker is still active (e.g. blocked in
 // an uncooperative transport) and that the fail-closed gate remains held.
 func (m *Master) HasActiveControl(outstationID uint16) bool {
-	return m.hasActiveControl(outstationID)
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	g, ok := m.controlGates[outstationID]
+	return ok && (g.active || g.sending)
 }
 
 // recordActivity stamps lastActivity to now under mu (DNP3-042). Called on
@@ -1301,6 +1375,13 @@ func (m *Master) ConnectContext(ctx context.Context, budget time.Duration) error
 	}
 	if budget <= 0 {
 		budget = m.connectTimeout
+	}
+	// VEC-01 B4 F3-R2B: refuse a fresh connect while a control worker from a
+	// torn-down session remains outstanding for any registered outstation. A
+	// late send from that worker must not be able to contaminate the new
+	// session; the caller must wait for it to terminate (or restart) first.
+	if m.anySessionUnresolved() {
+		return fmt.Errorf("%w: connect refused while a prior control worker is outstanding", ErrSessionUnresolved)
 	}
 	connectDeadline := time.Now().Add(budget)
 	effective := connectDeadline
@@ -1612,18 +1693,35 @@ func (m *Master) Disconnect() error {
 	// the unconditional teardown path, so it bypasses the transition table.
 	m.mu.Lock()
 	m.state = StateDisconnected
-	m.mu.Unlock()
-	// VEC-01 B4 F2/F3 corrective addendum: bump the session generation so any
-	// in-flight control worker started in the previous session can detect that
-	// its session is gone and refuse to transmit through a reconnected session.
-	// The control-safety quarantine is deliberately NOT cleared here: an UNKNOWN
-	// outcome of a possibly-executed control persists across Disconnect,
-	// reconnect and late worker completion. Releasing it requires a separately
-	// owner-approved explicit reconciliation protocol.
-	m.controlMu.Lock()
-	m.sessionGen++
-	m.controlMu.Unlock()
+	// Registered outstations are dropped on teardown; assign under mu so a
+	// concurrent teardown (e.g. a bounded connect's cleanup racing the caller)
+	// cannot race this map write.
 	m.outstations = make(map[uint16]*Outstation)
+	m.mu.Unlock()
+	// VEC-01 B4 F3-R2A/R2B: bump the session generation under safetyMu so the
+	// final session-validity check and admission to transmit (beginTransmit)
+	// share one linearization point with this teardown. Any worker still active
+	// or with a send in flight for an outstation is fenced as unresolved: a
+	// fresh Connect/admission for that outstation is refused fail-closed until
+	// the worker terminates, so a late send cannot contaminate a replacement
+	// session. The control-safety quarantine is deliberately NOT cleared here:
+	// an UNKNOWN outcome of a possibly-executed control persists across
+	// Disconnect, reconnect and late worker completion. Releasing it requires a
+	// separately owner-approved explicit reconciliation protocol.
+	m.safetyMu.Lock()
+	m.sessionGen++
+	for id, g := range m.controlGates {
+		if g.active || g.sending {
+			// Fence any outstanding worker so it cannot transmit into a
+			// replacement session; quarantine only when a send was actually in
+			// flight (an idle, not-yet-sent worker is a definite NOT_SENT).
+			m.sessionUnresolved[id] = true
+			if g.sending {
+				m.quarantine[id] = true
+			}
+		}
+	}
+	m.safetyMu.Unlock()
 	return nil
 }
 
@@ -1863,26 +1961,25 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 	m.reqMu.Lock()
 	defer m.reqMu.Unlock()
 
-	// Re-check quarantine under the request lock so a quarantine established by
-	// a concurrently cancelled control is observed before this send.
-	if m.IsQuarantined(outstationID) {
-		return CommandStatusUnknown, fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
-	}
-
-	// F3: refuse to transmit if the caller has already cancelled or the session
-	// was torn down/replaced between admission and this send. Both are definite
-	// pre-send (NOT_SENT) conditions: nothing has been transmitted.
+	// F3: refuse to transmit if the caller has already cancelled. This is a
+	// definite pre-send (NOT_SENT) condition: nothing has been transmitted.
 	if err := ctx.Err(); err != nil {
 		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrOperationDeadlineExceeded, err)
 	}
-	if !m.sessionStillCurrent(gen) {
-		return CommandStatusUnknown, fmt.Errorf("%w: session changed before control send", ErrOperationDeadlineExceeded)
-	}
-
 	if m.deadlineExpired(deadline) {
 		// Definite pre-send failure: nothing was transmitted.
 		return CommandStatusUnknown, ErrOperationDeadlineExceeded
 	}
+
+	// F3-R2A: the final session-validity decision and admission to transmit is
+	// ONE linearization point shared with Disconnect (beginTransmit). A worker
+	// whose session was torn down, or an outstation now quarantined, is refused
+	// here BEFORE any send. The in-flight marker stays set for the whole
+	// single-shot transmission so teardown can fence a possible send.
+	if err := m.beginTransmit(gen, outstationID); err != nil {
+		return CommandStatusUnknown, err
+	}
+	defer m.endTransmit(outstationID)
 
 	seq := m.nextSequence(outstationID)
 	req.Control.Seq = seq

@@ -562,3 +562,74 @@ func TestConnectSlowDialSharesOneBudget(t *testing.T) {
 		t.Fatalf("Connect took %v; the dial and handshake must share the 200ms budget", elapsed)
 	}
 }
+
+// lateDialTransport blocks in Connect until releaseCh is closed, then reports a
+// successful dial; Receive then stalls. It models an uncooperative transport
+// whose dial exceeds the whole-connect budget and only completes afterwards, so
+// a test can prove the public Connect fails timely under a deadline even with
+// context.Background() and that the late worker cannot commit Active.
+type lateDialTransport struct {
+	entered   chan struct{}
+	releaseCh chan struct{}
+	once      sync.Once
+}
+
+func newLateDialTransport() *lateDialTransport {
+	return &lateDialTransport{entered: make(chan struct{}), releaseCh: make(chan struct{})}
+}
+func (t *lateDialTransport) Listen() error          { return nil }
+func (t *lateDialTransport) Accept() error          { return nil }
+func (t *lateDialTransport) Close() error           { return nil }
+func (t *lateDialTransport) Send(data []byte) error { return nil }
+func (t *lateDialTransport) SetTimeout(ms int)      {}
+func (t *lateDialTransport) Connect() error {
+	t.once.Do(func() { close(t.entered) })
+	<-t.releaseCh
+	return nil
+}
+func (t *lateDialTransport) Receive() ([]byte, error) {
+	time.Sleep(50 * time.Millisecond)
+	return nil, errors.New("no handshake response")
+}
+func (t *lateDialTransport) release() { close(t.releaseCh) }
+
+// TestConnectDeadlineBoundsBlockingDialNoContext (VEC-01 B4 F2-R2) proves the
+// public Connect is bounded by the whole-connect deadline even with
+// context.Background() and an uncooperative dial that blocks past the budget:
+// it returns near the budget with a timeout sentinel rather than hanging, and
+// leaves the client Disconnected. A late worker completion must not commit
+// Active.
+func TestConnectDeadlineBoundsBlockingDialNoContext(t *testing.T) {
+	tr := newLateDialTransport()
+	c, err := NewClient(NewConfig(WithConnectTimeout(150 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cc := c.(*client)
+	cc.transport = tr
+	cc.internalMaster.SetTransport(&transportAdapter{Handler: tr})
+
+	start := time.Now()
+	err = cc.Connect(context.Background())
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected connect to fail closed when the budget is exceeded")
+	}
+	if !errors.Is(err, dnp3.ErrTimeout) {
+		t.Fatalf("Connect error = %v, want ErrTimeout (budget exhausted)", err)
+	}
+	if elapsed > 600*time.Millisecond {
+		t.Fatalf("Connect took %v; a blocking dial must be bounded by the 150ms budget", elapsed)
+	}
+	if cc.State() != dnp3.StateDisconnected {
+		t.Fatalf("state = %v, want Disconnected after a bounded connect", cc.State())
+	}
+
+	// Let the late worker finish; it must not commit Active.
+	tr.release()
+	time.Sleep(100 * time.Millisecond)
+	if cc.State() != dnp3.StateDisconnected {
+		t.Fatalf("state = %v after late worker completion, want Disconnected (fenced)", cc.State())
+	}
+}

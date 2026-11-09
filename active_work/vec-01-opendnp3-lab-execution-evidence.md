@@ -444,3 +444,48 @@ fail-closed behavior, not proof of hard termination). Full detail:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 22. B4 F2/F3 second corrective — offline Go checkpoint (2026-11-09)
+
+Owner-authorized "B4 F2/F3 second corrective CWAL" executed offline on `work`
+at HEAD `9979c6c` (this clone is shallow; named baseline `f87fde1…` is absent —
+recorded as a limitation). **Offline Go correction only; no protocol execution.**
+
+**Corrections.** F2-R2: public `Connect(ctx)` now races the worker against both
+`ctx.Done()` and the whole-connect deadline, so an uncooperative dial fails
+timely even for `context.Background()`; a per-attempt `connectGen` fences a
+superseded worker from committing `Active` or placing a late socket in a
+replacement session. F3-R2A: `beginTransmit` is the single linearization point
+(safety lock) making the final session-validity decision and send admission
+atomic with `Disconnect`, so no send can start after teardown. F3-R2B: one
+`safetyMu` leaf lock makes quarantine and worker admission one atomic decision;
+`Disconnect` fences outstanding workers and quarantines only in-flight sends;
+fresh `Connect` is refused (`ErrSessionUnresolved`) while a worker is unresolved;
+quarantine persists across `Disconnect`/reconnect/late completion. A latent
+`Disconnect` map-write race was moved under `mu`. `pkg/transport/tcp.go`
+unchanged.
+
+**New deterministic offline tests (no sockets):**
+`TestControlDisconnectDuringBlockedSendFencesOutstation`,
+`TestControlConnectRefusedWhileUnresolved`,
+`TestControlDisconnectBetweenAdmissionAndSendBlocksLateStart`,
+`TestControlQuarantineAdmissionAtomic` (internal/master);
+`TestConnectDeadlineBoundsBlockingDialNoContext` (pkg/dnp3/master).
+
+**Files:** `internal/master/master.go`, `pkg/dnp3/master/client.go`,
+`internal/master/control_safety_test.go`, `pkg/dnp3/master/control_safety_test.go`.
+
+**Permitted offline gates (this checkout, `go1.22.12`, `GOPROXY=off`):**
+`gofmt -l .` clean; `git diff --check` clean;
+`go vet ./internal/master ./pkg/dnp3/master` PASS; `go build` (same packages)
+PASS; narrow `go test -count=1` and `go test -race -count=1` selectors PASS.
+**NOT_RUN** (prohibited): `go test ./...`, `verify-mvp.sh`,
+`verify-external-mvp.sh`, `test/integration`, any peer/listener/CROB/network.
+
+**Classification:** `B4_SAFETY_CORRECTION_PASS` (Go offline safety readiness
+only) — reconciles the earlier reported assertion; **not** independent
+acceptance, **not** `B4_SAFETY_PASS`. Lower-level confirmed-link FCB/FCV
+retransmission and physical wire send counts remain NOT_TESTED/UNVERIFIED. Full
+detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §22. Gate B and the CURRENT
+remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

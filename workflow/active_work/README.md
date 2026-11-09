@@ -178,6 +178,31 @@ R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §20–§21 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md`.
 
+### Gate B4 F2/F3 second corrective — offline Go checkpoint (2026-11-09)
+Owner-authorized "B4 F2/F3 second corrective CWAL" executed **offline** on `work`
+at HEAD `9979c6c` (this clone is shallow; the named baseline `f87fde1…` is
+absent — recorded as a limitation). F2-R2: public `Connect(ctx)` races the worker
+against both `ctx.Done()` and the whole-connect deadline (timely failure even for
+`context.Background()`); a per-attempt `connectGen` fences a superseded worker
+from committing `Active` or placing a late socket in a replacement session.
+F3-R2A: `beginTransmit` is a single safety-lock linearization point making the
+final session-validity decision and send admission atomic with `Disconnect` (no
+send can start after teardown). F3-R2B: one `safetyMu` leaf lock makes quarantine
+and worker admission one atomic decision; `Disconnect` fences outstanding workers
+and quarantines only in-flight sends; a fresh `Connect` is refused
+(`ErrSessionUnresolved`) while a worker is unresolved; the quarantine persists
+across `Disconnect`/reconnect/late completion. A latent `Disconnect` map-write
+race was moved under `mu`. `pkg/transport/tcp.go` unchanged. Result:
+**`B4_SAFETY_CORRECTION_PASS` (Go offline safety readiness only)** — reconciles
+the earlier reported assertion; **not** independent acceptance, **not**
+`B4_SAFETY_PASS`. Permitted offline gates PASS (`gofmt -l .` clean,
+`git diff --check`, narrow `go vet`/`go build`/`go test`/`go test -race`);
+`go test ./...`, `verify-mvp.sh`, `verify-external-mvp.sh` and
+`test/integration` remain **NOT_RUN** (prohibited). Overall Gate B and the
+CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §22.
+
 
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
