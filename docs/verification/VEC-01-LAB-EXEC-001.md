@@ -2054,3 +2054,117 @@ CROB/operate, dependency download/install, network/OT access, CI/PR, merge.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 24. Third B4 F2/F3 corrective — independent CWAL execution checkpoint (append-only, 2026-11-09)
+
+**Scope.** Independent execution of the owner-authorized "Third B4 F2/F3
+corrective CWAL" (append-only authorization at the tail of
+`workflow/active_work/VEC-01-LAB-EXEC-001.md`; authorizing commit `453a6eb`,
+named baseline `0e9d4e2e4d66d0bd21e7bb97d61d11a25be323ef`). Offline-only;
+the CURRENT is amended by the owner-authorized actor **before** execution and
+was **not** modified by this pass. This checkpoint appends actual evidence and
+does not convert any historical `NOT_RUN`/`NOT_TESTED` into PASS.
+
+**Disposition: `B4_SAFETY_CORRECTION_INCOMPLETE` — PUSHBACK. No Go source
+changed. CURRENT remains `TASK_BLOCKED`.**
+
+### 24.1 CWAL startup (PASS)
+
+| Check | Result |
+|---|---|
+| `bash scripts/cwal-check.sh` | `CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001 branch=work` |
+| Six markers, `workflow/active_work/README.md` | `Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`, `Branch: work`, `CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED` |
+| Six markers, root `handoff.md` | identical to above |
+| Branch / local vs remote | `work`; `git rev-parse HEAD` == `origin/work` == `git ls-remote origin work` == `44389fb273301604b7e7bfd83edf4e71d795c44d` |
+| Working tree | clean (`git status --porcelain` empty); `git diff --check` clean |
+| `git rev-parse --is-shallow-repository` | `true` |
+| Named baseline `0e9d4e2e…` | **absent** (shallow clone) — recorded limitation; authorizing commit `453a6eb` also absent |
+
+`origin/main` (`bedce42…` per `git ls-remote`) is not a local object in this
+shallow clone, so `main`↔`work` ancestry is **not independently verifiable**
+here (recorded limitation, not a FAIL of CURRENT scope).
+
+### 24.2 Preflight environment (decisive, fail-closed)
+
+Addendum item 6 permits verification **only** offline with all dependencies
+cached and `GOPROXY=off`; item 7 prohibits `go test ./...`, `test/integration`
+selectors, both `verify-*-mvp.sh` scripts, dependency download/installation and
+network access. Measured environment in this runner:
+
+| Probe | Result |
+|---|---|
+| `command -v go` / `gofmt` | **MISSING** |
+| alternate compilers (`gccgo`, `tinygo`, `clang`) | **MISSING** (`gcc` present, not usable for Go) |
+| `find / -name go -o -name gofmt` (type f) | none |
+| GOROOT dirs (`/usr/local/go`, `/usr/lib/go*`, `/opt/go*`, `/snap/go`) | none |
+| module cache (`~/go/pkg/mod`, `/root/go`) | absent (`GOPATH`/`GOMODCACHE` unset) |
+| `vendor/` directory | absent |
+| `/tmp/go*.tar.gz`, `$HOME/toolchain` | absent |
+| `.openhands/setup.sh` | not invoked; its `curl`/`sudo`/`go mod download` steps are prohibited by item 7 |
+| outbound network | reachable (`curl -sSI https://go.dev/dl/…` → 302) but **using it is prohibited** |
+
+Therefore the third corrective's **F2-R3** (unresolved public `Connect` worker
+ownership), **F3-R3** (admitted-send physical-session isolation) and **TEST-R3**
+(deterministic in-memory concurrency proof) could be neither implemented nor
+verified. Per addendum item 8 this fails closed.
+
+### 24.3 Working-tree state (unchanged)
+
+The tree still carries the **second** corrective from §22; recomputed SHA-256 of
+working-tree content matches §22.4/§23.3 exactly:
+
+| File | SHA-256 (this checkout) |
+|---|---|
+| `internal/master/master.go` | `e72a7349e710da400286eb8cc2bce0d1352f065bd355e93dd0d6bded4aaeeaed` |
+| `pkg/dnp3/master/client.go` | `f83779274d669849d795ea83c2be1d35236ad3455433e437a5e6d6121c3ab021` |
+| `pkg/transport/tcp.go` | `7a67dbda4ee26d46a9992fa4d67d003513f47e2dae7fc62dea16e85b78431bf5` (unchanged) |
+| `internal/master/control_safety_test.go` | `6063126c5a3d6cfa15e13167b770b7f0f9b43fa16aa536d3af9288b9fba92eaf` |
+| `pkg/dnp3/master/control_safety_test.go` | `d056c1dd04a4336922e6ab9d805df0f5c81c62880fe489990f541de1641dd358` |
+
+No third-corrective source or test change exists. **No Go file was modified by
+this pass**; the only tracked change is this append-only evidence plus matching
+blocked handoff text. `F2-R3`/`F3-R3`/`TEST-R3` remain
+**NOT_IMPLEMENTED / NOT_TESTED**.
+
+### 24.4 Commands actually run (this pass)
+
+| Command | Result |
+|---|---|
+| `bash scripts/cwal-check.sh` | PASS |
+| `git rev-parse --is-shallow-repository` | `true` |
+| `git rev-parse HEAD` / `origin/work` / `git ls-remote origin work` | `44389fb…` (all match) |
+| `git cat-file -t 0e9d4e2e…` | absent (shallow clone) |
+| `git diff --check` | clean |
+| `git status --porcelain` | empty |
+| `sha256sum` of the five allowlisted files | as §24.3 |
+| `command -v go` / `gofmt`; compiler/dir/cache/vendor probes | toolchain and deps absent |
+
+**NOT_RUN (prohibited or impossible):** `gofmt`, `go vet`, `go build`,
+`go test -count=1` (narrow), `go test -race` (narrow), `go test ./...`,
+`./scripts/verify-mvp.sh`, `./scripts/verify-external-mvp.sh`, `test/integration`,
+any listener/socket/peer, CROB/operate, dependency download/install, network/OT
+access, CI/PR, merge/rebase, archive, queue promotion.
+
+### 24.5 Classification, limitations and non-claims
+
+- **Classification: `B4_SAFETY_CORRECTION_INCOMPLETE`.** F2-R3/F3-R3 are not
+  implemented and TEST-R3 was not (and could not be) run. No
+  `B4_SAFETY_CORRECTION_PASS` is claimed; the §22 `B4_SAFETY_CORRECTION_PASS` is a
+  historical JR-reported assertion and remains subject to independent read-only
+  CHECK.
+- **Blocker:** missing Go toolchain and module cache in this runner, combined
+  with the addendum's prohibition on dependency download/installation and on
+  network access. No in-boundary provisioning path exists.
+- **Resumption prerequisites:** a runner with a pre-provisioned, checksum-verified
+  Go 1.22.x toolchain and a populated module cache (or an approved offline
+  provisioning step), then a fresh owner-authorized CWAL to implement F2-R3/F3-R3
+  and run the TEST-R3 offline selectors.
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED** (unchanged from §22).
+- Gate B and the CURRENT remain **`TASK_BLOCKED`**. No archive, closure, PR,
+  merge or R4 change.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

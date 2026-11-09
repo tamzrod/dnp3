@@ -362,5 +362,22 @@ selectors unrun). Per addendum item 8 this fails closed. Working tree unchanged
 INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md`
 §23.
 
+### Gate B4 F2/F3 third corrective — independent execution checkpoint (2026-11-09)
+Independent re-execution of the owner-authorized third B4 F2/F3 corrective CWAL
+on permanent `work` at HEAD `44389fb…` (authorizing commit `453a6eb`; named
+baseline `0e9d4e2e…` absent in this shallow clone). **Result:
+`B4_SAFETY_CORRECTION_INCOMPLETE` — PUSHBACK; no Go source changed.** CWAL
+startup PASS (`cwal-check.sh` OK; six markers identical; `work` == `origin/work`
+== `git ls-remote origin work` == `44389fb…`; clean tree; `git diff --check`
+clean). **Decisive blocker unchanged:** this runner has **no Go toolchain**
+(`go`/`gofmt` MISSING), **no alternate compiler**, **no module cache** and **no
+vendor** dir; `.openhands/setup.sh` was not invoked, and the addendum prohibits
+dependency download/installation and network access, so F2-R3/F3-R3 could be
+neither implemented nor verified (TEST-R3 selectors unrun). Per addendum item 8
+this fails closed. Working tree unchanged (still the §22 second corrective). Gate
+B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §24.
+
 ## Persistent branch rule (owner instruction, 2026-11-08)
 Use `work` for the remaining active roadmap, including subsequent separately human-approved CWAL packages. Do not switch branches by package. A stable branch name does not bypass task authorization, PR audit against `main`, CI, or merge approval. The superseded `docs/sync-mext-post-pr17-20261108` ref is not the active CWAL branch; retire it after confirming the new `work` tip.
