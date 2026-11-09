@@ -1928,3 +1928,129 @@ barriers). It is **not** independent acceptance and **not** `B4_SAFETY_PASS`.
 Gate B and the CURRENT remain **`TASK_BLOCKED`**. **No protocol execution
 occurred in this corrective pass. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 23. Third B4 F2/F3 corrective — preflight and fail-closed disposition (append-only, 2026-11-09)
+
+**Authority / baseline.** Owner authorization "Third B4 F2/F3 corrective CWAL —
+owner authorization (2026-11-09; append-only)" in the CURRENT
+(`workflow/active_work/VEC-01-LAB-EXEC-001.md`), authorizing commit
+`453a6ebc4bae8ee86888a8fa7bbd23b4dda3cde5` ("docs(cwal): authorize third bounded
+B4 F2/F3 session-ownership correction"). The addendum names pinned baseline
+`0e9d4e2e4d66d0bd21e7bb97d61d11a25be323ef`; this clone is **shallow**
+(`git rev-parse --is-shallow-repository` = `true`) and that object is **absent**
+(`git cat-file -t` → *could not get object info*). Recorded truthfully as a
+provenance limitation, consistent with §22.
+
+**Result: `B4_SAFETY_CORRECTION_INCOMPLETE` — PUSHBACK. No Go source changed.**
+
+### 23.1 CWAL startup (PASS)
+
+| Check | Actual result |
+|---|---|
+| `bash scripts/cwal-check.sh` | `CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001 branch=work` |
+| Six-field markers (`workflow/active_work/README.md` and `handoff.md`) | identical: `Repository: tamzrod/dnp3`; `Package: VEC-01-LAB-EXEC-001`; `Branch: work`; `CURRENT: VEC-01-LAB-EXEC-001`; `QUEUED: NONE`; `Status: TASK_BLOCKED` |
+| Local checkout branch | `work` |
+| Local HEAD == `origin/work` | `453a6ebc4bae8ee86888a8fa7bbd23b4dda3cde5` == `453a6ebc4bae8ee86888a8fa7bbd23b4dda3cde5` |
+| `git ls-remote origin work` | `453a6eb…` (matches local) |
+| Working tree | clean (`git status --porcelain` empty) |
+| `git diff --check` | clean |
+
+### 23.2 Preflight environment (decisive, fail-closed)
+
+The addendum (item 6) permits offline verification **only** with all
+dependencies already cached and `GOPROXY=off`, and (item 7) **prohibits**
+dependency download/installation, any network/OT access, and any listener or
+socket. Actual environment state in this runner:
+
+| Probe | Actual result |
+|---|---|
+| `command -v go` | **MISSING** |
+| `command -v gofmt` | **MISSING** |
+| `/usr/local/go`, `~/toolchain`, `~/go` | absent |
+| Go module cache (`~/go/pkg/mod`) | absent |
+| `vendor/` directory | absent |
+| Alternate compiler (`gccgo`, `tinygo`, `go1.22*`) | absent |
+| `~/go` / GOPATH | absent |
+| `.openhands/setup.sh` side effects | not run by this CWAL; PyYAML also absent (`python3 -c "import yaml"` → ModuleNotFoundError); the hook's `curl`/`sudo`/`go mod download` steps were **not** invoked |
+| Outbound network | reachable (TCP `1.1.1.1:443` open) — but network access and dependency installation are **expressly prohibited** by the addendum |
+
+Consequently the third corrective's required work cannot be performed or verified
+within the authorized boundary:
+
+1. **F2-R3 (unresolved public `Connect` worker ownership)** — requires new
+   `pkg/dnp3/master/client.go` / `internal/master/master.go` changes, whose
+   correctness must be demonstrated by deterministic offline tests. Not
+   implemented (no toolchain).
+2. **F3-R3 (admitted-send physical-session isolation)** — same: source changes
+   plus proof.
+3. **TEST-R3 (exact deterministic in-memory concurrency proof)** — requires
+   `go test -count=1 -run '…' ./internal/master ./pkg/dnp3/master` and matching
+   `-race` selectors with cached deps and `GOPROXY=off`. **Cannot run**: no
+   toolchain and no module cache, and provisioning/download is prohibited.
+
+The addendum item 8 is explicit: *"If the safety ownership, isolation or
+required offline proofs cannot be established within these bounds, report
+`B4_SAFETY_CORRECTION_INCOMPLETE`, preserve `TASK_BLOCKED`, and PUSHBACK."*
+That is the case here. Per item 7, invoking `curl`/`sudo`/`go mod download` (the
+only way to obtain a toolchain and deps in this runner) is prohibited; a
+network-fetched toolchain would additionally violate the offline constraint.
+No safe in-boundary path exists, so this step fails closed.
+
+### 23.3 Working-tree state (unchanged)
+
+The tree already carries the **second** corrective from §22 (verified by
+recomputed SHA-256 of working-tree content, all matching §22.4):
+
+| File | SHA-256 (this checkout) |
+|---|---|
+| `internal/master/master.go` | `e72a7349e710da400286eb8cc2bce0d1352f065bd355e93dd0d6bded4aaeeaed` |
+| `pkg/dnp3/master/client.go` | `f83779274d669849d795ea83c2be1d35236ad3455433e437a5e6d6121c3ab021` |
+| `pkg/transport/tcp.go` | `7a67dbda4ee26d46a9992fa4d67d003513f47e2dae7fc62dea16e85b78431bf5` (unchanged) |
+| `internal/master/control_safety_test.go` | `6063126c5a3d6cfa15e13167b770b7f0f9b43fa16aa536d3af9288b9fba92eaf` |
+| `pkg/dnp3/master/control_safety_test.go` | `d056c1dd04a4336922e6ab9d805df0f5c81c62880fe489990f541de1641dd358` |
+
+No third-corrective source or test change exists. **No Go file was modified by
+this pass**; the only tracked change is this append-only evidence (and matching
+blocked handoff markers). The third corrective's `F2-R3`/`F3-R3`/`TEST-R3`
+requirements remain **NOT_IMPLEMENTED / NOT_TESTED**.
+
+### 23.4 Commands actually run (this pass)
+
+| Command | Result |
+|---|---|
+| `bash scripts/cwal-check.sh` | PASS |
+| `git rev-parse --is-shallow-repository` | `true` |
+| `git rev-parse HEAD` / `origin/work` / `git ls-remote origin work` | `453a6eb…` (all match) |
+| `git cat-file -t 0e9d4e2e…` | **absent** (shallow clone) |
+| `git diff --check` | clean |
+| `sha256sum` of the five allowlisted files | as §23.3 |
+| `command -v go` / `gofmt`; dir/cache/vendor probes | toolchain and deps absent |
+
+**NOT_RUN (prohibited or impossible):** `gofmt`, `go vet`, `go build`,
+`go test -count=1`, `go test -race`, `go test ./...`, `./scripts/verify-mvp.sh`,
+`./scripts/verify-external-mvp.sh`, `test/integration`, any listener/socket/peer,
+CROB/operate, dependency download/install, network/OT access, CI/PR, merge.
+
+### 23.5 Classification, limitations and non-claims
+
+- **Classification: `B4_SAFETY_CORRECTION_INCOMPLETE`.** The F2-R3/F3-R3
+  session-ownership corrections are not implemented, and the TEST-R3 offline
+  concurrency proofs were not (and could not be) run. No `B4_SAFETY_CORRECTION_PASS`
+  is claimed; the §22 `B4_SAFETY_CORRECTION_PASS` is a historical reported
+  assertion and remains subject to independent read-only CHECK.
+- **Blocker:** missing Go toolchain and module cache in this runner, combined
+  with the addendum's prohibition on dependency download/installation and on
+  network access. No in-boundary provisioning path exists.
+- **Resumption prerequisites:** a runner with a pre-provisioned, checksum-verified
+  Go 1.22.x toolchain and a populated module cache (or an approved offline
+  provisioning step), then a fresh owner-authorized CWAL to implement F2-R3/F3-R3
+  and run the TEST-R3 offline selectors.
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED** (unchanged from §22).
+- Gate B and the CURRENT remain **`TASK_BLOCKED`**. No archive, closure, PR,
+  merge or R4 change.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

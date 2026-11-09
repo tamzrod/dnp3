@@ -203,6 +203,22 @@ CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §22.
 
+### Gate B4 F2/F3 third corrective — preflight and fail-closed disposition (2026-11-09)
+Owner-authorized "Third B4 F2/F3 corrective CWAL" (authorizing commit `453a6eb`;
+named baseline `0e9d4e2e…`, absent in this shallow clone). **Result:
+`B4_SAFETY_CORRECTION_INCOMPLETE` — PUSHBACK; no Go source changed.** CWAL
+startup PASS (`cwal-check.sh` OK; six markers identical; `work` == `origin/work`
+== `453a6eb…`; clean tree). **Decisive blocker:** this runner has **no Go
+toolchain** (`go`/`gofmt` MISSING), **no module cache**, **no vendor** dir and no
+alternate compiler; `.openhands/setup.sh` was not invoked, and the addendum
+(item 7) prohibits dependency download/installation and network access, so the
+F2-R3/F3-R3 corrections could be neither implemented nor verified (TEST-R3
+selectors unrun). Per addendum item 8 this fails closed. Working tree unchanged
+(still the §22 second corrective). Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md`
+§23.
+
 
 ## CURRENT — VEC-01-LAB-EXEC-001 (human-promoted 2026-11-08)
 Only the human-promoted `workflow/active_work/VEC-01-LAB-EXEC-001.md` is CURRENT, on permanent `work` after a safe non-force fast-forward to merged PR #21 main `02a58f76cfd8b82cbea1bcddcb36f61ce2738b21`. This promotion authorizes only the bounded independent **isolated simulated** master ↔ OpenDNP3 3.1.2 lab interoperability campaign specified there, conditional on verified external artifacts and durable retention, an independently reviewed network-isolation and simulated-output sign-off **before any listener or packet**, bounded positive and negative tests, raw PCAP and trace-derived .vec integrity, never-blind-control-retry, full fresh Go gates and independently accepted evidence. No other Git files beyond the task's exact allowlist, no production/OT connectivity, unsupported features, R4 closure, PR, merge or release. **No test execution has occurred during promotion. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

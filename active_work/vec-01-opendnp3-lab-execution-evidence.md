@@ -489,3 +489,41 @@ retransmission and physical wire send counts remain NOT_TESTED/UNVERIFIED. Full
 detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §22. Gate B and the CURRENT
 remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 23. Third B4 F2/F3 corrective — preflight and fail-closed disposition (append-only, 2026-11-09)
+
+Owner-authorized "Third B4 F2/F3 corrective CWAL" (authorizing commit `453a6eb`;
+named baseline `0e9d4e2e…`, absent in this shallow clone — recorded limitation).
+**Result: `B4_SAFETY_CORRECTION_INCOMPLETE` — PUSHBACK. No Go source changed.**
+
+**CWAL startup PASS:** `cwal-check.sh` OK; six-field markers identical on
+`workflow/active_work/README.md` and `handoff.md`; branch `work`; local HEAD ==
+`origin/work` == `git ls-remote origin work` == `453a6eb…`; clean tree;
+`git diff --check` clean.
+
+**Decisive blocker (fail-closed).** The addendum permits offline verification only
+with cached deps and `GOPROXY=off` (item 6) and prohibits dependency
+download/install and network access (item 7). This runner has **no Go toolchain**
+(`go`/`gofmt` MISSING), **no module cache** (`~/go/pkg/mod` absent), **no vendor**
+dir and **no alternate compiler**; `.openhands/setup.sh` was not invoked (its
+`curl`/`sudo`/`go mod download` steps are prohibited). Outbound network is
+reachable but using it is forbidden. Therefore the third corrective's **F2-R3**
+(unresolved public `Connect` worker ownership), **F3-R3** (admitted-send
+physical-session isolation) and **TEST-R3** (deterministic in-memory concurrency
+proof) could be neither implemented nor verified. Per addendum item 8 this is
+`B4_SAFETY_CORRECTION_INCOMPLETE` + `TASK_BLOCKED` + PUSHBACK.
+
+**Working tree unchanged** — it still carries the §22 second corrective (recomputed
+SHA-256 match §22.4: `master.go e72a7349…`, `client.go f8377927…`,
+`tcp.go 7a67dbda…` unchanged, `internal control_safety_test.go 6063126c…`,
+`pkg/dnp3/master control_safety_test.go d056c1dd…`). No third-corrective code
+exists. Only this append-only evidence and matching blocked handoff markers changed.
+
+**NOT_RUN (prohibited/impossible):** `gofmt`, `go vet`, `go build`, `go test`
+(narrow and `-race`), `go test ./...`, `verify-mvp.sh`, `verify-external-mvp.sh`,
+`test/integration`, any listener/socket/peer/CROB, dependency download, network/OT
+access, CI/PR, merge. Lower-level confirmed-link FCB/FCV replay and physical wire
+send counts remain NOT_TESTED/UNVERIFIED. Full detail:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §23. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN.**
