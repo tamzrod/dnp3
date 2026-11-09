@@ -666,3 +666,85 @@ closure, PR, merge, `main` push or R4 change.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 27. Fourth B4 F2/F3 corrective — offline implementation + verification (append-only, 2026-11-10)
+
+Owner-authorized fourth corrective (addendum dated 2026-11-10), based on
+independent read-only CHECK of `b445ffe7f64fe86b25ce683e97c4f46eb7b8958e`. JR
+executed under `operation cwal`. Startup ran first: `bash scripts/cwal-check.sh`
+PASS; six markers identical in `workflow/active_work/README.md` and `handoff.md`.
+No task branch, force-push, reset, rebase, PR or merge; the CURRENT body was not
+edited by JR.
+
+**Owner override (latest):** *"operation cwal. if go is needed to be installed
+install it private"* — authorizing a **private** Go install, superseding the
+fourth addendum's no-install constraint. Toolchain installed privately at
+`/workspace/toolchains/go1.22.12` (`go1.22.12 linux/amd64`; tarball `sha256sum`
+matched `4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43`), with
+`GOPATH=/workspace/gopath`, `GOMODCACHE=/workspace/gopath/pkg/mod`,
+`GOCACHE=/workspace/gocache`.
+
+**Implementation (production allowlist only).** Only `pkg/dnp3/master/client.go`
+changed; `internal/master/master.go` and `pkg/transport/tcp.go` were **not**
+modified.
+- **F2-R4** (`client.go`): the connect-worker slot is held across
+  `connectBlocking` **and** its cleanup and cleared by a `defer` on worker
+  termination; new `beginTeardown()` runs `internalMaster.Disconnect()` +
+  `transport.Close()` on a dedicated goroutine and is tracked by a guarded
+  `*teardown` handle; `abortConnect` publishes `StateDisconnected` immediately and
+  tears down asynchronously so a custom `Close` blocked indefinitely cannot wedge
+  `Connect`; the outstanding teardown fences a replacement `Connect`
+  (`ErrSessionUnresolved`); `cleanupConnectIfCurrent` is generation-guarded and
+  asynchronous.
+- **F3-R4** (`client.go`): `Disconnect(ctx)` resets state/sequence immediately,
+  starts/joins the async teardown, and on a **pre-cancelled** or mid-teardown
+  cancellation returns promptly while still tearing down; the teardown fence keeps
+  a replacement `Connect` refused until teardown provably terminates.
+  `markTransportDisconnected` uses the same async teardown. Persistent UNKNOWN
+  quarantine stays distinct from the temporary worker/teardown fence (never
+  auto-cleared). `c.mu` is never held across `Send`/dial/`Close`.
+
+**Tests added (in-memory, no sockets).** `pkg/dnp3/master/control_safety_r4_test.go`:
+`TestConnectBudgetBlockedDialBlockedClosePrompt`,
+`TestSupersededConnectWorkerDoesNotTearDownReplacement`,
+`TestPreCancelledDisconnectFencesReplacementConnect`,
+`TestDisconnectCancellationRacingTeardown`,
+`TestBlockedControlSendDisconnectRefusesConnectUnknownPersists`.
+`internal/master/control_safety_r4_test.go`:
+`TestControlOldSessionSendNotContaminatingReplacement`,
+`TestControlQuarantineAdmissionBothOrdersNoSecondSend`,
+`TestControlDisconnectBlockedSendReplacementRefused`.
+`pkg/dnp3/master/connect_cancel_test.go` `TestConnectCancelledMidDial` was updated
+to wait (bounded) for the now-asynchronous teardown before asserting the transport
+was closed.
+
+**Commands run (offline; `GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off`, cached
+modules).** `bash scripts/cwal-check.sh` PASS; `gofmt -l .` clean;
+`git diff --check` clean; `go vet` (narrow) exit 0; `go build` (narrow) exit 0;
+`go test -count=1` (narrow selectors) PASS; `go test -race -count=1` (narrow
+selectors) PASS; `go list -m all` → `dnp3`, `dnp3/cmd/workbench`,
+`golang.org/x/sys v0.30.0`, `golang.org/x/term v0.11.0`.
+
+**Dependency provenance.** `go version go1.22.12 linux/amd64`. Offline
+`go list -m all`: `golang.org/x/sys v0.30.0`, `golang.org/x/term v0.11.0`.
+Root `go.mod` pins `x/sys v0.11.0`/`x/term v0.11.0`; `cmd/workbench/go.mod`
+requires `x/term v0.11.0` and `x/sys v0.30.0` (indirect). Because `go.work`
+includes both modules, `v0.30.0` is **selected** for the `cmd/workbench` build
+graph while the root module pins `v0.11.0`. **No dependency was upgraded/added/
+removed**; `go.mod`/`go.sum` are unchanged. The earlier unauthorized-but-offline
+`go test ./...` (recorded in §26) is preserved and **not** rerun/re-authorized/
+erased. Actual socket/control activity in the selected tests: **CONFIRMED none**
+(in-memory transport doubles only; no `net.Dial`/`net.Listen`/`NewTCPTransport`,
+no peer/listener/CROB).
+
+**Classification: `B4_SAFETY_CORRECTION_PASS`** for this sub-deliverable (all
+F2-R4/F3-R4 guarantees and required deterministic TEST-R4 interleavings passed
+offline) — a **JR-reported offline implementation readiness**, not independent
+CHECK acceptance and not `B4_SAFETY_PASS`. Lower-level confirmed-link FCB/FCV
+replay and physical wire send counts remain NOT_TESTED/UNVERIFIED. Gate B and the
+CURRENT remain **`TASK_BLOCKED`**; markers in `README.md` and `handoff.md` stay at
+`Status: TASK_BLOCKED`. No archive, closure, PR, merge, `main` push or R4 change.
+Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §27.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

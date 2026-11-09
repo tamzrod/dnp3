@@ -421,5 +421,25 @@ owner authorization to proceed. Until then CURRENT stays `TASK_BLOCKED`; no
 archive, closure, PR, merge or R4 change. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §9.
 
+### Gate B4 F2/F3 fourth corrective — offline implementation + verification (2026-11-10)
+Owner-authorized fourth B4 F2/F3 corrective CWAL on `work` (addendum dated
+2026-11-10; independent CHECK baseline `b445ffe7f64fe86b25ce683e97c4f46eb7b8958e`).
+**User override (latest):** *"operation cwal. if go is needed to be installed
+install it private"* — the owner authorized a **private** Go install, superseding
+the fourth addendum's no-install constraint. CWAL startup PASS (`cwal-check.sh`
+OK; six markers identical). Go 1.22.12 installed privately at
+`/workspace/toolchains/go1.22.12` (index SHA-256 verified). **Result:
+`B4_SAFETY_CORRECTION_PASS` (JR-reported offline implementation readiness; not
+independent CHECK acceptance, not `B4_SAFETY_PASS`).** F2-R4 (bounded public
+`Connect` cleanup/worker ownership) and F3-R4 (public `Disconnect` cancellation +
+physical-session isolation) are implemented within the production allowlist —
+only `pkg/dnp3/master/client.go` changed; `internal/master/master.go` and
+`pkg/transport/tcp.go` unchanged — with deterministic in-memory TEST-R4 tests. No
+listener/socket/peer/CROB/capture was used. Offline gates: `gofmt -l .` clean,
+`git diff --check` clean, narrow `go vet`/`go build` exit 0, narrow
+`go test -count=1` and `-race` PASS. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §27.
+
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.
