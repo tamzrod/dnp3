@@ -2544,3 +2544,159 @@ modules (no downloads).
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 28. Fifth B4 F2/F3 corrective CWAL — atomic teardown publication + session ownership (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner-authorized "Fifth B4 F2/F3 corrective CWAL" under the
+**existing** `VEC-01-LAB-EXEC-001` CURRENT on permanent branch `work`, appended by
+the owner-authorized actor (not JR) in `workflow/active_work/VEC-01-LAB-EXEC-001.md`
+at baseline `c4226ec2974e375eb7cb8b7fd7a8b502df8ec8c1` (authorization commit
+`256924017f1f361537a84c32b851fcd522e1800d`). JR executed under **`operation cwal`**.
+Startup ran first: `bash scripts/cwal-check.sh` PASS at the authorized baseline
+(`CURRENT=VEC-01-LAB-EXEC-001 branch=work`); six authority markers identical in
+`workflow/active_work/README.md` and `handoff.md`. No task branch, force-push,
+reset, rebase, PR or merge. The CURRENT body was not edited by JR.
+
+**Owner override (latest):** *"operation cwal. if go is needed to be installed
+install it private"* — the private Go toolchain from §27 was reused (no new
+install, no sudo, no system-wide change): `/workspace/toolchains/go1.22.12`,
+`go1.22.12 linux/amd64`, `GOPATH=/workspace/gopath`,
+`GOMODCACHE=/workspace/gopath/pkg/mod`, `GOCACHE=/workspace/gocache`.
+
+**Scope.** Offline only. No TCP/DNP3 listener, socket, peer, CROB, capture or
+external network access. All tests are driven by in-memory transport doubles; the
+selected `*_test.go` files were inspected and contain no
+`net.Dial`/`net.Listen`/`NewTCPTransport` (confirmed by `grep`, exit 1 = no
+match).
+
+### 28.1 Finding and repair (F2-R5 / F3-R5 — atomic teardown publication)
+
+The fourth corrective (`c4226ec`, F2-R4/F3-R4) made `abortConnect`/`Disconnect`
+publish `StateDisconnected` under `c.mu`, release `c.mu`, and only **afterward**
+register the asynchronous teardown fence via `beginTeardown`. In that window a
+fresh `Connect` could observe `Disconnected`, pass admission, and claim the shared
+transport/master before the old session's teardown was registered; the late
+cleanup could then close or mutate a replacement session. The fifth corrective
+publishes the teardown fence **atomically with the state transition** that
+otherwise admits a replacement.
+
+- **`registerTeardownLocked()`** (new): MUST be called with `c.mu` held. It
+  publishes the shared `*teardown` fence and starts the single teardown goroutine
+  only once; if a teardown is already registered it returns the existing handle
+  (join, not duplicate), so `transport.Close` is never duplicated. Callers
+  register the fence in the **same** `c.mu` critical section that publishes
+  `StateDisconnected` (or the generation bump), closing the admission window.
+- **`teardownLoop(t)`** (new): runs `internalMaster.Disconnect()` +
+  `transport.Close()` outside `c.mu`, then clears the fence **only if it still
+  owns it** (`if c.teardown == t`), so a superseding teardown is never clobbered by
+  an older, slower goroutine; the fence is cleared before `t.done` is closed.
+- **`abortConnect(gen)`**: publishes `Disconnected` and calls
+  `registerTeardownLocked()` in the same critical section; it does **not** wait for
+  the physical teardown, so a custom `Close` blocked indefinitely cannot wedge the
+  public `Connect` (F2-R4 preserved).
+- **`Disconnect(ctx)`**: registers the fence in the same critical section as the
+  `Disconnected`/`connectGen++`/`sequence=0` publication, then releases `c.mu`.
+  Pre-cancelled and mid-teardown cancellation still tear down (no live session
+  survives) and return `ErrContextCanceled` promptly; the fence keeps a
+  replacement `Connect` refused until teardown provably terminates.
+- **`markTransportDisconnected()`** (MEXT-025 peer-drop path): the "already
+  disconnected" early-return is folded under the same lock, and the fence is
+  registered atomically with the `Disconnected` publication; the caller does not
+  wait on the blocked `Close`.
+- **`cleanupConnectIfCurrent(gen)`**: performs the generation check and fence
+  registration under one `c.mu` hold, so a superseded worker's late completion
+  cannot tear down a replacement session and cannot block on a custom `Close`.
+- **`Connect` admission read fix**: the `already connected: %s` error captured
+  `c.state` **after** `c.mu.Unlock()`, which the race detector flagged as a data
+  race against a concurrent `Disconnect` publication (VEC-01 B4 F2-R5). The state
+  is now captured under the lock. This was a genuine, previously-undetected race
+  found by the new barrier-driven TEST-R5 tests.
+
+Lock discipline preserved: `c.mu` is never held across `Send`, dial or `Close`;
+`safetyMu`/`reqMu`/`outstandingMu` are untouched; one shared teardown-ownership
+decision is preserved across abort/Disconnect/failed-connect-cleanup/transport-drop.
+
+**Only** `pkg/dnp3/master/client.go` was changed. `internal/master/master.go` and
+`pkg/transport/tcp.go` were **not** modified (the internal-master
+admission/quarantine/unresolved fences already satisfy F3-R5).
+
+### 28.2 Tests added (deterministic, in-memory, barrier-driven, no sockets)
+
+New files (test-only, allowlisted packages):
+`pkg/dnp3/master/control_safety_r5_test.go`,
+`internal/master/control_safety_r5_test.go`.
+
+| Test | Package | Proves (TEST-R5 item) |
+|---|---|---|
+| `TestDisconnectAtomicTeardownFenceNoAdmissionWindow` | `pkg/dnp3/master` | (a) while `Disconnect`'s blocked `Close` is outstanding, 4 goroutines hammering `Connect` at the admission boundary never dial; every attempt after the boundary is refused `ErrSessionUnresolved` |
+| `TestAbortConnectAtomicFenceNoAdmissionWindow` | `pkg/dnp3/master` | (b) `abortConnect` (budget-exhausted blocked dial) registers its fence atomically; a concurrently hammered replacement never dials; replacement admitted only after worker termination |
+| `TestConcurrentTeardownOwnersSingleClose` | `pkg/dnp3/master` | (c) 8 concurrent `Disconnect` + 1 `markTransportDisconnected` join one teardown: `Close` called exactly once |
+| `TestTeardownCompletionRacingReplacementAdmission` | `pkg/dnp3/master` | (d) teardown A completion racing Connect B: B enters only after A verified terminated; A cannot clobber B |
+| `TestMarkTransportDisconnectedAtomicFence` | `pkg/dnp3/master` | drop path also publishes its fence atomically: replacement refused, no dial while blocked |
+| `TestControlQuarantineAdmissionOverlapNoSecondSend` | `internal/master` | (e) barrier-forced genuine overlap of quarantine establishment and control admission; both linearization orders actually observed; at most one physical send; a post-quarantine control can never transmit |
+
+TEST-R5 item (f) is covered by the existing F1/F2-R3/R4/F3-R3/R4 regression set
+(22 named selectors; see §28.3).
+
+### 28.3 Commands actually run (offline) and results
+
+All commands used `GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off` with pre-cached
+modules (no downloads).
+
+| Command | Result |
+|---|---|
+| `bash scripts/cwal-check.sh` (authorized baseline) | PASS (`CURRENT=VEC-01-LAB-EXEC-001 branch=work`) |
+| `gofmt -l <changed go files>` | clean (empty) |
+| `git diff --check` | clean |
+| `go vet ./internal/master ./pkg/dnp3/master` | exit 0 |
+| `go build ./internal/master ./pkg/dnp3/master` | exit 0 |
+| `go test -count=1 -v -run '<TEST-R5 a-e selectors>' ./pkg/dnp3/master ./internal/master` | PASS (all 6; internal overlap test logged `admission-first=1..2, quarantine-first=58..59`) |
+| `go test -race -count=1 -run '<TEST-R5 a-e selectors>' ./pkg/dnp3/master ./internal/master` | PASS (no data race) |
+| `go test -count=1 -run '<22 F1/F2-R3/R4/F3-R3/R4 regression selectors>' ./internal/master ./pkg/dnp3/master` | PASS (22 `--- PASS`) |
+| `go test -race -count=1 -run '<same 22 regression selectors>' ./internal/master ./pkg/dnp3/master` | PASS |
+| `go test -count=1 ./internal/master ./pkg/dnp3/master` (whole narrow suites) | PASS |
+| `go test -race -count=1 ./internal/master ./pkg/dnp3/master` (whole narrow suites, x5) | PASS, 0 data races each run |
+| `go version` | `go version go1.22.12 linux/amd64` |
+| `go list -m all` (offline) | `dnp3`, `dnp3/cmd/workbench`, `golang.org/x/sys v0.30.0`, `golang.org/x/term v0.11.0` |
+
+During development the race detector **did** fire once
+(`TestDisconnectAtomicTeardownFenceNoAdmissionWindow`, `Connect` reading `c.state`
+after unlock vs `Disconnect` writing it) — fixed in `Connect` and re-verified clean
+across 5 consecutive `-race` runs of both narrow suites.
+
+### 28.4 Dependency and deviation provenance
+
+- **`go version`:** `go1.22.12 linux/amd64` (private install from §27).
+- **Offline `go list -m all`:** `golang.org/x/sys v0.30.0`, `golang.org/x/term v0.11.0`.
+- **No dependency was upgraded, added or removed;** `go.mod`/`go.sum` are
+  unchanged (`git status` shows only `pkg/dnp3/master/client.go` plus the two new
+  `*_test.go` files). The `x/sys@v0.30.0` cache entry remains a pre-existing
+  consequence of the two-module workspace (`go.work`), not a change made here.
+- **Historical deviation preserved:** the unauthorized-but-offline `go test ./...`
+  recorded in §26 is **not** rerun, re-authorized or erased. The prohibited broad
+  suite, `test/integration`, `verify-mvp.sh`, `verify-external-mvp.sh`, any
+  listener/socket and any DNP3 peer/CROB were **not** run.
+- **Actual socket/control activity in the selected tests: CONFIRMED none.** The
+  selected files use only in-memory transport doubles
+  (`closeGateDialCountTransport`, `firstDialGateTransport`, `enterSendTransport`,
+  `blockedDialCloseTransport`, `dialGateTransport`, `slowCloseTransport`,
+  `pubBlockingSendTransport`, `failReceiveTransport`, `blockingSendTransport`) and
+  contain no `net.Dial`/`net.Listen`/`NewTCPTransport`.
+
+### 28.5 Classification, limitations and non-claims
+
+- **Classification (this sub-deliverable): `B4_SAFETY_CORRECTION_PASS`** — the
+  F2-R5/F3-R5 atomic-publication guarantees and the required deterministic TEST-R5
+  interleavings (a-f) actually passed under the permitted offline checks, with
+  honest dependency/deviation provenance. This is a **JR-reported offline
+  implementation readiness** result, **not** independent CHECK acceptance and
+  **not** `B4_SAFETY_PASS`.
+- The F2-R5 fix narrows the admission window; it does not by itself prove external
+  interoperability or protocol conformance.
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED** (unchanged from §22/§25/§26/§27).
+- Gate B and the CURRENT remain **`TASK_BLOCKED`**. No archive, closure, PR, merge,
+  `main` push or R4 change. Awaiting independent read-only CHECK.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

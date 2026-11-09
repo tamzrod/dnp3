@@ -441,5 +441,28 @@ listener/socket/peer/CROB/capture was used. Offline gates: `gofmt -l .` clean,
 **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
 NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §27.
 
+### Gate B4 F2/F3 fifth corrective — atomic teardown publication + session ownership (2026-11-10)
+Owner-authorized fifth B4 F2/F3 corrective CWAL on `work` (authorization appended
+in `workflow/active_work/VEC-01-LAB-EXEC-001.md`; CHECK baseline
+`c4226ec2974e375eb7cb8b7fd7a8b502df8ec8c1`; authorization commit
+`256924017f1f361537a84c32b851fcd522e1800d`). **User override (latest):**
+*"operation cwal. if go is needed to be installed install it private"* — the
+private Go 1.22.12 toolchain was reused (no new install, no system-wide change).
+CWAL startup PASS (`cwal-check.sh` OK; six markers identical). **Result:
+`B4_SAFETY_CORRECTION_PASS` (JR-reported offline implementation readiness; not
+independent CHECK acceptance, not `B4_SAFETY_PASS`).** F2-R5/F3-R5 close the
+check-versus-teardown-registration race: the teardown fence is now published in
+the same `c.mu` critical section as the `Disconnected` publication (new
+`registerTeardownLocked`/`teardownLoop`, single teardown owner, no duplicated
+`Close`), and a genuine `Connect` data race (`c.state` read after unlock) was
+fixed. Production allowlist only — only `pkg/dnp3/master/client.go` changed;
+`internal/master/master.go` and `pkg/transport/tcp.go` unchanged — with
+deterministic in-memory TEST-R5 tests. No listener/socket/peer/CROB/capture was
+used. Offline gates: `gofmt -l` clean, `git diff --check` clean, narrow
+`go vet`/`go build` exit 0, narrow `go test -count=1` and `-race` PASS (5 race
+runs, 0 races). Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT
+EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §28.
+
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.

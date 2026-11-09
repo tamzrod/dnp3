@@ -657,8 +657,12 @@ func (c *client) Connect(ctx context.Context) error {
 	// ConnectContext.
 	c.mu.Lock()
 	if c.state != dnp3.StateDisconnected {
+		// Capture the state under the lock: reading c.state again in the error
+		// message after unlocking would race a concurrent Disconnect's
+		// publication (VEC-01 B4 F2-R5).
+		st := c.state
 		c.mu.Unlock()
-		return fmt.Errorf("already connected: %s", c.state)
+		return fmt.Errorf("already connected: %s", st)
 	}
 	if c.connectWorkerOutstanding {
 		c.mu.Unlock()
@@ -862,13 +866,17 @@ func (c *client) abortConnect(gen uint64) {
 	}
 	c.connectGen++
 	c.state = dnp3.StateDisconnected
+	// VEC-01 B4 F2-R5: register the teardown fence in the SAME critical section
+	// that publishes Disconnected. Otherwise a fresh Connect could observe
+	// Disconnected, be admitted, and claim the shared transport/master before
+	// this teardown was registered; the late cleanup would then close or mutate
+	// the replacement session. Registering the fence atomically with the state
+	// transition that admits a replacement closes that window. The physical
+	// teardown runs on the goroutine started by registerTeardownLocked; this
+	// caller does NOT wait for it, so the public Connect returns promptly even
+	// when an uncooperative transport's Close blocks indefinitely (F2-R4).
+	c.registerTeardownLocked()
 	c.mu.Unlock()
-	// The teardown runs on its own goroutine and is tracked by beginTeardown: it
-	// may block on a custom transport's Close, which must not block the public
-	// Connect return. Until it terminates, the teardown fence refuses a
-	// replacement Connect, so no replacement dials against a half-closed shared
-	// transport (VEC-01 B4 F2-R4).
-	c.beginTeardown()
 }
 
 // teardown tracks one asynchronous session teardown (VEC-01 B4 F2-R4/F3-R4).
@@ -877,38 +885,43 @@ type teardown struct {
 	err  error
 }
 
-// beginTeardown starts (or joins) the asynchronous session teardown — internal
-// master Disconnect followed by transport Close — and returns the shared
-// teardown handle. Both steps can block on an uncooperative transport, so they
-// run on a dedicated goroutine and callers never block on them. Concurrent
-// callers join the same teardown rather than running a second one. The teardown
-// fence (c.teardown) is cleared only when the goroutine actually terminates, so
-// a replacement Connect is refused fail-closed until the previous transport
-// teardown has provably finished.
-func (c *client) beginTeardown() *teardown {
-	c.mu.Lock()
+// registerTeardownLocked publishes the shared teardown fence and returns its
+// handle, starting the teardown goroutine only once. It MUST be called with
+// c.mu held so the fence becomes visible in the SAME critical section as the
+// state transition (abortConnect / Disconnect / markTransportDisconnected) that
+// otherwise admits a replacement Connect (VEC-01 B4 F2-R5). If a teardown is
+// already registered, the existing handle is returned and no second goroutine
+// starts: there is exactly one teardown owner, so transport Close is never
+// duplicated. The caller releases c.mu; the teardown completes on its own
+// goroutine.
+func (c *client) registerTeardownLocked() *teardown {
 	if c.teardown != nil {
-		t := c.teardown
-		c.mu.Unlock()
-		return t
+		return c.teardown
 	}
 	t := &teardown{done: make(chan struct{})}
 	c.teardown = t
-	c.mu.Unlock()
-
-	go func() {
-		// The internal teardown first: it is bounded and bumps the session
-		// generation under safetyMu, fencing any admitted control send. The
-		// transport Close may block on an uncooperative transport.
-		_ = c.internalMaster.Disconnect()
-		err := c.transport.Close()
-		c.mu.Lock()
-		t.err = err
-		c.teardown = nil
-		c.mu.Unlock()
-		close(t.done)
-	}()
+	go c.teardownLoop(t)
 	return t
+}
+
+// teardownLoop performs the physical session teardown — internal master
+// Disconnect followed by transport Close — and then clears the fence, but ONLY
+// if it still owns it. A superseding teardown that replaced c.teardown must not
+// be cleared by an older, slower goroutine. The fence is cleared before t.done
+// is closed so a goroutine woken by <-t.done observes the cleared fence.
+func (c *client) teardownLoop(t *teardown) {
+	// The internal teardown first: it is bounded and bumps the session
+	// generation under safetyMu, fencing any admitted control send. The
+	// transport Close may block on an uncooperative transport.
+	_ = c.internalMaster.Disconnect()
+	err := c.transport.Close()
+	c.mu.Lock()
+	if c.teardown == t {
+		c.teardown = nil
+	}
+	t.err = err
+	c.mu.Unlock()
+	close(t.done)
 }
 
 // cleanupConnectIfCurrent tears the attempt down only while it is still the
@@ -918,10 +931,17 @@ func (c *client) beginTeardown() *teardown {
 // is asynchronous so a blocked transport Close cannot wedge the worker; the
 // teardown fence keeps a replacement Connect refused until it terminates.
 func (c *client) cleanupConnectIfCurrent(gen uint64) {
-	if !c.attemptCurrent(gen) {
+	c.mu.Lock()
+	if gen != c.connectGen {
+		c.mu.Unlock()
 		return
 	}
-	c.beginTeardown()
+	// Register the teardown fence atomically with the generation check, so a
+	// superseding actor that owns the shared transport/master is never torn down
+	// by this stale worker. The physical teardown runs on its own goroutine; this
+	// worker does NOT wait for it, so a blocked Close cannot wedge the worker.
+	c.registerTeardownLocked()
+	c.mu.Unlock()
 }
 
 // Disconnect implements Client.Disconnect
@@ -940,16 +960,19 @@ func (c *client) Disconnect(ctx context.Context) error {
 	c.connectGen++
 	c.state = dnp3.StateDisconnected
 	c.sequence = 0 // DNP3-050: clean slate for a later reconnect.
+	// VEC-01 B4 F2-R5: register the teardown fence in the SAME critical section
+	// as the Disconnected publication, so a fresh Connect can never be admitted
+	// into the window before the old session's teardown is registered.
+	t := c.registerTeardownLocked()
 	c.mu.Unlock()
 
+	// The teardown is already registered; the physical cleanup runs outside the
+	// lock. A pre-cancelled context still tears down (no live session survives)
+	// and returns promptly without blocking on the potentially unbounded Close.
 	if err := ctx.Err(); err != nil {
-		// Even on a pre-cancelled context the teardown must still happen so no live
-		// session survives; it is asynchronous so this returns promptly.
-		c.beginTeardown()
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
-	t := c.beginTeardown()
 	select {
 	case <-ctx.Done():
 		// Return promptly; the teardown continues in the background and its fence
@@ -990,17 +1013,19 @@ func (c *client) connectBudget() time.Duration {
 // runs without holding c.mu to avoid lock-ordering issues with the transport.
 func (c *client) markTransportDisconnected() {
 	c.mu.Lock()
-	alreadyDown := c.state == dnp3.StateDisconnected
-	c.state = dnp3.StateDisconnected
-	c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
-	c.mu.Unlock()
-	if alreadyDown {
+	if c.state == dnp3.StateDisconnected {
+		c.mu.Unlock()
 		return
 	}
-	// VEC-01 B4 F2-R4/F3-R4: run the teardown asynchronously so a transport whose
-	// Close blocks cannot wedge the caller; the teardown fence keeps a
-	// replacement Connect refused until it terminates.
-	c.beginTeardown()
+	c.state = dnp3.StateDisconnected
+	c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
+	// VEC-01 B4 F2-R5: register the teardown fence atomically with the
+	// Disconnected publication so a fresh Connect cannot be admitted before the
+	// dropped session's teardown is registered. The physical teardown runs on
+	// the goroutine started by registerTeardownLocked; this caller does not wait
+	// for it, so a transport whose Close blocks cannot wedge the caller.
+	c.registerTeardownLocked()
+	c.mu.Unlock()
 }
 
 // Read implements Client.Read
