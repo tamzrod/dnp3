@@ -1153,6 +1153,15 @@ func (m *Master) anySessionUnresolved() bool {
 	return len(m.sessionUnresolved) > 0
 }
 
+// HasUnresolvedSession reports whether any outstation still has an unresolved
+// control worker from a torn-down session (VEC-01 B4 F3-R3). It is exposed so
+// the public client can fail a fresh Connect fast, before dialing, while an old
+// control send could still affect the shared transport. The internal master
+// enforces the same fence again at ConnectContext; this is the pre-dial check.
+func (m *Master) HasUnresolvedSession() bool {
+	return m.anySessionUnresolved()
+}
+
 // sessionUnresolvedFor reports whether outstationID has an unresolved control
 // worker from a torn-down session (VEC-01 B4 F3-R2B). Exposed for
 // tests/diagnostics.

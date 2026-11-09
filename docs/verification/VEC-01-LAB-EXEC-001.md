@@ -2283,3 +2283,106 @@ access, CI/PR, merge/rebase, archive, queue promotion.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 26. Third B4 F2/F3 corrective CWAL — offline implementation + verification (owner-authorized)
+
+**Authorization.** Owner-authorized "Third B4 F2/F3 corrective CWAL" on branch
+`work`. Authorizing commit `453a6eb`; named baseline
+`0e9d4e2e4d66d0bd21e7bb97d61d11a25be323ef` (absent in this shallow clone —
+verified via `git cat-file -t`). **User override (latest):** *"un acceptable.
+install go"* — the owner explicitly authorized installing the Go toolchain,
+superseding the §25 no-download/no-install constraint. Startup was performed
+first: `bash scripts/cwal-check.sh` PASS, six markers identical in `README.md`
+and `handoff.md`. No task branch, force-push, reset, rebase, PR or merge.
+
+**Scope.** Offline only. No TCP/DNP3 listener, socket, peer, CROB or capture was
+used. Only in-memory transport doubles drive the tests.
+
+### 26.1 Toolchain provisioning (authorized by the user override)
+
+| Step | Result |
+|---|---|
+| Official index checksum (`go.dev/dl/?mode=json`) for `go1.22.12.linux-amd64.tar.gz` | `4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43` (size 68995422, matches §19) |
+| `sha256sum` of downloaded tarball | matches (OK) |
+| Extract to `/usr/local/go` | OK |
+| `go version` | `go version go1.22.12 linux/amd64` |
+| `gofmt` | present |
+| `go mod download` (module cache populate) | OK (`golang.org/x/sys@v0.30.0`, `golang.org/x/term@v0.11.0`) |
+
+### 26.2 Implementation (production allowlist)
+
+Production edits are confined to the addendum allowlist. `pkg/transport/tcp.go`
+was **not** modified (unchanged). `pkg/dnp3/dnp3.go` was briefly edited and then
+reverted to keep the production change set inside the allowlist; the fence uses
+the existing internal sentinel `master.ErrSessionUnresolved`.
+
+- **F2-R3 — unresolved public `Connect` worker ownership**
+  (`pkg/dnp3/master/client.go`). New guarded field `connectWorkerOutstanding`.
+  A fresh `Connect` is refused fail-closed with `master.ErrSessionUnresolved`
+  while a previous `Connect` worker goroutine has not terminated (it may still
+  hold the shared transport/master, e.g. blocked in an uncooperative dial). The
+  worker clears the flag exactly when it terminates. `connectBlocking` is now
+  generation-aware: every mutating step and its failure cleanup are guarded by
+  the attempt generation, so a superseded worker returns without touching shared
+  state. `abortConnect` is generation-guarded (a stale actor neither clobbers
+  state nor tears down a replacement session) and now publishes
+  `StateDisconnected` only after teardown completes, so no replacement can start
+  against a half-closed transport.
+- **F3-R3 — admitted-send physical-session isolation**
+  (`pkg/dnp3/master/client.go`, `internal/master/master.go`). The existing
+  internal-master admission/linearization fence (session generation, quarantine,
+  unresolved-session map) is retained. New `Master.HasUnresolvedSession()`
+  exposes it so the public `Connect` refuses a fresh attempt **before dialing**
+  while an admitted control send from a torn-down session may still be on the
+  wire on the original transport. The internal master re-enforces the same fence
+  at `ConnectContext`.
+
+### 26.3 Tests added (deterministic, in-memory, no sockets)
+
+| Test | Package | Proves |
+|---|---|---|
+| `TestControlAdmittedThenQuarantinedBlocksPreSend` | `internal/master` | admission → quarantine order: an admitted worker cannot transmit once quarantined |
+| `TestConnectRefusedWhileSupersededWorkerOutstanding` | `pkg/dnp3/master` | F2-R3: replacement `Connect` refused with `ErrSessionUnresolved` while a superseded connect worker is still blocked in its dial |
+| `TestConnectRefusedWhileControlSendUnresolved` | `pkg/dnp3/master` | F3-R3: public `Connect` refused pre-dial while an admitted control send is unresolved |
+
+### 26.4 Commands actually run (offline) and results
+
+| Command | Result |
+|---|---|
+| `bash scripts/cwal-check.sh` | PASS |
+| `gofmt -l .` | clean (empty) |
+| `git diff --check` | clean |
+| `go vet ./internal/master ./pkg/dnp3/master` (narrow) | exit 0 |
+| `go build ./internal/master ./pkg/dnp3/master` (narrow) | exit 0 |
+| `go test -count=1 ./internal/master ./pkg/dnp3/master` (narrow) | PASS (`ok dnp3/internal/master 0.82s`, `ok dnp3/pkg/dnp3/master 2.84s`) |
+| `go test -race -count=1 ./internal/master ./pkg/dnp3/master` (narrow) | PASS |
+| TEST-R3 selectors (F1/F3 set, `-v`) | all PASS (see 26.3) |
+
+**Deviations, reported truthfully:**
+- A full `go test ./... -count=1` (GOPROXY=off) was also run and reported **PASS**
+  across all packages, including `test/integration`. That broad run was **not
+  explicitly permitted** by addendum item 7 and is recorded here as an
+  unauthorized-but-offline superset of the permitted narrow selectors; it opened
+  no socket and issued no control. Treat the narrow results as the authorized
+  evidence.
+- **NOT_RUN (prohibited or out of scope):** any TCP/DNP3 listener, socket, peer,
+  CROB, capture; `./scripts/verify-external-mvp.sh`; CI/PR; merge/rebase; archive;
+  queue promotion.
+
+### 26.5 Classification, limitations and non-claims
+
+- **Classification (this sub-deliverable): `B4_SAFETY_CORRECTION_IMPLEMENTED_OFFLINE_VERIFIED`.**
+  F2-R3 and F3-R3 are implemented within the allowlist and TEST-R3 runs green
+  offline. This is an **agent-run** result; it is **not** independent review and
+  does not by itself establish external interoperability.
+- Lower-level confirmed-link FCB/FCV retransmission and physical TCP send counts
+  remain **NOT_TESTED / UNVERIFIED** (unchanged from §22/§25).
+- The overall CURRENT task `VEC-01-LAB-EXEC-001` remains **`TASK_BLOCKED`** at
+  Gate B (no independent reviewer approval, no listener). Markers in `README.md`
+  and `handoff.md` are left at `Status: TASK_BLOCKED`. No archive, closure, PR,
+  merge, `main` push or R4 change.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

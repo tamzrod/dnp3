@@ -749,3 +749,31 @@ func TestControlQuarantineAdmissionAtomic(t *testing.T) {
 		t.Fatalf("a quarantined outstation transmitted %d extra controls; sends = %d, want %d", got-base, got, base)
 	}
 }
+
+// TestControlAdmittedThenQuarantinedBlocksPreSend (F3-R3) locks the admission ->
+// quarantine linearization order that the post-quarantine tests do not cover: a
+// control worker admitted BEFORE the outstation is quarantined must not
+// transmit. The pre-send safety check refuses it, so an admitted control can
+// never bypass a quarantine established after its admission. The reverse order
+// (quarantine then admission) is covered by the quarantine-admission tests.
+func TestControlAdmittedThenQuarantinedBlocksPreSend(t *testing.T) {
+	tr := &failReceiveTransport{}
+	m := newControlMaster(t, tr)
+
+	gen, release, err := m.AcquireControlGate(1)
+	if err != nil {
+		t.Fatalf("AcquireControlGate: %v", err)
+	}
+	defer release()
+
+	// Establish the UNKNOWN quarantine AFTER admission (admission -> quarantine).
+	m.quarantineOutstation(1)
+
+	_, err = m.OperateWithStatusGated(context.Background(), gen, 1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn), time.Now().Add(time.Second))
+	if !errors.Is(err, ErrControlQuarantined) {
+		t.Fatalf("admitted-then-quarantined control = %v, want ErrControlQuarantined", err)
+	}
+	if got := tr.sendCount(); got != 0 {
+		t.Fatalf("an admitted-then-quarantined control must not transmit; sends = %d", got)
+	}
+}

@@ -398,3 +398,25 @@ THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 
 ## Persistent branch rule (owner instruction, 2026-11-08)
 Use `work` for the remaining active roadmap, including subsequent separately human-approved CWAL packages. Do not switch branches by package. A stable branch name does not bypass task authorization, PR audit against `main`, CI, or merge approval. The superseded `docs/sync-mext-post-pr17-20261108` ref is not the active CWAL branch; retire it after confirming the new `work` tip.
+
+### Gate B4 F2/F3 third corrective — offline implementation + verification (2026-11-09)
+Owner-authorized third B4 F2/F3 corrective CWAL on `work` (authorizing commit
+`453a6eb`; named baseline `0e9d4e2e…` absent in this shallow clone). **User
+override (latest):** *"un acceptable. install go"* — the owner explicitly
+authorized installing the Go toolchain, superseding the §25 no-download/no-install
+constraint. CWAL startup PASS (`cwal-check.sh` OK; six markers identical). The Go
+1.22.12 toolchain was installed with its official index SHA-256 verified and the
+module cache populated. **Result: `B4_SAFETY_CORRECTION_IMPLEMENTED_OFFLINE_VERIFIED`
+(agent-run; not independent review).** F2-R3 (unresolved public `Connect` worker
+ownership) and F3-R3 (admitted-send physical-session isolation) are implemented
+within the production allowlist (`pkg/dnp3/master/client.go`,
+`internal/master/master.go`; `pkg/transport/tcp.go` unchanged), and TEST-R3
+deterministic in-memory tests were added. Offline gates: `gofmt -l .` clean,
+`git diff --check` clean, narrow `go vet`/`go build` exit 0, narrow
+`go test -count=1` and `go test -race -count=1` PASS, TEST-R3 selectors PASS. A
+full `go test ./... -count=1` (GOPROXY=off) also PASSed but was not explicitly
+permitted by addendum item 7 and is recorded as an unauthorized-but-offline
+superset. No listener/socket/peer/CROB/capture was used. Gate B and the CURRENT
+remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §26
+and `active_work/vec-01-opendnp3-lab-execution-evidence.md` §26.

@@ -633,3 +633,155 @@ func TestConnectDeadlineBoundsBlockingDialNoContext(t *testing.T) {
 		t.Fatalf("state = %v after late worker completion, want Disconnected (fenced)", cc.State())
 	}
 }
+
+// TestConnectRefusedWhileSupersededWorkerOutstanding (VEC-01 B4 F2-R3) proves
+// the public Connect refuses a replacement attempt while a superseded connect
+// worker has not terminated. A late-dial transport blocks past the whole-connect
+// budget; the first Connect times out and returns promptly, but the worker keeps
+// holding the shared transport, so a fresh Connect is refused fail-closed with
+// ErrSessionUnresolved until the worker terminates. Once released, a later
+// Connect may proceed.
+func TestConnectRefusedWhileSupersededWorkerOutstanding(t *testing.T) {
+	tr := newLateDialTransport()
+	c, err := NewClient(NewConfig(WithConnectTimeout(100 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cc := c.(*client)
+	cc.transport = tr
+	cc.internalMaster.SetTransport(&transportAdapter{Handler: tr})
+
+	// Attempt 1: the dial blocks past the budget, so Connect returns promptly.
+	start := time.Now()
+	err = cc.Connect(context.Background())
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected Connect to fail closed when the budget is exceeded")
+	}
+	if !errors.Is(err, dnp3.ErrTimeout) {
+		t.Fatalf("Connect error = %v, want ErrTimeout", err)
+	}
+	if elapsed > 600*time.Millisecond {
+		t.Fatalf("Connect took %v; a blocking dial must be bounded by the 100ms budget", elapsed)
+	}
+	if cc.State() != dnp3.StateDisconnected {
+		t.Fatalf("state = %v, want Disconnected after a bounded connect", cc.State())
+	}
+
+	// Attempt 2 while the superseded worker is still blocked in its dial: refused
+	// before dialing because the old worker may still hold the shared transport.
+	if err := cc.Connect(context.Background()); !errors.Is(err, master.ErrSessionUnresolved) {
+		t.Fatalf("Connect while worker outstanding = %v, want ErrSessionUnresolved", err)
+	}
+
+	// Release the late dial so the worker terminates; the slot frees up.
+	tr.release()
+	deadline := time.Now().Add(time.Second)
+	for {
+		cc.mu.RLock()
+		outstanding := cc.connectWorkerOutstanding
+		cc.mu.RUnlock()
+		if !outstanding || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := cc.Connect(context.Background()); errors.Is(err, master.ErrSessionUnresolved) {
+		t.Fatalf("Connect after worker termination = %v, want it to proceed past the fence", err)
+	}
+}
+
+// pubBlockingSendTransport blocks inside Send until releaseCh is closed,
+// modelling a transport whose send cannot be aborted. It records that a send was
+// entered so a test can prove the control worker is blocked mid-send. It opens no
+// socket, so the test stays offline.
+type pubBlockingSendTransport struct {
+	mu        sync.Mutex
+	sends     int
+	entered   chan struct{}
+	releaseCh chan struct{}
+	once      sync.Once
+}
+
+func newPubBlockingSendTransport() *pubBlockingSendTransport {
+	return &pubBlockingSendTransport{entered: make(chan struct{}), releaseCh: make(chan struct{})}
+}
+
+func (t *pubBlockingSendTransport) Listen() error     { return nil }
+func (t *pubBlockingSendTransport) Accept() error     { return nil }
+func (t *pubBlockingSendTransport) Connect() error    { return nil }
+func (t *pubBlockingSendTransport) Close() error      { return nil }
+func (t *pubBlockingSendTransport) SetTimeout(ms int) {}
+func (t *pubBlockingSendTransport) Send(data []byte) error {
+	t.mu.Lock()
+	t.sends++
+	t.mu.Unlock()
+	t.once.Do(func() { close(t.entered) })
+	<-t.releaseCh
+	return nil
+}
+func (t *pubBlockingSendTransport) Receive() ([]byte, error) { return nil, errors.New("no response") }
+func (t *pubBlockingSendTransport) release()                 { close(t.releaseCh) }
+
+// TestConnectRefusedWhileControlSendUnresolved (VEC-01 B4 F3-R3) proves the
+// public Connect refuses a fresh attempt while an admitted control send from a
+// torn-down session remains outstanding (its physical Send may still be on the
+// wire on the original transport). This closes the F3-R3 gap at the public
+// Connect entry, before any dial.
+func TestConnectRefusedWhileControlSendUnresolved(t *testing.T) {
+	tr := newPubBlockingSendTransport()
+	cc := clientWithTransport(t, tr)
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+
+	// Start a control that blocks inside Send.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := cc.Operate(ctx, &types.ControlOutput{
+			Group: 12, Variation: 1, Index: 0,
+			CommandType: types.DirectOperate,
+			Value:       &types.BinaryCommandValue{Value: true},
+		})
+		errCh <- err
+	}()
+	select {
+	case <-tr.entered:
+	case <-time.After(time.Second):
+		t.Fatal("control send never entered")
+	}
+
+	// Tear the session down while the send is in flight: the outstation is now
+	// fenced as unresolved.
+	if err := cc.internalMaster.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	cc.mu.Lock()
+	cc.state = dnp3.StateDisconnected
+	cc.mu.Unlock()
+
+	if !cc.internalMaster.HasUnresolvedSession() {
+		t.Fatal("a Disconnect during an in-flight control send must fence the session unresolved")
+	}
+
+	// A fresh public Connect is refused before dialing.
+	if err := cc.Connect(context.Background()); !errors.Is(err, master.ErrSessionUnresolved) {
+		t.Fatalf("Connect while control send unresolved = %v, want ErrSessionUnresolved", err)
+	}
+
+	// Release the blocked send so the worker terminates.
+	tr.release()
+	if err := <-errCh; err == nil {
+		t.Fatal("the interrupted control should not report success")
+	}
+	deadline := time.Now().Add(time.Second)
+	for cc.internalMaster.HasUnresolvedSession() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if cc.internalMaster.HasUnresolvedSession() {
+		t.Fatal("the unresolved fence must clear once the control worker terminates")
+	}
+}
