@@ -3253,3 +3253,101 @@ from `lab-config.md`, SHA-256 `692e252c…`) sharpens §33.1:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## 34. Owner-directed lab-only functionality execution — wire experiment (2026-11-10)
+
+**Authorization.** Owner addendum "Owner-directed lab-only functionality execution
+after PR #23" in `workflow/active_work/VEC-01-LAB-EXEC-001.md`. For **this
+owner-directed, fully isolated, memory-only development test only**, the addendum
+replaces the earlier Gate B *independent-human-before-first-packet* dependency with a
+**repeatable fail-closed objective local preflight before opening any simulator
+listener**. It is explicitly **not** independent Gate B acceptance, not certification,
+and not authority to close R4 or claim third-party interoperability. The named
+independent reviewer remains required for final Gate B sign-off and interoperability
+acceptance. Owner command modifier in effect: `operation cwal` with private Go install.
+
+**Startup.** `bash scripts/cwal-check.sh` PASS; six authority markers identical in
+`workflow/active_work/README.md` and `handoff.md`; tree clean; local `work` ==
+`origin/work` == `9b5603b`; merged `main` `9b406f4` (PR #23) is an ancestor of `work`.
+CURRENT body not edited by JR. Toolchain: private Go 1.22.12 (official index SHA-256
+verified), g++ 14.2.0, cmake 3.31.6.
+
+### 34.1 Pinned peer provenance re-verified
+
+All five pinned inputs re-retrieved and hash-checked against §2.1/§2.2 exactly:
+opendnp3 `183cc292…a36ff2`; asio `18883c35…e928c5`; exe4cpp `2a8a2c7d…d48db6c`;
+ser4cpp `5a78f83d…6762f6e`; catch `197640c0…7a028`. Tag peel `3.1.2^{}` =
+`26b4c01e4839bbbda8866655e086471c4917ee53`. A hermetic offline stock build
+(`sudo unshare -n`, `FETCHCONTENT_FULLY_DISCONNECTED=ON`, local sources) produced
+`outstation-demo` and `libopendnp3.a` (path-dependent digests differ from §3 only by
+embedded source-path strings, as documented).
+
+### 34.2 Lab patch applicability confirmed and lab peer built offline
+
+The committed packet patch extracted from `lab-config.md` (SHA-256 `692e252c…`) applies
+with **`patch -l -p2` (exit 0)** and yields the byte-faithful `main.cpp` SHA-256
+`4380b16f…41afc` recorded in §33.6. Lab peer rebuilt hermetically offline; lab
+`outstation-demo` SHA-256 `b03c522b0871483e1c78731a6fb611fd8e1c07b1aacd21a5cc3ac87e19aa34d6`,
+`libopendnp3.a` SHA-256 `8d202122791976662abea5364a1ac1f290cfd3cb9433fd8a5c1fbee18046a7f2`.
+
+### 34.3 Isolated lab and objective preflight
+
+Two private namespaces `vec01-master` (`10.77.0.1/24`) and `vec01-outstation`
+(`10.77.0.2/24`) joined by a **single internal veth pair**; nothing on the host.
+Objective local checks PASS: each ns has only `lo`+one veth; only the `10.77.0.0/24`
+route; **no default route**; IPv6 only `fe80::/64`; `ip_forward=0`; host has no route
+into `10.77.0.0/24`; no leaked host veth; lab-local ICMP reachability only; no lab
+listening socket before activation. Listener confirmed bound **`10.77.0.2:20000`**
+only (never `0.0.0.0`); link `LocalAddr=4`, `RemoteAddr=3`; fixed points and sole
+memory-only BO[0] handler present. Capture on the internal veth only.
+
+### 34.4 Wire experiment — demonstrated v0 interoperability defects
+
+Go master `vec01-master` (SHA-256 `01c6c4e5…a30bd`, built from `9b5603b`) run inside
+`vec01-master` against the pinned peer; capture `run-out/vec01.pcap` SHA-256
+`a48371bd…0ca7e`. Result: TCP connect and link reset/ACK succeed, then **Connect
+fails**. Three genuine, independently-attributable wire defects are demonstrated:
+
+1. **Secondary Link Status function code (decisive).** The peer replied
+   `05 64 05 0B 03 00 04 00 7F 66` — control `0x0B` = DIR=0 PRM=0 func=**11**
+   (`SEC_LINK_STATUS`). `internal/dll/frame/frame.go` defines `FuncLinkStatus = 2`
+   (and `FuncNotSupported = 3`), but IEEE 1815 / OpenDNP3 3.1.2 define secondary
+   **Link Status = 0xB** and **Not Supported = 0xF** (ACK=0, NACK=1 unchanged).
+   `validateLinkStatusResponse` therefore rejects the conformant peer with
+   `link status function code=11, expected 2` and Connect fails.
+2. **FCB after Reset Link Stations.** After link reset the primary must send its first
+   confirmed frame with **FCB=1** (OpenDNP3 `ResetReadFCB()` sets `nextReadFCB=true`).
+   The Go master sets `resetFCB()` to `false`, so the peer logs
+   `ConfirmedUserData ignored: unexpected frame count bit (FCB)` and drops the request.
+3. **Application function codes (systemic).** The peer decoded the master's READ as
+   **WRITE**: Go `internal/al/function_codes.go` uses `FuncRead=2`, `FuncWrite=3`,
+   `FuncSelect=4`, `FuncOperate=5`, `FuncDirectOperate=6`, `FuncDirectOperateNoResp=7`,
+   `FuncResponse=0`; IEEE 1815 / OpenDNP3 use READ=0x01, WRITE=0x02, SELECT=0x03,
+   OPERATE=0x04, DIRECT_OPERATE=0x05, DIRECT_OPERATE_NR=0x06, RESPONSE=**0x81**,
+   UNSOLICITED=0x82. The peer response on the wire was `C0 81 90 02`
+   (func=0x81 RESPONSE, IIN `90 02`), which the Go master's `FuncResponse=0` path
+   cannot match.
+
+**Reproduction with the two link-layer corrections applied** (scratch copy, not
+committed): with `FuncLinkStatus=0x0B`, `FuncNotSupported=0x0F` and `resetFCB()=true`
+the master binary `vec01-master-exp` (SHA-256 `3f69006f…f5d26`) advanced past Connect
+and the link handshake; the capture `run-exp-out/vec01.pcap` SHA-256 `9709760a…668c1`
+shows the master then sending `PRI_CONFIRMED_USER_DATA` carrying `c0 02 01 00 06 00 …`
+(application function byte `0x02`), which the peer again decodes as **WRITE**, leaving
+defect 3 unresolved. This isolates defect 3 from defects 1–2 on the wire.
+
+### 34.5 Disposition and non-claims
+
+This pass executed a **real, isolated, memory-only wire experiment** and produced
+objective packet evidence of three v0 interoperability defects. It is a development
+finding, **not** independent Gate B acceptance, not certification, not third-party
+interoperability acceptance, and it does **not** close R4. No Go production/test source
+was changed in this pass (the two link corrections were exercised only in an untracked
+scratch copy). No PR, merge, `main` push, archive, promotion, self-signoff, Gate C/D/E,
+external/OT probe or field I/O. Evidence artifacts are held outside Git under
+`/workspace/vec01-build/` (not durable across runners).
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

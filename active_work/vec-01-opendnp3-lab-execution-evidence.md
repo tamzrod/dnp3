@@ -1074,3 +1074,37 @@ gate-clean**. Reviewer command for the embedded copy: `patch -l -p2 < lab-demo.p
 Packet "Whitespace note" left unchanged per the addendum's no-rewrite instruction.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### §34 — Owner-directed lab-only wire experiment (2026-11-10)
+
+Owner addendum "Owner-directed lab-only functionality execution after PR #23"
+authorized a **fully isolated, memory-only development test** for this pass; for it,
+the addendum replaces the Gate B *independent-human-before-first-packet* dependency
+with a **repeatable fail-closed objective local preflight before opening any simulator
+listener**. It is **not** independent Gate B acceptance, not certification, and not
+authority to close R4 or claim third-party interoperability. Startup: `cwal-check.sh`
+PASS, six markers identical, tree clean, `work`==`origin/work`==`9b5603b`, `main`
+`9b406f4` ancestor of `work`.
+
+- Pinned peer provenance re-verified (five inputs match §2.1/§2.2; tag peel
+  `26b4c01e…`); stock + lab peers rebuilt **hermetically offline**; lab `main.cpp`
+  byte-faithful `4380b16f…41afc`; lab `outstation-demo` `b03c522b…a34d6`.
+- Isolated two-namespace lab (`10.77.0.1`/`10.77.0.2`, single internal veth) with all
+  objective isolation checks PASS; listener bound `10.77.0.2:20000` only.
+- **Real wire experiment run** against the pinned peer (memory-only, lab veth capture
+  only). Result: TCP connect + link reset/ACK OK, then **Connect fails**. Capture
+  `run-out/vec01.pcap` SHA-256 `a48371bd…0ca7e`.
+- **Three demonstrated v0 defects:** (1) secondary **Link Status** func code wrong
+  (Go `2` vs IEEE 1815 `0xB`); (2) primary **FCB after reset** wrong (Go `false` vs
+  spec first frame `FCB=1`); (3) **application function codes** non-conformant
+  (Go `READ=2`/`RESPONSE=0` vs IEEE 1815 `READ=0x01`/`RESPONSE=0x81`) — peer decoded
+  READ as WRITE and its `C0 81 90 02` response could not be matched.
+- Scratch-only reproduction of (1)+(2) (`vec01-master-exp` `3f69006f…f5d26`,
+  capture `run-exp-out/vec01.pcap` `9709760a…668c1`) advanced past Connect and
+  isolated defect (3) on the wire.
+- **No Go production/test source changed** in this pass (corrections exercised only in
+  an untracked scratch copy). No PR/merge/`main` push/archive/promotion/self-signoff.
+  Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §34.
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

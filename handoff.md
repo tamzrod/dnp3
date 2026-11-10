@@ -566,3 +566,32 @@ and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §33 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md` §33.
+
+### Owner-directed lab-only functionality execution after PR #23 (2026-11-10)
+Owner addendum "Owner-directed lab-only functionality execution after PR #23"
+(authority in `workflow/active_work/VEC-01-LAB-EXEC-001.md`). **Documentation-only
+for the Go tree; no Go production/test source, protocol library, dependency, script,
+CI or governance change.** Startup PASS (`cwal-check.sh` OK; six authority markers
+identical); `work`==`origin/work`==`9b5603b`; merged `main` `9b406f4` (PR #23)
+ancestor of `work`. For this **fully isolated, memory-only development test only**
+the addendum replaces the earlier Gate B *independent-human-before-first-packet*
+dependency with a **repeatable fail-closed objective local preflight before opening
+any simulator listener**; it is **not** independent Gate B acceptance, not
+certification, and not authority to close R4 or claim third-party interoperability.
+Pinned peer provenance re-verified (five inputs match; tag peel `26b4c01e…`); stock
+and lab peers rebuilt **hermetically offline**; lab `main.cpp` byte-faithful
+`4380b16f…41afc`. Isolated two-namespace lab (`10.77.0.1`/`10.77.0.2`, single
+internal veth) objective checks all PASS; listener bound `10.77.0.2:20000` only. A
+**real wire experiment** was then run against the pinned peer (memory-only, lab veth
+capture only; `run-out/vec01.pcap` SHA-256 `a48371bd…0ca7e`): TCP connect + link
+reset/ACK OK, then **Connect fails** on **three demonstrated v0 defects** — (1)
+secondary Link Status func code (Go `2` vs IEEE 1815 `0xB`); (2) primary FCB after
+reset (Go `false` vs spec first frame `FCB=1`); (3) application function codes (Go
+`READ=2`/`RESPONSE=0` vs IEEE 1815 `READ=0x01`/`RESPONSE=0x81`). A scratch-only
+reproduction of (1)+(2) (`vec01-master-exp`, capture `9709760a…668c1`) advanced past
+Connect and isolated defect (3). **No Go production/test source changed** (corrections
+exercised only in an untracked scratch copy). No PR/merge/`main` push/archive/
+promotion/self-signoff. Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT
+EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §34 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` §34.
