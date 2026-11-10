@@ -58,13 +58,13 @@ func buildMVPSingleGroupResponse(seq uint8, group uint8) []byte {
 // output). It proves the public Read does NOT surface them (DNP3-035).
 func buildUnsupportedOnlyResponse(seq uint8) []byte {
 	obj := []byte{
-		// G10V1 binary output, qualifier 0x00 (index8), count=1, 3 octets/point
-		0x0A, 0x01, 0x00, 0x01,
-		0x00, 0x00, // index 0
+		// G10V1 binary output, qualifier 0x17 (count8+index8), count=1
+		0x0A, 0x01, 0x17, 0x01,
+		0x00, // index 0 (8-bit prefix)
 		0x81, // value set (0x80) + online (0x01)
-		// G40V1 analog output, qualifier 0x00 (index8), count=1, 7 octets/point
-		0x28, 0x01, 0x00, 0x01,
-		0x00, 0x00, // index 0
+		// G40V1 analog output, qualifier 0x17 (count8+index8), count=1
+		0x28, 0x01, 0x17, 0x01,
+		0x00,                   // index 0 (8-bit prefix)
 		0x00, 0x00, 0x80, 0x3F, // float32 1.0 (LSB)
 		0x01, // flags online
 	}

@@ -3870,3 +3870,69 @@ and therefore not durably retained. This is reported, not rounded up.
 **`TASK_BLOCKED` retained. VEC-01 NOT CLOSED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 No PR, merge, `main` push, archive, promotion, self-signoff or R4/Gate closure. Requires a separately
 human-promoted corrective task for the Class-0 qualifier defect.
+
+### 40. Owner-approved VEC-01 corrective #9 — IEEE 1815 Class-0 qualifier semantics (append-only, 2026-11-10)
+
+**Authorization.** Owner-approved corrective #9 (`workflow/active_work/VEC-01-LAB-EXEC-001.md`,
+"Owner-approved VEC-01 corrective #9 — IEEE 1815 Class-0 qualifier semantics (2026-11-10)").
+Executed under `operation cwal` only, on permanent `work`. Append-only; no historical section modified.
+This section narrows the §39 Gate C STOP for the qualifier defect only and does **not** close VEC-01/R4.
+
+**Baseline.** `HEAD=72beb6c68a985352ece47ff5fc0f5accc3b37faa` (authorizing doc commit
+`c7d22289eb8176814d81d5384c34a47efd06fed7`), branch `work`. Toolchain `go1.22.12 linux/amd64`.
+
+#### 40.1 Defect and wire contract
+
+§39 demonstrated that the pinned OpenDNP3 3.1.2 peer sends conformant Class-0 response objects with
+object-header qualifier `0x00` (IEEE 1815 `UINT8_START_STOP`: 8-bit start + 8-bit stop). The library
+labelled `0x00` `QualIndex8` (a count), and its outstation also emitted `0x00` as a count, so
+self-interop masked the defect: against the independent peer the unmodified master decoded
+`BI=0 AI=0 CT=0` while the wire carried `G1V1 BI[0]=true`, `G30V1 AI[0]=2300`, `G20V1 CT[0]=42`.
+
+#### 40.2 Changes (scoped allowlist only)
+
+| File | Change |
+|------|--------|
+| `internal/al/object_header.go` | `QualStartStop8 = 0x00` (5-octet header, start(1)+stop(1), validate start<=stop); `QualIndex8` re-pointed to `0x17` (4-octet header, 1-octet count, per-point 8-bit index prefix); `EncodedSize`/`Encode`/`Decode`/`ValidQualifier` and the `ErrUnsupportedQualifier` allow-list updated. |
+| `pkg/dnp3/master/client.go` | Class-0 G1V1/G30V1/G20V1/G10/G40 parsers honor start/stop bases and the 0x17 per-point 8-bit index prefix; new `pointLayout` helper; `sequentialRange` returns start/stop; removed unused counts. |
+| `internal/outstation/outstation.go` | Indexed static builders (G1/G30/G20 non-packed) emit `0x17` with 1-octet index prefixes; G10/G40 builders emit sequential `0x07`; `requestObjectHeaderSize` treats `0x00` as 5 octets. |
+| Tests/goldens/fixtures | `internal/al/object_header_test.go`, `internal/master/qualifier_golden_test.go`, `pkg/dnp3/master/binary_input_test.go`, `object_vector_test.go`, `read_response_shape_test.go`, `test/integration/tcp_test.go`, plus new `pkg/dnp3/master/class0_qualifier_test.go` and `internal/outstation/static_qualifier_test.go`. |
+| Docs | `docs/protocol/dnp3/090-object-model.md` qualifier table/patterns corrected; `active_work/supported-profile.md` allow-list and residual R6. |
+
+New focused tests include: `0x00` nonzero start/stop decode (`TestClass0G1V1StartStop8`,
+`TestClass0G30V1StartStop8`, `TestClass0CounterStartStop8`), `0x00` truncation
+(`TestDecodeObjectHeaderStartStop8Truncated`, `TestClass0StartStop8TruncatedStopsDecode`),
+inverted start/stop rejection (`TestDecodeObjectHeaderStartStop8Inverted`,
+`TestClass0StartStop8InvertedRejected`), `0x17` indexed-count with count/prefix bounds
+(`TestClass0G30V2IndexedCount8`, `TestClass0IndexedCount8TruncatedPrefix`,
+`TestObjectHeaderIndexedCount8`), Class-0 multi-header no-loss across mixed qualifiers
+(`TestClass0MultiHeaderMixedQualifiers`), and outstation emitter qualifiers
+(`TestBuildBinaryInputIndexedQualifier`, `TestBuildAnalogInputIndexedQualifier`,
+`TestBuildCounterIndexedQualifier`, `TestBuildBinaryOutputSequentialQualifier`,
+`TestBuildAnalogOutputSequentialQualifier`, `TestRequestStartStopHeaderConsumed`).
+
+#### 40.3 Mandatory gates (run on `work` @ baseline + correction; truthful results)
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Format | `gofmt -l .` | empty, exit 0 |
+| Whitespace | `git diff --check` | exit 0 |
+| Vet | `go vet ./...` | exit 0 |
+| Build | `go build ./...` | exit 0 |
+| Test | `go test ./... -count=1` | all packages `ok` |
+| Race | `go test -race -count=1 ./internal/al/ ./internal/master/ ./internal/outstation/ ./pkg/dnp3/master/ ./test/integration/` | `ok` |
+| MVP gate | `./scripts/verify-mvp.sh` | `verify-mvp: OK` |
+| External-MVP gate | `./scripts/verify-external-mvp.sh` | `OK` (Tiers 1–3); advisory: no third-party capture proof |
+
+`bash scripts/cwal-check.sh` reports `CWAL CHECK FAIL: working tree dirty` while the correction is
+uncommitted; it is re-run after commit and must report `CWAL CHECK OK` on the clean synced tree.
+
+#### 40.4 Non-claims
+
+No PR, merge, `main` push, archive, promotion, self-awarded independent CHECK or R4/Gate closure.
+Gate D remains as historically demonstrated (5 cases, header-CRC evidence only for D1; payload-CRC
+negative still needs separate explicit evidence) and Gate E remains `EVIDENCE_INCOMPLETE` (original
+PCAP not durably preserved). The independent-peer re-verification in addendum item 5 (isolated lab,
+unmodified Go master returning `BI[0]=true / AI[0]=2300 / CT[0]=42`) was **NOT executed** in this
+runner (no verified pinned peer artifacts/isolated lab available); it remains required before any
+interoperability statement. **`TASK_BLOCKED` retained; VEC-01 NOT CLOSED / R4 OPEN.**

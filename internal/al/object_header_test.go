@@ -218,9 +218,9 @@ func TestDecodeObjectHeaderTruncated(t *testing.T) {
 
 // TestDecodeObjectHeaderUnsupportedQualifier verifies unsupported qualifier
 // bytes return a clear ErrUnsupportedQualifier error and no header (DNP3-028).
-// The v0 allow-list is 0x06, 0x07, 0x00, 0x28, 0x27; everything else is rejected.
+// The v0 allow-list is 0x00, 0x06, 0x07, 0x17, 0x28, 0x27; everything else is rejected.
 func TestDecodeObjectHeaderUnsupportedQualifier(t *testing.T) {
-	bad := []uint8{0x01, 0x02, 0x05, 0x08, 0x17, 0x25, 0x26, 0x29, 0xFE, 0xFF}
+	bad := []uint8{0x01, 0x02, 0x05, 0x08, 0x25, 0x26, 0x29, 0xFE, 0xFF}
 	for _, q := range bad {
 		data := []byte{0x01, 0x01, q, 0x00}
 		h, n, err := DecodeObjectHeader(data, 0)
@@ -242,7 +242,7 @@ func TestDecodeObjectHeaderUnsupportedQualifier(t *testing.T) {
 // TestEncodeObjectHeaderUnsupportedQualifier verifies Encode rejects unsupported
 // qualifiers with ErrUnsupportedQualifier (DNP3-028).
 func TestEncodeObjectHeaderUnsupportedQualifier(t *testing.T) {
-	bad := []uint8{0x01, 0x08, 0x17, 0xFE, 0xFF}
+	bad := []uint8{0x01, 0x08, 0xFE, 0xFF}
 	for _, q := range bad {
 		h := ObjectHeader{Group: 1, Variation: 1, Qualifier: q}
 		out, err := h.Encode(nil)
@@ -294,7 +294,7 @@ func TestDecodeObjectHeaderRange16LSB(t *testing.T) {
 
 // TestValidQualifier covers the ValidQualifier helper.
 func TestValidQualifier(t *testing.T) {
-	valid := []uint8{QualAllObjects, QualCount8, QualIndex8, QualRange16, QualCount16}
+	valid := []uint8{QualStartStop8, QualAllObjects, QualCount8, QualIndex8, QualRange16, QualCount16}
 	for _, q := range valid {
 		if !ValidQualifier(q) {
 			t.Errorf("ValidQualifier(0x%02X) = false, want true", q)
@@ -302,5 +302,74 @@ func TestValidQualifier(t *testing.T) {
 	}
 	if ValidQualifier(0xFF) {
 		t.Errorf("ValidQualifier(0xFF) = true, want false")
+	}
+}
+
+// TestObjectHeaderEncodeStartStop8 verifies the 0x00 (UINT8_START_STOP)
+// qualifier encodes group, variation, qualifier, start(1), stop(1).
+func TestObjectHeaderEncodeStartStop8(t *testing.T) {
+	h := ObjectHeader{Group: 1, Variation: 1, Qualifier: QualStartStop8, Start: 0x00, Stop: 0x01}
+	got, err := h.Encode(nil)
+	if err != nil {
+		t.Fatalf("Encode error: %v", err)
+	}
+	want := []byte{0x01, 0x01, 0x00, 0x00, 0x01}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("start/stop = % X, want % X", got, want)
+	}
+	if h.EncodedSize() != 5 {
+		t.Fatalf("EncodedSize = %d, want 5", h.EncodedSize())
+	}
+}
+
+// TestDecodeObjectHeaderStartStop8 verifies the 0x00 start/stop header
+// round-trips and validates start<=stop.
+func TestDecodeObjectHeaderStartStop8(t *testing.T) {
+	data := []byte{0x1E, 0x01, 0x00, 0x00, 0x01}
+	h, n, err := DecodeObjectHeader(data, 0)
+	if err != nil {
+		t.Fatalf("DecodeObjectHeader error: %v", err)
+	}
+	if n != 5 {
+		t.Fatalf("consumed = %d, want 5", n)
+	}
+	if h.Group != 30 || h.Variation != 1 || h.Qualifier != QualStartStop8 || h.Start != 0 || h.Stop != 1 {
+		t.Fatalf("decoded = %+v, want G30V1 start/stop 0..1", h)
+	}
+}
+
+// TestDecodeObjectHeaderStartStop8Truncated verifies a truncated 0x00 header
+// is rejected (needs 5 octets).
+func TestDecodeObjectHeaderStartStop8Truncated(t *testing.T) {
+	if _, _, err := DecodeObjectHeader([]byte{0x01, 0x01, 0x00, 0x00}, 0); err == nil {
+		t.Fatalf("expected error for truncated start/stop header, got nil")
+	}
+}
+
+// TestDecodeObjectHeaderStartStop8Inverted verifies stop<start is rejected.
+func TestDecodeObjectHeaderStartStop8Inverted(t *testing.T) {
+	if _, _, err := DecodeObjectHeader([]byte{0x01, 0x01, 0x00, 0x02, 0x01}, 0); err == nil {
+		t.Fatalf("expected error for stop<start, got nil")
+	}
+}
+
+// TestObjectHeaderIndexedCount8 verifies the 0x17 (UINT8_CNT_UINT8_INDEX)
+// qualifier carries a 1-octet count and is 4 octets wide.
+func TestObjectHeaderIndexedCount8(t *testing.T) {
+	h := ObjectHeader{Group: 12, Variation: 1, Qualifier: QualIndex8, Count: 1}
+	got, err := h.Encode(nil)
+	if err != nil {
+		t.Fatalf("Encode error: %v", err)
+	}
+	want := []byte{0x0C, 0x01, 0x17, 0x01}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("indexed-count = % X, want % X", got, want)
+	}
+	decoded, n, err := DecodeObjectHeader(got, 0)
+	if err != nil {
+		t.Fatalf("DecodeObjectHeader error: %v", err)
+	}
+	if n != 4 || decoded.Qualifier != QualIndex8 || decoded.Count != 1 {
+		t.Fatalf("decoded = %+v consumed=%d, want 0x17 count=1 consumed=4", decoded, n)
 	}
 }

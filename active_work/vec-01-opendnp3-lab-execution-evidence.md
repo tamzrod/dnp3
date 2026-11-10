@@ -1376,3 +1376,36 @@ Against the independent peer the unmodified master decodes `BI=0 AI=0 CT=0` whil
 **Non-claims.** Not Gate C/D/E closure, not R4 closure, not certification, not a general
 interoperability claim. No fix applied (outside allowlist); a scratch-only correction is recorded as
 evidence only. `TASK_BLOCKED` retained; a separately human-promoted corrective task is required.
+
+---
+
+## §40 — Owner-approved corrective #9: Class-0 qualifier semantics (2026-11-10)
+
+Baseline permanent `work` @ `72beb6c6` (authorizing doc `c7d2228`); Go 1.22.12. Executed under
+`operation cwal` only. Narrows the §39 Gate C STOP for the qualifier defect only; does not close
+VEC-01/R4.
+
+**Correction.** `internal/al/object_header.go`: `0x00` is now `QualStartStop8`
+(`UINT8_START_STOP`, 5-octet header, start(1)+stop(1), start<=stop validated); `0x17` is now
+`QualIndex8` (`UINT8_CNT_UINT8_INDEX`, 4-octet header, 1-octet count + per-point 8-bit index).
+`pkg/dnp3/master/client.go` Class-0 parsers honor start/stop bases and the 0x17 index prefix;
+`internal/outstation/outstation.go` indexed static builders emit `0x17` (1-octet prefix) and the
+G10/G40 builders emit sequential `0x07`. Goldens/fixtures and `docs/protocol/dnp3/090-object-model.md`
+updated; residual `R6` recorded in `active_work/supported-profile.md`.
+
+**Gates (truthful).** `gofmt -l .` empty; `git diff --check`, `go vet ./...`, `go build ./...` exit 0;
+`go test ./... -count=1` all `ok`; targeted `go test -race` (`internal/al`, `internal/master`,
+`internal/outstation`, `pkg/dnp3/master`, `test/integration`) `ok`; `./scripts/verify-mvp.sh` →
+`verify-mvp: OK`; `./scripts/verify-external-mvp.sh` → `OK` (Tiers 1–3, advisory no third-party
+capture). `bash scripts/cwal-check.sh` fails only while the tree is dirty (pre-commit) and is re-run
+after commit.
+
+**New focused tests.** `pkg/dnp3/master/class0_qualifier_test.go` (`0x00` nonzero start/stop for
+G1V1/G30V1/G20V1, `0x00` truncation, inverted start/stop rejection, `0x17` indexed-count with
+truncation bound, multi-header mixed-qualifier no-loss) and `internal/outstation/static_qualifier_test.go`
+(emitted `0x17`/`0x07` qualifiers and `requestObjectHeaderSize(0x00)=5`).
+
+**Non-claims.** No PR/merge/`main` push/archive/promotion/self-CHECK/R4 closure. Addendum item 5
+independent-peer re-verification (unmodified Go master returning `BI[0]=true / AI[0]=2300 / CT[0]=42`)
+was **NOT executed** here (no verified pinned peer/isolated lab in this runner). Gate D unchanged
+(5 cases; D1 header-CRC only) and Gate E `EVIDENCE_INCOMPLETE`. `TASK_BLOCKED` retained.

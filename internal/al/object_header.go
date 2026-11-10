@@ -4,25 +4,33 @@ import "fmt"
 
 // ErrUnsupportedQualifier is returned by Encode/DecodeObjectHeader when an
 // object-header qualifier byte is outside the v0 allow-list (DNP3-028). The
-// supported qualifiers are: 0x06 (all-objects), 0x07 (8-bit count), 0x00
-// (8-bit index), 0x28 (16-bit range), 0x27 (16-bit count).
+// supported qualifiers are: 0x00 (8-bit start/stop), 0x06 (all-objects),
+// 0x07 (8-bit count), 0x17 (8-bit count + 8-bit index), 0x28 (16-bit range),
+// 0x27 (16-bit count).
 var ErrUnsupportedQualifier = fmt.Errorf("al: unsupported object qualifier")
 
-// Object-header qualifier codes supported by the v0 profile.
+// Object-header qualifier codes supported by the v0 profile. The byte values
+// follow the IEEE 1815 range/prefix codes. The earlier mapping of 0x00 to an
+// 8-bit index qualifier was a wire defect: 0x00 is UINT8_START_STOP, while
+// the indexed-count code is 0x17 (UINT8_CNT_UINT8_INDEX).
 //
 // DNP3 wire fields are LSB-first. The object header is always
 // group(1) + variation(1) + qualifier(1) + range(1..N). The range field
 // that follows the qualifier byte depends on the qualifier code.
 const (
+	// QualStartStop8 (0x00) is IEEE 1815 UINT8_START_STOP: an 8-bit start
+	// index followed by an 8-bit stop index (5-octet header). The objects
+	// that follow are sequential with no per-point index prefix.
+	QualStartStop8 uint8 = 0x00
 	// QualAllObjects (0x06) requests every point of the group/variation.
 	// The range field is a single 0x00 octet.
 	QualAllObjects uint8 = 0x06
 	// QualCount8 (0x07) carries an 8-bit point count; points are sequential
 	// starting at index 0 and carry no per-point index prefix.
 	QualCount8 uint8 = 0x07
-	// QualIndex8 (0x00) carries an 8-bit point count followed by a per-point
-	// index for each object value that follows the header.
-	QualIndex8 uint8 = 0x00
+	// QualIndex8 (0x17) is IEEE 1815 UINT8_CNT_UINT8_INDEX: an 8-bit point
+	// count followed by a per-point 8-bit index prefix for each object.
+	QualIndex8 uint8 = 0x17
 	// QualRange16 (0x28) carries a 16-bit start index and 16-bit stop index,
 	// both LSB-first.
 	QualRange16 uint8 = 0x28
@@ -37,8 +45,8 @@ const (
 //   - Variation: object variation (e.g. 1)
 //   - Qualifier: range/prefix qualifier byte (see Qual* constants)
 //   - Count:     point count for count/index qualifiers (ignored for QualAllObjects)
-//   - Start:     first index for range qualifiers (LSB-first on the wire)
-//   - Stop:      last index for range qualifiers (LSB-first on the wire)
+//   - Start:     first index for start/stop and range16 qualifiers (LSB-first)
+//   - Stop:      last index for start/stop and range16 qualifiers (LSB-first)
 type ObjectHeader struct {
 	Group     uint8
 	Variation uint8
@@ -59,6 +67,9 @@ func (h ObjectHeader) EncodedSize() int {
 	case QualCount8, QualIndex8:
 		// group, variation, qualifier, count(1)
 		return 4
+	case QualStartStop8:
+		// group, variation, qualifier, start(1), stop(1)
+		return 5
 	case QualRange16:
 		// group, variation, qualifier, start(2), stop(2)
 		return 7
@@ -82,6 +93,9 @@ func (h ObjectHeader) Encode(dst []byte) ([]byte, error) {
 		return append(dst, h.Group, h.Variation, QualCount8, byte(h.Count)), nil
 	case QualIndex8:
 		return append(dst, h.Group, h.Variation, QualIndex8, byte(h.Count)), nil
+	case QualStartStop8:
+		// group, variation, 0x00, start(1), stop(1)
+		return append(dst, h.Group, h.Variation, QualStartStop8, byte(h.Start), byte(h.Stop)), nil
 	case QualRange16:
 		// group, variation, 0x28, start(LSB 2), stop(LSB 2)
 		return append(dst,
@@ -141,6 +155,16 @@ func DecodeObjectHeader(data []byte, offset int) (ObjectHeader, int, error) {
 		}
 		h.Count = uint16(data[offset+3])
 		consumed = 4
+	case QualStartStop8:
+		if offset+5 > len(data) {
+			return ObjectHeader{}, 0, fmt.Errorf("al: start/stop header truncated at offset %d: need 5 bytes, have %d", offset, len(data)-offset)
+		}
+		h.Start = uint16(data[offset+3])
+		h.Stop = uint16(data[offset+4])
+		if h.Stop < h.Start {
+			return ObjectHeader{}, 0, fmt.Errorf("al: start/stop header at offset %d: stop %d < start %d", offset, h.Stop, h.Start)
+		}
+		consumed = 5
 	case QualRange16:
 		// 4th octet is unused; start(2 LSB) + stop(2 LSB) follow.
 		if offset+7 > len(data) {
@@ -167,7 +191,7 @@ func DecodeObjectHeader(data []byte, offset int) (ObjectHeader, int, error) {
 // object-header model.
 func ValidQualifier(q uint8) bool {
 	switch q {
-	case QualAllObjects, QualCount8, QualIndex8, QualRange16, QualCount16:
+	case QualStartStop8, QualAllObjects, QualCount8, QualIndex8, QualRange16, QualCount16:
 		return true
 	default:
 		return false

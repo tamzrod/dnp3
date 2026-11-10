@@ -10,11 +10,11 @@ func TestParseBinaryInputOnlineTrue(t *testing.T) {
 	// g1v1 format: state in bit 7 (0x80), quality in bits 0-6
 	// When value=true and quality=ONLINE, byte = 0x80 | 0x01 = 0x81
 	data := []byte{
-		0x01,       // Group 1
-		0x01,       // Variation 1 (with flags)
-		0x00,       // Qualifier: index
-		0x01,       // Count: 1
-		0x05, 0x00, // Index: 5 (little-endian)
+		0x01, // Group 1
+		0x01, // Variation 1 (with flags)
+		0x17, // Qualifier: UINT8_CNT_UINT8_INDEX (0x17)
+		0x01, // Count: 1
+		0x05, // Index: 5 (8-bit prefix)
 		0x81, // Value: state=1 (0x80), quality=ONLINE (0x01)
 	}
 
@@ -59,11 +59,11 @@ func TestParseClass0PackedBinaryInputVector(t *testing.T) {
 func TestParseBinaryInputOnlineFalse(t *testing.T) {
 	// When value=false and quality=ONLINE, byte = 0x00 | 0x01 = 0x01
 	data := []byte{
-		0x01,       // Group 1
-		0x01,       // Variation 1 (with flags)
-		0x00,       // Qualifier: index
-		0x01,       // Count: 1
-		0x03, 0x00, // Index: 3
+		0x01, // Group 1
+		0x01, // Variation 1 (with flags)
+		0x17, // Qualifier: UINT8_CNT_UINT8_INDEX (0x17)
+		0x01, // Count: 1
+		0x03, // Index: 3 (8-bit prefix)
 		0x01, // Value: state=0, quality=ONLINE (0x00|0x01)
 	}
 
@@ -91,11 +91,11 @@ func TestParseBinaryInputOnlineFalse(t *testing.T) {
 func TestParseBinaryInputOffline(t *testing.T) {
 	// When value=true and quality=OFFLINE, byte = 0x80 | 0x80 = 0x80
 	data := []byte{
-		0x01,       // Group 1
-		0x01,       // Variation 1 (with flags)
-		0x00,       // Qualifier: index
-		0x01,       // Count: 1
-		0x01, 0x00, // Index: 1
+		0x01, // Group 1
+		0x01, // Variation 1 (with flags)
+		0x17, // Qualifier: UINT8_CNT_UINT8_INDEX (0x17)
+		0x01, // Count: 1
+		0x01, // Index: 1 (8-bit prefix)
 		0x80, // Value: state=1 (0x80), quality=OFFLINE (0x80) - note: OFFLINE in bit 7 conflicts with state, but parsing still works
 	}
 
@@ -125,15 +125,15 @@ func TestParseBinaryInputMultiple(t *testing.T) {
 	// Test multiple binary inputs in one response
 	// State in bit 7 (0x80), ONLINE in bit 0 (0x01)
 	data := []byte{
-		0x01,       // Group 1
-		0x01,       // Variation 1
-		0x00,       // Qualifier: index
-		0x03,       // Count: 3
-		0x00, 0x00, // Index 0
-		0x81,       // state=1, ONLINE
-		0x01, 0x00, // Index 1
-		0x01,       // state=0, ONLINE
-		0x02, 0x00, // Index 2
+		0x01, // Group 1
+		0x01, // Variation 1
+		0x17, // Qualifier: UINT8_CNT_UINT8_INDEX (0x17)
+		0x03, // Count: 3
+		0x00, // Index 0 (8-bit prefix)
+		0x81, // state=1, ONLINE
+		0x01, // Index 1 (8-bit prefix)
+		0x01, // state=0, ONLINE
+		0x02, // Index 2 (8-bit prefix)
 		0x81, // state=1, ONLINE
 	}
 
@@ -194,8 +194,8 @@ func TestBinaryInputEncodeDecodeRoundTrip(t *testing.T) {
 
 			// Parse as master would
 			data := []byte{
-				0x01, 0x01, 0x00, 0x01, // Header: group 1, var 1, qualifier, count 1
-				0x00, 0x00, // Index 0
+				0x01, 0x01, 0x17, 0x01, // Header: group 1, var 1, indexed qualifier 0x17, count 1
+				0x00, // Index 0 (8-bit prefix)
 				encoded,
 			}
 

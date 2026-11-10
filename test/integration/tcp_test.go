@@ -1069,12 +1069,18 @@ func parseBinaryOutputResponse(data []byte) []bool {
 		}
 
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := int(data[offset+3])
 		offset += 4
+		// Qualifier 0x07 (count8) is sequential with no per-point index;
+		// qualifier 0x17 (UINT8_CNT_UINT8_INDEX) prefixes an 8-bit index.
+		idxPrefix := 0
+		if qualifier == 0x17 {
+			idxPrefix = 1
+		}
 
-		for i := 0; i < count && offset < len(data)-1; i++ {
-			offset += 2 // skip index (LSB first)
+		for i := 0; i < count && offset < len(data); i++ {
+			offset += idxPrefix
 			if variation == 1 {
 				result = append(result, (data[offset]&0x80) != 0)
 				offset++
@@ -1108,12 +1114,18 @@ func parseAnalogOutputResponse(data []byte) []float64 {
 		}
 
 		variation := data[offset+1]
-		_ = data[offset+2] // qualifier
+		qualifier := data[offset+2]
 		count := int(data[offset+3])
 		offset += 4
+		// Qualifier 0x07 (count8) is sequential with no per-point index;
+		// qualifier 0x17 (UINT8_CNT_UINT8_INDEX) prefixes an 8-bit index.
+		idxPrefix := 0
+		if qualifier == 0x17 {
+			idxPrefix = 1
+		}
 
-		for i := 0; i < count && offset < len(data)-4; i++ {
-			offset += 2         // skip index (LSB first)
+		for i := 0; i < count && offset+5 <= len(data); i++ {
+			offset += idxPrefix
 			if variation == 1 { // 32-bit float with flags
 				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
 				result = append(result, float64(math.Float32frombits(bits)))
