@@ -1497,3 +1497,7 @@ raw captures, and to exist *before traffic*. Flagged for maintainer resolution.
 control or `.vec` produced. Gate C/D/E `NOT_REACHED`; payload-block-CRC negative `NOT_TESTED`.
 No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure; no new storage provisioned.
 **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+**§43.6 Go gates — NOT_RUN:** item 7 gates are conditional on preconditions passing (halted at
+precondition 1); base runner has no Go toolchain (Go only inside the lab image) and no Go source
+changed. NOT_RUN, not inferred PASS.

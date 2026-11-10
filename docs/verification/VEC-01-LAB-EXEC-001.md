@@ -4133,3 +4133,10 @@ preserved. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PART
 PROVEN.** Disposition: **EVIDENCE_INCOMPLETE / PUSHBACK — precondition 1 (cross-runner durable
 evidence store) not met.** A later separate `operation cwal` may proceed only if the owner supplies
 or authorizes a concrete durable destination outside Git and the runner.
+
+**43.6 Go gates — NOT_RUN (and why).** The addendum's Go gates (`gofmt -l .`, `go vet`, `go build`,
+`go test`, `-race`, `verify-mvp.sh`, `verify-external-mvp.sh`) are listed under "Authorized executions
+AFTER all preconditions PASS"; the campaign halted at precondition 1, so they were not authorized or
+required. Independently, the base runner has no Go toolchain (Go 1.22.12 exists only inside the
+built `vec01-lab:3.1.2` image), and no Go source changed, so a bare-runner Go run would also be
+inapplicable. Recorded truthfully as NOT_RUN, not inferred as PASS.
