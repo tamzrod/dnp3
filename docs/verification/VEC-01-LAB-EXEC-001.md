@@ -2855,3 +2855,124 @@ CWAL substep cannot grant or simulate that approval.**
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 30. Gate B artifact recovery and reviewer-packet preparation (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner-approved bounded "Gate B artifact recovery and
+independently reviewable packet" substep of the existing `VEC-01-LAB-EXEC-001`
+CURRENT, appended by the owner-authorized actor in
+`workflow/active_work/VEC-01-LAB-EXEC-001.md` (authorization commit
+`86cff635ab5e16ddc7f9ea24b334cf33651b834b`), following documentation checkpoint
+`a8e44d08ebcc081283343abb5f0586aa742484ef` and independent pre-PR CHECK. JR
+executed under **`operation cwal`**. Documentation-only; **no Go production/test
+source, no protocol library and no packet/capture changed.**
+
+**Startup.** `bash scripts/cwal-check.sh` PASS (`CURRENT=VEC-01-LAB-EXEC-001
+branch=work`); six authority markers identical in `workflow/active_work/README.md`
+and `handoff.md`; required files present; tree clean; remote `work` fast-forwarded
+`a8e44d0` → `86cff63` (no rebase/force-push). CURRENT body not edited by JR.
+
+### 30.1 Recovery attempt — the durable store and packet are ABSENT
+
+Item 2 requires **recover first, reconstruct only if absent**. Recovery found
+**nothing to recover**:
+
+| Search | Result |
+|---|---|
+| `/workspace/vec01-lab-artifacts/` (historical store) | **ABSENT** (`ls` → "No such file or directory") |
+| Whole-filesystem `find` for `*vec01*`, `*opendnp3*`, `gate-b*`, `outstation-demo`, `libopendnp3*` | only the in-repo `active_work/vec-01-*.md` docs; **no peer bytes, no packet, no captures** |
+| Cached source/dependency archives (`opendnp3*.tar.gz`, `asio*`, `exe4cpp*`, `ser4cpp*`) | **none** anywhere on the filesystem |
+| `/tmp` | only unrelated runtime files |
+
+So no historical hash could be checked against available bytes; the store did not
+persist (see §30.3).
+
+### 30.2 Bounded reacquisition of pinned provenance (freshly verified)
+
+Item 2 permits reproducibly reacquiring **only** the pinned OpenDNP3 3.1.2
+source/dependency artifacts using the original provenance and verification rules,
+confined to artifact retrieval. This was done; **actual bytes were freshly
+hash-checked and match the §2.1/§2.2 recorded values exactly**:
+
+| Artifact | Expected SHA-256 (§2.1/§2.2) | Fresh SHA-256 (this pass) | Match |
+|---|---|---|---|
+| `opendnp3` source tarball (`codeload.github.com/dnp3/opendnp3/tar.gz/refs/tags/3.1.2`) | `183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2` | same | ✅ |
+| asio `asio-1-16-0` zip | `18883c350558eadf91218ae5ce9a8f8f85099c2f036c1c8579fb639092e928c5` | same | ✅ |
+| exe4cpp `fb878a4de598ba9d6e4338afebf83f96e03af1b8` zip | `2a8a2c7d9982f54858b92c03cff91ef433907472039f8e61ff7c9f9b3d48db6c` | same | ✅ |
+| ser4cpp `3c449734dc530a8f465eb0982de29165cc4e23d5` zip | `5a78f83de2d70bdf4be2ab607bc4416c6866ce64a257a8f19948cf5746762f6e` | same | ✅ |
+
+Tag verification via `git ls-remote https://github.com/dnp3/opendnp3 'refs/tags/3.1.2*'`:
+`3.1.2` = `523f7d2d6c65aa671f594fc63c3adcd74e81407d`, peeled `3.1.2^{}` =
+`26b4c01e4839bbbda8866655e086471c4917ee53` — matching §2.1. The three dependency
+zips' SHA-1s match the upstream `URL_HASH` values in `deps/*.cmake` at `26b4c01`
+(`6bdd3352…`, `18b141e8…`, `937b759b…`). **These bytes were retrieved only to
+re-verify the recorded source/dependency hashes**; they are source retrieval, not
+protocol traffic, and were **deleted** after verification (no durable store exists
+to retain them — §30.3). The lab `outstation-demo`/`libopendnp3.a` binary hashes
+(§15.5) were **NOT reproduced** (see §30.3), so they remain **NOT_VERIFIED** here.
+
+### 30.3 Durable persistence — NOT ESTABLISHED (decisive)
+
+Item 3 requires an access-controlled location **demonstrably surviving disposable
+sandbox loss**, verified by an independent read/access mechanism. It cannot be
+established in this runner:
+
+- The historical store was on `/workspace` (device `10305`, the `/dev/nvme0n2`
+  ext4 mount). **That same volume no longer holds the store**, empirically
+  demonstrating that `/workspace` alone does **not** survive runner disposal.
+- No separately mounted persistent volume, no approved external artifact store,
+  and no artifact backend is present: no `aws`/`gsutil`/`az`/`rclone` clients and
+  zero cloud-credential environment variables. `OH_INTERNAL_SERVER_URL` is the
+  local agent server (`127.0.0.1:60000`); `OH_CONVERSATIONS_PATH` is
+  `/workspace/conversations` (same `/dev/nvme0n2` volume).
+- No independent readback mechanism (distinct mount or external store) is
+  available, so persistence **cannot be proven**.
+
+Per item 3 this yields **`GATE_B_PACKET_INCOMPLETE`** with the exact unsupported
+persistence requirement recorded, and STOP — no "ready" claim. The **unsupported
+persistence requirement** is: *an access-controlled artifact store that survives
+disposable-runner loss, with an independent read/access verification path.* The
+consequence is that a reconstructed reviewer packet cannot be delivered to a
+distinct reviewer from this sandbox.
+
+### 30.4 Reviewer packet status
+
+Because persistence is unproven and the historical packet bytes are absent, a
+reviewer-accessible packet **cannot be delivered**. The packet *inputs* remain
+documented (not re-verified here): topology §11.1, isolation C1–C13 §11.2
+(**historically documented; no fresh isolation verification occurred**), bind
+`10.77.0.2:20000` with link addrs 4/3 and peer lab config §15.4, peer binary
+hashes §15.5, and the blank `independent-preflight-checklist.md` (§9.5). **No
+fresh network-isolation PASS is claimed**, and no reviewer packet is marked ready.
+
+**What a named independent reviewer (distinct from JR) still needs:** (1) a
+persistent, access-controlled artifact store (or an approved external location)
+holding the retained peer source/build/packet bytes; (2) a fresh isolated-
+environment verification of C1–C13 at sign-off; (3) hash-check of the pinned peer
+bytes; (4) confirmation of the v0 variations and the sole memory-backed BO[0] CROB
+target; (5) a dated approval of exact topology, absence of physical output and the
+sole simulator CROB target. **This substep cannot grant or simulate that
+approval.**
+
+### 30.5 Classification and disposition
+
+- **Gate B packet:** `GATE_B_PACKET_INCOMPLETE` — historical bytes absent, and
+  durable persistence (item 3) not establishable in this runner; exact unsupported
+  persistence requirement recorded (§30.3). No packet marked ready.
+- **Gate B sign-off:** `GATE_B_SIGNOFF_PENDING` — no named independent reviewer
+  approval; cannot be supplied here.
+- **B4 safety:** unchanged (`B4_JR_EVIDENCE_READY_FOR_INDEPENDENT_CHECK` from §29;
+  not self-awarded `B4_SAFETY_PASS`).
+- **Checks run:** `bash scripts/cwal-check.sh` PASS; `git diff --check` clean;
+  fresh SHA-256/SHA-1 hash checks of pinned source/dependency artifacts (match);
+  `git ls-remote` tag check; read-only filesystem/mount/persistence inspection.
+  Offline C++ demo rebuild: **NOT_RUN** (no `cmake`; and no durable store exists to
+  retain a rebuilt binary).
+- **Limitations / non-claims:** no production/test source change; no dependency
+  change; no listener/socket/TCP, network namespace, DNP3 packet, CROB, PCAP,
+  external/OT probe or field I/O; the retrieved source bytes were not retained
+  (no durable store). Gate B and the CURRENT remain **`TASK_BLOCKED`**; no Gate
+  C/D/E, PR, merge, `main` push, archive, promotion, self-signoff or R4 closure.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

@@ -890,3 +890,53 @@ TCP/DNP3 packet, listener/socket/PCAP, CROB, external/OT probe, release, PR, mer
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 30. Gate B artifact recovery and reviewer-packet preparation (append-only, 2026-11-10)
+
+Owner-approved bounded Gate B recovery/packet substep of the existing
+`VEC-01-LAB-EXEC-001` CURRENT (authorization commit
+`86cff635ab5e16ddc7f9ea24b334cf33651b834b`, following checkpoint `a8e44d0`). JR
+executed under `operation cwal`. **Documentation-only; no Go production/test
+source, protocol library or packet/capture changed.** Startup PASS (`cwal-check.sh`
+OK; six markers identical; tree clean; remote fast-forwarded `a8e44d0` → `86cff63`).
+
+**Recovery (item 2) — nothing to recover.** `/workspace/vec01-lab-artifacts/` is
+**ABSENT**; a whole-filesystem `find` for `*vec01*`/`*opendnp3*`/`gate-b*`/
+`outstation-demo`/`libopendnp3*` found only the in-repo `active_work/vec-01-*.md`
+docs; no cached source/dependency archives exist. No historical hash could be
+checked against available bytes.
+
+**Bounded reacquisition (item 2) — pinned provenance freshly verified.** The
+pinned OpenDNP3 3.1.2 source tarball and the three dependency zips were
+re-retrieved and their **actual bytes hash-checked, matching §2.1/§2.2 exactly**:
+source tarball `183cc292…6ff2`; asio `18883c35…28c5`; exe4cpp `2a8a2c7d…db6c`;
+ser4cpp `5a78f83d…2f6e`; SHA-1s match `deps/*.cmake` `URL_HASH`
+(`6bdd3352…`/`18b141e8…`/`937b759b…`); `git ls-remote` tag `3.1.2` =
+`523f7d2d…07d`, peeled `26b4c01e…e53`. These bytes were source retrieval only (no
+protocol traffic) and were **deleted** after verification; the lab
+`outstation-demo`/`libopendnp3.a` binary hashes (§15.5) were **NOT reproduced** and
+remain **NOT_VERIFIED**.
+
+**Durable persistence (item 3) — NOT ESTABLISHED (decisive).** The historical
+store was on `/workspace` (`/dev/nvme0n2`, device `10305`); that same volume no
+longer holds it, empirically showing `/workspace` alone does not survive runner
+disposal. No separately mounted persistent volume, no approved external artifact
+store and no artifact backend exist (no `aws`/`gsutil`/`az`/`rclone`; zero
+cloud-credential env vars; `OH_INTERNAL_SERVER_URL` is the local agent server;
+`OH_CONVERSATIONS_PATH` is the same `/dev/nvme0n2` volume). No independent readback
+mechanism is available, so persistence cannot be proven. **Unsupported persistence
+requirement recorded:** an access-controlled artifact store surviving
+disposable-runner loss with an independent read/access verification path.
+
+**Disposition.** Gate B packet: `GATE_B_PACKET_INCOMPLETE` (historical bytes
+absent; persistence not establishable; exact requirement recorded). Gate B
+sign-off: `GATE_B_SIGNOFF_PENDING` (named independent reviewer required; cannot be
+supplied here). No fresh network-isolation PASS claimed; no reviewer packet marked
+ready. Offline C++ demo rebuild **NOT_RUN** (no `cmake`; no durable store to retain
+a rebuilt binary). Gate B and the CURRENT remain **`TASK_BLOCKED`**; no Gate C/D/E,
+listener/socket/TCP, namespace execution, DNP3 packet, CROB, PCAP, external/OT
+probe, PR, merge, `main` push, archive, promotion or R4 closure. Full detail:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §30.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

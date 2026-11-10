@@ -483,5 +483,22 @@ signed; this substep cannot grant or simulate that approval. Gate B and the CURR
 remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §29.
 
+### Gate B artifact recovery + reviewer-packet preparation (2026-11-10)
+Owner-approved bounded Gate B recovery/packet substep of the existing CURRENT
+(authorization commit `86cff63`; following checkpoint `a8e44d0`).
+**Documentation-only; no Go production/test source or protocol library changed.**
+Startup PASS (`cwal-check.sh` OK; six markers identical). **Result:
+`GATE_B_PACKET_INCOMPLETE`** — the historical store `/workspace/vec01-lab-artifacts`
+is ABSENT and nothing was recoverable; the pinned OpenDNP3 3.1.2 source and the
+three dependency zips were re-retrieved and **fresh-hashed (match §2.1/§2.2
+exactly)**, but **durable persistence could not be established** (no separately
+mounted volume, no external artifact store/backend; `/workspace` empirically does
+not survive runner disposal), so a reviewer-accessible packet cannot be delivered.
+Gate B sign-off: **`GATE_B_SIGNOFF_PENDING`** — a named independent reviewer
+distinct from JR must verify fresh isolation and approve; this substep cannot grant
+or simulate it. Offline C++ demo rebuild NOT_RUN (no `cmake`). Gate B and the
+CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §30.
+
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.
