@@ -32,13 +32,13 @@ const (
 
 // Function code ranges
 const (
-	FuncCodeMinMaster   = 1   // Minimum master-to-outstation function code
-	FuncCodeMaxMaster   = 64  // Maximum master-to-outstation function code
-	FuncCodeMinMfr      = 64  // Minimum manufacturer-specific code
-	FuncCodeMaxMfr      = 127 // Maximum manufacturer-specific code
-	FuncCodeResponse    = 0   // Response function code
-	FuncCodeUnsolicited = 1   // Unsolicited response
-	FuncCodeNoAck       = 127 // No acknowledgment required
+	FuncCodeMinMaster   = 1    // Minimum master-to-outstation function code
+	FuncCodeMaxMaster   = 64   // Maximum master-to-outstation function code
+	FuncCodeMinMfr      = 64   // Minimum manufacturer-specific code
+	FuncCodeMaxMfr      = 127  // Maximum manufacturer-specific code
+	FuncCodeResponse    = 0x81 // Response function code
+	FuncCodeUnsolicited = 0x82 // Unsolicited response
+	FuncCodeNoAck       = 0x7F // No acknowledgment required
 )
 
 // Application control field
@@ -159,12 +159,12 @@ func Decode(data []byte) (*APDU, error) {
 
 // IsRequest returns true if this is a master-to-outstation request.
 func (a *APDU) IsRequest() bool {
-	return a.FuncCode >= FuncCodeMinMaster
+	return a.FuncCode >= FuncCodeMinMaster && a.FuncCode <= FuncCodeMaxMaster
 }
 
 // IsResponse returns true if this is an outstation-to-master response.
 func (a *APDU) IsResponse() bool {
-	return a.FuncCode <= FuncCodeUnsolicited
+	return a.FuncCode == FuncCodeResponse || a.FuncCode == FuncCodeUnsolicited
 }
 
 // IsConfirmationRequired returns true if receiver must send confirm.
@@ -416,8 +416,8 @@ func NewConfirm(seq uint8) *APDU {
 			UNS: false,
 			Seq: seq,
 		},
-		FuncCode: FuncResponse, // FuncCode 0 is used for both response and confirm
-		Data:     nil,          // No IIN for confirm
+		FuncCode: FuncConfirm, // Confirm is function code 0x00 (no IIN)
+		Data:     nil,         // No IIN for confirm
 	}
 }
 
@@ -437,7 +437,7 @@ func NewConfirmWithIIN(seq uint8, iin *IIN) *APDU {
 			UNS: false,
 			Seq: seq,
 		},
-		FuncCode: FuncResponse,
+		FuncCode: FuncConfirm,
 		Data:     data,
 	}
 }

@@ -270,8 +270,8 @@ func TestBuildPollRequest(t *testing.T) {
 	}{
 		// DNP3-014: Class-0 / integrity poll uses the canonical all-objects
 		// qualifier (0x06) on Group 60 Variation 1.
-		{PollIntegrity, []byte{60, 1, 0x06, 0x00}},
-		{PollClass0, []byte{60, 1, 0x06, 0x00}},
+		{PollIntegrity, []byte{60, 1, 0x06}},
+		{PollClass0, []byte{60, 1, 0x06}},
 		{PollClass1, []byte{2, 1, 0x07, 0x00}},
 		{PollClass2, []byte{32, 1, 0x07, 0x00}},
 		{PollClass3, []byte{22, 1, 0x07, 0x00}},
@@ -1102,5 +1102,81 @@ func TestMultiFragmentClass0Reassembly(t *testing.T) {
 	}
 	if !sawG30V1 {
 		t.Error("G30V1 object header missing from reassembled response")
+	}
+}
+
+// ackSkipTransport serves a fixed sequence of frames then blocks (timeout).
+// It records each SetTimeout so the bounded-deadline behavior can be checked.
+type ackSkipTransport struct {
+	frames      [][]byte
+	idx         int
+	lastTimeout int
+	blocked     int
+}
+
+func (t *ackSkipTransport) Send([]byte) error { return nil }
+
+func (t *ackSkipTransport) Receive() ([]byte, error) {
+	if t.idx < len(t.frames) {
+		f := t.frames[t.idx]
+		t.idx++
+		return f, nil
+	}
+	t.blocked++
+	return nil, ErrTimeout
+}
+
+func (t *ackSkipTransport) SetTimeout(ms int) { t.lastTimeout = ms }
+
+// TestWaitForResponseSkipsBareLinkACK verifies defect 5: a conformant
+// outstation's bare secondary link-layer ACK (no transport fragment) that
+// precedes the solicited application response is skipped, and the following
+// user-data frame is returned.
+func TestWaitForResponseSkipsBareLinkACK(t *testing.T) {
+	m := NewMaster(&Config{MasterAddress: 1, Timeout: 1000, MaxRetries: 1})
+	tr := &ackSkipTransport{frames: [][]byte{
+		encodeACK(t, false, false, frame.FuncAck, 0x0001, 0x0002),
+		buildResponseFrameWithSeq(0),
+	}}
+	m.SetTransport(tr)
+
+	data, err := m.waitForResponseTimeout(time.Second)
+	if err != nil {
+		t.Fatalf("waitForResponseTimeout: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("expected the user-data response after the skipped ACK")
+	}
+	if tr.idx != 2 {
+		t.Fatalf("consumed %d frames, want 2 (ACK then response)", tr.idx)
+	}
+}
+
+// TestWaitForResponseACKSpamBounded verifies defect 5's bound: a peer that
+// emits only bare link-layer ACKs must not extend the wait indefinitely. The
+// call returns a timeout once the single bounded deadline elapses, and the
+// transport timeout never grows.
+func TestWaitForResponseACKSpamBounded(t *testing.T) {
+	m := NewMaster(&Config{MasterAddress: 1, Timeout: 1000, MaxRetries: 1})
+	frames := make([][]byte, 0, 64)
+	for i := 0; i < 64; i++ {
+		frames = append(frames, encodeACK(t, false, false, frame.FuncAck, 0x0001, 0x0002))
+	}
+	tr := &ackSkipTransport{frames: frames}
+	m.SetTransport(tr)
+
+	start := time.Now()
+	_, err := m.waitForResponseTimeout(80 * time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout error once the deadline elapsed")
+	}
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("error = %v, want ErrTimeout", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("wait not bounded: took %v", elapsed)
+	}
+	if tr.lastTimeout > 80 {
+		t.Fatalf("transport timeout grew to %d ms, want <= 80", tr.lastTimeout)
 	}
 }

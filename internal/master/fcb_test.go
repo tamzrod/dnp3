@@ -92,10 +92,10 @@ func TestFCBTogglesAcrossConfirmedData(t *testing.T) {
 }
 
 // TestFCBResetAfterResetLink verifies DNP3-057: a Reset Link Stations exchange
-// resets the primary-side FCB to false. Register an outstation, advance the
-// FCB by sending one confirmed-data request, assert the next FCB is true,
-// then call resetFCB (as sendResetLink does) and assert the FCB returns to
-// false.
+// sets the primary-side FCB to true (the first confirmed frame after a reset
+// carries FCB=1, per IEEE 1815 / OpenDNP3 ResetReadFCB). Register an
+// outstation, advance the FCB by sending one confirmed-data request, then call
+// resetFCB (as sendResetLink does) and assert the FCB returns to true.
 func TestFCBResetAfterResetLink(t *testing.T) {
 	m := NewMaster(&Config{MasterAddress: 1, Timeout: 50, MaxRetries: 1, RetryDelay: 0})
 	tr := &fcbRecorderTransport{}
@@ -119,8 +119,8 @@ func TestFCBResetAfterResetLink(t *testing.T) {
 		t.Fatal("outstation not found")
 	}
 	o.resetFCB()
-	if got := m.outstationFCB(2); got != false {
-		t.Fatalf("after reset, FCB = %v, want false", got)
+	if got := m.outstationFCB(2); got != true {
+		t.Fatalf("after reset, FCB = %v, want true", got)
 	}
 }
 

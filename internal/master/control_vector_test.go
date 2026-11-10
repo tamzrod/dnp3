@@ -32,14 +32,14 @@ func TestBuildControlRequestCROBLSB(t *testing.T) {
 		t.Fatalf("buildControlRequest returned nil APDU")
 	}
 	// Expected object bytes:
-	// 0C 01 00 01          header (group 12, var 1, qualifier 0x00, count 1)
+	// 0C 01 28 01 00       header (group 12, var 1, qualifier 0x28, count 1)
 	// 34 12                index 0x1234 (LSB first)
 	// 08                   code = LATCH_ON (IEEE 1815 0x08)
 	// 01                   count
 	// 00 00 00 00          onTime = 0 (LSB first)
 	// 00 00 00 00          offTime = 0 (LSB first)
 	// 00                   status
-	want, err := hex.DecodeString("0c01000134120801000000000000000000")
+	want, err := hex.DecodeString("0c0128010034120801000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,11 +131,11 @@ func TestBuildControlRequestCROBBoolMapping(t *testing.T) {
 			if req == nil {
 				t.Fatalf("buildControlRequest returned nil")
 			}
-			// Data layout: 0C 01 00 01 | 00 00 (index 0) | code ...
-			if len(req.Data) < 7 {
+			// Data layout: 0C 01 28 01 00 | 00 00 (index 0) | code ...
+			if len(req.Data) < 8 {
 				t.Fatalf("request too short: %X", req.Data)
 			}
-			gotCode := req.Data[6]
+			gotCode := req.Data[7]
 			if gotCode != tc.wantCode {
 				t.Errorf("code = %d, want %d", gotCode, tc.wantCode)
 			}

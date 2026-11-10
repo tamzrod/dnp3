@@ -1154,3 +1154,63 @@ PR/merge/`main` push/archive/promotion/self-signoff.
 
 Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## §36 — Seven authorized v0 wire-format corrections implemented + lab-verified; new eighth defect STOP (2026-11-10)
+
+Owner authorization commit `25d7ea3` approved the seven demonstrated v0 wire-format
+corrections (§35.1) as a bounded functionality-correctness substep of
+`VEC-01-LAB-EXEC-001`. **Applied to the real `work` tree** (not scratch), executor
+OpenHands agent (autonomous) under Operation CWAL.
+
+Corrections: (1) `internal/dll/frame/frame.go` secondary Link Status `0x0B` /
+NOT_SUPPORTED `0x0F`; (2) `internal/master/master.go` `resetFCB()` = `true`
+(first confirmed frame after Reset Link uses FCB=1); (3) `internal/al/function_codes.go`
+application function codes (READ `0x01`, WRITE `0x02`, SELECT `0x03`, OPERATE `0x04`,
+DIRECT_OPERATE `0x05`, DIRECT_OPERATE_NR `0x06`, RESPONSE `0x81`, UNSOLICITED `0x82`);
+(4) `internal/master/master.go` `processReceivedBytes` accepts outstation user-data
+func 3/4 regardless of PRM; (5) `waitForResponseTimeout` consumes a bare secondary
+ACK within one bounded deadline; (6) `internal/al/object_header.go` all-objects
+`0x06` `EncodedSize()` = 3 (outstation request parser made qualifier-aware); (7)
+`buildControlRequest` uses the count+index qualifier `0x28` (plus matching
+`skipObject`/`commandStatusForQualifier`/`objectLayout`, outstation SBO/direct-operate
+parsers and simulator operate echo). Only the affected regression tests/goldens/
+fixtures and the published tables (`docs/SUPPORTED.md`,
+`docs/protocol/dnp3/080-application-layer.md`) were updated; new defect-5 boundary
+tests added (`TestWaitForResponseSkipsBareLinkACK`, `TestWaitForResponseACKSpamBounded`).
+
+Mandatory gates (exact `work` tree, Go 1.22.12, `GOPROXY=off`): `gofmt -l` clean;
+`git diff --check` clean; `go vet ./...` PASS; `go build ./...` PASS;
+`go test ./... -count=1` PASS (all 24 packages `ok`); targeted `-race` PASS (no
+races); `./scripts/verify-external-mvp.sh` PASS (Tiers 1–3).
+
+Owner-authorized fresh isolated two-namespace lab (single internal veth, link-scoped
+route only, no default route, forwarding off; peer bound `10.77.0.2:20000`; pinned
+peer `outstation-demo` SHA-256 `b03c522b…a34d6`; corrected master `vec01-master-fixed`
+SHA-256 `71655b60…48abc5`). Run result: `master exit=0`, `IIN: 90 00` (**no
+PARAM_ERROR**), `operate status: 4`. Capture confirms defects 1–3 and 6 fixed on the
+wire (READ `0x01`; all-objects headers exactly 3 octets; RESPONSE `0x81`; IIN `90 00`;
+DIRECT_OPERATE `0x05` with CROB qualifier `0x28` accepted; `SEC_ACK`/PRM=1 frames
+handled). Evidence (outside Git, not durable across runners):
+`/workspace/vec01-lab-artifacts/exec-001-fixed-run/` (pcap SHA-256 `4e2ccd72…d2907`).
+
+**NEW eighth defect (STOP, no scope expansion).** `operate status 4` is
+`CommandStatus::NOT_SUPPORTED`: the Go master sends the repo's one-hot CROB control
+code `0x08` (`CROBCodeLatchOn`), but IEEE 1815 / OpenDNP3 encode the CROB operation
+type as a low-nibble value (`LATCH_ON=0x03`, `LATCH_OFF=0x04`;
+`OperationTypeSpec::from_type(rawCode & 0x0F)`). This is a **new, distinct wire-format
+defect outside the authorized seven** (the outstation `DefaultDataHandler` shares the
+same one-hot interpretation). Decisive scratch diagnostic (untracked copy, only
+`CROBCodeLatchOn 0x08→0x03` and `CROBCodeLatchOff 0x10→0x04`): the same lab run returns
+`IIN: 90 00 / operate status: 0 / done` and the peer logs `[LAB] BO[0] direct-operate
+LATCH_ON -> state=true` (diagnostic pcap SHA-256 `e4c03e04…5bd06`). Per the
+authorization — *"If actual test reveals a new defect outside these seven, STOP with
+precise repro rather than expanding scope"* — this pass **STOPs** and does not change
+the CROB control-code constants. The seven corrections are implemented and verified as
+far as independently testable; full end-to-end control success requires a separately
+authorized eighth correction.
+
+No PR/merge/`main` push/archive/promotion/self-signoff. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN.**

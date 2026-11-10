@@ -14,9 +14,9 @@ func TestObjectHeaderEncodeAllObjects(t *testing.T) {
 		h    ObjectHeader
 		want []byte
 	}{
-		{"G1V1 all", ObjectHeader{Group: 1, Variation: 1, Qualifier: QualAllObjects}, []byte{0x01, 0x01, 0x06, 0x00}},
-		{"G30V1 all", ObjectHeader{Group: 30, Variation: 1, Qualifier: QualAllObjects}, []byte{0x1E, 0x01, 0x06, 0x00}},
-		{"G20V1 all", ObjectHeader{Group: 20, Variation: 1, Qualifier: QualAllObjects}, []byte{0x14, 0x01, 0x06, 0x00}},
+		{"G1V1 all", ObjectHeader{Group: 1, Variation: 1, Qualifier: QualAllObjects}, []byte{0x01, 0x01, 0x06}},
+		{"G30V1 all", ObjectHeader{Group: 30, Variation: 1, Qualifier: QualAllObjects}, []byte{0x1E, 0x01, 0x06}},
+		{"G20V1 all", ObjectHeader{Group: 20, Variation: 1, Qualifier: QualAllObjects}, []byte{0x14, 0x01, 0x06}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestObjectHeaderEncodeAppend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode error: %v", err)
 	}
-	want := []byte{0xAA, 0xBB, 0x01, 0x01, 0x06, 0x00}
+	want := []byte{0xAA, 0xBB, 0x01, 0x01, 0x06}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("Encode append = % X, want % X", got, want)
 	}
@@ -84,9 +84,9 @@ func TestEncodeObjectHeadersMultiple(t *testing.T) {
 		t.Fatalf("EncodeObjectHeaders error: %v", err)
 	}
 	want := []byte{
-		0x01, 0x01, 0x06, 0x00,
-		0x1E, 0x01, 0x06, 0x00,
-		0x14, 0x01, 0x06, 0x00,
+		0x01, 0x01, 0x06,
+		0x1E, 0x01, 0x06,
+		0x14, 0x01, 0x06,
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("headers = % X, want % X", got, want)
@@ -203,7 +203,7 @@ func TestDecodeObjectHeaderTruncated(t *testing.T) {
 		data []byte
 	}{
 		{"empty", []byte{}},
-		{"3bytes", []byte{0x01, 0x01, 0x06}},                          // need 4
+		{"2bytes", []byte{0x01, 0x01}}, // need 3
 		{"range16 short", []byte{0x01, 0x01, 0x28, 0x00, 0x00, 0x00}}, // need 7
 		{"count16 short", []byte{0x1E, 0x01, 0x27, 0x2C}},             // need 5
 	}

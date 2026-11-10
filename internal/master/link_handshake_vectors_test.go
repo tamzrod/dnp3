@@ -236,7 +236,7 @@ func TestLinkHandshakeGoldenResponseDecode(t *testing.T) {
 		funcCode uint8
 	}{
 		{"secondary ACK", "link-secondary-ack.hex", 0x00, frame.FuncAck},
-		{"secondary Link Status", "link-secondary-link-status.hex", 0x02, frame.FuncLinkStatus},
+		{"secondary Link Status", "link-secondary-link-status.hex", 0x0B, frame.FuncLinkStatus},
 		{"secondary NACK", "link-secondary-nack.hex", 0x01, frame.FuncNack},
 	}
 	for _, c := range cases {

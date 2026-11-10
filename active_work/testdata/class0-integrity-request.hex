@@ -2,15 +2,13 @@
 #
 # The canonical integrity poll requests all Class-0 static data via a single
 # object header: Group 60 (class data), Variation 1 (Class 0), with the
-# all-objects qualifier 0x06. The range field for the all-objects qualifier
-# is a single 0x00 octet.
+# all-objects qualifier 0x06. Per IEEE 1815 the all-objects qualifier carries
+# NO range field, so the header is exactly three octets.
 #
-# Layout (application fragment, after the 2-byte APCI control byte is not
-# included here — this is the object-header body of a READ request):
+# Layout (object-header body of a READ request):
 #   [0] 0x3C  Group 60 (class data)
 #   [1] 0x01  Variation 1 (Class 0)
-#   [2] 0x06  Qualifier: all-objects
-#   [3] 0x00  Range octet (0x00 for all-objects)
+#   [2] 0x06  Qualifier: all-objects (no range field)
 #
-# Total: 4 octets.
-3C 01 06 00
+# Total: 3 octets.
+3C 01 06

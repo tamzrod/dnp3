@@ -226,8 +226,9 @@ type Outstation struct {
 	needsTimeSync  bool // NeedTime IIN received → time sync required
 
 	// DNP3-057: primary-side Frame Count Bit for confirmed user data on this
-	// link. Toggles after each confirmed-data transaction; reset to false by a
-	// Reset Link Stations exchange.
+	// link. Toggles after each confirmed-data transaction; set to true by a
+	// Reset Link Stations exchange, so the first confirmed frame sent after a
+	// reset carries FCB=1 (IEEE 1815 / OpenDNP3 ResetReadFCB).
 	fcb bool
 
 	// DNP3-055: per-outstation application-layer sequence number (0-15). Each
@@ -332,12 +333,14 @@ func (o *Outstation) advanceFCB() {
 	o.fcb = !o.fcb
 }
 
-// resetFCB clears the primary-side FCB to its post-reset value (false), called
-// after a Reset Link Stations exchange (DNP3-057).
+// resetFCB sets the primary-side FCB to its post-reset value (true), called
+// after a Reset Link Stations exchange (DNP3-057). Per IEEE 1815 the first
+// confirmed user-data frame sent after a reset carries FCB=1 (OpenDNP3
+// ResetReadFCB sets nextReadFCB=true); subsequent frames toggle from there.
 func (o *Outstation) resetFCB() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.fcb = false
+	o.fcb = true
 }
 
 // takeSeq returns the current application-layer sequence number for this
@@ -1553,7 +1556,7 @@ func (m *Master) sendResetLinkDeadline(deadline time.Time) error {
 				continue
 			}
 			// DNP3-057: a Reset Link Stations exchange resets the primary-side FCB
-			// to its post-reset value (false) for this link.
+			// to its post-reset value (true) for this link.
 			o.resetFCB()
 			break
 		}
@@ -2601,7 +2604,7 @@ func (m *Master) ReadBudget() time.Duration {
 
 // waitForConfirmation waits for an application-layer confirmation for a request
 // sent with the CON bit set (DNP3-009). A confirmation is an APDU with
-// FuncCode=FuncResponse. The confirmation's sequence number must match the
+// FuncCode=FuncConfirm (0x00). The confirmation's sequence number must match the
 // request's sequence; a mismatch is a protocol error (ErrConfirmSeqMismatch).
 // A transport receive error (timeout) is reported as ErrConfirmTimeout, which
 // the caller retries.
@@ -2645,8 +2648,9 @@ func (m *Master) waitForConfirmationTimeout(stepTimeout time.Duration, expectedS
 			continue
 		}
 
-		// Only response APDUs act as confirmations.
-		if apdu.FuncCode != al.FuncResponse {
+		// A confirmation is function code 0x00; a full solicited response may also
+		// arrive in lieu of a dedicated confirm (FuncResponse).
+		if apdu.FuncCode != al.FuncConfirm && apdu.FuncCode != al.FuncResponse {
 			continue
 		}
 
@@ -2682,16 +2686,37 @@ func (m *Master) waitForResponse() ([]byte, error) {
 // the operation's remaining budget (VEC-01 B4 F2).
 func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, error) {
 	// VEC-01 B4 F2: stepTimeout is the response timeout capped to the
-	// operation's remaining wall-clock budget by the caller.
-	m.transport.SetTimeout(int(stepTimeout / time.Millisecond))
-	data, err := m.transport.Receive()
-	if err != nil {
-		if isDisconnectError(err) {
-			return nil, err
+	// operation's remaining wall-clock budget by the caller. The overall wait is
+	// bounded by this single deadline so that a peer emitting repeated bare
+	// link-layer ACKs cannot extend the wait indefinitely.
+	deadline := time.Now().Add(stepTimeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, fmt.Errorf("%w: no response within %v", ErrTimeout, stepTimeout)
 		}
-		return nil, fmt.Errorf("%w: %v", ErrTimeout, err)
+		// Round up so the first iteration preserves the exact configured
+		// timeout while later iterations still shrink toward the deadline.
+		m.transport.SetTimeout(int((remaining + time.Millisecond - 1) / time.Millisecond))
+		data, err := m.transport.Receive()
+		if err != nil {
+			if isDisconnectError(err) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%w: %v", ErrTimeout, err)
+		}
+		// A conformant outstation ACKs confirmed user data at the link layer
+		// (a bare secondary ACK carrying no transport fragment) before sending
+		// its solicited application response. Consume that ACK and keep waiting
+		// within the same bounded deadline rather than treating it as the
+		// response or triggering a blind retry. NACKs are surfaced earlier by
+		// processReceivedBytes, so only ACK is skipped here.
+		if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
+			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
+			continue
+		}
+		return data, nil
 	}
-	return data, nil
 }
 
 // markDisconnected inspects a transport error and, if it indicates the peer
@@ -2872,18 +2897,14 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("%w (func=%d, src=0x%04X)", ErrLinkNACK, dllFrame.Control.FuncCode, dllFrame.SrcAddr)
 		}
 
-		// Skip non-user-data frames (secondary station function codes)
-		// User data frames from outstation use FuncConfirmedUserDataR = 4 with PRM=0
-		if dllFrame.Control.PRM {
-			// Primary station frame - skip control frames
-			if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
-				continue
-			}
-
-		}
-
-		// For secondary station (PRM=0), only process user data frames
-		if !dllFrame.Control.PRM && dllFrame.Control.FuncCode != frame.FuncConfirmedUserDataR {
+		// Only user-data frames carry a transport fragment. A confirmed or
+		// unconfirmed user-data frame is identified by function code 3 or 4
+		// regardless of PRM: a conformant outstation acts as the primary station
+		// (DIR=0, PRM=1) when transmitting its solicited responses, so a PRM
+		// check must not discard them. Non-data link frames (ACK/NACK/link
+		// status/reset) carry no fragment and are skipped.
+		if dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
+			dllFrame.Control.FuncCode != frame.FuncConfirmedUserDataR {
 			continue
 		}
 
@@ -3016,8 +3037,11 @@ func buildPollRequest(pollType PollType) []byte {
 
 // buildControlRequest creates a control request.
 func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, index uint16, value interface{}) *al.APDU {
-	// Object prefix: Group, Variation, Qualifier (0x00 = index only), Count (1)
-	prefix := []byte{group, variation, 0x00, 0x01}
+	// Object prefix: Group, Variation, qualifier 0x28 (16-bit count + 16-bit
+	// index, UINT16_CNT_UINT16_INDEX), count = 1 (LSB-first). A bare index-only
+	// qualifier is rejected by conformant peers (OpenDNP3 IsAllowed requires a
+	// count+index qualifier for control objects).
+	prefix := []byte{group, variation, 0x28, 0x01, 0x00}
 
 	// Index: 2 bytes, least-significant byte first.
 	indexBytes := []byte{byte(index), byte(index >> 8)}
@@ -3293,6 +3317,11 @@ func commandStatusForQualifier(data []byte, offset int, qualifier uint8) Command
 		if statusIdx < len(data) {
 			return CommandStatus(data[statusIdx])
 		}
+	case 0x28: // 16-bit count + 16-bit index: header(5) + index(2) + CROB(11)
+		statusIdx := offset + 5 + 2 + 10
+		if statusIdx < len(data) {
+			return CommandStatus(data[statusIdx])
+		}
 	case 0x07, 0x27: // count8/count16: header(4) [+count16(2)] + CROB(11)
 		hdrLen := 4
 		if qualifier == 0x27 {
@@ -3341,7 +3370,17 @@ func skipObject(data []byte, offset int, group, variation, qualifier uint8) (int
 		}
 		count := int(data[offset+3]) | int(data[offset+4])<<8
 		return offset + 5 + count*pointSize, true
-	case 0x28: // range16
+	case 0x28:
+		if group == 12 && variation == 1 {
+			// 16-bit count + 16-bit index (control): header(5) then
+			// count * (index(2) + point payload).
+			if offset+5 > len(data) {
+				return 0, false
+			}
+			count := int(data[offset+3]) | int(data[offset+4])<<8
+			return offset + 5 + count*(2+pointSize), true
+		}
+		// 16-bit start/stop (reads): header(7) then n * point payload.
 		if offset+7 > len(data) {
 			return 0, false
 		}
@@ -3361,7 +3400,7 @@ func skipObject(data []byte, offset int, group, variation, qualifier uint8) (int
 func objectLayout(group, variation, qualifier uint8) (pointSize int, hasIndexPrefix bool, prefixSize int) {
 	switch {
 	case group == 12 && variation == 1:
-		return 11, qualifier == 0x00, 2 // CROB; index-only uses a 2-octet index
+		return 11, qualifier == 0x00 || qualifier == 0x28, 2 // CROB; count+index uses a 2-octet index
 	default:
 		return 0, false, 0
 	}

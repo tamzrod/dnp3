@@ -8,12 +8,12 @@ This document lists the object groups, variations, and function codes actually i
 
 | Code | Name | Status |
 |------|------|--------|
-| 0x02 | READ | ✅ Supported |
-| 0x03 | WRITE | ✅ Supported |
-| 0x04 | SELECT (implicit via OPERATE) | ⚠️ Partial |
-| 0x05 | OPERATE | ✅ Supported |
-| 0x06 | DIRECT OPERATE | ✅ Supported |
-| 0x07 | DIRECT OPERATE NO RESP | ✅ Supported |
+| 0x01 | READ | ✅ Supported |
+| 0x02 | WRITE | ✅ Supported |
+| 0x03 | SELECT (implicit via OPERATE) | ⚠️ Partial |
+| 0x04 | OPERATE | ✅ Supported |
+| 0x05 | DIRECT OPERATE | ✅ Supported |
+| 0x06 | DIRECT OPERATE NO RESP | ✅ Supported |
 | 0x14 | ENABLE UNSOLICITED | ❌ Not implemented |
 | 0x15 | DISABLE UNSOLICITED | ❌ Not implemented |
 | 0x08 | AUTHENTICATE | ❌ Not implemented |
@@ -23,8 +23,10 @@ This document lists the object groups, variations, and function codes actually i
 
 | Code | Name | Status |
 |------|------|--------|
-| 0x00 | RESPONSE | ✅ Supported |
-| 0x01 | UNSOLICITED RESPONSE | ❌ Not implemented |
+| 0x00 | CONFIRM | ✅ Supported |
+| 0x81 | RESPONSE | ✅ Supported |
+| 0x82 | UNSOLICITED RESPONSE | ❌ Not implemented |
+| 0x7F | NO ACK | ✅ Supported |
 
 ---
 

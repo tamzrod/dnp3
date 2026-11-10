@@ -619,3 +619,37 @@ self-signoff. Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXE
 R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §35 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md` §35.
+
+### VEC-01 lab exec — seven authorized v0 wire-format corrections implemented + lab-verified; new eighth defect STOP (2026-11-10)
+Owner authorization commit `25d7ea3` approved the seven demonstrated v0 wire-format
+corrections (§35.1) as a bounded functionality-correctness substep of the existing
+CURRENT. **Applied to the real `work` tree** (not scratch): secondary Link Status
+func `0x0B`/NOT_SUPPORTED `0x0F`; primary FCB post-reset = `true`; application
+function codes (READ `0x01`, WRITE `0x02`, SELECT `0x03`, OPERATE `0x04`,
+DIRECT_OPERATE `0x05`, DIRECT_OPERATE_NR `0x06`, RESPONSE `0x81`, UNSOLICITED
+`0x82`); master receive filter accepts outstation user-data func 3/4 regardless of
+PRM; leading bare link ACK consumed within one bounded deadline; all-objects
+`0x06` header = 3 octets; G12V1 control uses the count+index qualifier `0x28`.
+Only the affected regression tests/goldens/fixtures and the published tables
+(`docs/SUPPORTED.md`, `docs/protocol/dnp3/080-application-layer.md`) were updated.
+Mandatory Go gates all PASS on the exact tree (Go 1.22.12, `GOPROXY=off`):
+`gofmt -l` clean, `git diff --check` clean, `go vet ./...`, `go build ./...`,
+`go test ./... -count=1` (all packages `ok`), targeted `-race` (no races),
+`./scripts/verify-external-mvp.sh` (Tiers 1–3). A fresh owner-authorized isolated
+two-namespace lab (single internal veth, no default route, forwarding off; peer
+bound `10.77.0.2:20000`) ran the corrected master against the pinned OpenDNP3 3.1.2
+peer: `master exit=0`, capture-confirmed READ `0x01` with 3-octet all-objects
+headers, RESPONSE `0x81`, `IIN 90 00` (**no PARAM_ERROR** — the §35.2 scratch run
+returned `90 02`), DIRECT_OPERATE `0x05` with CROB qualifier `0x28` accepted, and
+the bare `SEC_ACK`/PRM=1 frames handled. **Defects 1–7 verified.** The run then
+revealed a **new, distinct eighth defect** outside the authorized seven: the G12V1
+CROB control-code byte is sent as the repo's one-hot `0x08`/`0x10` instead of the
+IEEE 1815 low-nibble `LATCH_ON=0x03`/`LATCH_OFF=0x04`, so the peer returns
+`operate status 4` (NOT_SUPPORTED). A scratch diagnostic (only that byte changed,
+untracked) yields `operate status 0` and peer `[LAB] BO[0] direct-operate LATCH_ON
+-> state=true`. Per the authorization (*"If actual test reveals a new defect
+outside these seven, STOP with precise repro rather than expanding scope"*) this
+pass **STOPs** without changing the CROB control-code constants. No PR/merge/`main`
+push/archive/promotion/self-signoff. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §36.

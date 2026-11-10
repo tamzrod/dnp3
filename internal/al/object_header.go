@@ -54,8 +54,8 @@ type ObjectHeader struct {
 func (h ObjectHeader) EncodedSize() int {
 	switch h.Qualifier {
 	case QualAllObjects:
-		// group, variation, qualifier, 0x00
-		return 4
+		// group, variation, qualifier (all-objects carries no range field)
+		return 3
 	case QualCount8, QualIndex8:
 		// group, variation, qualifier, count(1)
 		return 4
@@ -76,8 +76,8 @@ func (h ObjectHeader) EncodedSize() int {
 func (h ObjectHeader) Encode(dst []byte) ([]byte, error) {
 	switch h.Qualifier {
 	case QualAllObjects:
-		// group, variation, 0x06, 0x00 (range is a single zero octet)
-		return append(dst, h.Group, h.Variation, QualAllObjects, 0x00), nil
+		// group, variation, 0x06 (all-objects carries no range field)
+		return append(dst, h.Group, h.Variation, QualAllObjects), nil
 	case QualCount8:
 		return append(dst, h.Group, h.Variation, QualCount8, byte(h.Count)), nil
 	case QualIndex8:
@@ -122,22 +122,25 @@ func DecodeObjectHeader(data []byte, offset int) (ObjectHeader, int, error) {
 	if offset < 0 {
 		return ObjectHeader{}, 0, fmt.Errorf("al: negative offset %d", offset)
 	}
-	if offset+4 > len(data) {
-		return ObjectHeader{}, 0, fmt.Errorf("al: object header truncated at offset %d: need 4 bytes, have %d", offset, len(data)-offset)
+	if offset+3 > len(data) {
+		return ObjectHeader{}, 0, fmt.Errorf("al: object header truncated at offset %d: need 3 bytes, have %d", offset, len(data)-offset)
 	}
 	h := ObjectHeader{
 		Group:     data[offset],
 		Variation: data[offset+1],
 		Qualifier: data[offset+2],
 	}
-	consumed := 4
+	consumed := 3
 
 	switch h.Qualifier {
 	case QualAllObjects:
-		// The range field is a single 0x00 octet (already read).
+		// All-objects carries no range field (header is 3 octets).
 	case QualCount8, QualIndex8:
-		// The 4th octet is the 8-bit count (already read).
+		if offset+4 > len(data) {
+			return ObjectHeader{}, 0, fmt.Errorf("al: object header truncated at offset %d: need 4 bytes, have %d", offset, len(data)-offset)
+		}
 		h.Count = uint16(data[offset+3])
+		consumed = 4
 	case QualRange16:
 		// 4th octet is unused; start(2 LSB) + stop(2 LSB) follow.
 		if offset+7 > len(data) {

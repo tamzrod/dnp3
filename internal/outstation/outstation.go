@@ -1048,6 +1048,27 @@ func normalizeStaticVariation(group, variation uint8) uint8 {
 	return variation
 }
 
+// requestObjectHeaderSize returns the wire size in octets of the request
+// object header beginning at offset, determined by its qualifier. Returns 0 if
+// the qualifier octet is not yet available.
+func requestObjectHeaderSize(data []byte, offset int) int {
+	if offset+3 > len(data) {
+		return 0
+	}
+	switch data[offset+2] {
+	case 0x06: // all-objects: no range field
+		return 3
+	case 0x07, 0x00: // count8 / index8: 1-octet count
+		return 4
+	case 0x27: // count16: 2-octet count
+		return 5
+	case 0x28: // range16: 2-octet start + 2-octet stop
+		return 7
+	default:
+		return 4
+	}
+}
+
 // buildReadResponse builds data for a READ response.
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
@@ -1065,17 +1086,14 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	// is the correct, protocol-valid reply.
 	classEventsRequested := false
 
-	// Parse object headers
+	// Parse object headers. Each header's size depends on its qualifier
+	// (IEEE 1815): all-objects (0x06) carries no range field and is 3 octets;
+	// count8/index8 (0x07/0x00) carry a 1-octet count (4); count16 (0x27) a
+	// 2-octet count (5); range16 (0x28) a 2-octet start/stop pair (7).
 	offset := 0
-	for offset < len(requestData) {
-		if offset+4 > len(requestData) {
-			break
-		}
-
+	for offset+3 <= len(requestData) {
 		group := requestData[offset]
 		variation := requestData[offset+1]
-		_ = requestData[offset+2] // qualifier
-		_ = requestData[offset+3] // range
 
 		switch group {
 		case 0: // Null qualifier - all data
@@ -1108,7 +1126,11 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			}
 		}
 
-		offset += 4
+		size := requestObjectHeaderSize(requestData, offset)
+		if size == 0 || offset+size > len(requestData) {
+			break
+		}
+		offset += size
 	}
 
 	// Only fall back to "all static data" when nothing was recognized AND the
@@ -1504,29 +1526,62 @@ func float64ToUint32Bits(f float64) uint32 {
 	return math.Float32bits(float32(f))
 }
 
+// parseControlObjectHeader parses the leading object header of a control or
+// write request and returns the group, variation, object count, the first
+// object's index (LSB-first) and the offset at which the first object's value
+// begins. Supported v0 qualifiers: 0x28 (16-bit count + 16-bit index, used by
+// the conformant control path) and 0x00 (8-bit count + 16-bit index).
+func parseControlObjectHeader(data []byte) (group, variation uint8, count int, index uint16, valueOffset int, ok bool) {
+	if len(data) < 4 {
+		return 0, 0, 0, 0, 0, false
+	}
+	group = data[0]
+	variation = data[1]
+	switch data[2] {
+	case 0x28: // 16-bit count (LSB) + 16-bit index (LSB)
+		if len(data) < 7 {
+			return 0, 0, 0, 0, 0, false
+		}
+		count = int(data[3]) | int(data[4])<<8
+		index = uint16(data[5]) | uint16(data[6])<<8
+		valueOffset = 7
+	case 0x00: // 8-bit count + 16-bit index (LSB)
+		if len(data) < 6 {
+			return 0, 0, 0, 0, 0, false
+		}
+		count = int(data[3])
+		index = uint16(data[4]) | uint16(data[5])<<8
+		valueOffset = 6
+	default:
+		return 0, 0, 0, 0, 0, false
+	}
+	return group, variation, count, index, valueOffset, true
+}
+
 // handleWrite handles WRITE requests.
 func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
-	// Parse write request
-	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	if len(req.Data) < 5 {
+	// Parse write request header (group, variation, qualifier, count, index).
+	group, variation, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
+	if !ok {
 		o.iin.ParameterError = true
 		return nil, ErrInvalidRequest
 	}
 
-	group := req.Data[0]
-	variation := req.Data[1]
-	count := int(req.Data[3])
-
-	// Process each item
-	dataIdx := 4
+	// Process each item. The first object's index is carried in the header
+	// (0x28) or immediately after it (0x00); each subsequent object is
+	// prefixed with its own 2-octet LSB index.
 	for i := 0; i < count; i++ {
-		if dataIdx+2 > len(req.Data) {
-			o.iin.ParameterError = true
-			return nil, ErrInvalidRequest
+		var index uint16
+		if i == 0 {
+			index = firstIndex
+		} else {
+			if dataIdx+2 > len(req.Data) {
+				o.iin.ParameterError = true
+				return nil, ErrInvalidRequest
+			}
+			index = uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8
+			dataIdx += 2
 		}
-
-		index := uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8
-		dataIdx += 2
 
 		// Parse value based on group/variation
 		switch group {
@@ -1653,23 +1708,12 @@ type DataWriter interface {
 func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	if len(req.Data) < 5 {
+	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	if !ok {
 		return nil, ErrInvalidRequest
 	}
-
-	group := req.Data[0]
-	variation := req.Data[1]
-	// qualifier := req.Data[2] // Not used but part of structure
-	// count := req.Data[3]     // Not used but part of structure
-
-	// Extract index and value from data (after 4-byte header)
-	dataIdx := 4
-	if dataIdx+2 > len(req.Data) {
-		return nil, ErrInvalidRequest
-	}
-	index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
-	data := make([]byte, len(req.Data)-dataIdx-2)
-	copy(data, req.Data[dataIdx+2:])
+	data := make([]byte, len(req.Data)-dataIdx)
+	copy(data, req.Data[dataIdx:])
 
 	debugLog("handleSelect: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(data))
 
@@ -1705,21 +1749,12 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	if len(req.Data) < 5 {
+	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	if !ok {
 		return nil, ErrInvalidRequest
 	}
-
-	group := req.Data[0]
-	variation := req.Data[1]
-
-	// Extract index and value from data (after 4-byte header)
-	dataIdx := 4
-	if dataIdx+2 > len(req.Data) {
-		return nil, ErrInvalidRequest
-	}
-	index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
-	value := make([]byte, len(req.Data)-dataIdx-2)
-	copy(value, req.Data[dataIdx+2:])
+	value := make([]byte, len(req.Data)-dataIdx)
+	copy(value, req.Data[dataIdx:])
 
 	debugLog("handleOperate: group=%d, variation=%d, index=%d", group, variation, index)
 
@@ -1786,22 +1821,12 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	debugLog("handleDirectOperate: received")
 
-	// Parse the object header from request data
-	if len(req.Data) < 5 {
+	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	if !ok {
 		return nil, ErrInvalidRequest
 	}
-
-	group := req.Data[0]
-	variation := req.Data[1]
-
-	// Extract index and value from data (after 4-byte header)
-	dataIdx := 4
-	if dataIdx+2 > len(req.Data) {
-		return nil, ErrInvalidRequest
-	}
-	index := uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
-	value := make([]byte, len(req.Data)-dataIdx-2)
-	copy(value, req.Data[dataIdx+2:])
+	value := make([]byte, len(req.Data)-dataIdx)
+	copy(value, req.Data[dataIdx:])
 
 	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
