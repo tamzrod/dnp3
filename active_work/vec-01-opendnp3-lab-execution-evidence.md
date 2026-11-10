@@ -975,3 +975,43 @@ occurred. Gate B and the CURRENT remain **`TASK_BLOCKED`**. Full detail:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## §32 — Gate B packet surgical corrections (owner-authorized, 2026-11-10)
+
+Owner-authorized corrective addendum (authorization commit `86004c4`), following
+independent pre-PR CHECK of packet checkpoint `764f1a9`. Documentation-only: no Go
+production/test source, protocol library, dependency, script, CI, governance or peer
+change; no lab build/run, namespace execution, listener/socket/TCP, DNP3 packet,
+CROB, PCAP, external/OT probe or Gate B self-signoff. Startup PASS (`cwal-check.sh`
+OK; six markers identical); local `work` fast-forwarded `764f1a9` → `86004c4`.
+
+**Exactly three corrections:**
+1. Fixed broken packet-relative links: repo-root `active_work/`/`workflow/` paths need
+   `../../../` (not `../../`). Corrected in `README.md` (5 links) and `provenance.md`
+   (1 link); all targets verified to exist; no `../../active_work`/`../../workflow`
+   links remain. Sibling `../VEC-01-LAB-EXEC-001.md` links were already correct.
+2. `lab-config.md`: moved the fixed-point init (`BI[0]=true`, `AI[0]=2300`, `CT[0]=42`,
+   `outstation->Apply(init.Build())`) to run **before** `outstation->Enable()`; handler,
+   library, addresses and variations unchanged. All four patch hunks line-count coherent
+   (`-25,8 +25,12` / `-37,13 +41,107` / `-73,7 +171,7` / `-92,23 +190,41`). Full patch
+   applicability against pinned 3.1.2 is **`NOT_VERIFIED`** (source absent offline; no
+   download/install).
+3. `rebuild-and-lab.md`: removed the external `curl https://github.com` probe; replaced
+   with passive local inspection only (`unshare -n sh -c 'ip -brief addr; ip route;
+   ip -6 route'`). No `curl` remains in the packet.
+
+**Verification.** `sha256sum -c SHA256SUMS.txt` → all `OK` (manifest regenerated for the
+four changed files). Updated hashes: `README.md` `c5a2ffa2…1ac9f9`, `provenance.md`
+`917a38c2…15afff`, `rebuild-and-lab.md` `8661dee5…5e442c`, `lab-config.md`
+`318e5a0a…21702b`; `reviewer-checklist.md` unchanged `03a47f80…c9871`.
+`git diff --check` clean; `bash scripts/cwal-check.sh` PASS.
+
+**Disposition.** `GATE_B_REVIEW_PACKET_READY` remains subject to independent CHECK;
+`GATE_B_SIGNOFF_PENDING` until a named reviewer distinct from JR acts. No fresh
+isolation PASS, no compiled peer binary, no wire behavior claimed. Gate B and the
+CURRENT remain **`TASK_BLOCKED`**. Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §32.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

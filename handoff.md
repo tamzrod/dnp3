@@ -522,3 +522,22 @@ external/OT probe or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §31 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md` §31.
+
+### Gate B packet surgical corrections (2026-11-10)
+Owner-authorized corrective addendum (commit `86004c4`), following independent pre-PR
+CHECK of packet checkpoint `764f1a9`. **Documentation-only; no Go production/test
+source or protocol library changed.** Startup PASS; fast-forward `764f1a9` → `86004c4`.
+Exactly three corrections applied to `docs/verification/vec01-gate-b/`: (1) broken
+relative links fixed to `../../../` for repo-root `active_work/`/`workflow/` paths
+(README 5, provenance 1; all targets exist); (2) `lab-config.md` fixed-point init moved
+**before** `outstation->Enable()` (hunks coherent; full patch applicability
+`NOT_VERIFIED` — pinned source absent offline); (3) removed the external `curl` probe
+from `rebuild-and-lab.md`, replaced with passive local namespace/route inspection.
+`sha256sum -c SHA256SUMS.txt` all OK; `git diff --check` clean. **Result:
+`GATE_B_REVIEW_PACKET_READY`** (subject to CHECK); **`GATE_B_SIGNOFF_PENDING`** until a
+named reviewer distinct from JR acts. No fresh isolation PASS, no peer binary, no
+listener/socket/TCP, namespace execution, DNP3 packet, CROB, PCAP, `.vec`, external/OT
+probe or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT
+EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §32 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` §32.

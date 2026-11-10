@@ -3052,3 +3052,77 @@ deadlines/watchdog/stop rules; and a **blank** reviewer checklist.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 32. Gate B packet surgical corrections (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner-approved corrective "three Gate B packet findings" addendum
+in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md` (authorization commit
+`86004c4c7cfc0c1158e99624e4162cfbee052fd4`), following independent pre-PR CHECK of
+packet checkpoint `764f1a9`. **Documentation-only surgical corrective**: no Go
+production/test source, protocol library, dependency, script, CI, governance or peer
+change; no lab build/run, namespace execution, listener/socket/TCP, DNP3 packet,
+CROB, PCAP, external/OT probe or Gate B self-signoff.
+
+**Startup.** `bash scripts/cwal-check.sh` PASS; six authority markers identical in
+`workflow/active_work/README.md` and `handoff.md`; tree clean; local `work`
+fast-forwarded `764f1a9` → `86004c4` (no reset/rebase/force-push); CURRENT body not
+edited by JR.
+
+### 32.1 Corrections applied (exactly the three authorized findings)
+
+1. **Broken relative Markdown links (packet root depth).** From
+   `docs/verification/vec01-gate-b/`, repository-root `active_work/` and `workflow/`
+   paths require `../../../`, not `../../`. Fixed in `README.md` (concise campaign
+   index, deployment/readiness provenance, supported-profile, external `.vec` FORMAT,
+   promoted CURRENT task) and `provenance.md` (deployment/readiness provenance). The
+   sibling `../VEC-01-LAB-EXEC-001.md` links were already correct (that file is in
+   `docs/verification/`). All corrected targets verified to exist; no `../../active_work`
+   or `../../workflow` links remain.
+2. **Fixed-point initialization ordering in `lab-config.md`.** Moved the
+   `UpdateBuilder init` block (`BI[0]=true`, `AI[0]=2300`, `CT[0]=42`,
+   `outstation->Apply(init.Build())`) to run **before** `outstation->Enable()`, so the
+   memory-backed static database is initialized before any protocol use. The control
+   handler, library, addresses and variations are unchanged. Hunk line counts verified
+   coherent: `@@ -25,8 +25,12 @@` (8/12), `@@ -37,13 +41,107 @@` (13/107),
+   `@@ -73,7 +171,7 @@` (7/7), `@@ -92,23 +190,41 @@` (23/41) — all match the
+   actual added/removed/context counts. **Full patch applicability against the pinned
+   OpenDNP3 3.1.2 tree is `NOT_VERIFIED`** (the pinned source is not present in this
+   offline sandbox and no download/install was performed, per the owner's no-new-subproject
+   rule).
+3. **Removed external `curl` probe from `rebuild-and-lab.md`.** The
+   `curl https://github.com` offline/no-route check is deleted and replaced with
+   **passive local inspection only** (`unshare -n sh -c 'ip -brief addr; ip route;
+   ip -6 route'`), which inspects the namespace's own routes/interfaces and probes no
+   external destination. No `curl` remains anywhere in the packet.
+
+### 32.2 Verification (offline/static only)
+
+- `sha256sum -c SHA256SUMS.txt` → all `OK` (manifest regenerated for the four changed
+  files; `reviewer-checklist.md` unchanged).
+- Relative link-target existence: all corrected targets `EXISTS`.
+- Patch hunk-count coherence: all four hunks OK (script-checked).
+- `git diff --check` clean; `bash scripts/cwal-check.sh` PASS.
+
+Updated packet file hashes:
+
+| File | SHA-256 |
+|------|---------|
+| `docs/verification/vec01-gate-b/README.md` | `c5a2ffa2a78b77ba6e4df7e872856bd1bff8e6720a3e5e70233e8d0f3f1ac9f9` |
+| `docs/verification/vec01-gate-b/provenance.md` | `917a38c2f123ee9e60bb0188733a03f1a524a29bd6ca4d3c83f072d50015afff` |
+| `docs/verification/vec01-gate-b/rebuild-and-lab.md` | `8661dee563ac46a95484cef34b15018eddeccc2018e9acf160a74fdd6a5e442c` |
+| `docs/verification/vec01-gate-b/lab-config.md` | `318e5a0a661c7490625b4dc7e00a02adf9bb85e3ee16283dd63df42abb21702b` |
+| `docs/verification/vec01-gate-b/reviewer-checklist.md` | `03a47f801c28d7e85222cd5535b30c16af89ab154d6012b238ecc162e45c9871` (unchanged) |
+
+### 32.3 Limitations and non-claims
+
+- The pinned OpenDNP3 3.1.2 source is **not present** offline; patch applicability is
+  `NOT_VERIFIED` (hunk-count/format coherence only). No fresh isolation PASS, no
+  compiled peer binary and no wire behavior are claimed. Historical isolation evidence
+  (§11/§15.3) is unchanged.
+- `GATE_B_REVIEW_PACKET_READY` remains subject to independent CHECK;
+  **`GATE_B_SIGNOFF_PENDING`** until a named reviewer distinct from JR acts. Gate B and
+  the CURRENT remain **`TASK_BLOCKED`**; no Gate C/D/E, PR, merge, `main` push, archive,
+  promotion, self-signoff or R4 closure. Prior deviations remain documented unchanged.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

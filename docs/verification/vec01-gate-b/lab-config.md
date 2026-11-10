@@ -184,9 +184,6 @@ Recorded patch digests (external artifacts, not committed):
 +    auto outstation = channel->AddOutstation("outstation", crob,
                                               app, config);
 
-     // Enable the outstation and start communications
-     outstation->Enable();
-
 +    // VEC-01 lab: initialize the memory-backed static database to the fixed
 +    // ground truth before any protocol use: BI[0]=true, AI[0]=2300, CT[0]=42.
 +    {
@@ -197,6 +194,9 @@ Recorded patch digests (external artifacts, not committed):
 +        outstation->Apply(init.Build());
 +    }
 +
+     // Enable the outstation and start communications
+     outstation->Enable();
+
      // variables used in example loop
      string input;
      State state;

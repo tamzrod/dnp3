@@ -24,8 +24,16 @@ Extract the OpenDNP3 source and unpack asio/exe4cpp/ser4cpp into a local `depsrc
 
 ## 3. Hermetic offline build (stock, then lab)
 
-Build **inside a network namespace with no network** (`unshare -n`; verify
-`curl https://github.com` fails with no route). CMake must run fully disconnected with the
+Build **inside a network namespace with no network** (`unshare -n`). Verify the
+namespace is offline by **passive local inspection only** — inspect the namespace's own
+routes and interfaces, e.g.:
+
+```sh
+unshare -n sh -c 'ip -brief addr; ip route; ip -6 route'
+```
+
+Expect no default route and no non-loopback external interface. Do **not** probe any
+external destination. CMake must run fully disconnected with the
 dependency sources supplied locally so nothing is downloaded:
 
 ```sh

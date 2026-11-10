@@ -1,7 +1,7 @@
 # Pinned provenance — OpenDNP3 3.1.2 lab peer
 
 All values below are the recorded pinned expectations from
-[`../../active_work/vec-01-opendnp3-lab-deployment-readiness.md`](../../active_work/vec-01-opendnp3-lab-deployment-readiness.md)
+[`../../../active_work/vec-01-opendnp3-lab-deployment-readiness.md`](../../../active_work/vec-01-opendnp3-lab-deployment-readiness.md)
 and the master evidence [`../VEC-01-LAB-EXEC-001.md`](../VEC-01-LAB-EXEC-001.md) §2.1/§2.2,
 re-verified against freshly retrieved bytes in §30.2.
 

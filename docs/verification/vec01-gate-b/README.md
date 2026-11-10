@@ -30,11 +30,11 @@ binaries, packet captures or `.vec` traces.
 ## Authoritative source documents (relative links, not copied)
 
 - Execution/evidence master record: [`../VEC-01-LAB-EXEC-001.md`](../VEC-01-LAB-EXEC-001.md)
-- Concise campaign index: [`../../active_work/vec-01-opendnp3-lab-execution-evidence.md`](../../active_work/vec-01-opendnp3-lab-execution-evidence.md)
-- Deployment/readiness provenance: [`../../active_work/vec-01-opendnp3-lab-deployment-readiness.md`](../../active_work/vec-01-opendnp3-lab-deployment-readiness.md)
-- Supported v0 profile boundary: [`../../active_work/supported-profile.md`](../../active_work/supported-profile.md)
-- External `.vec` format (future Gate E only): [`../../active_work/testdata/external/FORMAT.md`](../../active_work/testdata/external/FORMAT.md)
-- Promoted CURRENT task (read-only here): [`../../workflow/active_work/VEC-01-LAB-EXEC-001.md`](../../workflow/active_work/VEC-01-LAB-EXEC-001.md)
+- Concise campaign index: [`../../../active_work/vec-01-opendnp3-lab-execution-evidence.md`](../../../active_work/vec-01-opendnp3-lab-execution-evidence.md)
+- Deployment/readiness provenance: [`../../../active_work/vec-01-opendnp3-lab-deployment-readiness.md`](../../../active_work/vec-01-opendnp3-lab-deployment-readiness.md)
+- Supported v0 profile boundary: [`../../../active_work/supported-profile.md`](../../../active_work/supported-profile.md)
+- External `.vec` format (future Gate E only): [`../../../active_work/testdata/external/FORMAT.md`](../../../active_work/testdata/external/FORMAT.md)
+- Promoted CURRENT task (read-only here): [`../../../workflow/active_work/VEC-01-LAB-EXEC-001.md`](../../../workflow/active_work/VEC-01-LAB-EXEC-001.md)
 
 ## Scope of this packet (read carefully)
 
