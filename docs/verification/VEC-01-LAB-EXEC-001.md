@@ -3924,8 +3924,10 @@ inverted start/stop rejection (`TestDecodeObjectHeaderStartStop8Inverted`,
 | MVP gate | `./scripts/verify-mvp.sh` | `verify-mvp: OK` |
 | External-MVP gate | `./scripts/verify-external-mvp.sh` | `OK` (Tiers 1–3); advisory: no third-party capture proof |
 
-`bash scripts/cwal-check.sh` reports `CWAL CHECK FAIL: working tree dirty` while the correction is
-uncommitted; it is re-run after commit and must report `CWAL CHECK OK` on the clean synced tree.
+`bash scripts/cwal-check.sh` reported `CWAL CHECK FAIL: working tree dirty` while the correction was
+uncommitted; after committing and pushing the correction to permanent `work` it reports
+`CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001 branch=work` on the clean tree. Correction commit
+`a1ee08b84d1c663101f8d2c98ede594309e1e4f0` (local == `origin/work`); authorizing doc `c7d2228`.
 
 #### 40.4 Non-claims
 
