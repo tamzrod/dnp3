@@ -540,3 +540,28 @@ EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.
+
+### Gate B bounded lab preflight + v0 wire interoperability (2026-11-10)
+Owner-authorized bounded preflight addendum (authorization commit `347d04a`,
+fast-forward from `9642929`). **Documentation/preflight only; no Go
+production/test source, protocol library, dependency, script, CI or governance
+change.** Startup PASS (`cwal-check.sh` OK; six markers identical). The lab-only
+patch applicability defect is **reproduced and resolved**: hunks #2/#4 failed
+because pristine `main.cpp` line 43 is a whitespace-only line (12 spaces) recorded
+as a bare `-`, and line 104 embeds a TAB recorded as spaces; restoring those two
+context bytes yields a patch that applies with **both** `patch -p2` (exit 0) and
+`git apply -p2` (check OK), semantically identical (corrected patch SHA-256
+`0441eb72…f96449`). Faithful reproduction of the whitespace-only deletion line
+trips `git diff --check` by design — recorded for maintainer resolution, not
+silently normalized. The pinned peer was **built hermetically offline**
+(`FETCHCONTENT_FULLY_DISCONNECTED=ON`, local sources, inside `sudo unshare -n`
+with no default route): 100% incl. `outstation-demo` SHA-256 `850845cd…d9b7712`.
+A two-namespace lab (`vec01-master` `10.77.0.1/30`, `vec01-outstation`
+`10.77.0.2/30`, single internal veth) was established and its isolation verified
+**statically** (only `lo`+one veth, no default route, forwarding 0). **Hard gate:
+no listener, socket, TCP, DNP3 packet, CROB or PCAP was run** — all live traffic
+remains gated on a named independent reviewer distinct from the executor. Gate B
+and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §33 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` §33.

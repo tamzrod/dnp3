@@ -1015,3 +1015,46 @@ CURRENT remain **`TASK_BLOCKED`**. Full detail: `docs/verification/VEC-01-LAB-EX
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## §33 — Gate B bounded lab preflight and v0 wire interoperability (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner addendum "authorize bounded Gate B lab preflight and v0 wire
+interoperability" (authorization commit `347d04a`, fast-forward from `9642929`).
+Bounded preflight only: obtain/build the pinned peer, establish the two-namespace lab,
+and diagnose the lab-only patch applicability defect. Any listener/socket/TCP/DNP3
+packet/CROB/PCAP remains gated on a named independent human reviewer distinct from the
+executor; none was performed.
+
+**1. Lab-only patch applicability defect — root cause + resolution.** Reproduced the
+handoff diagnosis: the `lab-config.md` patch (182 lines, 4 hunks) applied `-p2` gives
+hunk #1 OK, **hunks #2 and #4 FAIL** at old lines 41 and 96. Byte-level root cause:
+pristine `main.cpp` line 43 is a whitespace-only line of 12 spaces (recorded as a bare
+`-`), and line 104 embeds a TAB (recorded as spaces). Restoring those two lines to the
+pristine bytes yields a patch that applies cleanly with **`patch -p2` (exit 0)** and
+**`git apply -p2` (check OK)**; result semantically identical (only two context
+whitespace bytes differ). Corrected patch SHA-256
+`0441eb7216f3c0aba33fbdb60f894f715757477fa4f18a92fef4d42c23f96449`. Honest tension:
+faithfully reproducing the whitespace-only deletion line trips `git diff --check` by
+design; recorded for maintainer resolution, not silently normalized.
+
+**2. Hermetic offline peer build.** `FETCHCONTENT_FULLY_DISCONNECTED=ON` with
+`FETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}` → staged local sources, inside
+`sudo unshare -n` (no default route, only `lo`). `cmake --build build-offline -j4` →
+**100% built**, incl. `outstation-demo` SHA-256
+`850845cdcbb6e0ec7fbb5de5b4bceec6e1c6d1e8d83ed6c7162b73463d9b7712` (g++ 14.2.0,
+cmake 3.31.6). No download occurred.
+
+**3. Two-namespace lab topology.** `vec01-master` (`10.77.0.1/30`) and
+`vec01-outstation` (`10.77.0.2/30`) joined by a **single internal veth pair**. Static
+isolation verified: each ns has only `lo` + one veth, **no default route**, forwarding
+**0**. Applied-patch static checks: bind `IPEndpoint("10.77.0.2", 20000)`, link 4/3,
+`Apply(init.Build())` **before** `Enable()`.
+
+**4. Hard gate.** No listener, socket, TCP, DNP3 packet, CROB or PCAP; no external tier
+of `verify-external-mvp.sh`. v0 wire interop claim **not made**.
+
+**Disposition.** Gate B and the CURRENT remain **`TASK_BLOCKED`** at the human-reviewer
+gate. No Gate C/D/E, PR, merge, `main` push, archive, promotion, self-signoff or R4
+closure. Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §33.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

@@ -3126,3 +3126,97 @@ Updated packet file hashes:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 33. Gate B bounded lab preflight and v0 wire interoperability (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner addendum "authorize bounded Gate B lab preflight and v0 wire
+interoperability" in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`
+(authorization commit `347d04a95da3164fc1cbabed52dd49660886f37d`, fast-forward from
+`9642929`). The addendum authorizes a **bounded preflight**: obtain/build the pinned
+peer and establish the two-namespace lab, and diagnose the lab-only patch applicability
+defect. **Any listener, socket, TCP connection, DNP3 packet, CROB or PCAP capture
+remains gated on a named independent human reviewer distinct from the executor** and was
+**not** performed. No Go production/test source, protocol library, dependency, script,
+CI or governance change; no PR/merge/`main` push.
+
+**Startup.** `bash scripts/cwal-check.sh` PASS; six authority markers identical in
+`workflow/active_work/README.md` and `handoff.md`; tree clean; local `work` == `origin/work`
+== `347d04a`. CURRENT body not edited by JR.
+
+### 33.1 Lab-only patch applicability defect — ROOT CAUSE and RESOLUTION (decisive)
+
+The §32 record carried the patch as byte-exact-recorded but with applicability
+`NOT_VERIFIED` (pinned source absent offline). The pinned OpenDNP3 3.1.2 tree is now
+staged offline, and the defect is **reproduced and resolved**:
+
+- **Reproduction.** The `lab-config.md` patch (extracted verbatim, 182 lines, 4 hunks)
+  applied with `-p2` against the pristine tree: **hunk #1 applies; hunks #2 and #4 FAIL**
+  at old line 41 and 96 ("2 out of 4 hunks FAILED"). This reproduces the diagnosis noted
+  at the CURRENT handoff.
+- **Root cause (byte-level).** Two context lines in the recorded patch do not match the
+  pristine 3.1.2 bytes:
+  1. `main.cpp` line 43 is a **whitespace-only line of 12 spaces**; the recorded patch
+     rendered its deletion line as a **bare `-`** (trailing whitespace stripped), so the
+     old-side context no longer matched.
+  2. `main.cpp` line 104 embeds a **TAB** (`// config info this\treturns a thread-safe
+     interface used for`); the recorded patch **expanded the TAB to spaces**.
+  Whitespace normalization of the *other* blank context lines was **not** the root cause.
+- **Resolution (verified).** Restoring those two lines to the pristine bytes yields a
+  patch that applies cleanly with **both** `patch -p2` (exit 0) and `git apply -p2`
+  (check OK). Corrected patch SHA-256
+  `0441eb7216f3c0aba33fbdb60f894f715757477fa4f18a92fef4d42c23f96449`. The applied
+  result is **semantically identical** to the recorded intent (only the two context
+  whitespace bytes differ); the four hunk line-counts remain coherent.
+- **`git diff --check` tension (documented, not papered over).** Faithfully reproducing
+  the whitespace-only deletion line (12 spaces after `-`) unavoidably carries trailing
+  whitespace on that one packet line, which `git diff --check` flags by design. This is a
+  real, honest conflict between byte-exact wire fidelity and the repository's whitespace
+  gate; it is recorded for maintainer resolution rather than silently normalized.
+
+### 33.2 Peer build — offline, hermetic (no network fetch)
+
+- Pinned inputs already verified (§30/§32): asio `18883c35…`, catch `197640c0…`,
+  exe4cpp `2a8a2c7d…`, opendnp3 `183cc292…`, ser4cpp `5a78f83d…`.
+- Configured with `FETCHCONTENT_FULLY_DISCONNECTED=ON` and
+  `FETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}` pointed at the staged local sources,
+  executed inside `sudo unshare -n` (a private namespace with **no default route and only
+  `lo`**). No download occurred.
+- `cmake --build build-offline -j4` → **100% built**, including `outstation-demo`.
+  Lab binary `outstation-demo` SHA-256
+  `850845cdcbb6e0ec7fbb5de5b4bceec6e1c6d1e8d83ed6c7162b73463d9b7712`; toolchain
+  g++ 14.2.0, cmake 3.31.6. (Rebuilds at a different absolute path differ only by the
+  embedded source-path string; not claimed equal to the §3 stock digest.)
+
+### 33.3 Two-namespace lab topology — established, isolation verified statically
+
+- `vec01-master` (`veth-m`, `10.77.0.1/30`) and `vec01-outstation` (`veth-o`,
+  `10.77.0.2/30`) joined by a **single internal veth pair**; no other interface; `lo` up.
+- Static isolation checks (no traffic): each namespace has **only `lo` + one veth**, **no
+  default route**, and `net.ipv4.ip_forward` / IPv6 forwarding set to **0**. No host,
+  external or OT path exists from either namespace.
+- Applied-patch static checks confirmed: outstation binds `IPEndpoint("10.77.0.2", 20000)`
+  (no wildcard), `config.link.LocalAddr = 4`, `RemoteAddr = 3`, and the fixed-point
+  `outstation->Apply(init.Build())` runs **before** `outstation->Enable()`.
+
+### 33.4 Hard gate — live interoperability NOT executed
+
+Any **listener, socket, TCP connection, DNP3 packet, CROB, or PCAP capture** requires a
+**named independent human reviewer distinct from the executor** (the executor cannot
+self-supply that reviewer). Accordingly this pass stopped at preflight: **no** listener
+was opened, **no** DNP3 traffic was generated, **no** CROB was issued, **no** PCAP was
+captured, and no `verify-external-mvp.sh` external tier was run. The v0 wire
+interoperability claim is **not made**.
+
+### 33.5 Verification summary and non-claims
+
+- Patch applicability: `patch -p2` exit 0 **and** `git apply -p2` check OK on the pinned
+  pristine tree (corrected patch).
+- Hermetic offline peer build: 100% (incl. `outstation-demo`), inside a route-less netns.
+- Two-namespace isolation: verified statically (single veth, no default route, forwarding
+  off).
+- Go side untouched; `go build ./...` exit 0.
+- **No protocol execution occurred.** Gate B and the CURRENT remain **`TASK_BLOCKED`** at
+  the human-reviewer gate. No Gate C/D/E, PR, merge, `main` push, archive, promotion,
+  self-signoff or R4 closure.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
