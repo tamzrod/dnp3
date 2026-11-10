@@ -99,19 +99,17 @@ The **Qualifier** specifies how to address data:
 
 | Code | Name | Format | Description |
 |------|------|--------|-------------|
-| 0x00 | All | - | All points in group |
-| 0x01 | 8-bit index | 1 byte | 0-255 points |
-| 0x02 | 16-bit index | 2 bytes | 0-65535 points |
-| 0x03 | 32-bit index | 4 bytes | Large ranges |
-| 0x04 | 8-bit index + count | 1+1 bytes | Specific range |
-| 0x05 | 16-bit index + count | 2+2 bytes | Large ranges |
-| 0x06 | 16-bit index + count (pref) | 2+2 bytes | Preferred |
-| 0x07 | 8-bit index + count (pref) | 1+1 bytes | Preferred |
-| 0x08 | No range | - | No data |
-| 0x17 | Object prefix 8-bit | 1 byte prefix | Prefixed |
-| 0x27 | Object prefix 16-bit | 2 byte prefix | Prefixed |
-| 0x37 | Object prefix + count 8-bit | 1+1 prefix | Prefix + count |
-| 0x47 | Object prefix + count 16-bit | 2+2 prefix | Prefix + count |
+| 0x00 | 8-bit start/stop | 1+1 bytes | Sequential points from start..stop |
+| 0x01 | 16-bit start/stop | 2+2 bytes | Sequential points from start..stop |
+| 0x02 | 32-bit start/stop | 4+4 bytes | Sequential points from start..stop |
+| 0x06 | All objects | - | Every point in group (no range field) |
+| 0x07 | 8-bit count | 1 byte | Count of sequential points (no index) |
+| 0x08 | 16-bit count | 2 bytes | Count of sequential points (no index) |
+| 0x17 | 8-bit count + 8-bit index | 1+1 bytes | Count with per-point 8-bit index prefix |
+| 0x27 | 16-bit count + 16-bit index | 2+2 bytes | Count with per-point 16-bit index prefix |
+| 0x28 | 16-bit count + 16-bit index | 2+2 bytes | Preferred count+index control form |
+
+Note: the v0 subset implemented by this library is `0x00`, `0x06`, `0x07`, `0x17`, `0x27` and `0x28` (see `internal/al/object_header.go`).
 
 ### Level 4: Index
 
@@ -176,7 +174,7 @@ When qualifiers 0x17, 0x27, 0x37, 0x47 are used, each data point is prefixed wit
 ### Read All Points in Group
 
 ```
-Group=1, Variation=0, Qualifier=0x00 (All)
+Group=1, Variation=0, Qualifier=0x06 (All objects)
 
 Response: All binary inputs with their default variation
 ```
@@ -184,17 +182,17 @@ Response: All binary inputs with their default variation
 ### Read Specific Range
 
 ```
-Group=30, Variation=1, Qualifier=0x06
-Index=0x0000, Count=0x000A (Points 0-9)
+Group=30, Variation=1, Qualifier=0x00 (8-bit start/stop)
+Start=0x00, Stop=0x09 (Points 0-9)
 
-Response: Analog inputs 0-9, 16-bit encoding
+Response: Analog inputs 0-9
 ```
 
 ### Read Single Point
 
 ```
-Group=12, Variation=1, Qualifier=0x05
-Index=0x0005, Count=0x0001 (Point 5 only)
+Group=12, Variation=1, Qualifier=0x28 (16-bit count + 16-bit index)
+Count=0x0001, Index=0x0005 (Point 5 only)
 
 Response: Binary output 5
 ```
@@ -249,7 +247,7 @@ Objects:
 ```
 Function: READ
 Objects:
-  - Group=21, Variation=0, Qualifier=0x00
+  - Group=21, Variation=0, Qualifier=0x06
 ```
 
 ### Read Analog Input Events
@@ -285,11 +283,11 @@ Group=30, Variation=1, Qualifier=0x17
 
 | Situation | Recommended Qualifier |
 |-----------|----------------------|
-| Read all points | 0x00 |
-| Read < 256 points | 0x07 (prefixed) |
-| Read 256-65535 points | 0x06 (prefixed) |
-| Need explicit indices | 0x06 or 0x07 |
-| Write with indices | 0x05 or 0x07 |
+| Read all points | 0x06 (all objects) |
+| Read a contiguous range | 0x00 (8-bit start/stop) |
+| Read a count from index 0 | 0x07 (8-bit count) |
+| Read with explicit per-point indices | 0x17 or 0x27 |
+| Write with a single explicit index | 0x28 |
 
 ## Common Mistakes
 
@@ -297,7 +295,7 @@ Group=30, Variation=1, Qualifier=0x17
 
 **Problem**: Request doesn't specify range correctly.
 
-**Fix**: Match qualifier to range. 0x06 needs 2-byte start + 2-byte count.
+**Fix**: Match qualifier to range. 0x00 carries 1-byte start + 1-byte stop; 0x06 (all objects) carries no range field.
 
 ### Mistake 2: Ignoring Variation 0
 
@@ -309,7 +307,7 @@ Group=30, Variation=1, Qualifier=0x17
 
 **Problem**: Index interpreted incorrectly.
 
-**Fix**: Index is big-endian (network order).
+**Fix**: DNP3 multi-octet fields are little-endian (LSB first), including point indices.
 
 ### Mistake 4: Not Handling Prefix
 

@@ -685,3 +685,23 @@ certification, and does not close R4. No PR/merge/`main` push/archive/promotion/
 self-signoff/Gate B reviewer sign-off/Gate C/D/E closure/field I/O. Gate B and the CURRENT
 remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
 NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §38.
+
+### Gates C/D/E completion campaign result (owner-authorized, 2026-11-10) — STOP / PUSHBACK
+
+Baseline `work` @ `c38a323`; Go 1.22.12; pinned OpenDNP3 3.1.2 (independent C++). Gate B isolation
+re-verified (netns + veth, no default route, forwarding off, no hardware I/O, listener `10.77.0.2:20000`).
+Gate C protocol exchange PASS (link reset; Class-0 READ; one G12V1 DirectOperate CROB `SUCCESS(0)` with
+independent `BO[0]=true` readback; clean close). Gate D PASS 5/5 (bad CRC, wrong link address, TCP drop,
+CROB rejection status `0x01`, truncated capture). All mandatory Go gates PASS. Faithful `.vec` derived;
+durable store `EVIDENCE_INCOMPLETE` (raw `.pcap` outside Git on an ephemeral runner mount).
+
+**NEW decisive defect (Gate C c/d FAIL).** The peer Class-0 RESPONSE uses object-header qualifier `0x00`
+(IEEE 1815 `UINT8_START_STOP`), which `internal/al/object_header.go` mislabels as `QualIndex8`; the repo
+outstation also emits `0x00` as a count, masking the bug in self-interop. The unmodified master decodes
+`BI=0 AI=0 CT=0` against the peer while the wire carries `BI[0]=true / AI[0]=2300 / CT[0]=42`.
+No fix applied (outside allowlist); scratch-only correction recorded as evidence. Details:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §39.
+
+**Status unchanged: `TASK_BLOCKED`; VEC-01 NOT CLOSED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN.** No PR/merge/`main` push/archive/promotion/self-signoff/Gate closure. A separately human-promoted
+corrective task is required for the Class-0 qualifier defect.

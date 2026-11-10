@@ -1335,26 +1335,26 @@ func buildReadRequest(seq uint8, request *types.ReadRequest) *al.APDU {
 
 // packedBinaryRange returns the index base and point count for a packed
 // Group 1 Variation 1 header. ok is false for qualifiers that do not carry a
-// usable count/range (e.g. QualIndex8, which has no meaning for the packed
-// format). The packed format carries no per-point bytes, so the count comes
-// from the qualifier's count field or, for range16, from Start..Stop.
+// usable count/range (e.g. QualIndex8, which is not sequential). The packed
+// format carries no per-point bytes, so the count comes from the qualifier's
+// count field or, for start/stop and range16, from Start..Stop.
 func packedBinaryRange(h al.ObjectHeader) (base int, n int, ok bool) {
 	return sequentialRange(h)
 }
 
 // sequentialRange returns the index base and point count for a sequential
 // (no per-point index prefix) object header. count8/count16 are sequential
-// from index 0; range16 is sequential from Start through Stop; all-objects
-// yields zero points (a static-data response would normally use a count
-// qualifier instead). ok is false for QualIndex8, which carries a per-point
-// index and is therefore not sequential.
+// from index 0; start/stop and range16 are sequential from Start through Stop;
+// all-objects yields zero points (a static-data response would normally use a
+// count qualifier instead). ok is false for QualIndex8 (0x17), which carries a
+// per-point index and is therefore not sequential.
 func sequentialRange(h al.ObjectHeader) (base int, n int, ok bool) {
 	switch h.Qualifier {
 	case al.QualCount8, al.QualCount16:
 		return 0, int(h.Count), true
 	case al.QualAllObjects:
 		return 0, 0, true
-	case al.QualRange16:
+	case al.QualStartStop8, al.QualRange16:
 		if h.Stop < h.Start {
 			return 0, 0, false
 		}
@@ -1377,7 +1377,6 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		count := uint8(h.Count)
 
 		// Group 1 = Binary Input (static), Group 2 = Binary Input Event (with timestamp)
 		if group != 1 && group != 2 {
@@ -1410,12 +1409,21 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 			}
 		}
 
-		for i := 0; i < int(count); i++ {
-			if offset+2 > len(data) {
-				break
+		n, base, idxPrefix, ok := pointLayout(h)
+		if !ok {
+			break
+		}
+		for i := 0; i < n; i++ {
+			var index uint16
+			if idxPrefix > 0 {
+				if offset+idxPrefix > len(data) {
+					break
+				}
+				index = uint16(data[offset])
+				offset += idxPrefix
+			} else {
+				index = uint16(base + i)
 			}
-			index := binary.LittleEndian.Uint16(data[offset : offset+2])
-			offset += 2
 
 			var value bool
 			var quality types.QualityFlags
@@ -1476,7 +1484,6 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		count := uint8(h.Count)
 
 		// Group 30 = Analog Input (static), Group 31 = Analog Input Event (with timestamp)
 		if group != 30 && group != 31 {
@@ -1504,12 +1511,21 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
-		for i := 0; i < int(count); i++ {
-			if offset+2 > len(data) {
-				break
+		n, base, idxPrefix, ok := pointLayout(h)
+		if !ok {
+			break
+		}
+		for i := 0; i < n; i++ {
+			var index uint16
+			if idxPrefix > 0 {
+				if offset+idxPrefix > len(data) {
+					break
+				}
+				index = uint16(data[offset])
+				offset += idxPrefix
+			} else {
+				index = uint16(base + i)
 			}
-			index := binary.LittleEndian.Uint16(data[offset : offset+2])
-			offset += 2
 
 			var value float64
 			var quality types.QualityFlags
@@ -1590,7 +1606,6 @@ func parseCounters(data []byte) []*types.Counter {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		count := uint8(h.Count)
 
 		// Group 20 = Counter (static), Group 21 = Counter Event (with timestamp)
 		if group != 20 && group != 21 {
@@ -1618,12 +1633,21 @@ func parseCounters(data []byte) []*types.Counter {
 		}
 
 		// Need at least 7 bytes per point for variation 1 (32-bit counter with flags)
-		for i := 0; i < int(count); i++ {
-			if offset+2 > len(data) {
-				break
+		n, base, idxPrefix, ok := pointLayout(h)
+		if !ok {
+			break
+		}
+		for i := 0; i < n; i++ {
+			var index uint16
+			if idxPrefix > 0 {
+				if offset+idxPrefix > len(data) {
+					break
+				}
+				index = uint16(data[offset])
+				offset += idxPrefix
+			} else {
+				index = uint16(base + i)
 			}
-			index := binary.LittleEndian.Uint16(data[offset : offset+2])
-			offset += 2
 
 			var value uint32
 			var quality types.QualityFlags
@@ -1692,8 +1716,6 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		_ = h.Qualifier
-		count := uint8(h.Count)
 
 		if group != 10 { // Group 10 = Binary Output
 			// Skip past this group's data
@@ -1701,9 +1723,25 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 			continue
 		}
 
-		for i := 0; i < int(count) && offset+3 <= len(data); i++ {
-			index := binary.LittleEndian.Uint16(data[offset : offset+2])
-			offset += 2
+		n, base, idxPrefix, ok := pointLayout(h)
+		if !ok {
+			break
+		}
+		for i := 0; i < n; i++ {
+			var index uint16
+			if idxPrefix > 0 {
+				if offset+idxPrefix > len(data) {
+					break
+				}
+				index = uint16(data[offset])
+				offset += idxPrefix
+			} else {
+				index = uint16(base + i)
+			}
+
+			if offset+1 > len(data) {
+				break
+			}
 
 			var value bool
 			var quality types.QualityFlags
@@ -1746,8 +1784,6 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 		offset += consumed
 		group := h.Group
 		variation := h.Variation
-		_ = h.Qualifier
-		count := uint8(h.Count)
 
 		if group != 40 { // Group 40 = Analog Output
 			// Skip past this group's data
@@ -1755,10 +1791,25 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 			continue
 		}
 
-		// Need at least 7 bytes per point for variation 1 (32-bit float with flags)
-		for i := 0; i < int(count) && offset+7 <= len(data); i++ {
-			index := binary.LittleEndian.Uint16(data[offset : offset+2])
-			offset += 2
+		n, base, idxPrefix, ok := pointLayout(h)
+		if !ok {
+			break
+		}
+		for i := 0; i < n; i++ {
+			var index uint16
+			if idxPrefix > 0 {
+				if offset+idxPrefix > len(data) {
+					break
+				}
+				index = uint16(data[offset])
+				offset += idxPrefix
+			} else {
+				index = uint16(base + i)
+			}
+
+			if offset+5 > len(data) {
+				break
+			}
 
 			var value float64
 			var quality types.QualityFlags
@@ -1822,7 +1873,7 @@ func objectPointCount(h al.ObjectHeader) int {
 	switch h.Qualifier {
 	case al.QualCount8, al.QualIndex8, al.QualCount16:
 		return int(h.Count)
-	case al.QualRange16:
+	case al.QualStartStop8, al.QualRange16:
 		if h.Stop < h.Start {
 			return 0
 		}
@@ -1838,7 +1889,7 @@ func objectPointCount(h al.ObjectHeader) int {
 // (no per-point index) layout: count8, count16, range16, all-objects.
 func isSequentialQualifier(q uint8) bool {
 	switch q {
-	case al.QualCount8, al.QualCount16, al.QualRange16, al.QualAllObjects:
+	case al.QualCount8, al.QualCount16, al.QualStartStop8, al.QualRange16, al.QualAllObjects:
 		return true
 	default:
 		return false
@@ -1846,14 +1897,35 @@ func isSequentialQualifier(q uint8) bool {
 }
 
 // objectIndexPrefixBytes returns the per-point index prefix size for a
-// qualifier. Only index8 (0x00) carries a per-point index in this stack (a
-// 2-octet index, matching the per-point parsers); sequential qualifiers
-// carry none.
+// qualifier. Only index8 (0x17, UINT8_CNT_UINT8_INDEX) carries a per-point
+// index in this stack (an 8-bit index); sequential qualifiers carry none.
 func objectIndexPrefixBytes(q uint8) int {
 	if q == al.QualIndex8 {
-		return 2
+		return 1
 	}
 	return 0
+}
+
+// pointLayout returns the point count, index base and per-point index prefix
+// size for an object header, and whether the qualifier is supported. Sequential
+// qualifiers (count8/count16/start-stop/range16/all-objects) carry no per-point
+// index; index8 (0x17) prefixes each point with its 8-bit index.
+func pointLayout(h al.ObjectHeader) (n int, base int, indexPrefix int, ok bool) {
+	switch h.Qualifier {
+	case al.QualCount8, al.QualCount16:
+		return int(h.Count), 0, 0, true
+	case al.QualAllObjects:
+		return 0, 0, 0, true
+	case al.QualStartStop8, al.QualRange16:
+		if h.Stop < h.Start {
+			return 0, 0, 0, false
+		}
+		return int(h.Stop-h.Start) + 1, int(h.Start), 0, true
+	case al.QualIndex8:
+		return int(h.Count), 0, 1, true
+	default:
+		return 0, 0, 0, false
+	}
 }
 
 // objectValueBytes returns the per-point value size (excluding any index

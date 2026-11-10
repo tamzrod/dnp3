@@ -96,7 +96,7 @@ reference:
 | LSB-first wire encoding of MVP point indices/values/CROB times | `pkg/dnp3/master/object_vector_test.go`, `internal/master/control_vector_test.go`, `internal/master/master_test.go`, `test/integration/tcp_test.go` | DNP3-001 |
 | Object-header encode/decode model | `internal/al/object_header_test.go` | DNP3-002/003 |
 | Master read path (Class-0 headers, range16 qualifier) | `pkg/dnp3/master/client_test.go` (`TestBuildReadRequestGolden`), `internal/master/master_test.go` | DNP3-004/005 |
-| Request qualifier allow-list (0x06 all-objects / 0x00 index8 / 0x28 range16 / 0x07 count8) | `internal/master/qualifier_golden_test.go`, `internal/al/object_header_test.go` (`TestEncodeObjectHeaderUnsupportedQualifier`) | MEXT-016 |
+| Request/response qualifier allow-list (0x00 start/stop / 0x06 all-objects / 0x07 count8 / 0x17 count8+index8 / 0x27 count16 / 0x28 count+index) | `internal/master/qualifier_golden_test.go`, `internal/al/object_header_test.go`, `pkg/dnp3/master/class0_qualifier_test.go`, `internal/outstation/static_qualifier_test.go` | MEXT-016; VEC-01 corrective #9 |
 | Link-layer handshake (reset link + link status) | `internal/dll/link/link_test.go`, `test/integration/tcp_test.go` | DNP3-006/007 |
 | Link handshake external frame vectors + Connect both-exchanges requirement (MEXT-017) | `internal/master/link_handshake_vectors_test.go`, golden `active_work/testdata/link-*.hex` | MEXT-017 |
 | App-layer SEQ stream (0-15 wrap) + CON confirm + response SEQ match (solicited path) | `internal/master/master_test.go`, `internal/master/app_confirm_test.go`, `internal/master/confirm_timeout_test.go`, `internal/master/fcb_test.go` | DNP3-008/009/010/055 |
@@ -161,6 +161,7 @@ MEXT task; the list is authoritative so agents need not read git history.
 | R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` used a per-group workaround. Fragile versus real multi-header responses. **Resolved by MEXT-014/015** — `skipGroupData` is qualifier-aware (G1+G20+G30 in one APDU parsed without point loss), and `IntegrityPoll` now uses a single Class-0 multi-group read as the primary path (one exchange returns the full set), with a per-group fallback for peers that reject the multi-group exchange. | Resolved. | MEXT-014 ✅, MEXT-015 ✅ |
 | R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
 | R5 | Marketing/docs risk of over-claiming; consumers may assume production-ready. | Consumers assume production-ready. | MEXT-005, MEXT-034, MEXT-035 |
+| R6 | Qualifier `0x00` was mislabelled `QualIndex8` (count + 2-octet index) instead of IEEE 1815 `UINT8_START_STOP` (8-bit start + 8-bit stop); the indexed-count code `0x17` was absent. **Resolved** by the owner-authorized VEC-01 corrective #9: `0x00` now decodes/encodes as a 5-octet start/stop header, `0x17` as count8 with per-point 8-bit index prefixes, and the outstation static builders emit `0x17`/`0x07` accordingly. | Resolved. Conformant peers' start/stop Class-0 responses decode. | VEC-01 corrective #9 |
 
 ## Object Wire-Field Inventory
 

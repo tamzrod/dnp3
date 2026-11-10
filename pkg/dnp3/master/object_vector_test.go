@@ -68,8 +68,7 @@ func TestParseCounterLSBNotBigEndian(t *testing.T) {
 func TestParseBinaryOutputIndexLSB(t *testing.T) {
 	// Index 0x1234 encoded LSB-first as 0x34 0x12.
 	data := []byte{
-		0x0A, 0x01, 0x00, 0x01, // Group 10, Var 1, qualifier index, count 1
-		0x34, 0x12, // Index 0x1234 (LSB first)
+		0x0A, 0x01, 0x28, 0x34, 0x12, 0x34, 0x12, // Group 10, Var 1, range16 start=0x1234 stop=0x1234
 		0x81, // state=1, ONLINE
 	}
 	result := parseBinaryOutputs(data)
@@ -89,8 +88,7 @@ func TestParseBinaryOutputIndexLSB(t *testing.T) {
 func TestParseAnalogOutputIndexLSB(t *testing.T) {
 	// Index 0x1234 encoded LSB-first as 0x34 0x12; float 0.0 with ONLINE flags.
 	data := []byte{
-		0x28, 0x01, 0x00, 0x01, // Group 40, Var 1, qualifier index, count 1
-		0x34, 0x12, // Index 0x1234 (LSB first)
+		0x28, 0x01, 0x28, 0x34, 0x12, 0x34, 0x12, // Group 40, Var 1, range16 start=0x1234 stop=0x1234
 		0x00, 0x00, 0x00, 0x00, // float bits = 0.0 (LSB first)
 		0x01, // quality ONLINE
 	}

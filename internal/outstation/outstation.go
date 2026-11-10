@@ -1058,8 +1058,10 @@ func requestObjectHeaderSize(data []byte, offset int) int {
 	switch data[offset+2] {
 	case 0x06: // all-objects: no range field
 		return 3
-	case 0x07, 0x00: // count8 / index8: 1-octet count
+	case 0x07, 0x17: // count8 / index8: 1-octet count
 		return 4
+	case 0x00: // start/stop: 1-octet start + 1-octet stop
+		return 5
 	case 0x27: // count16: 2-octet count
 		return 5
 	case 0x28: // range16: 2-octet start + 2-octet stop
@@ -1087,9 +1089,9 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	classEventsRequested := false
 
 	// Parse object headers. Each header's size depends on its qualifier
-	// (IEEE 1815): all-objects (0x06) carries no range field and is 3 octets;
-	// count8/index8 (0x07/0x00) carry a 1-octet count (4); count16 (0x27) a
-	// 2-octet count (5); range16 (0x28) a 2-octet start/stop pair (7).
+	// (IEEE 1815): all-objects (0x06) is 3 octets; start/stop (0x00) is 5 octets
+	// (start(1)+stop(1)); count8/index8 (0x07/0x17) carry a 1-octet count (4);
+	// count16 (0x27) a 2-octet count (5); range16 (0x28) a 2-octet start/stop (7).
 	offset := 0
 	for offset+3 <= len(requestData) {
 		group := requestData[offset]
@@ -1178,12 +1180,12 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		}
 		return append(result, packed...)
 	}
-	result = append(result, 0x00)            // Legacy indexed qualifier
+	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
 	result = append(result, byte(len(data))) // Count
 
 	for i, bi := range data {
-		// Index (2 bytes, little-endian)
-		result = append(result, byte(i&0xFF), byte(i>>8))
+		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+		result = append(result, byte(i&0xFF))
 
 		// Value based on variation
 		switch variation {
@@ -1270,12 +1272,12 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 		}
 		return result
 	}
-	result = append(result, 0x00)            // Legacy indexed qualifier
+	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
 	result = append(result, byte(len(data))) // Count
 
 	for i, ai := range data {
-		// Index (2 bytes, little-endian)
-		result = append(result, byte(i&0xFF), byte(i>>8))
+		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+		result = append(result, byte(i&0xFF))
 
 		// Value based on variation
 		switch variation {
@@ -1327,12 +1329,12 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 		}
 		return result
 	}
-	result = append(result, 0x00)            // Legacy indexed qualifier
+	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
 	result = append(result, byte(len(data))) // Count
 
 	for i, c := range data {
-		// Index (2 bytes, little-endian)
-		result = append(result, byte(i&0xFF), byte(i>>8))
+		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+		result = append(result, byte(i&0xFF))
 
 		// Value based on variation
 		switch variation {
@@ -1450,13 +1452,10 @@ func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
 	// Object header - OUTSIDE loop
 	result = append(result, 10)              // Group 10
 	result = append(result, variation)       // Variation
-	result = append(result, 0x00)            // Qualifier: index
+	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
 	result = append(result, byte(len(data))) // Count
 
-	for i, bo := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
-
+	for _, bo := range data {
 		// Value based on variation
 		switch variation {
 		case 1: // Binary Output with flags
@@ -1489,13 +1488,10 @@ func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
 	// Object header - OUTSIDE loop
 	result = append(result, 40)              // Group 40
 	result = append(result, variation)       // Variation
-	result = append(result, 0x00)            // Qualifier: index
+	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
 	result = append(result, byte(len(data))) // Count
 
-	for i, ao := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
-
+	for _, ao := range data {
 		// Value based on variation
 		switch variation {
 		case 1: // 32-bit float with flags

@@ -11,7 +11,7 @@ import (
 // headers:
 //   - 0x06 all-objects  — Class-0 / integrity reads (buildPollRequest,
 //     public buildReadRequest)
-//   - 0x00 index8       — single-point Operate/Select control requests
+//   - 0x28 count+index  — single-point Operate/Select control requests
 //     (buildControlRequest)
 //   - 0x28 range16      — ranged reads (buildRangedReadRequest)
 //   - 0x07 count8       — event-class polls (buildPollRequest)
