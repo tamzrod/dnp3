@@ -1108,3 +1108,49 @@ PASS, six markers identical, tree clean, `work`==`origin/work`==`9b5603b`, `main
 
 Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### §35 — Extended lab-only defect set and scratch-validated repair (2026-11-10)
+
+Second pass of the owner addendum. Lab re-provisioned after an environment reset
+(iproute2, tcpdump, Go 1.22.12); isolation re-verified; peer re-used
+(`outstation-demo` `b03c522b…a34d6`). **No Go production/test source changed**;
+repair exists only in the untracked scratch copy `/workspace/vec01-build/repo-exp`.
+
+**Seven demonstrated v0 wire-format defects** (all on the internal-veth capture):
+
+1. Secondary link **Link Status** func code `2` vs IEEE 1815 `0xB` (Not Supported `3` vs `0xF`).
+2. Primary **FCB after Reset Link Stations** `false` vs spec first frame `FCB=1`.
+3. **Application function codes** non-conformant: `READ=2`/`RESPONSE=0` vs
+   `READ=0x01`/`RESPONSE=0x81` (peer decoded READ as WRITE).
+4. Master **receive filter** requires outstation user data `PRM=0`, but a conformant
+   outstation sends solicited responses **PRM=1** (control `0x44`, func 4); the frame
+   is discarded and the read times out.
+5. Master does **not skip the leading link-layer ACK** that a conformant outstation
+   sends before the application response.
+6. **All-objects (0x06) object header** encoded 4 bytes (`…,0x06,0x00`) instead of the
+   correct **3 bytes** (`group,variation,0x06`); peer rejects the Class-0 read with
+   `PARAM_ERROR`.
+7. **G12V1 DirectOperate CROB** sent with qualifier `0x00`; OpenDNP3 requires a
+   count+index qualifier (`0x17`/`0x28`), so the peer returns `FORMAT_ERROR` (status 3).
+
+**Scratch-only repair validated end-to-end:** with corrections in `internal/dll/frame/frame.go`,
+`internal/al/function_codes.go`, `internal/al/object_header.go`, `internal/master/master.go`
+the experiment completes — `master exit=0` (`IIN: 90 02`, `operate status: 3`, `done`).
+Repaired master `vec01-master-exp` `5ec2cebb…79e730`; capture `run-exp-out/vec01.pcap`
+`b757c3db…0cec`; repair patch `vec01-fix-code.patch` `20b1eefb…8460f`. The remaining
+non-zero IIN/status are defects 6 and 7, not transport failures.
+
+**Decisive in-tree external evidence:** `active_work/testdata/racom-dnp3-link-frame.hex`
+(RACOM §3) encodes READ request `E5 C0 01 02 00 06` (`FUNC=0x01`, 3-byte all-objects
+header) and response `FUNC=0x81` — the correct values, independently of the Go tables.
+
+**Disposition:** the repair invalidates the repo's own tests/goldens (16 failing tests
+across 4 packages) and the published function-code tables (`docs/SUPPORTED.md`,
+`docs/protocol/dnp3/080-application-layer.md`). This is a protocol/wire-format change
+that per AGENTS.md requires recorded evidence **and the required design approval before
+implementation**. This pass records the full defect set and a validated repair and
+**STOPs for design approval**; no wire-format change was applied to `work`. No
+PR/merge/`main` push/archive/promotion/self-signoff.
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

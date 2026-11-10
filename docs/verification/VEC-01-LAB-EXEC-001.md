@@ -3351,3 +3351,104 @@ external/OT probe or field I/O. Evidence artifacts are held outside Git under
 
 Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### 35. Owner-directed lab-only wire experiment — extended defect set and validated repair (2026-11-10)
+
+Second pass of the owner addendum "Owner-directed lab-only functionality execution
+after PR #23". The lab was re-provisioned after an environment reset (iproute2,
+tcpdump, Go 1.22.12) and isolation re-verified; the pinned peer was re-used
+(`outstation-demo` SHA-256 `b03c522b…a34d6`). A **scratch-only** repair was iterated
+against the pinned OpenDNP3 3.1.2 peer until the v0 experiment completed end-to-end.
+**No Go production/test source was changed in this pass**; the repair exists only in
+the untracked scratch copy `/workspace/vec01-build/repo-exp`.
+
+#### 35.1 Extended, demonstrated defect set
+
+Building on §34, the experiment exposed **seven** independently-attributable v0
+wire-format defects (all reproduced on the internal-veth capture):
+
+1. **Secondary Link Status function code.** `internal/dll/frame/frame.go`:
+   `FuncLinkStatus = 2`, `FuncNotSupported = 3`; IEEE 1815 / OpenDNP3 are **0xB**
+   (`SEC_LINK_STATUS`) and **0xF** (`SEC_NOT_SUPPORTED`). The conformant peer's
+   `05 64 05 0B …` is rejected by `validateLinkStatusResponse`.
+2. **Primary FCB after Reset Link Stations.** `resetFCB()` sets `false`; the first
+   confirmed frame after reset must carry **FCB=1** (OpenDNP3 `ResetReadFCB()`
+   sets `nextReadFCB=true`). The peer logs
+   `ConfirmedUserData ignored: unexpected frame count bit (FCB)` and drops the request.
+3. **Application function codes (systemic).** `internal/al/function_codes.go`:
+   `FuncRead=2`, `FuncWrite=3`, `FuncSelect=4`, `FuncOperate=5`,
+   `FuncDirectOperate=6`, `FuncDirectOperateNoResp=7`, `FuncResponse=0`,
+   `FuncUnsolicitedResponse=1`; IEEE 1815 / OpenDNP3 are READ=**0x01**, WRITE=0x02,
+   SELECT=0x03, OPERATE=0x04, DIRECT_OPERATE=0x05, DIRECT_OPERATE_NR=0x06,
+   RESPONSE=**0x81**, UNSOLICITED_RESPONSE=0x82. The peer decodes the Go READ as
+   **WRITE**; the peer's `C0 81 90 02` response cannot be matched by `FuncResponse=0`.
+4. **Master receive filter assumes outstation user data is PRM=0.** In
+   `processReceivedBytes`, outstation user data is accepted only when
+   `!PRM && FuncCode==FuncConfirmedUserDataR(4)`. A conformant outstation transmits
+   its solicited responses as a **primary** frame (DIR=0, **PRM=1**, func=3/4); the
+   peer's `05 64 0A 44 …` (control `0x44` = DIR=0 PRM=1 func=4) is therefore
+   silently discarded and the read times out (`no complete response received`).
+5. **Leading link-layer ACK not skipped.** A conformant outstation ACKs confirmed
+   user data at the link layer (bare `SEC_ACK`) *before* the application response.
+   `waitForResponseTimeout` performs a single `Receive()` and returns that bare ACK,
+   which carries no transport fragment.
+6. **All-objects (0x06) object header encoded 4 bytes instead of 3.**
+   `internal/al/object_header.go` appends a spurious 4th octet `0x00` after
+   `group, variation, 0x06`. IEEE 1815 all-objects carries **no** range field
+   (3-byte header). The peer logs `Unknown object 0 / 20` and rejects the Class-0
+   read; the response IIN carries `PARAM_ERROR` (`90 02`, bit 3 of IIN2).
+   Decisive independent evidence is in-tree: the RACOM published vector
+   `active_work/testdata/racom-dnp3-link-frame.hex` encodes a READ request whose
+   object header is exactly `02 00 06` (3 bytes) and a response with `FUNC=0x81`.
+7. **G12V1 DirectOperate CROB sent with qualifier 0x00 (index-only).**
+   `buildControlRequest` prefixes the CROB object with qualifier `0x00`. OpenDNP3's
+   `CommandResponseHandler::IsAllowed` requires a count+index qualifier
+   (`UINT8_CNT_UINT8_INDEX` 0x17 or `UINT16_CNT_UINT16_INDEX` 0x28); the peer logs
+   `Header (0) w/ Object (12,1) and qualifier (0) failed whitelist` and returns
+   `FORMAT_ERROR` (operate status **3**).
+
+Defects 1–3 are also directly evidenced by the in-tree external vector (§35.3):
+it uses `FUNC=0x01` (READ) and `FUNC=0x81` (RESPONSE), i.e. the values the Go tables
+do **not** use.
+
+#### 35.2 Scratch-only validated repair
+
+Applying the corrections in an untracked scratch copy
+(`internal/dll/frame/frame.go`, `internal/al/function_codes.go`,
+`internal/al/object_header.go`, `internal/master/master.go`) advances the experiment
+to **completion**: `master exit=0`, log
+`connecting … connected / IIN: 90 02 / operate status: 3 / done`. The repaired master
+binary is `vec01-master-exp` SHA-256 `5ec2cebb…79e730`; capture
+`run-exp-out/vec01.pcap` SHA-256 `b757c3db…0cec`. The scratch code repair is captured
+as `vec01-fix-code.patch` SHA-256 `20b1eefb…8460f`. Remaining non-zero results
+(IIN `PARAM_ERROR`, operate status 3) are themselves defects **6** and **7**, not
+transport failures — the exchanges now complete.
+
+#### 35.3 Decisive in-tree external evidence
+
+`active_work/testdata/racom-dnp3-link-frame.hex` (RACOM, *Protocol DNP 3 for MORSE*
+§3) is a third-party published capture already in this repository. Decoding it:
+request payload `E5 C0 01 02 00 06` → `FUNC=0x01` (READ) with all-objects header
+`02 00 06` (3 bytes); response `… 44 … E0 C0 81 00 00 …` → `FUNC=0x81` (RESPONSE).
+This external vector independently fixes the correct wire values for defects 1–3 and 6.
+
+#### 35.4 Disposition — scope exceeds a narrow fix; design approval required
+
+This is **not** a narrow, self-contained correction. The repair changes foundational
+protocol constants and object-header width, and it invalidates the repository's own
+tests and goldens that encode the same non-conformant values: with the scratch repair
+applied, `go test ./...` fails **16 tests across 4 packages** (`internal/al`,
+`internal/dll/frame`, `internal/master`, `test/conformance/al`), and the published
+function-code tables in `docs/SUPPORTED.md` and `docs/protocol/dnp3/080-application-layer.md`
+describe the same wrong values. Per AGENTS.md, an architectural/protocol change requires
+recorded evidence **and the required design approval before implementation**, and
+"if scope/authority uncertain, STOP with a precise finding".
+
+Accordingly this pass **records the complete, reproduced defect set and a validated
+repair** and **STOPs for design approval**; no wire-format change was applied to `work`.
+No PR, merge, `main` push, archive, promotion, self-signoff, Gate C/D/E, external/OT
+probe or field I/O. Evidence artifacts are held outside Git under `/workspace/vec01-build/`
+(not durable across runners).
+
+Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

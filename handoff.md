@@ -595,3 +595,27 @@ promotion/self-signoff. Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-
 EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §34 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md` §34.
+
+### VEC-01 lab exec — extended defect set, scratch-validated repair, STOP for design approval (2026-11-10)
+Second pass of the owner addendum "Owner-directed lab-only functionality execution
+after PR #23". **Documentation-only for the Go tree; no Go production/test source,
+protocol library, dependency, script, CI or governance change.** Lab re-provisioned
+after an environment reset (iproute2, tcpdump, Go 1.22.12); isolation re-verified;
+pinned peer re-used (`outstation-demo` `b03c522b…a34d6`). The scratch-only repair was
+iterated until the v0 experiment **completes end-to-end** (`master exit=0`:
+`connected / IIN: 90 02 / operate status: 3 / done`). **Seven demonstrated v0
+wire-format defects** are recorded (secondary Link Status func code; primary FCB after
+reset; application function codes; master receive filter requiring outstation
+user-data PRM=0 when a conformant outstation sends PRM=1; missing skip of the leading
+link-layer ACK; all-objects object header 4 bytes vs 3; G12V1 DirectOperate CROB
+qualifier 0x00 vs count+index). Decisive **in-tree external evidence**
+(`active_work/testdata/racom-dnp3-link-frame.hex`, RACOM §3) independently fixes the
+correct values (READ=0x01, RESPONSE=0x81, 3-byte all-objects header). The repair
+invalidates the repo's own tests/goldens (16 failing tests across 4 packages) and the
+published function-code tables, so it is a protocol change requiring design approval
+under AGENTS.md; this pass **records the finding and STOPs for design approval** — no
+wire-format change applied to `work`. No PR/merge/`main` push/archive/promotion/
+self-signoff. Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §35 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` §35.
