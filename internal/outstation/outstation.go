@@ -405,18 +405,18 @@ func (d *DefaultDataHandler) WriteBinaryOutput(index uint16, crob *CROB) error {
 		d.binaryOutputs = newOutputs
 	}
 
-	// Update the binary output based on the CROB control-code bit field
-	// (IEEE 1815 G12V1, reconciled in MEXT-011).
+	// Update the binary output based on the CROB operation type (IEEE 1815
+	// A.8.1 low-nibble enumeration).
 	switch crob.Code {
-	case 0x01: // NUL (no operation)
+	case 0x00: // NUL (no operation)
 		// No action
-	case 0x02: // Pulse On — energize
+	case 0x01: // Pulse On — energize
 		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 0x04: // Pulse Off — de-energize
+	case 0x02: // Pulse Off — de-energize
 		d.binaryOutputs[index] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
-	case 0x08: // Latch On
+	case 0x03: // Latch On
 		d.binaryOutputs[index] = BinaryOutput{Value: true, Quality: BinaryQualityOnline}
-	case 0x10: // Latch Off
+	case 0x04: // Latch Off
 		d.binaryOutputs[index] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
 	default:
 		return fmt.Errorf("unsupported CROB code: 0x%02X", crob.Code)

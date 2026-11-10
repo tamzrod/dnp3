@@ -3646,3 +3646,95 @@ build are not durable across runners.
 No PR, merge, `main` push, archive, promotion, self-signoff, Gate C/D/E closure or field
 I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### 38. Coherent G12V1 CROB operation-type correction implemented + lab-verified (2026-11-10)
+
+Fifth pass of the owner addendum. Authorization commit `f2f50b6` ("authorize coherent
+G12V1 CROB enum and bridge correction") approved the precise corrective scope requested
+by the §37 STOP/PUSHBACK: coherent realignment of the G12V1 CROB operation-type field
+**including the public bridge consumer**, superseding the eighth-correction STOP only for
+that field/consumer collision. Baseline `3882410`. Executor: OpenHands agent
+(autonomous), Operation CWAL, branch `work`.
+
+**Startup.** Local `work` fast-forwarded `3882410` → `f2f50b6` (non-force, clean).
+`bash scripts/cwal-check.sh` OK; six authority markers unchanged; tree clean.
+
+#### 38.1 Corrections applied (authorized scope only)
+
+| File | Change |
+|------|--------|
+| `internal/master/master.go` | CROB operation-type constants → IEEE 1815 A.8.1 low-nibble enum: `NUL=0x00`, `PulseOn=0x01`, `PulseOff=0x02`, `LatchOn=0x03`, `LatchOff=0x04`; removed non-conformant `Queue=0x80` (peer uses bits 6–7 for trip/close). `buildControlRequest` validates the raw code via `isSupportedCROBOpType` and returns nil (NOT_SENT) for unsupported raw codes/flags instead of emitting a non-conformant octet. G12V1 qualifier `0x28` and at-most-once/timeout/quarantine semantics unchanged. |
+| `internal/outstation/outstation.go` | `DefaultDataHandler.WriteBinaryOutput` switch realigned to the collision-free enum (`0x00`–`0x04`); unsupported codes still rejected explicitly. |
+| `pkg/dnp3/outstation/server.go` | Public bridge decoder realigned to the enum; removed the `crob.Code & 0x1F` one-hot fallback that silently mapped `0x03` to `false`. Unsupported operation types now return an error. Public API types and error/status propagation unchanged. |
+| Tests/goldens/fixtures | `internal/master/control_vector_test.go` goldens (code `0x08`→`0x03`); `pkg/dnp3/outstation/bridge_status_matrix_test.go` (`0x08`→`0x03`); `internal/testutils/functional_test.go` comment; `active_work/testdata/direct-control-crob-vector.hex` (code byte `0x07`→`0x03`). New focused tests added: `internal/master/control_vector_test.go` (`TestBuildCROBRequestLatchOnOffWireBytes`, `TestBuildControlRequestLatchWireBytes`, `TestBuildControlRequestRejectsUnsupportedCROBCode`, `TestBuildControlRequestAcceptsSupportedCROBCodes`, `TestCROBOpTypeConstantsAreDistinctEnum`); `internal/outstation/outstation_test.go` (`TestDefaultDataHandlerCROBOpTypeDecode`, `TestDefaultDataHandlerLatchOnOffReadback`); `pkg/dnp3/outstation/bridge_status_matrix_test.go` (`TestBridgeCROBOpTypeBooleanMapping`). |
+| Docs | `active_work/supported-profile.md` CROB row + R2 updated to the low-nibble enum. |
+
+No pulse execution, SBO, event/unsolicited or other device capability was added; the v0
+DirectOperate-to-memory BO[0] scope is unchanged. No new queue/bit semantics were
+invented and numeric enum codes are never combined by bitwise OR.
+
+#### 38.2 Mandatory Go gates (exact `work` tree, Go 1.22.12, `GOPROXY=off`)
+
+| Check | Result |
+|-------|--------|
+| `gofmt -l internal pkg test cmd examples` | clean (no output) |
+| `git diff --check` | clean |
+| `go vet ./...` | PASS |
+| `go build ./...` | PASS |
+| `go test ./... -count=1` | PASS (all packages `ok`) |
+| `go test -race ./internal/master/... ./internal/outstation/... ./internal/testutils/... ./pkg/dnp3/outstation/... ./test/integration/...` | PASS, no data races |
+| `./scripts/verify-external-mvp.sh` | PASS (Tiers 1–3) |
+
+Every prior seven-defect (§36) and F1/F2/F3 behaviour test still passes.
+
+#### 38.3 Isolated lab re-run (owner-authorized, re-created lab)
+
+Two private netns (`vec01-master` `10.77.0.1`, `vec01-outstation` `10.77.0.2`) joined by
+one internal veth only; link-scoped route only, no default route, `ip_forward=0` both
+sides; host blind to the lab veth. Objective preflight PASS. Pinned peer `outstation-demo`
+SHA-256 `b03c522b0871483e1c78731a6fb611fd8e1c07b1aacd21a5cc3ac87e19aa34d6`, bound
+explicitly to `10.77.0.2:20000` (`ss` confirmed `LISTEN 10.77.0.2:20000`). Master built
+from the corrected tree (`vec01-master-coherent` SHA-256
+`9bd9c7ac85febcb91abb602307be5e4965aa78ed1c940c2fe7bcf31f571c6621`), master addr 3 /
+outstation addr 4, one single-shot G12V1 DirectOperate, no retry, capture on the internal
+veth only.
+
+Result (`master.log`): `connected / IIN: 90 00 / operate status: 0 / done` —
+**`master exit=0`** and **CROB protocol command status SUCCESS (0)**. Decoding the
+capture:
+
+```
+M->O  func=3  data: c0 c0 01 01 00 06 14 00 06 1e 00 06       (READ 0x01; 3-octet all-objects headers)
+O->M  func=11 (SEC_LINK_STATUS 0x0B) ; func=0 (SEC_ACK)
+O->M  func=4  data: c0 81 90 00 01 01 00 00 00 01 01 02 00 01 09 ... (RESPONSE 0x81; IIN 90 00 = no PARAM_ERROR)
+                    ... 1e 01 00 00 09 01 fc 08 00 00 ... 14 01 00 00 09 01 2a 00 00 00
+                    (G1V1 BI[0]=true packed 0x01; G30V1 AI[0]=2300 = FC 08 00 00; G20V1 CT[0]=42 = 2A 00 00 00)
+M->O  func=3  data: c1 c1 05 0c 01 28 01 00 00 00 03 01 00 00 00 00 00 00 00 00 00  (DIRECT_OPERATE 0x05; CROB qualifier 0x28; code octet 0x03 = LATCH_ON)
+O->M  func=4  data: c1 81 90 00 0c 01 28 01 00 00 00 03 01 00 00 00 00 00 00 00 00 00  (RESPONSE; IIN 90 00; CROB code 0x03 echoed; command status 0x00 = SUCCESS)
+```
+
+The peer's simulator log confirms the independent readback: `[LAB] BO[0] direct-operate
+LATCH_ON -> state=true`, and the Class-0 request is decoded as `012,001 Binary Command -
+CROB, 16-bit count and prefix [1]` with no PARAM_ERROR. A process exit code alone was not
+accepted: the CROB command status byte (`0x00`) and the simulator `BO[0]=true` readback
+were both verified from the wire. No new defect was observed. Namespaces were torn down
+deterministically (no leftover veth).
+
+Evidence artifacts (outside Git, not durable across runners):
+`/workspace/vec01-build/run-coherent-out/` (pcap SHA-256
+`cdaca57e5654cc5d61731fae9564d638d6e1e202f0ac8d0721002ff75d458640`, master/outstation
+logs, listener).
+
+#### 38.4 Disposition and non-claims
+
+The eighth defect is corrected coherently and lab-verified end to end: the G12V1 CROB
+operation type is now the IEEE 1815 A.8.1 low-nibble enum at the master encoder, the
+outstation decoder and the public bridge, with unsupported codes rejected explicitly on
+all three paths. This is owner-authorized **lab-only** interoperability functionality
+evidence against a pinned third-party peer; it is **not** independent Gate B acceptance,
+not certification, and does not close R4.
+
+No PR, merge, `main` push, archive, promotion, self-signoff, Gate B reviewer sign-off,
+Gate C/D/E closure or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**;
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN** pending
+separate independent acceptance.

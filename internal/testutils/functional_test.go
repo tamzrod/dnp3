@@ -1160,7 +1160,7 @@ func TestWriteCROB(t *testing.T) {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	// Write CROB (Latch On, IEEE 1815 control-code bitfield — MEXT-011)
+	// Write CROB (Latch On, IEEE 1815 A.8.1 low-nibble enum)
 	crob := &master.CROB{
 		Code:    master.CROBCodeLatchOn,
 		Count:   1,

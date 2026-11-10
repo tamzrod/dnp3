@@ -690,3 +690,38 @@ coherent scope (whole CROB operation-type field + the public bridge consumer). N
 PR/merge/`main` push/archive/promotion/self-signoff. Gate B and the CURRENT remain
 **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
 PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §37.
+
+### VEC-01 lab exec — coherent G12V1 CROB operation-type correction implemented + lab-verified (2026-11-10)
+
+Fifth pass of the owner addendum. Authorization commit `f2f50b6` ("authorize coherent
+G12V1 CROB enum and bridge correction") approved the precise corrective scope requested
+by the §37 STOP/PUSHBACK: coherent realignment of the G12V1 CROB operation-type field
+**including the public bridge consumer**, superseding the eighth-correction STOP only for
+that field/consumer collision. Baseline `3882410`; branch `work`.
+
+- **Applied.** `internal/master/master.go` CROB constants → IEEE 1815 A.8.1 low-nibble
+  enum (`NUL=0x00`, `PulseOn=0x01`, `PulseOff=0x02`, `LatchOn=0x03`, `LatchOff=0x04`);
+  removed non-conformant `Queue=0x80`; encoder validates the raw code
+  (`isSupportedCROBOpType`) and returns nil (NOT_SENT) for unsupported codes/flags.
+  `internal/outstation/outstation.go` decode switch realigned; `pkg/dnp3/outstation/server.go`
+  bridge decoder realigned with the `crob.Code & 0x1F` one-hot fallback removed and
+  unsupported operation types rejected. Goldens/fixtures/comment updated; new focused
+  master/outstation/bridge tests added; `active_work/supported-profile.md` CROB row + R2
+  updated. G12V1 qualifier `0x28` and at-most-once/timeout semantics unchanged.
+- **Gates.** `gofmt` clean; `git diff --check` clean; `go vet ./...` PASS; `go build ./...`
+  PASS; `go test ./... -count=1` PASS; `go test -race` (master/outstation/testutils/
+  pkg-outstation/integration) PASS; `./scripts/verify-external-mvp.sh` PASS (Tiers 1–3).
+- **Isolated lab re-run.** Two private netns, one internal veth, no default route,
+  forwarding off, host blind (preflight PASS). Pinned peer `outstation-demo` SHA-256
+  `b03c522b0871483e1c78731a6fb611fd8e1c07b1aacd21a5cc3ac87e19aa34d6` bound to
+  `10.77.0.2:20000`; corrected master SHA-256
+  `9bd9c7ac85febcb91abb602307be5e4965aa78ed1c940c2fe7bcf31f571c6621`. One single-shot
+  G12V1 DirectOperate: `master exit=0`, `operate status: 0` (SUCCESS), CROB code octet
+  `0x03` (LATCH_ON), IIN `90 00`, peer readback `[LAB] BO[0] ... -> state=true`. No new
+  defect observed.
+- **Disposition — implemented + lab-verified; STOP for owner/independent CHECK.** Lab-only
+  functionality evidence against a pinned third-party peer; not independent Gate B
+  acceptance, not certification, does not close R4. No PR/merge/`main` push/archive/
+  promotion/self-signoff/Gate B reviewer sign-off/Gate C/D/E closure/field I/O. Gate B and
+  the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+  INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §38.

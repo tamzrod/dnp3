@@ -43,7 +43,7 @@ func TestBridgeBinaryOutputNonSuccessStatusIsFailure(t *testing.T) {
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			h := &internalDataHandler{commandHandler: &statusOnlyHandler{status: row.status}}
-			err := h.WriteBinaryOutput(0, &outstation.CROB{Code: 0x08, Count: 1, Status: 0})
+			err := h.WriteBinaryOutput(0, &outstation.CROB{Code: 0x03, Count: 1, Status: 0})
 			if row.wantOK {
 				if err != nil {
 					t.Fatalf("%s: expected accepted (nil error), got %v", row.name, err)
@@ -61,5 +61,73 @@ func TestBridgeAnalogOutputNonSuccessStatusIsFailure(t *testing.T) {
 	h := &internalDataHandler{commandHandler: &statusOnlyHandler{status: types.ControlNotSupported}}
 	if err := h.WriteAnalogOutput(0, int16(7), 1); err == nil {
 		t.Fatal("expected a failure error from the analog bridge for non-success status, got nil (false success)")
+	}
+}
+
+// crobRecordingHandler records the boolean value the bridge maps from the
+// CROB operation type.
+type crobRecordingHandler struct {
+	gotValue bool
+	calls    int
+}
+
+func (h *crobRecordingHandler) HandleBinaryCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
+	h.calls++
+	if bc, ok := cmd.Value.(*types.BinaryCommandValue); ok {
+		h.gotValue = bc.Value
+	}
+	s := types.ControlSuccess
+	return &s, nil
+}
+
+func (h *crobRecordingHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
+	s := types.ControlSuccess
+	return &s, nil
+}
+
+// TestBridgeCROBOpTypeBooleanMapping locks the public bridge decoder to the
+// IEEE 1815 A.8.1 low-nibble enum. The retired one-hot values must not silently
+// map to a boolean, and unsupported codes must be rejected explicitly (no
+// `crob.Code & 0x1F` fallback that maps 0x03 to false).
+func TestBridgeCROBOpTypeBooleanMapping(t *testing.T) {
+	cases := []struct {
+		name      string
+		code      uint8
+		wantErr   bool
+		wantValue bool
+	}{
+		{"NUL 0x00 -> false", 0x00, false, false},
+		{"PulseOn 0x01 -> true", 0x01, false, true},
+		{"PulseOff 0x02 -> false", 0x02, false, false},
+		{"LatchOn 0x03 -> true", 0x03, false, true},
+		{"LatchOff 0x04 -> false", 0x04, false, false},
+		{"retired 0x08 rejected", 0x08, true, false},
+		{"retired 0x10 rejected", 0x10, true, false},
+		{"trip-close 0x43 rejected", 0x43, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &crobRecordingHandler{}
+			d := &internalDataHandler{commandHandler: h}
+			err := d.WriteBinaryOutput(0, &outstation.CROB{Code: tc.code, Count: 1})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("code 0x%02X: expected rejection, got nil", tc.code)
+				}
+				if h.calls != 0 {
+					t.Fatalf("code 0x%02X: handler invoked %d times for a rejected code", tc.code, h.calls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("code 0x%02X: unexpected error %v", tc.code, err)
+			}
+			if h.calls != 1 {
+				t.Fatalf("code 0x%02X: handler calls = %d, want 1", tc.code, h.calls)
+			}
+			if h.gotValue != tc.wantValue {
+				t.Errorf("code 0x%02X: bridge value = %v, want %v", tc.code, h.gotValue, tc.wantValue)
+			}
+		})
 	}
 }

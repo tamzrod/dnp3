@@ -476,3 +476,61 @@ func TestCleanup(t *testing.T) {
 		t.Error("Expected IIN.BufferOverflow to be cleared after cleanup")
 	}
 }
+
+func TestDefaultDataHandlerCROBOpTypeDecode(t *testing.T) {
+	cases := []struct {
+		name      string
+		code      uint8
+		wantOK    bool
+		wantValue bool
+	}{
+		{"NUL 0x00", 0x00, true, false},
+		{"PulseOn 0x01", 0x01, true, true},
+		{"PulseOff 0x02", 0x02, true, false},
+		{"LatchOn 0x03", 0x03, true, true},
+		{"LatchOff 0x04", 0x04, true, false},
+		{"retired LatchOn 0x08", 0x08, false, false},
+		{"retired LatchOff 0x10", 0x10, false, false},
+		{"undefined 0x05", 0x05, false, false},
+		{"trip-close set 0x43", 0x43, false, false},
+		{"clear set 0x23", 0x23, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDefaultDataHandler()
+			// Seed the target false so a LatchOn is observable as a transition.
+			d.binaryOutputs[0] = BinaryOutput{Value: false, Quality: BinaryQualityOnline}
+			err := d.WriteBinaryOutput(0, &CROB{Code: tc.code, Count: 1})
+			if tc.wantOK && err != nil {
+				t.Fatalf("code 0x%02X: unexpected error %v", tc.code, err)
+			}
+			if !tc.wantOK {
+				if err == nil {
+					t.Fatalf("code 0x%02X: expected rejection, got nil", tc.code)
+				}
+				return
+			}
+			if d.binaryOutputs[0].Value != tc.wantValue {
+				t.Errorf("code 0x%02X: BO[0]=%v, want %v", tc.code, d.binaryOutputs[0].Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+// TestDefaultDataHandlerLatchOnOffReadback confirms a full LATCH_ON then
+// LATCH_OFF cycle at the same index produces the expected memory state.
+func TestDefaultDataHandlerLatchOnOffReadback(t *testing.T) {
+	d := NewDefaultDataHandler()
+	if err := d.WriteBinaryOutput(0, &CROB{Code: 0x03, Count: 1}); err != nil {
+		t.Fatalf("LATCH_ON error: %v", err)
+	}
+	if !d.binaryOutputs[0].Value {
+		t.Fatalf("after LATCH_ON BO[0]=false, want true")
+	}
+	if err := d.WriteBinaryOutput(0, &CROB{Code: 0x04, Count: 1}); err != nil {
+		t.Fatalf("LATCH_OFF error: %v", err)
+	}
+	if d.binaryOutputs[0].Value {
+		t.Fatalf("after LATCH_OFF BO[0]=true, want false")
+	}
+}

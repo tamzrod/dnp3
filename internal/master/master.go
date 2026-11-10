@@ -3075,6 +3075,12 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			return nil // Unsupported type
 		}
 
+		// Reject raw operation types the v0 profile does not support rather
+		// than emitting a non-conformant code octet.
+		if !isSupportedCROBOpType(code) {
+			return nil
+		}
+
 		valueBytes = []byte{
 			code,                                                                    // Control code
 			count,                                                                   // Count
@@ -3223,27 +3229,38 @@ func encodeDNP3Time(t time.Time) []byte {
 
 // CROB represents a Control Relay Output Block (Group 12, Variation 1).
 type CROB struct {
-	Code    uint8  // Control code (IEEE 1815 bit field, see CROBCode* constants)
+	Code    uint8  // Operation type (IEEE 1815 A.8.1 low-nibble enum; see CROBCode* constants)
 	Count   uint8  // Number of operation cycles
 	OnTime  uint32 // Time in ms to energize
 	OffTime uint32 // Time in ms to de-energize
 	Status  uint8  // Qualifier code (0x00=STANDARD)
 }
 
-// CROB control-code values for the G12V1 control-code octet. These are the
-// IEEE 1815 bit-field masks (MEXT-011), not a sequential enum. Bits may be
-// combined via OR (e.g. CROBCodeLatchOn|CROBCodeQueue). The encode LAYOUT
-// (code as a single octet at byte 0 of the 11-byte CROB value) is locked by
-// DNP3-019; the values were reconciled to IEEE 1815 in MEXT-011 (see
-// active_work/crob-code-audit.md).
+// CROB operation-type values for the G12V1 control-code octet. IEEE 1815
+// (A.8.1) and OpenDNP3 define the operation type as a sequential enumeration in
+// the LOW NIBBLE of the code octet, not independent one-hot flags. The upper
+// nibble carries the trip/close code (bits 6-7) and clear (bit 5); the v0
+// DirectOperate profile sends neither, so those bits must be zero. See
+// active_work/crob-code-audit.md.
 const (
-	CROBCodeNUL      uint8 = 0x01 // no operation
-	CROBCodePulseOn  uint8 = 0x02 // energize for OnTime
-	CROBCodePulseOff uint8 = 0x04 // de-energize for OffTime
-	CROBCodeLatchOn  uint8 = 0x08 // set output ON  (Value = true)
-	CROBCodeLatchOff uint8 = 0x10 // set output OFF (Value = false)
-	CROBCodeQueue    uint8 = 0x80 // queue; do not execute immediately
+	CROBCodeNUL      uint8 = 0x00 // no operation
+	CROBCodePulseOn  uint8 = 0x01 // energize for OnTime
+	CROBCodePulseOff uint8 = 0x02 // de-energize for OffTime
+	CROBCodeLatchOn  uint8 = 0x03 // set output ON  (Value = true)
+	CROBCodeLatchOff uint8 = 0x04 // set output OFF (Value = false)
 )
+
+// isSupportedCROBOpType reports whether code is a v0 G12V1 CROB operation type
+// (IEEE 1815 A.8.1 low-nibble enumeration). The upper nibble (trip/close, clear)
+// must be zero because the v0 profile does not use it.
+func isSupportedCROBOpType(code uint8) bool {
+	switch code {
+	case CROBCodeNUL, CROBCodePulseOn, CROBCodePulseOff, CROBCodeLatchOn, CROBCodeLatchOff:
+		return true
+	default:
+		return false
+	}
+}
 
 // CommandStatus is the per-point status code returned in a G12V1 control
 // response (IEEE 1815 "Command Status", CTRL-01). Values mirror the
