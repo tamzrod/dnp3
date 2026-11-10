@@ -107,6 +107,11 @@ type TCPTransport struct {
 	closed   bool
 	ctx      context.Context
 	cancel   context.CancelFunc
+
+	// connectMu serializes dial attempts WITHOUT holding mu across the (possibly
+	// long) dial. This lets Close acquire mu and call cancel() to abort an
+	// in-progress dial (VEC-01 B4 F2), so a stuck dial does not block teardown.
+	connectMu sync.Mutex
 }
 
 // NewTCPTransport creates a new TCP transport.
@@ -123,22 +128,34 @@ func NewTCPTransport(config *TCPConfig) *TCPTransport {
 }
 
 // Connect establishes a TCP connection.
+//
+// VEC-01 B4 F2: the dial runs WITHOUT holding mu so a concurrent Close can
+// cancel the transport context and abort a stuck dial. A second concurrent
+// dial is serialized by connectMu (and sees the existing connection once the
+// first completes).
 func (t *TCPTransport) Connect() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.connectMu.Lock()
+	defer t.connectMu.Unlock()
 
+	// Snapshot the context and short-circuit an already-live/closed transport.
+	t.mu.RLock()
 	if t.closed {
+		t.mu.RUnlock()
 		return ErrClosed
 	}
 	if t.conn != nil {
+		t.mu.RUnlock()
 		return nil // Already connected
 	}
+	ctx := t.ctx
+	t.mu.RUnlock()
 
 	addr := fmt.Sprintf("%s:%d", t.config.Address, t.config.Port)
 	timeout := time.Duration(t.config.ConnectTimeout) * time.Millisecond
 
+	// Dial without holding mu so Close can cancel ctx and abort the dial.
 	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(t.ctx, "tcp", addr)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("TCP connect failed: %w", err)
 	}
@@ -152,7 +169,21 @@ func (t *TCPTransport) Connect() error {
 		}
 	}
 
+	// Commit the connection, unless a concurrent Close won the race (then the
+	// transport is closed and we must not leave a live socket behind).
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		_ = conn.Close()
+		return ErrClosed
+	}
+	if t.conn != nil {
+		t.mu.Unlock()
+		_ = conn.Close()
+		return nil // Already connected (another dial won)
+	}
 	t.conn = conn
+	t.mu.Unlock()
 	return nil
 }
 
@@ -248,28 +279,25 @@ func (t *TCPTransport) Accept() error {
 // Sets a short write deadline so closed peer fails fast.
 func (t *TCPTransport) Send(data []byte) error {
 	t.mu.RLock()
-	defer t.mu.RUnlock()
-
 	if t.closed {
+		t.mu.RUnlock()
 		return ErrClosed
 	}
 	if t.conn == nil {
+		t.mu.RUnlock()
 		return ErrNotConnected
 	}
+	conn := t.conn
+	t.mu.RUnlock()
 
-	// Set short write deadline so closed peer fails fast
-	t.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	// The connection snapshot is complete; write WITHOUT holding mu so a
+	// concurrent Close can acquire the write lock and close the connection
+	// (which also unblocks this write). Holding the read lock across the write
+	// would block Close for up to the write deadline (VEC-01 B4 F2 lock-order
+	// concern). A short write deadline still makes a half-open peer fail fast.
+	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 
-	// Standard DNP3: send frame directly (no length prefix)
-	// Frame must start with sync bytes 0x05 0x64
-	if len(data) >= 2 && data[0] == SyncByte1 && data[1] == SyncByte2 {
-		// Valid DNP3 frame - send as-is
-	} else if len(data) > 0 {
-		// Data doesn't look like standard DNP3 - still send (for flexibility)
-		// Caller is responsible for proper framing
-	}
-
-	_, err := t.conn.Write(data)
+	_, err := conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("TCP send failed: %w", err)
 	}

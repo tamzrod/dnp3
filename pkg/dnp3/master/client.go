@@ -191,6 +191,23 @@ type Config struct {
 	// auto-integrity poll is already in flight to avoid unbounded recursion.
 	// Supported-profile: Defer — optional, not externally verified in v0.
 	AutoIntegrityOnRestart bool
+	// ConnectTimeout is the whole-connect budget (VEC-01 B4 F2): dial plus link
+	// reset/status and initialization. Zero uses the internal default
+	// (DefaultConnectTimeout, 5 s). The caller's earlier context deadline always
+	// tightens it. Supported-profile: Defer — requires lifecycle verification.
+	ConnectTimeout time.Duration
+	// OperateTimeout is the whole-control budget (VEC-01 B4 F2) for the single
+	// supported G12V1 DirectOperate: send, wait and status interpretation. Zero
+	// uses the internal default (DefaultOperateTimeout, 5 s). The caller's earlier
+	// context deadline always tightens it.
+	// Supported-profile: Defer — requires lifecycle verification.
+	OperateTimeout time.Duration
+	// ReadTimeout is the whole-request budget (VEC-01 B4 F2) for a Class-0 read,
+	// including bounded retries and, for an integrity poll, the shared per-group
+	// fallback. Zero uses the internal default (DefaultReadTimeout, 10 s). The
+	// caller's earlier context deadline always tightens it.
+	// Supported-profile: Defer — requires lifecycle verification.
+	ReadTimeout time.Duration
 }
 
 // DefaultConfig returns a default configuration
@@ -294,6 +311,32 @@ func WithLogger(l Logger) ConfigOption {
 func WithAutoIntegrityOnRestart() ConfigOption {
 	return func(c *Config) {
 		c.AutoIntegrityOnRestart = true
+	}
+}
+
+// WithConnectTimeout sets the whole-connect budget (VEC-01 B4 F2). A
+// non-positive value restores the internal default (5 s).
+func WithConnectTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.ConnectTimeout = d
+	}
+}
+
+// WithOperateTimeout sets the whole-control budget (VEC-01 B4 F2) for the
+// single supported G12V1 DirectOperate. A non-positive value restores the
+// internal default (5 s).
+func WithOperateTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.OperateTimeout = d
+	}
+}
+
+// WithReadTimeout sets the whole-request budget (VEC-01 B4 F2) for a Class-0
+// read, including bounded retries and the shared integrity-poll fallback. A
+// non-positive value restores the internal default (10 s).
+func WithReadTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.ReadTimeout = d
 	}
 }
 
@@ -451,6 +494,32 @@ type client struct {
 	// Reads it issues must not themselves trigger a nested auto-poll even if
 	// their responses also carry the DeviceRestart bit. Guarded by c.mu.
 	autoIntegrityActive bool
+
+	// connectGen is bumped at each public Connect entry (VEC-01 B4 F2-R2). A
+	// connect attempt is identified by the generation it captured at entry; a
+	// superseded attempt must not mutate client state or place a late socket
+	// into a replacement session. Guarded by c.mu.
+	connectGen uint64
+
+	// connectWorkerOutstanding is true while a public Connect worker goroutine
+	// has not yet terminated (VEC-01 B4 F2-R3/F2-R4). It covers the whole
+	// connect attempt INCLUDING its cleanup, so a fresh Connect is refused
+	// fail-closed with ErrSessionUnresolved while an old worker may still hold
+	// the shared transport/master; a stale worker's late handshake,
+	// initialization or cleanup cannot affect a replacement session. Guarded by
+	// c.mu.
+	connectWorkerOutstanding bool
+
+	// teardown is non-nil while an asynchronous session teardown is outstanding
+	// (VEC-01 B4 F2-R4/F3-R4). The teardown (internal master Disconnect +
+	// transport Close) may block on an uncooperative transport, so it runs on its
+	// own goroutine and the public callers return promptly; while it is
+	// outstanding the previous transport teardown and any admitted control send
+	// may still be in flight, so a replacement Connect is refused fail-closed
+	// (ErrSessionUnresolved) and a concurrent Disconnect joins the same teardown
+	// instead of starting a second one. Cleared only when the teardown goroutine
+	// has terminated. Guarded by c.mu.
+	teardown *teardown
 }
 
 // sendAndReceive sends a request and receives a response, returning parsed data
@@ -478,11 +547,14 @@ func NewClient(config *Config) (Client, error) {
 
 	// Create internal master
 	internalConfig := &master.Config{
-		MasterAddress: config.MasterAddress,
-		Timeout:       int(config.Timeout.Milliseconds()),
-		MaxRetries:    config.RetryCount,
-		RetryDelay:    int(config.RetryDelay.Milliseconds()),
-		IdleTimeout:   int(config.IdleTimeout.Milliseconds()),
+		MasterAddress:  config.MasterAddress,
+		Timeout:        int(config.Timeout.Milliseconds()),
+		MaxRetries:     config.RetryCount,
+		RetryDelay:     int(config.RetryDelay.Milliseconds()),
+		IdleTimeout:    int(config.IdleTimeout.Milliseconds()),
+		ConnectTimeout: int(config.ConnectTimeout.Milliseconds()),
+		OperateTimeout: int(config.OperateTimeout.Milliseconds()),
+		ReadTimeout:    int(config.ReadTimeout.Milliseconds()),
 	}
 	internal := master.NewMaster(internalConfig)
 
@@ -575,31 +647,105 @@ func (c *client) Connect(ctx context.Context) error {
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
+	// VEC-01 B4 F2-R3: claim the single connect-worker slot atomically. A fresh
+	// Connect is refused while a previous Connect worker has not yet terminated,
+	// because that worker may still hold the shared transport/master (e.g. blocked
+	// in an uncooperative dial); a stale worker's late handshake, initialization or
+	// cleanup must not be able to affect a replacement session. A prior control
+	// send from a torn-down session (still possibly on the wire) is refused here
+	// before dialing; the internal master enforces the same fence again at
+	// ConnectContext.
 	c.mu.Lock()
 	if c.state != dnp3.StateDisconnected {
+		// Capture the state under the lock: reading c.state again in the error
+		// message after unlocking would race a concurrent Disconnect's
+		// publication (VEC-01 B4 F2-R5).
+		st := c.state
 		c.mu.Unlock()
-		return fmt.Errorf("already connected: %s", c.state)
+		return fmt.Errorf("already connected: %s", st)
+	}
+	if c.connectWorkerOutstanding {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: prior connect worker outstanding", master.ErrSessionUnresolved)
+	}
+	// VEC-01 B4 F2-R4/F3-R4: refuse a replacement while a previous session
+	// teardown is still outstanding. The teardown (internal master Disconnect +
+	// transport Close) may be blocked on an uncooperative transport, and an
+	// admitted control send may still be in flight on the old transport; a fresh
+	// dial must not start against that half-torn-down shared transport. The fence
+	// clears only when the teardown goroutine has actually terminated.
+	if c.teardown != nil {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: prior session teardown outstanding", master.ErrSessionUnresolved)
+	}
+	if c.internalMaster != nil && c.internalMaster.HasUnresolvedSession() {
+		c.mu.Unlock()
+		return fmt.Errorf("%w: prior control worker outstanding", master.ErrSessionUnresolved)
 	}
 	c.state = dnp3.StateConnecting
+	c.connectWorkerOutstanding = true
+	// VEC-01 B4 F2-R2: identify this attempt so a superseded attempt cannot commit
+	// success or leave a late socket in a replacement session.
+	c.connectGen++
+	gen := c.connectGen
 	c.mu.Unlock()
 
-	// Run the blocking connect steps on a goroutine so we can race them
-	// against ctx.Done(). The goroutine owns the transport/master for the
-	// duration of the attempt.
+	// VEC-01 B4 F2: establish ONE absolute whole-connect deadline at entry,
+	// constrained by the caller's earlier deadline and the configured
+	// ConnectTimeout. The dial, the two-stage link handshake, initialization and
+	// bounded cleanup all share this single remaining budget; the internal master
+	// must not start a fresh full budget after the dial.
+	deadline := time.Now().Add(c.connectBudget())
+	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
+		deadline = dl
+	}
+
+	// Run the blocking connect steps on a goroutine so we can race them against
+	// ctx.Done() AND the whole-connect deadline. The goroutine owns the
+	// transport/master for the duration of the attempt. It clears the worker-
+	// outstanding flag exactly when it terminates — the point at which it no
+	// longer touches shared resources — so a replacement Connect is unblocked only
+	// then (VEC-01 B4 F2-R3).
 	type connectResult struct{ err error }
 	done := make(chan connectResult, 1)
 	go func() {
-		done <- connectResult{err: c.connectBlocking(ctx)}
+		// Clear the worker slot when the worker terminates (including on a panic),
+		// i.e. once it no longer touches the shared transport/master. The slot is
+		// held across connectBlocking AND its cleanup so a replacement Connect
+		// cannot start against a half-torn-down transport (VEC-01 B4 F2-R3/F2-R4).
+		defer func() {
+			c.mu.Lock()
+			c.connectWorkerOutstanding = false
+			c.mu.Unlock()
+		}()
+		done <- connectResult{err: c.connectBlocking(ctx, gen, deadline)}
 	}()
 
+	// The attempt is bounded by the earlier of the caller's context and the
+	// whole-connect deadline. Bounding on the deadline (not only ctx.Done())
+	// makes Connect fail timely even for context.Background() and an
+	// uncooperative transport whose dial blocks beyond budget. Teardown is
+	// best-effort and the superseded worker stays fenced by its attempt
+	// generation (and the worker-outstanding flag) so it cannot place a late
+	// socket into a replacement session.
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		// Caller cancelled. Tear down anything the goroutine may have stood up
-		// so no live connection remains, then mark the client disconnected.
-		c.abortConnect()
+		c.abortConnect(gen)
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
+	case <-timer.C:
+		c.abortConnect(gen)
+		return fmt.Errorf("%w: connect budget exhausted", dnp3.ErrTimeout)
 	case res := <-done:
 		c.mu.Lock()
+		if gen != c.connectGen {
+			// A newer attempt (or an explicit Disconnect) superseded this one;
+			// do not commit its result.
+			c.mu.Unlock()
+			c.emitLog(LogWarn, "connect", "superseded connect attempt", nil)
+			return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
+		}
 		if res.err != nil {
 			c.state = dnp3.StateError
 		} else {
@@ -618,110 +764,223 @@ func (c *client) Connect(ctx context.Context) error {
 // connectBlocking performs the synchronous connect sequence. It checks ctx
 // between blocking steps so a cancellation that lands between the transport
 // dial and the link handshake is observed without waiting for the next timeout.
-func (c *client) connectBlocking(ctx context.Context) error {
+// deadline is the single absolute whole-connect deadline established at the
+// public Connect entry (VEC-01 B4 F2); every step shares its remaining budget.
+//
+// gen is the attempt generation captured at the public Connect entry (VEC-01 B4
+// F2-R3). Every mutating step and the failure cleanup are guarded by it: once a
+// newer attempt (or an explicit Disconnect) supersedes this one, the worker
+// returns WITHOUT mutating the shared transport/master, so a stale worker's late
+// handshake, initialization or cleanupConnect cannot affect a replacement
+// session.
+func (c *client) connectBlocking(ctx context.Context, gen uint64, deadline time.Time) error {
+	// A superseded attempt must not touch shared state at all.
+	if !c.attemptCurrent(gen) {
+		return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
+	}
+
 	// Step 1: Add outstation FIRST (needed for link handshake)
 	c.internalMaster.AddOutstation(c.config.OutstationAddress, fmt.Sprintf("outstation-%d", c.config.OutstationAddress))
 
+	// fail tears the attempt down only while it is still current; a superseded
+	// worker must not run cleanupConnect (that would tear down the replacement).
+	fail := func(err error) error {
+		c.cleanupConnectIfCurrent(gen)
+		return err
+	}
+
 	if err := ctx.Err(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+		return fail(fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err))
+	}
+	if !time.Now().Before(deadline) {
+		return fail(fmt.Errorf("%w: connect budget exhausted before dial", dnp3.ErrTimeout))
+	}
+	if !c.attemptCurrent(gen) {
+		return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
 	}
 
 	// Step 2: Connect transport
 	if err := c.transport.Connect(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("transport connect failed: %w", err)
+		return fail(fmt.Errorf("transport connect failed: %w", err))
 	}
 
 	if err := ctx.Err(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+		return fail(fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err))
+	}
+	if !c.attemptCurrent(gen) {
+		return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
 	}
 
-	// Step 3: Connect internal master (performs link-layer handshake)
-	if err := c.internalMaster.Connect(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("master connect failed: %w", err)
+	// Step 3: Connect internal master (performs link-layer handshake). VEC-01 B4
+	// F2: pass the REMAINING whole-connect budget (not a fresh one) so the dial
+	// and the link handshake share one finite budget. ConnectContext tightens it
+	// further by the caller's earlier deadline.
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return fail(fmt.Errorf("%w: connect budget exhausted before handshake", dnp3.ErrTimeout))
+	}
+	if err := c.internalMaster.ConnectContext(ctx, remaining); err != nil {
+		return fail(fmt.Errorf("master connect failed: %w", err))
 	}
 
 	if err := ctx.Err(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+		return fail(fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err))
+	}
+	if !c.attemptCurrent(gen) {
+		return fmt.Errorf("%w: connect attempt superseded", dnp3.ErrContextCanceled)
 	}
 
 	// Step 4: Initialize master
 	if err := c.internalMaster.Initialize(); err != nil {
-		c.cleanupConnect()
-		return fmt.Errorf("master initialize failed: %w", err)
+		return fail(fmt.Errorf("master initialize failed: %w", err))
 	}
 	return nil
 }
 
-// abortConnect is invoked when Connect observes ctx cancellation. It tears down
-// any transport/master resources the background connect may have established
-// and resets the client state to Disconnected. Best-effort: errors are ignored
-// because the caller is already returning a cancellation error.
-func (c *client) abortConnect() {
-	c.cleanupConnect()
+// attemptCurrent reports whether the connect attempt identified by gen is still
+// the current one (VEC-01 B4 F2-R3). A superseded attempt must not mutate shared
+// state. Guarded by c.mu.
+func (c *client) attemptCurrent(gen uint64) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return gen == c.connectGen
+}
+
+// abortConnect is invoked when Connect observes ctx cancellation or the
+// whole-connect budget being exhausted. It bumps the attempt generation so any
+// in-flight worker is superseded (its late completion cannot commit), publishes
+// Disconnected, and starts the session teardown asynchronously so the public
+// Connect returns promptly even when an uncooperative transport's Close blocks
+// indefinitely (VEC-01 B4 F2-R4).
+//
+// The action is guarded by the attempt generation. If a newer attempt (or an
+// explicit Disconnect) already superseded this one, that actor now owns the
+// state and the shared transport/master, so this stale attempt must neither
+// clobber the state nor run a teardown that would sabotage the replacement
+// session.
+func (c *client) abortConnect(gen uint64) {
 	c.mu.Lock()
+	if gen != c.connectGen {
+		c.mu.Unlock()
+		return
+	}
+	c.connectGen++
 	c.state = dnp3.StateDisconnected
+	// VEC-01 B4 F2-R5: register the teardown fence in the SAME critical section
+	// that publishes Disconnected. Otherwise a fresh Connect could observe
+	// Disconnected, be admitted, and claim the shared transport/master before
+	// this teardown was registered; the late cleanup would then close or mutate
+	// the replacement session. Registering the fence atomically with the state
+	// transition that admits a replacement closes that window. The physical
+	// teardown runs on the goroutine started by registerTeardownLocked; this
+	// caller does NOT wait for it, so the public Connect returns promptly even
+	// when an uncooperative transport's Close blocks indefinitely (F2-R4).
+	c.registerTeardownLocked()
 	c.mu.Unlock()
 }
 
-// cleanupConnect closes the internal master and transport, swallowing errors.
-// Used by the connect paths to guarantee no live connection survives a failed
-// or cancelled attempt.
-func (c *client) cleanupConnect() {
+// teardown tracks one asynchronous session teardown (VEC-01 B4 F2-R4/F3-R4).
+type teardown struct {
+	done chan struct{}
+	err  error
+}
+
+// registerTeardownLocked publishes the shared teardown fence and returns its
+// handle, starting the teardown goroutine only once. It MUST be called with
+// c.mu held so the fence becomes visible in the SAME critical section as the
+// state transition (abortConnect / Disconnect / markTransportDisconnected) that
+// otherwise admits a replacement Connect (VEC-01 B4 F2-R5). If a teardown is
+// already registered, the existing handle is returned and no second goroutine
+// starts: there is exactly one teardown owner, so transport Close is never
+// duplicated. The caller releases c.mu; the teardown completes on its own
+// goroutine.
+func (c *client) registerTeardownLocked() *teardown {
+	if c.teardown != nil {
+		return c.teardown
+	}
+	t := &teardown{done: make(chan struct{})}
+	c.teardown = t
+	go c.teardownLoop(t)
+	return t
+}
+
+// teardownLoop performs the physical session teardown — internal master
+// Disconnect followed by transport Close — and then clears the fence, but ONLY
+// if it still owns it. A superseding teardown that replaced c.teardown must not
+// be cleared by an older, slower goroutine. The fence is cleared before t.done
+// is closed so a goroutine woken by <-t.done observes the cleared fence.
+func (c *client) teardownLoop(t *teardown) {
+	// The internal teardown first: it is bounded and bumps the session
+	// generation under safetyMu, fencing any admitted control send. The
+	// transport Close may block on an uncooperative transport.
 	_ = c.internalMaster.Disconnect()
-	_ = c.transport.Close()
+	err := c.transport.Close()
+	c.mu.Lock()
+	if c.teardown == t {
+		c.teardown = nil
+	}
+	t.err = err
+	c.mu.Unlock()
+	close(t.done)
+}
+
+// cleanupConnectIfCurrent tears the attempt down only while it is still the
+// current attempt (VEC-01 B4 F2-R3/F2-R4). A superseded worker must NOT run the
+// teardown: its transport/master have already been handed to the replacement
+// attempt, and tearing them down here would sabotage that session. The teardown
+// is asynchronous so a blocked transport Close cannot wedge the worker; the
+// teardown fence keeps a replacement Connect refused until it terminates.
+func (c *client) cleanupConnectIfCurrent(gen uint64) {
+	c.mu.Lock()
+	if gen != c.connectGen {
+		c.mu.Unlock()
+		return
+	}
+	// Register the teardown fence atomically with the generation check, so a
+	// superseding actor that owns the shared transport/master is never torn down
+	// by this stale worker. The physical teardown runs on its own goroutine; this
+	// worker does NOT wait for it, so a blocked Close cannot wedge the worker.
+	c.registerTeardownLocked()
+	c.mu.Unlock()
 }
 
 // Disconnect implements Client.Disconnect
 //
 // The caller's context is honored (DNP3-024): if ctx is cancelled before the
 // teardown completes, Disconnect returns promptly with ErrContextCanceled. The
-// client state is still reset to Disconnected so it is not left stuck in a
-// connecting/active state; the background teardown completes best-effort.
+// client state is reset to Disconnected immediately (VEC-01 B4 F3-R4), but the
+// session is NOT left reusable: while the asynchronous teardown and any admitted
+// control send remain unresolved, a replacement Connect is refused fail-closed
+// (the client teardown fence plus the internal-master unresolved-session fence)
+// so no replacement dials or sends against a half-torn-down transport.
 func (c *client) Disconnect(ctx context.Context) error {
+	// VEC-01 B4 F2-R2: supersede any in-flight connect attempt so a late
+	// completion cannot commit Active after an explicit teardown.
+	c.mu.Lock()
+	c.connectGen++
+	c.state = dnp3.StateDisconnected
+	c.sequence = 0 // DNP3-050: clean slate for a later reconnect.
+	// VEC-01 B4 F2-R5: register the teardown fence in the SAME critical section
+	// as the Disconnected publication, so a fresh Connect can never be admitted
+	// into the window before the old session's teardown is registered.
+	t := c.registerTeardownLocked()
+	c.mu.Unlock()
+
+	// The teardown is already registered; the physical cleanup runs outside the
+	// lock. A pre-cancelled context still tears down (no live session survives)
+	// and returns promptly without blocking on the potentially unbounded Close.
 	if err := ctx.Err(); err != nil {
-		// Even on a pre-cancelled context, reset state so the client is not
-		// left in an indeterminate state.
-		c.mu.Lock()
-		c.state = dnp3.StateDisconnected
-		c.sequence = 0 // DNP3-050: clean slate for a later reconnect.
-		c.mu.Unlock()
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
 	}
 
-	c.mu.Lock()
-	if c.state == dnp3.StateDisconnected {
-		c.mu.Unlock()
-		return nil
-	}
-	c.mu.Unlock()
-
-	type disconnectResult struct{ err error }
-	done := make(chan disconnectResult, 1)
-	go func() {
-		_ = c.internalMaster.Disconnect()
-		err := c.transport.Close()
-		done <- disconnectResult{err: err}
-	}()
-
 	select {
 	case <-ctx.Done():
-		c.mu.Lock()
-		c.state = dnp3.StateDisconnected
-		c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
-		c.mu.Unlock()
+		// Return promptly; the teardown continues in the background and its fence
+		// keeps a replacement Connect refused until it terminates.
 		return fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
-	case res := <-done:
-		c.mu.Lock()
-		c.state = dnp3.StateDisconnected
-		c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
-		c.mu.Unlock()
-		if res.err != nil {
-			return fmt.Errorf("disconnect failed: %w", res.err)
+	case <-t.done:
+		if t.err != nil {
+			return fmt.Errorf("disconnect failed: %w", t.err)
 		}
 		return nil
 	}
@@ -734,6 +993,18 @@ func (c *client) State() dnp3.ConnectionState {
 	return c.state
 }
 
+// connectBudget resolves the whole-connect budget (VEC-01 B4 F2): the configured
+// ConnectTimeout when positive, else the master's documented default
+// (master.DefaultConnectTimeout). This keeps the public Connect entry consistent
+// with the internal master's default rather than treating a zero value as a
+// zero-length budget.
+func (c *client) connectBudget() time.Duration {
+	if c.config != nil && c.config.ConnectTimeout > 0 {
+		return c.config.ConnectTimeout
+	}
+	return time.Duration(master.DefaultConnectTimeout) * time.Millisecond
+}
+
 // markTransportDisconnected records that the underlying transport has dropped.
 // It flips the public state to Disconnected and tears down the internal master
 // + transport so a subsequent Connect re-dials a fresh socket rather than
@@ -742,19 +1013,31 @@ func (c *client) State() dnp3.ConnectionState {
 // runs without holding c.mu to avoid lock-ordering issues with the transport.
 func (c *client) markTransportDisconnected() {
 	c.mu.Lock()
-	alreadyDown := c.state == dnp3.StateDisconnected
-	c.state = dnp3.StateDisconnected
-	c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
-	c.mu.Unlock()
-	if alreadyDown {
+	if c.state == dnp3.StateDisconnected {
+		c.mu.Unlock()
 		return
 	}
-	_ = c.internalMaster.Disconnect()
-	_ = c.transport.Close()
+	c.state = dnp3.StateDisconnected
+	c.sequence = 0 // DNP3-050: clean slate so a reconnect starts at AC seq 0.
+	// VEC-01 B4 F2-R5: register the teardown fence atomically with the
+	// Disconnected publication so a fresh Connect cannot be admitted before the
+	// dropped session's teardown is registered. The physical teardown runs on
+	// the goroutine started by registerTeardownLocked; this caller does not wait
+	// for it, so a transport whose Close blocks cannot wedge the caller.
+	c.registerTeardownLocked()
+	c.mu.Unlock()
 }
 
 // Read implements Client.Read
 func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error) {
+	return c.readWithDeadline(ctx, request, time.Time{})
+}
+
+// readWithDeadline is the deadline-aware read implementation (VEC-01 B4 F2).
+// When deadline is non-zero it bounds the whole request/response exchange,
+// including bounded retries; a zero deadline defers to the master's configured
+// read budget. The public Read entry point passes a zero deadline.
+func (c *client) readWithDeadline(ctx context.Context, request *types.ReadRequest, deadline time.Time) (*ReadResponse, error) {
 	if request == nil || len(request.Groups) == 0 {
 		return nil, dnp3.ErrInvalidRequest
 	}
@@ -775,6 +1058,12 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 
 	if state < dnp3.StateConnected {
 		return nil, dnp3.ErrNotConnected
+	}
+
+	// VEC-01 B4 F2: the caller's earlier deadline, when present, tightens the
+	// read budget so the whole exchange (all retries) cannot outlive it.
+	if dl, ok := ctx.Deadline(); ok && (deadline.IsZero() || dl.Before(deadline)) {
+		deadline = dl
 	}
 
 	// Wire to internal master for proper protocol handling
@@ -803,7 +1092,7 @@ func (c *client) Read(ctx context.Context, request *types.ReadRequest) (*ReadRes
 	}
 	done := make(chan readResult, 1)
 	go func() {
-		data, err := c.internalMaster.SendRequestWithRetryAndGetResponse(apdu, outstationID)
+		data, err := c.internalMaster.SendRequestWithRetryAndGetResponseDeadline(apdu, outstationID, deadline)
 		done <- readResult{data: data, err: err}
 	}()
 
@@ -911,24 +1200,28 @@ func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 		c.mu.Unlock()
 	}()
 
+	// VEC-01 B4 F2: the whole integrity poll — the primary multi-group read
+	// AND any per-group fallback — shares ONE finite wall-clock budget. The
+	// budget is derived once here so the fallback cannot silently reset it.
+	deadline := time.Now().Add(c.internalMaster.ReadBudget())
 	// Primary: single Class-0 multi-group read (MEXT-015).
-	resp, err := c.Read(ctx, types.NewReadRequest(
+	resp, err := c.readWithDeadline(ctx, types.NewReadRequest(
 		types.GroupRequest{Group: 1, Variation: 0},
 		types.GroupRequest{Group: 20, Variation: 0},
 		types.GroupRequest{Group: 30, Variation: 0},
-	))
+	), deadline)
 	if err == nil {
 		return resp, nil
 	}
 	// Fallback: per-group reads for peers that cannot satisfy a single
 	// multi-group Class-0 exchange (MEXT-015).
-	return c.integrityPollPerGroup(ctx)
+	return c.integrityPollPerGroup(ctx, deadline)
 }
 
 // integrityPollPerGroup is the MEXT-015 fallback: each MVP static group is read
 // in its own request and merged into one ReadResponse. It is used only when the
 // primary single multi-group Class-0 read errors.
-func (c *client) integrityPollPerGroup(ctx context.Context) (*ReadResponse, error) {
+func (c *client) integrityPollPerGroup(ctx context.Context, deadline time.Time) (*ReadResponse, error) {
 	type groupRead struct {
 		group uint8
 		apply func(*ReadResponse, *ReadResponse)
@@ -942,7 +1235,7 @@ func (c *client) integrityPollPerGroup(ctx context.Context) (*ReadResponse, erro
 	out := &ReadResponse{Timestamp: time.Now()}
 	var lastIIN [2]byte
 	for _, r := range reads {
-		resp, err := c.Read(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}))
+		resp, err := c.readWithDeadline(ctx, types.NewReadRequest(types.GroupRequest{Group: r.group, Variation: 1}), deadline)
 		if err != nil {
 			return nil, fmt.Errorf("read group %d: %w", r.group, err)
 		}
@@ -1607,13 +1900,33 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, dnp3.ErrInvalidRequest
 	}
 
+	// VEC-01 B4 F3: an already-cancelled context is a definite pre-send failure —
+	// nothing was transmitted, so no control is dispatched and no quarantine
+	// applies. Checked before spawning the dispatch worker so the outcome is
+	// deterministic rather than racing the worker's own completion.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, err)
+	}
+
 	c.mu.RLock()
 	state := c.state
 	internal := c.internalMaster
 	outstationID := c.config.OutstationAddress
 	c.mu.RUnlock()
 
+	// VEC-01 B4 F3: register the control worker (gate) BEFORE any other
+	// admission so an UNKNOWN outcome or a concurrent control dominates every
+	// other refusal — a quarantined outstation is reported as quarantined
+	// regardless of connection state. Admission fails closed with
+	// ErrControlQuarantined (prior outcome UNKNOWN) or ErrControlInProgress
+	// (another worker active).
+	gen, release, gerr := internal.AcquireControlGate(outstationID)
+	if gerr != nil {
+		return nil, wrapInternalError("operate refused", gerr)
+	}
+
 	if state < dnp3.StateConnected {
+		release()
 		return nil, dnp3.ErrNotConnected
 	}
 
@@ -1622,12 +1935,15 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	// rejected with a clear error before any wire traffic.
 	switch command.CommandType {
 	case types.SelectThenOperate:
+		release()
 		return nil, fmt.Errorf("%w: select-before-operate", dnp3.ErrUnsupportedOption)
 	case types.DirectOperateNoResponse:
+		release()
 		return nil, fmt.Errorf("%w: direct-operate-no-response", dnp3.ErrUnsupportedOption)
 	case types.DirectOperate:
 		// supported
 	default:
+		release()
 		return nil, fmt.Errorf("%w: unknown command type %d", dnp3.ErrUnsupportedOption, command.CommandType)
 	}
 
@@ -1645,35 +1961,52 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		rawValue = command.Value
 	}
 
-	// Perform operate through internal master and parse the per-point command
-	// status from the response (DNP3-020/021/024). The public response carries
-	// the real status; a failed point is never reported as ControlSuccess. The
-	// caller's context is honored: if ctx is cancelled while the operate is
-	// outstanding, Operate returns promptly with ErrContextCanceled and no
-	// response (the in-flight result is discarded).
+	// VEC-01 B4 F1/F3: a non-idempotent control is dispatched single-shot. The
+	// worker (gate acquired above) runs on the caller's context with ONE
+	// whole-control deadline, so cancellation and a session change are observed
+	// at the transmission point. If the context ends while the worker is
+	// outstanding, the outstation is quarantined (fail closed) because the
+	// control may have been executed; the quarantine is persistent and is never
+	// released automatically.
+	deadline := time.Now().Add(internal.OperateBudget())
+
 	type operateResult struct {
 		status master.CommandStatus
 		err    error
 	}
 	done := make(chan operateResult, 1)
 	go func() {
-		status, err := internal.OperateWithStatus(outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue)
+		// The worker owns the gate for its whole lifetime: release runs only when
+		// the worker terminates, so a still-blocked worker keeps the outstation
+		// gated (no second control can be admitted behind it).
+		defer release()
+		status, err := internal.OperateWithStatusGated(ctx, gen, outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue, deadline)
 		done <- operateResult{status: status, err: err}
 	}()
 
 	var cs master.CommandStatus
 	select {
 	case <-ctx.Done():
+		// Fail closed: the control may already be on the wire, so quarantine the
+		// outstation. This is never cleared by reconnect or a later control.
+		if c.internalMaster != nil {
+			c.internalMaster.QuarantineOutstation(outstationID)
+		}
 		return nil, fmt.Errorf("%w: %v", dnp3.ErrContextCanceled, ctx.Err())
 	case res := <-done:
 		if res.err != nil {
 			// If the transport disconnected, reflect that in the public state so
-			// a subsequent Operate returns ErrNotConnected rather than retrying
-			// a dead link (DNP3-031). MEXT-025: also tear down the transport so
-			// a later Connect re-dials a fresh socket instead of retrying the
-			// dead one (no stuck state after a peer drop).
+			// a subsequent Operate returns ErrNotConnected rather than retrying a
+			// dead link (DNP3-031). MEXT-025: also tear down the transport so a
+			// later Connect re-dials a fresh socket instead of retrying the dead
+			// one (no stuck state after a peer drop).
 			if master.IsDisconnectError(res.err) {
 				c.markTransportDisconnected()
+			}
+			if ctx.Err() != nil {
+				// The caller's context ended; surface the cancellation sentinel
+				// while preserving the internal ErrControlOutcomeUnknown chain.
+				return nil, fmt.Errorf("%w: %w", dnp3.ErrContextCanceled, res.err)
 			}
 			// Attach the matching public error sentinel so callers can classify
 			// the failure via dnp3.ClassifyError (DNP3-043). The internal error
@@ -1682,7 +2015,6 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		}
 		cs = res.status
 	}
-
 	// Get outstation state
 	outstation, _ := internal.GetOutstation(outstationID)
 	var iin [2]byte

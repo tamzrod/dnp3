@@ -1,6 +1,7 @@
 package master
 
 import (
+	"errors"
 	"testing"
 
 	"dnp3/internal/al"
@@ -277,20 +278,26 @@ func buildTruncatedG12V1Response(seq uint8) []byte {
 }
 
 // TestOperateWithStatusTruncatedNotSuccess confirms a truncated G12V1 object
-// (status byte missing) yields a failure, never success (MEXT-012).
+// (status byte missing) is never success. VEC-01 B4 F3 tightens this: an
+// unparseable command status is an UNKNOWN control outcome, so the control
+// fails closed with ErrControlOutcomeUnknown and the outstation is quarantined
+// rather than returning a zero-error CommandStatusUnknown.
 func TestOperateWithStatusTruncatedNotSuccess(t *testing.T) {
 	m := NewMaster(DefaultConfig())
 	m.SetTransport(&truncatedG12V1Transport{})
 	m.SetState(StateInitialized)
 
 	status, err := m.OperateWithStatus(1, false, 12, 1, 0x1234, uint8(CROBCodeLatchOn))
-	if err != nil {
-		t.Fatalf("OperateWithStatus returned error: %v", err)
+	if err == nil {
+		t.Fatalf("truncated G12V1: expected fail-closed error, got nil (status %d)", status)
+	}
+	if !errors.Is(err, ErrControlOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
 	}
 	if status == CommandStatusSuccess {
 		t.Fatalf("truncated G12V1 reported as success; want non-success")
 	}
-	if status != CommandStatusUnknown {
-		t.Fatalf("truncated status = %d, want Unknown", status)
+	if !m.IsQuarantined(1) {
+		t.Fatalf("outstation not quarantined after unparseable control outcome")
 	}
 }

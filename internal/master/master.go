@@ -7,6 +7,7 @@
 package master
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,21 @@ const (
 	MaxOutstations = 255  // Maximum outstations per master
 	MaxRetries     = 3    // Default maximum retries
 	DefaultTimeout = 5000 // Default timeout in milliseconds
+
+	// DefaultConnectTimeout is the default whole-connect budget in
+	// milliseconds (VEC-01 B4 F2): dial + link reset/status handshake +
+	// initialization must complete within one finite wall-clock budget.
+	DefaultConnectTimeout = 5000
+	// DefaultOperateTimeout is the default whole-control budget in
+	// milliseconds (VEC-01 B4 F2): the single non-idempotent DirectOperate
+	// attempt (send + confirm/response wait + status interpretation) must
+	// complete within one finite wall-clock budget.
+	DefaultOperateTimeout = 5000
+	// DefaultReadTimeout is the default whole-request budget in
+	// milliseconds (VEC-01 B4 F2) applied to the public Read path: the
+	// primary Class-0 read and any per-group fallback share this single
+	// finite budget.
+	DefaultReadTimeout = 10000
 )
 
 // State represents the master's operational state.
@@ -390,6 +406,43 @@ var (
 	// IdleTimeout and the monitor closed it (DNP3-042). The master transitions to
 	// Disconnected.
 	ErrIdleTimeout = errors.New("idle timeout exceeded")
+
+	// ErrOperationDeadlineExceeded indicates an operation did not complete
+	// within its single finite wall-clock budget (VEC-01 B4 F2). It is
+	// distinct from ErrTimeout (a per-step receive timeout): it means the
+	// whole operation's budget was exhausted, so no further retry or
+	// fallback may extend it.
+	ErrOperationDeadlineExceeded = errors.New("operation deadline exceeded")
+
+	// ErrControlQuarantined indicates a new control was refused because a
+	// previous control's outcome is UNKNOWN/indeterminate and the outstation
+	// is quarantined (VEC-01 B4 F3). A non-idempotent control must not be
+	// issued while a prior possibly-sent control's outcome is unresolved.
+	// The quarantine is PERSISTENT: it survives Disconnect, reconnect, a failed
+	// connect, late worker completion and request-marker cleanup, and is never
+	// released automatically (VEC-01 B4 F2/F3 corrective addendum).
+	ErrControlQuarantined = errors.New("control quarantined: prior control outcome unknown")
+
+	// ErrControlInProgress indicates a new control was refused because a
+	// previous control worker is still active for the outstation (VEC-01 B4
+	// F3). Only one non-idempotent control may be in flight at a time; a
+	// concurrent or later control is rejected rather than queued so it can
+	// never race a possibly-outstanding control on the same link.
+	ErrControlInProgress = errors.New("control already in progress for outstation")
+
+	// ErrControlOutcomeUnknown indicates a control was sent (or a send was
+	// attempted) but its outcome could not be positively established — e.g. the
+	// response was missing, malformed, or arrived after a disconnect (VEC-01 B4
+	// F3). It is distinct from a definite pre-send failure and from an explicit
+	// remote rejection (which is a valid response carrying a failure status).
+	ErrControlOutcomeUnknown = errors.New("control outcome unknown")
+
+	// ErrSessionUnresolved indicates the outstation has an outstanding control
+	// worker (e.g. blocked in an uncooperative Send) whose session was torn
+	// down. A fresh Connect or control admission for that outstation is refused
+	// fail-closed until the worker terminates, so a late send cannot contaminate
+	// a replacement session (VEC-01 B4 F3 second corrective addendum).
+	ErrSessionUnresolved = errors.New("session unresolved: prior control worker outstanding")
 )
 
 // RetryClass classifies a transport/protocol error to drive the retry policy
@@ -561,6 +614,20 @@ type Config struct {
 	// gather and serialize object data. When non-positive, the confirm path
 	// falls back to Timeout (the documented backward-compatible relation).
 	ConfirmTimeout int
+	// ConnectTimeout is the whole-connect budget in milliseconds (VEC-01 B4
+	// F2): the dial plus link reset/status handshake plus initialization must
+	// complete within this single finite wall-clock budget. When
+	// non-positive, DefaultConnectTimeout is used.
+	ConnectTimeout int
+	// OperateTimeout is the whole-control budget in milliseconds (VEC-01 B4
+	// F2) for the single non-idempotent DirectOperate attempt. When
+	// non-positive, DefaultOperateTimeout is used.
+	OperateTimeout int
+	// ReadTimeout is the whole-request budget in milliseconds (VEC-01 B4 F2)
+	// applied to the public Read path (primary Class-0 read plus any
+	// per-group fallback sharing one budget). When non-positive,
+	// DefaultReadTimeout is used.
+	ReadTimeout int
 }
 
 // DefaultConfirmTimeout is the default application-layer confirm timeout in
@@ -635,6 +702,66 @@ type Master struct {
 	// (DNP3-044). nil means silent (the default). Snapshotted under mu and
 	// invoked outside the master's own locks.
 	diagHook DiagHook
+
+	// connectTimeout is the whole-connect budget (VEC-01 B4 F2): dial plus
+	// link reset/status handshake plus initialization share one finite
+	// wall-clock budget, resolved from Config.ConnectTimeout.
+	connectTimeout time.Duration
+	// operateTimeout is the whole-control budget (VEC-01 B4 F2) for the single
+	// non-idempotent DirectOperate attempt, resolved from Config.OperateTimeout.
+	operateTimeout time.Duration
+	// readTimeout is the whole-request budget (VEC-01 B4 F2) applied to the
+	// public Read path, resolved from Config.ReadTimeout.
+	readTimeout time.Duration
+
+	// safetyMu guards the per-outstation control-safety state (VEC-01 B4
+	// F2/F3 second corrective addendum): quarantine, control-worker gates,
+	// the session generation and the unresolved-worker fence. A single lock
+	// makes UNKNOWN/quarantine state, worker admission and the session-validity
+	// check ONE atomic decision, so a quarantine established by an
+	// ambiguous/cancelled control cannot race with a fresh admission and a
+	// worker admitted in one session cannot transmit after that session's
+	// teardown has linearized. safetyMu is a leaf lock: it is never held across
+	// a possibly-blocking transport Send, nor while acquiring
+	// reqMu/outstandingMu/mu, so admission cannot deadlock the request path.
+	safetyMu sync.Mutex
+	// quarantine tracks per-outstation control-safety quarantine state. An
+	// outstation is quarantined when a control's outcome is
+	// UNKNOWN/indeterminate (cancellation, deadline, disconnect after a
+	// possible send, or a malformed/missing response). While quarantined, no
+	// new control may be issued and the quarantine is PERSISTENT: it is never
+	// released automatically by Disconnect, reconnect, a failed connect, late
+	// worker completion or request-marker cleanup. Without a separately
+	// owner-approved reconciliation protocol an UNKNOWN outcome stays
+	// quarantined indefinitely.
+	quarantine map[uint16]bool
+	// controlGates tracks per-outstation control-worker ownership. A
+	// non-idempotent control is admitted only when no worker is active for the
+	// outstation; the worker records the session generation it began in so a
+	// stale worker from a torn-down session cannot send through a reconnected
+	// one. A gate is removed from the map once it is fully idle (no active
+	// worker, no in-flight send) so the map cannot grow unbounded.
+	controlGates map[uint16]*controlGate
+	// sessionGen is bumped on every Disconnect so a control worker started in a
+	// previous session can detect that its session is gone and refuse to send.
+	sessionGen uint64
+	// sessionUnresolved records outstation IDs for which a control worker
+	// remains outstanding (e.g. blocked in an uncooperative Send) after its
+	// session was torn down. Until that worker terminates, a fresh
+	// Connect/admission for the outstation is refused fail-closed so a late
+	// send cannot contaminate a replacement session. Guarded by safetyMu.
+	sessionUnresolved map[uint16]bool
+}
+
+// controlGate records the control-worker ownership of a single outstation.
+// active is true while a control worker holds the gate; gen is the session
+// generation in which that worker began; sending is true while an admitted
+// transmission is in flight (so teardown can fence a possible send and the
+// gate is retained until the send completes). Guarded by safetyMu.
+type controlGate struct {
+	active  bool
+	sending bool
+	gen     uint64
 }
 
 // TransportHandler defines the interface for sending/receiving data.
@@ -694,15 +821,21 @@ func NewMaster(config *Config) *Master {
 	}
 
 	return &Master{
-		config:         config,
-		state:          StateDisconnected,
-		outstations:    make(map[uint16]*Outstation),
-		fragmenter:     tl.NewFragmenter(),
-		reassembler:    tl.NewReassembler(),
-		retryPolicy:    DefaultRetryPolicy(config),
-		outstanding:    make(map[uint16]struct{}),
-		idleTimeout:    time.Duration(config.IdleTimeout) * time.Millisecond,
-		confirmTimeout: confirmTimeoutFromConfig(config),
+		config:            config,
+		state:             StateDisconnected,
+		outstations:       make(map[uint16]*Outstation),
+		fragmenter:        tl.NewFragmenter(),
+		reassembler:       tl.NewReassembler(),
+		retryPolicy:       DefaultRetryPolicy(config),
+		outstanding:       make(map[uint16]struct{}),
+		idleTimeout:       time.Duration(config.IdleTimeout) * time.Millisecond,
+		confirmTimeout:    confirmTimeoutFromConfig(config),
+		connectTimeout:    connectTimeoutFromConfig(config),
+		operateTimeout:    operateTimeoutFromConfig(config),
+		readTimeout:       readTimeoutFromConfig(config),
+		quarantine:        make(map[uint16]bool),
+		controlGates:      make(map[uint16]*controlGate),
+		sessionUnresolved: make(map[uint16]bool),
 	}
 }
 
@@ -717,6 +850,33 @@ func confirmTimeoutFromConfig(config *Config) time.Duration {
 		return time.Duration(config.Timeout) * time.Millisecond
 	}
 	return time.Duration(DefaultTimeout) * time.Millisecond
+}
+
+// connectTimeoutFromConfig resolves the whole-connect budget (VEC-01 B4 F2):
+// Config.ConnectTimeout (ms) when positive, else DefaultConnectTimeout.
+func connectTimeoutFromConfig(config *Config) time.Duration {
+	if config != nil && config.ConnectTimeout > 0 {
+		return time.Duration(config.ConnectTimeout) * time.Millisecond
+	}
+	return time.Duration(DefaultConnectTimeout) * time.Millisecond
+}
+
+// operateTimeoutFromConfig resolves the whole-control budget (VEC-01 B4 F2):
+// Config.OperateTimeout (ms) when positive, else DefaultOperateTimeout.
+func operateTimeoutFromConfig(config *Config) time.Duration {
+	if config != nil && config.OperateTimeout > 0 {
+		return time.Duration(config.OperateTimeout) * time.Millisecond
+	}
+	return time.Duration(DefaultOperateTimeout) * time.Millisecond
+}
+
+// readTimeoutFromConfig resolves the whole-request budget (VEC-01 B4 F2):
+// Config.ReadTimeout (ms) when positive, else DefaultReadTimeout.
+func readTimeoutFromConfig(config *Config) time.Duration {
+	if config != nil && config.ReadTimeout > 0 {
+		return time.Duration(config.ReadTimeout) * time.Millisecond
+	}
+	return time.Duration(DefaultReadTimeout) * time.Millisecond
 }
 
 // SetRetryPolicy overrides the default retry table (DNP3-034). Passing nil
@@ -844,6 +1004,182 @@ func (m *Master) HasOutstandingRequest(outstationID uint16) bool {
 	defer m.outstandingMu.Unlock()
 	_, ok := m.outstanding[outstationID]
 	return ok
+}
+
+// quarantineOutstationLocked marks outstationID as control-quarantined under
+// safetyMu. The caller must hold safetyMu.
+func (m *Master) quarantineOutstationLocked(outstationID uint16) {
+	m.quarantine[outstationID] = true
+}
+
+// quarantineOutstation marks outstationID as control-quarantined because a
+// control's outcome is UNKNOWN/indeterminate (VEC-01 B4 F3).
+func (m *Master) quarantineOutstation(outstationID uint16) {
+	m.safetyMu.Lock()
+	m.quarantineOutstationLocked(outstationID)
+	m.safetyMu.Unlock()
+}
+
+// clearQuarantine releases the control-safety quarantine for outstationID. It
+// is intentionally NOT called from Disconnect or any automatic teardown
+// (VEC-01 B4 F2/F3 corrective addendum): releasing an UNKNOWN outcome without a
+// separately owner-approved reconciliation protocol would silently discard a
+// possibly-executed control. It exists only for a future explicitly approved
+// reconciliation path and for tests that need a clean slate.
+func (m *Master) clearQuarantine(outstationID uint16) {
+	m.safetyMu.Lock()
+	delete(m.quarantine, outstationID)
+	m.safetyMu.Unlock()
+}
+
+// ClearQuarantine releases the control-safety quarantine for outstationID. It
+// is exposed so a future, separately owner-approved explicit reconciliation
+// protocol can release a quarantine. It is deliberately NOT wired to
+// Disconnect/reconnect: an UNKNOWN outcome persists until such a protocol
+// exists.
+func (m *Master) ClearQuarantine(outstationID uint16) {
+	m.clearQuarantine(outstationID)
+}
+
+// QuarantineOutstation marks outstationID control-quarantined (VEC-01 B4 F3).
+// Exposed so a supervising caller (the public client) can fail closed when it
+// observes cancellation of an in-flight non-idempotent control whose outcome it
+// cannot positively establish. The quarantine is persistent: it survives
+// Disconnect, reconnect, late worker completion and request-marker cleanup.
+func (m *Master) QuarantineOutstation(outstationID uint16) {
+	m.quarantineOutstation(outstationID)
+}
+
+// IsQuarantined reports whether outstationID is currently control-quarantined
+// (VEC-01 B4 F3). Exposed for tests and diagnostics.
+func (m *Master) IsQuarantined(outstationID uint16) bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	return m.quarantine[outstationID]
+}
+
+// acquireControlGate admits a single non-idempotent control for outstationID
+// (VEC-01 B4 F3 second corrective addendum). Under one safetyMu critical
+// section it atomically (a) refuses admission when the outstation is
+// quarantined (UNKNOWN outcome outstanding), when another worker holds the gate,
+// or when the outstation has an unresolved worker from a torn-down session, and
+// (b) records the current session generation so a later session change can be
+// detected. It returns the generation plus a release function the worker must
+// call when it terminates. The release function clears the active flag but
+// NEVER releases a quarantine — an UNKNOWN outcome persists independently.
+func (m *Master) acquireControlGate(outstationID uint16) (uint64, func(), error) {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	if m.quarantine[outstationID] {
+		return 0, nil, fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
+	}
+	if m.sessionUnresolved[outstationID] {
+		return 0, nil, fmt.Errorf("%w: 0x%04X", ErrSessionUnresolved, outstationID)
+	}
+	g, ok := m.controlGates[outstationID]
+	if !ok {
+		g = &controlGate{}
+		m.controlGates[outstationID] = g
+	}
+	if g.active {
+		return 0, nil, fmt.Errorf("%w: 0x%04X", ErrControlInProgress, outstationID)
+	}
+	g.active = true
+	g.gen = m.sessionGen
+	gen := g.gen
+	release := func() {
+		m.safetyMu.Lock()
+		if cg, ok := m.controlGates[outstationID]; ok {
+			cg.active = false
+			if !cg.sending {
+				delete(m.controlGates, outstationID)
+			}
+		}
+		// The worker has terminated, so it is no longer an outstanding worker
+		// for a torn-down session: lift the unresolved fence (but never a
+		// quarantine).
+		delete(m.sessionUnresolved, outstationID)
+		m.safetyMu.Unlock()
+	}
+	return gen, release, nil
+}
+
+// beginTransmit is the single linearization point for "this worker may
+// transmit through session gen" (VEC-01 B4 F3-R2A). Under safetyMu it verifies
+// that the outstation is not quarantined and that the session is still current,
+// then marks the gate as sending. The check and the marking are atomic with
+// respect to Disconnect (which bumps the session generation under the same
+// lock), so a worker cannot START a transmission after its session's teardown
+// has linearized. A nil error means the send is admitted; callers must pair it
+// with endTransmit. A non-nil error is a definite NOT_SENT refusal.
+func (m *Master) beginTransmit(gen uint64, outstationID uint16) error {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	if m.quarantine[outstationID] {
+		return fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
+	}
+	if gen != m.sessionGen {
+		return fmt.Errorf("%w: session changed before control send", ErrOperationDeadlineExceeded)
+	}
+	g, ok := m.controlGates[outstationID]
+	if !ok {
+		g = &controlGate{}
+		m.controlGates[outstationID] = g
+	}
+	g.sending = true
+	return nil
+}
+
+// endTransmit clears the in-flight send marker under safetyMu and drops the
+// gate if the worker has also released it (so the gate map does not grow
+// unbounded). Safe to call only after a beginTransmit that returned true.
+func (m *Master) endTransmit(outstationID uint16) {
+	m.safetyMu.Lock()
+	if g, ok := m.controlGates[outstationID]; ok {
+		g.sending = false
+		if !g.active {
+			delete(m.controlGates, outstationID)
+		}
+	}
+	m.safetyMu.Unlock()
+}
+
+// anySessionUnresolved reports whether any outstation has an unresolved control
+// worker from a torn-down session (VEC-01 B4 F3-R2B). A fresh Connect is
+// refused while this is true.
+func (m *Master) anySessionUnresolved() bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	return len(m.sessionUnresolved) > 0
+}
+
+// HasUnresolvedSession reports whether any outstation still has an unresolved
+// control worker from a torn-down session (VEC-01 B4 F3-R3). It is exposed so
+// the public client can fail a fresh Connect fast, before dialing, while an old
+// control send could still affect the shared transport. The internal master
+// enforces the same fence again at ConnectContext; this is the pre-dial check.
+func (m *Master) HasUnresolvedSession() bool {
+	return m.anySessionUnresolved()
+}
+
+// sessionUnresolvedFor reports whether outstationID has an unresolved control
+// worker from a torn-down session (VEC-01 B4 F3-R2B). Exposed for
+// tests/diagnostics.
+func (m *Master) sessionUnresolvedFor(outstationID uint16) bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	return m.sessionUnresolved[outstationID]
+}
+
+// HasActiveControl reports whether a control worker currently holds the gate
+// for outstationID (VEC-01 B4 F3). Exposed for tests and diagnostics so a
+// supervising caller can observe that a worker is still active (e.g. blocked in
+// an uncooperative transport) and that the fail-closed gate remains held.
+func (m *Master) HasActiveControl(outstationID uint16) bool {
+	m.safetyMu.Lock()
+	defer m.safetyMu.Unlock()
+	g, ok := m.controlGates[outstationID]
+	return ok && (g.active || g.sending)
 }
 
 // recordActivity stamps lastActivity to now under mu (DNP3-042). Called on
@@ -1016,7 +1352,7 @@ func (m *Master) Connect() error {
 	m.resetForReconnect()
 
 	// Perform DNP3 link-layer session establishment
-	if err := m.performLinkHandshake(); err != nil {
+	if err := m.performLinkHandshake(time.Time{}); err != nil {
 		// DNP3-039: a failed handshake lands in StateError, not Disconnected, so
 		// the caller does not mistake a half-open session for a clean slate.
 		_ = m.transitionTo(StateError)
@@ -1031,6 +1367,80 @@ func (m *Master) Connect() error {
 		return err
 	}
 	// DNP3-042: start the optional idle monitor (no-op when IdleTimeout <= 0).
+	m.startIdleMonitor()
+	return nil
+}
+
+// ConnectContext performs the connect sequence under a single finite
+// wall-clock budget (VEC-01 B4 F2). The dial, link reset/status handshake and
+// initialization all share this one budget; the caller's context, when it
+// carries an earlier deadline, tightens the effective budget but never
+// extends it. A nil context is treated as context.Background(). If the budget
+// is exhausted the connect fails closed with ErrOperationDeadlineExceeded and
+// the master is left in StateError (no partial session is reported active).
+func (m *Master) ConnectContext(ctx context.Context, budget time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if budget <= 0 {
+		budget = m.connectTimeout
+	}
+	// VEC-01 B4 F3-R2B: refuse a fresh connect while a control worker from a
+	// torn-down session remains outstanding for any registered outstation. A
+	// late send from that worker must not be able to contaminate the new
+	// session; the caller must wait for it to terminate (or restart) first.
+	if m.anySessionUnresolved() {
+		return fmt.Errorf("%w: connect refused while a prior control worker is outstanding", ErrSessionUnresolved)
+	}
+	connectDeadline := time.Now().Add(budget)
+	effective := connectDeadline
+	if dl, ok := ctx.Deadline(); ok && dl.Before(effective) {
+		effective = dl
+	}
+
+	if m.transport == nil {
+		return errors.New("transport not configured")
+	}
+
+	// DNP3-039: Connect may only begin from Disconnected or Error (reconnect).
+	cur := m.State()
+	if cur != StateDisconnected && cur != StateError {
+		return fmt.Errorf("%w: %s -> Connecting", ErrIllegalStateTransition, cur)
+	}
+	if err := m.transitionTo(StateConnecting); err != nil {
+		return err
+	}
+
+	m.resetForReconnect()
+
+	if err := ctx.Err(); err != nil {
+		_ = m.transitionTo(StateError)
+		return fmt.Errorf("%w: %v", ErrOperationDeadlineExceeded, err)
+	}
+	if m.deadlineExpired(effective) {
+		_ = m.transitionTo(StateError)
+		return ErrOperationDeadlineExceeded
+	}
+
+	if err := m.performLinkHandshake(effective); err != nil {
+		_ = m.transitionTo(StateError)
+		if m.deadlineExpired(effective) {
+			return ErrOperationDeadlineExceeded
+		}
+		return fmt.Errorf("link handshake failed: %w", err)
+	}
+
+	if m.deadlineExpired(effective) {
+		_ = m.transitionTo(StateError)
+		return ErrOperationDeadlineExceeded
+	}
+
+	if err := m.transitionTo(StateConnected); err != nil {
+		return err
+	}
+	if err := m.transitionTo(StateActive); err != nil {
+		return err
+	}
 	m.startIdleMonitor()
 	return nil
 }
@@ -1054,16 +1464,16 @@ func (m *Master) resetForReconnect() {
 //  2. Request Link Status → secondary Link Status response
 //
 // Connect succeeds only after both exchanges validate (DNP3-006/DNP3-007).
-func (m *Master) performLinkHandshake() error {
+func (m *Master) performLinkHandshake(deadline time.Time) error {
 	// Step 1: Send Reset Link Stations and validate the secondary ACK.
-	if err := m.sendResetLink(); err != nil {
+	if err := m.sendResetLinkDeadline(deadline); err != nil {
 		return fmt.Errorf("reset link failed: %w", err)
 	}
 
 	// Step 2: Request Link Status and validate the secondary Link Status
 	// response. This confirms the link is fully established in both
 	// directions before application communication begins.
-	if err := m.sendLinkStatusRequest(); err != nil {
+	if err := m.sendLinkStatusRequestDeadline(deadline); err != nil {
 		return fmt.Errorf("link status request failed: %w", err)
 	}
 
@@ -1077,6 +1487,13 @@ func (m *Master) performLinkHandshake() error {
 // handshake is retried up to the NACK retry budget from the master's
 // RetryPolicy; non-NACK failures fail immediately.
 func (m *Master) sendResetLink() error {
+	return m.sendResetLinkDeadline(time.Time{})
+}
+
+// sendResetLinkDeadline issues Reset Link Stations with each blocking receive
+// capped to the operation's remaining wall-clock budget (VEC-01 B4 F2). A zero
+// deadline means no cap (the legacy per-step timeout applies unchanged).
+func (m *Master) sendResetLinkDeadline(deadline time.Time) error {
 	// Build Reset Link Stations frame (no data needed)
 	// This tells the outstation to clear buffers and reset the FCB counter
 	for _, o := range m.outstations {
@@ -1113,9 +1530,15 @@ func (m *Master) sendResetLink() error {
 			// layer. Consume and validate that frame here so the next application
 			// request reads an application response rather than a stale or invalid
 			// handshake ACK.
-			m.transport.SetTimeout(m.config.Timeout)
+			nominal := time.Duration(m.config.Timeout) * time.Millisecond
+			wait := constrainTimeout(m, nominal, deadline)
+			m.transport.SetTimeout(int(wait / time.Millisecond))
+			t0 := time.Now()
 			raw, err := m.transport.Receive()
 			if err != nil {
+				if m.waitHitBudget(deadline, nominal, wait, t0) {
+					return ErrOperationDeadlineExceeded
+				}
 				return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
 			}
 			if err := validateResetLinkACK(raw, o.ID, m.config.MasterAddress); err != nil {
@@ -1123,6 +1546,9 @@ func (m *Master) sendResetLink() error {
 				// DNP3-058: only a link-layer NACK is retryable for the handshake.
 				if !m.retryAgain(policy, &lastErr, attempt) {
 					return lastErr
+				}
+				if m.deadlineExpired(deadline) {
+					return ErrOperationDeadlineExceeded
 				}
 				continue
 			}
@@ -1185,6 +1611,13 @@ func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
 // of the link handshake (DNP3-007): Connect succeeds only after a valid Link
 // Status response.
 func (m *Master) sendLinkStatusRequest() error {
+	return m.sendLinkStatusRequestDeadline(time.Time{})
+}
+
+// sendLinkStatusRequestDeadline issues Request Link Status with each blocking
+// receive capped to the operation's remaining wall-clock budget (VEC-01 B4 F2).
+// A zero deadline means no cap (the legacy per-step timeout applies unchanged).
+func (m *Master) sendLinkStatusRequestDeadline(deadline time.Time) error {
 	for _, o := range m.outstations {
 		req := &frame.Frame{
 			Control: frame.Control{
@@ -1204,9 +1637,15 @@ func (m *Master) sendLinkStatusRequest() error {
 			return fmt.Errorf("failed to send link status request: %w", err)
 		}
 
-		m.transport.SetTimeout(m.config.Timeout)
+		nominal := time.Duration(m.config.Timeout) * time.Millisecond
+		wait := constrainTimeout(m, nominal, deadline)
+		m.transport.SetTimeout(int(wait / time.Millisecond))
+		t0 := time.Now()
 		raw, err := m.transport.Receive()
 		if err != nil {
+			if m.waitHitBudget(deadline, nominal, wait, t0) {
+				return ErrOperationDeadlineExceeded
+			}
 			return fmt.Errorf("failed to receive link status response: %w", err)
 		}
 		if err := validateLinkStatusResponse(raw, o.ID, m.config.MasterAddress); err != nil {
@@ -1263,8 +1702,35 @@ func (m *Master) Disconnect() error {
 	// the unconditional teardown path, so it bypasses the transition table.
 	m.mu.Lock()
 	m.state = StateDisconnected
-	m.mu.Unlock()
+	// Registered outstations are dropped on teardown; assign under mu so a
+	// concurrent teardown (e.g. a bounded connect's cleanup racing the caller)
+	// cannot race this map write.
 	m.outstations = make(map[uint16]*Outstation)
+	m.mu.Unlock()
+	// VEC-01 B4 F3-R2A/R2B: bump the session generation under safetyMu so the
+	// final session-validity check and admission to transmit (beginTransmit)
+	// share one linearization point with this teardown. Any worker still active
+	// or with a send in flight for an outstation is fenced as unresolved: a
+	// fresh Connect/admission for that outstation is refused fail-closed until
+	// the worker terminates, so a late send cannot contaminate a replacement
+	// session. The control-safety quarantine is deliberately NOT cleared here:
+	// an UNKNOWN outcome of a possibly-executed control persists across
+	// Disconnect, reconnect and late worker completion. Releasing it requires a
+	// separately owner-approved explicit reconciliation protocol.
+	m.safetyMu.Lock()
+	m.sessionGen++
+	for id, g := range m.controlGates {
+		if g.active || g.sending {
+			// Fence any outstanding worker so it cannot transmit into a
+			// replacement session; quarantine only when a send was actually in
+			// flight (an idle, not-yet-sent worker is a definite NOT_SENT).
+			m.sessionUnresolved[id] = true
+			if g.sending {
+				m.quarantine[id] = true
+			}
+		}
+	}
+	m.safetyMu.Unlock()
 	return nil
 }
 
@@ -1342,27 +1808,8 @@ func (m *Master) Poll(outstationID uint16, pollType PollType) error {
 
 // Operate issues a control operation.
 func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) error {
-	if !m.isOperational() {
-		return ErrNotConnected
-	}
-
-	var req *al.APDU
-
-	if selectThenOperate {
-		// SELECT
-		selectReq := m.buildControlRequest(al.FuncSelect, group, variation, index, value)
-		if err := m.sendWithRetry(selectReq, outstationID); err != nil {
-			return err
-		}
-
-		// OPERATE
-		req = m.buildControlRequest(al.FuncOperate, group, variation, index, value)
-	} else {
-		// DIRECT OPERATE
-		req = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
-	}
-
-	return m.sendWithRetry(req, outstationID)
+	_, err := m.OperateWithStatus(outstationID, selectThenOperate, group, variation, index, value)
+	return err
 }
 
 // OperateWithStatus performs a control operation and returns the per-point
@@ -1371,34 +1818,264 @@ func (m *Master) Operate(outstationID uint16, selectThenOperate bool, group, var
 // status byte indicates a failure. A response with no parseable G12V1 status
 // yields CommandStatusUnknown (not success).
 func (m *Master) OperateWithStatus(outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}) (CommandStatus, error) {
+	// VEC-01 B4 F1/F2/F3: the legacy entry point now performs a single-shot,
+	// deadline-bounded control with fail-closed cancellation semantics. The
+	// public client drives the cancelable OperateWithStatusContext variant; this
+	// wrapper uses the master's configured whole-control budget and a background
+	// context so direct internal callers get the same safety behavior.
+	return m.OperateWithStatusContext(context.Background(), outstationID, selectThenOperate, group, variation, index, value, time.Now().Add(m.operateTimeout))
+}
+
+// OperateWithStatusContext performs exactly one logical G12V1 DirectOperate
+// request under a single finite wall-clock budget (VEC-01 B4 F1/F2/F3):
+//
+//   - F1: the control is sent AT MOST ONCE. There is no hidden retry on
+//     timeout, NACK, CRC, invalid response, missing confirmation or disconnect.
+//     A non-idempotent control must never be resent autonomously.
+//   - F2: send + confirm/response wait + status interpretation share the one
+//     budget in deadline; the caller's ctx deadline, when earlier, tightens it.
+//   - F3: when cancellation, the deadline, a disconnect after a possible send,
+//     or a missing/malformed response leaves the outcome UNKNOWN, the
+//     outstation is quarantined (no new control may be issued until explicit
+//     teardown) and ErrControlOutcomeUnknown is returned. A valid response
+//     carrying an explicit failure status is NOT unknown and is returned as-is.
+//
+// An already-cancelled context returns without sending anything (definitely
+// NOT_SENT). A failure positively established before any send also does not
+// quarantine. Returns (status, nil) only for a positively classified outcome.
+func (m *Master) OperateWithStatusContext(ctx context.Context, outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}, deadline time.Time) (CommandStatus, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if dl, ok := ctx.Deadline(); ok && (deadline.IsZero() || dl.Before(deadline)) {
+		deadline = dl
+	}
+	if deadline.IsZero() {
+		deadline = time.Now().Add(m.operateTimeout)
+	}
+
 	if !m.isOperational() {
 		return CommandStatusUnknown, ErrNotConnected
 	}
 
-	var req *al.APDU
-	if selectThenOperate {
-		selectReq := m.buildControlRequest(al.FuncSelect, group, variation, index, value)
-		if _, err := m.sendWithRetryAndGetResponse(selectReq, outstationID); err != nil {
-			return CommandStatusUnknown, err
-		}
-		req = m.buildControlRequest(al.FuncOperate, group, variation, index, value)
-	} else {
-		req = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
-	}
-	if req == nil {
-		return CommandStatusUnknown, fmt.Errorf("unsupported control value for group %d variation %d", group, variation)
-	}
-
-	appData, err := m.sendWithRetryAndGetResponse(req, outstationID)
+	// F3: register the control worker BEFORE any dispatch. Admission fails
+	// closed if a prior control's outcome is UNKNOWN (quarantine) or if another
+	// worker already holds the gate. The release returned here clears the gate
+	// when this call returns; it never releases a quarantine.
+	gen, release, err := m.acquireControlGate(outstationID)
 	if err != nil {
 		return CommandStatusUnknown, err
 	}
+	defer release()
 
-	resp, err := al.DecodeResponse(appData)
-	if err != nil {
-		return CommandStatusUnknown, fmt.Errorf("%w: %v", ErrInvalidResponse, err)
+	return m.operateGated(ctx, gen, outstationID, selectThenOperate, group, variation, index, value, deadline)
+}
+
+// operateGated performs the single-shot control while the caller holds the
+// control gate for outstationID in session generation gen (VEC-01 B4 F3). The
+// gate must already be held; the session generation is threaded to the
+// transmission point so a worker from a torn-down session cannot send.
+func (m *Master) operateGated(ctx context.Context, gen uint64, outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}, deadline time.Time) (CommandStatus, error) {
+	// Build the request(s) up front. A build failure is a definite pre-send
+	// failure (NOT_SENT): no control was transmitted and no quarantine applies.
+	var selectReq, operateReq *al.APDU
+	if selectThenOperate {
+		selectReq = m.buildControlRequest(al.FuncSelect, group, variation, index, value)
+		if selectReq == nil {
+			return CommandStatusUnknown, fmt.Errorf("unsupported control value for group %d variation %d", group, variation)
+		}
+		operateReq = m.buildControlRequest(al.FuncOperate, group, variation, index, value)
+	} else {
+		operateReq = m.buildControlRequest(al.FuncDirectOperate, group, variation, index, value)
 	}
-	return resolveOperateStatus(resp), nil
+	if operateReq == nil {
+		return CommandStatusUnknown, fmt.Errorf("unsupported control value for group %d variation %d", group, variation)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrOperationDeadlineExceeded, err)
+	}
+
+	if selectThenOperate {
+		// Each stage is itself single-shot and shares the same budget.
+		if _, err := m.sendControlOnce(ctx, gen, selectReq, outstationID, deadline); err != nil {
+			return CommandStatusUnknown, err
+		}
+	}
+	return m.sendControlOnce(ctx, gen, operateReq, outstationID, deadline)
+}
+
+// AcquireControlGate admits a single non-idempotent control for outstationID
+// (VEC-01 B4 F3). It is exposed so the public client can register the control
+// worker before dispatch. It fails closed with ErrControlQuarantined when the
+// outstation's prior control outcome is UNKNOWN, and with ErrControlInProgress
+// when a worker already holds the gate. On success the caller must invoke the
+// returned release exactly once when the worker terminates.
+func (m *Master) AcquireControlGate(outstationID uint16) (gen uint64, release func(), err error) {
+	return m.acquireControlGate(outstationID)
+}
+
+// OperateWithStatusGated performs a single-shot control while the caller holds
+// the control gate acquired via AcquireControlGate for session generation gen
+// (VEC-01 B4 F3). The public client uses this to run the control worker on the
+// caller's context with a single deadline, so cancellation and session
+// replacement are observed at the transmission point.
+func (m *Master) OperateWithStatusGated(ctx context.Context, gen uint64, outstationID uint16, selectThenOperate bool, group, variation uint8, index uint16, value interface{}, deadline time.Time) (CommandStatus, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if dl, ok := ctx.Deadline(); ok && (deadline.IsZero() || dl.Before(deadline)) {
+		deadline = dl
+	}
+	if deadline.IsZero() {
+		deadline = time.Now().Add(m.operateTimeout)
+	}
+	if !m.isOperational() {
+		return CommandStatusUnknown, ErrNotConnected
+	}
+	return m.operateGated(ctx, gen, outstationID, selectThenOperate, group, variation, index, value, deadline)
+}
+
+// OperateBudget returns the configured whole-control budget (VEC-01 B4 F2) so
+// the public client can derive one absolute deadline for a single control.
+func (m *Master) OperateBudget() time.Duration {
+	return m.operateTimeout
+}
+
+// sendControlOnce transmits one control request AT MOST ONCE and classifies its
+// outcome (VEC-01 B4 F1/F3). ctx cancellation observed after a send is treated
+// as an UNKNOWN outcome (quarantine + fail closed); cancellation observed before
+// the send is a definite NOT_SENT failure with no quarantine. It reads the response and returns the per-point
+// command status. Any ambiguous outcome quarantines the outstation and returns
+// ErrControlOutcomeUnknown wrapped with the underlying cause; a definite
+// pre-send failure returns without quarantining; a valid response (success or
+// explicit failure status) is returned as classified and never quarantines.
+//
+// gen is the session generation in which the owning worker was admitted; a
+// mismatch immediately before transmission means the session was torn down
+// and/or replaced, so this worker must NOT send (definite NOT_SENT).
+func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, outstationID uint16, deadline time.Time) (CommandStatus, error) {
+	// Fail closed before any send if the outstation is already quarantined
+	// (VEC-01 B4 F3): a prior control's outcome is unresolved.
+	if m.IsQuarantined(outstationID) {
+		return CommandStatusUnknown, fmt.Errorf("%w: 0x%04X", ErrControlQuarantined, outstationID)
+	}
+
+	// DNP3-040: reject a concurrent request to the SAME outstation.
+	if err := m.beginRequest(outstationID); err != nil {
+		return CommandStatusUnknown, err
+	}
+	defer m.endRequest(outstationID)
+
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+
+	// F3: refuse to transmit if the caller has already cancelled. This is a
+	// definite pre-send (NOT_SENT) condition: nothing has been transmitted.
+	if err := ctx.Err(); err != nil {
+		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrOperationDeadlineExceeded, err)
+	}
+	if m.deadlineExpired(deadline) {
+		// Definite pre-send failure: nothing was transmitted.
+		return CommandStatusUnknown, ErrOperationDeadlineExceeded
+	}
+
+	// F3-R2A: the final session-validity decision and admission to transmit is
+	// ONE linearization point shared with Disconnect (beginTransmit). A worker
+	// whose session was torn down, or an outstation now quarantined, is refused
+	// here BEFORE any send. The in-flight marker stays set for the whole
+	// single-shot transmission so teardown can fence a possible send.
+	if err := m.beginTransmit(gen, outstationID); err != nil {
+		return CommandStatusUnknown, err
+	}
+	defer m.endTransmit(outstationID)
+
+	seq := m.nextSequence(outstationID)
+	req.Control.Seq = seq
+	data := req.Encode()
+	fragments := m.fragmenter.Fragmentize(data)
+	fcb := m.outstationFCB(outstationID)
+
+	// Send the request exactly once (all fragments of the single APDU).
+	for _, frag := range fragments {
+		tlEncoded := tl.EncodeFragment(frag)
+		dllFrame := &frame.Frame{
+			Control: frame.Control{
+				DIR:      true,
+				PRM:      true,
+				FCB:      fcb,
+				FCV:      true,
+				FuncCode: frame.FuncConfirmedUserData,
+			},
+			DestAddr: outstationID,
+			SrcAddr:  m.config.MasterAddress,
+			Data:     tlEncoded,
+		}
+		dllEncoded, err := frame.Encode(dllFrame)
+		if err != nil {
+			// Encode failure is pre-send: nothing was transmitted.
+			return CommandStatusUnknown, err
+		}
+		if err := m.transport.Send(dllEncoded); err != nil {
+			// A send failure means a send was attempted: the outcome is
+			// indeterminate. Fail closed and quarantine.
+			wrapped, _ := m.markDisconnected(err)
+			m.quarantineOutstation(outstationID)
+			m.diag(DiagError, "control", seq, "control send failed; outcome unknown", err)
+			return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, wrapped)
+		}
+	}
+	m.advanceSequence(outstationID)
+	m.recordActivity()
+	m.diag(DiagInfo, "control", seq, fmt.Sprintf("sent single control to outstation %d", outstationID), nil)
+
+	// Optional application confirmation (single wait, single attempt).
+	if req.Control.CON {
+		if err := m.waitForConfirmationTimeout(constrainTimeout(m, m.confirmTimeout, deadline), seq); err != nil {
+			wrapped, _ := m.markDisconnected(err)
+			m.quarantineOutstation(outstationID)
+			m.diag(DiagError, "control", seq, "control confirmation failed; outcome unknown", err)
+			return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, wrapped)
+		}
+	}
+
+	// Wait for the response (single wait, single attempt).
+	resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+	if err != nil {
+		wrapped, _ := m.markDisconnected(err)
+		m.quarantineOutstation(outstationID)
+		m.diag(DiagError, "control", seq, "control response missing; outcome unknown", err)
+		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, wrapped)
+	}
+
+	// Process the response (single attempt). A malformed or mismatched response
+	// leaves the outcome indeterminate.
+	appData, err := m.processResponse(resp, outstationID, seq)
+	if err != nil {
+		m.quarantineOutstation(outstationID)
+		m.diag(DiagError, "control", seq, "control response malformed; outcome unknown", err)
+		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, err)
+	}
+
+	m.recordActivity()
+	m.advanceOutstationFCB(outstationID)
+
+	apdu, err := al.DecodeResponse(appData)
+	if err != nil {
+		m.quarantineOutstation(outstationID)
+		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, err)
+	}
+	status := resolveOperateStatus(apdu)
+	if status == CommandStatusUnknown {
+		// The response was a valid APDU but carried no parseable command
+		// status: the remote outcome cannot be positively established.
+		m.quarantineOutstation(outstationID)
+		m.diag(DiagError, "control", seq, "control status unparseable; outcome unknown", nil)
+		return CommandStatusUnknown, fmt.Errorf("%w: no parseable command status", ErrControlOutcomeUnknown)
+	}
+	// A positively classified outcome (success or explicit failure status).
+	m.diag(DiagInfo, "control", seq, fmt.Sprintf("control outcome %d", status), nil)
+	return status, nil
 }
 
 // resolveOperateStatus determines the per-point command status for a
@@ -1510,6 +2187,8 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	policy := m.RetryPolicy()
 	var lastErr error
 	attempt := 0
+	// VEC-01 B4 F2: the whole request shares one finite wall-clock budget.
+	deadline := time.Now().Add(m.readTimeout)
 
 	for {
 		attempt++
@@ -1564,8 +2243,12 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		if !sentOK {
 			// If the transport disconnected, stop retrying — the link is dead
 			// (DNP3-031). Otherwise consult the retry policy (DNP3-034).
+			m.diag(DiagWarn, "send", seq, "send failed", lastErr)
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return lastErr
+			}
+			if m.deadlineExpired(deadline) {
+				return ErrOperationDeadlineExceeded
 			}
 			continue
 		}
@@ -1576,21 +2259,29 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		m.recordActivity()
 		// If CON bit is set, wait for confirmation first
 		if req.Control.CON {
-			if err := m.waitForConfirmation(seq); err != nil {
+			if err := m.waitForConfirmationTimeout(constrainTimeout(m, m.confirmTimeout, deadline), seq); err != nil {
 				lastErr, _ = m.markDisconnected(err)
+				m.diag(DiagWarn, "confirm", seq, "confirmation failed", err)
 				if !m.retryAgain(policy, &lastErr, attempt) {
 					return lastErr
+				}
+				if m.deadlineExpired(deadline) {
+					return ErrOperationDeadlineExceeded
 				}
 				continue
 			}
 		}
 
 		// Wait for response
-		resp, err := m.waitForResponse()
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
+			m.diag(DiagWarn, "receive", seq, "response failed", err)
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return lastErr
+			}
+			if m.deadlineExpired(deadline) {
+				return ErrOperationDeadlineExceeded
 			}
 			continue
 		}
@@ -1599,6 +2290,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		_, err = m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
+			m.diag(DiagWarn, "retry", seq, "response error", err)
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return lastErr
 			}
@@ -1614,11 +2306,43 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 	}
 }
 
-// sendWithRetryAndGetResponse sends a request with retry logic and returns the processed application layer data.
+// sendWithRetryAndGetResponse sends a request with retry logic and returns the
+// processed application layer data.
 //
 // DNP3-034: see sendWithRetry — failures are classified and the retry decision
 // is taken from the master's RetryPolicy.
+//
+// VEC-01 B4 F2: the whole read request (all retries, confirm wait and response
+// wait) shares ONE finite wall-clock budget resolved from ReadTimeout. Retries
+// remain bounded and interruptible; a retry that would start after the budget
+// is exhausted is refused with ErrOperationDeadlineExceeded instead of silently
+// extending the budget.
 func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) ([]byte, error) {
+	return m.performReadRequest(req, outstationID, time.Now().Add(m.readTimeout))
+}
+
+// performReadRequest is the retry-enabled read/response path with a single
+// finite deadline (VEC-01 B4 F2). allowRetry==true preserves the historical
+// read retry policy, bounded and deadline-aware.
+func (m *Master) performReadRequest(req *al.APDU, outstationID uint16, deadline time.Time) ([]byte, error) {
+	return m.performRequest(req, outstationID, deadline)
+}
+
+// performRequest is the single, deadline-aware request engine used by both the
+// read path (allowRetry==true) and the single-shot control path
+// (allowRetry==false). It returns the decoded application response data.
+//
+// VEC-01 B4 F1: when allowRetry==false the request is attempted EXACTLY ONCE.
+// There is no hidden retry on timeout, NACK, CRC, invalid response, missing
+// confirmation or disconnect. Because the v0 DirectOperate is non-idempotent,
+// a second send could double-execute the control, so the dedicated control path
+// must never resend on its own.
+//
+// VEC-01 B4 F2: every send/receive/confirm wait and retry delay respects the
+// remaining budget; the parent budget is never reset for a retry. Blocking
+// receive waits are capped to the remaining budget via the transport timeout so
+// an operation cannot overshoot its budget by a full step timeout.
+func (m *Master) performRequest(req *al.APDU, outstationID uint16, deadline time.Time) ([]byte, error) {
 	// DNP3-040: reject a concurrent request to the SAME outstation before
 	// blocking on reqMu so a slow peer cannot starve the caller.
 	if err := m.beginRequest(outstationID); err != nil {
@@ -1654,6 +2378,10 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// retries reuse the same value and the bit advances only on success.
 		fcb := m.outstationFCB(outstationID)
 
+		if m.deadlineExpired(deadline) {
+			return nil, ErrOperationDeadlineExceeded
+		}
+
 		sentOK := true
 		for _, frag := range fragments {
 			// Transport layer encode
@@ -1683,7 +2411,6 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 				sentOK = false
 				break
 			}
-
 		}
 		if !sentOK {
 			// If the transport disconnected, stop retrying — the link is dead
@@ -1691,37 +2418,36 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 			if !m.retryAgain(policy, &lastErr, attempt) {
 				return nil, lastErr
 			}
+			if m.deadlineExpired(deadline) {
+				return nil, ErrOperationDeadlineExceeded
+			}
 			continue
 		}
-		// Successful send; advance the sequence (DNP3-008).
+		// The request was sent successfully; advance the sequence (DNP3-008).
 		m.advanceSequence(outstationID)
-		// Successful send counts as link activity for the idle monitor (DNP3-042).
 		m.recordActivity()
-		// DNP3-044: emit a "send" diagnostic event with the application seq.
 		m.diag(DiagInfo, "send", seq, fmt.Sprintf("sent request to outstation %d", outstationID), nil)
-		// If CON bit is set, wait for confirmation first
+
+		// If CON bit is set, wait for confirmation first.
 		if req.Control.CON {
-			if err := m.waitForConfirmation(seq); err != nil {
-				m.diag(DiagWarn, "confirm", seq, "confirmation failed", err)
+			if err := m.waitForConfirmationTimeout(constrainTimeout(m, m.confirmTimeout, deadline), seq); err != nil {
 				lastErr, _ = m.markDisconnected(err)
-				if !m.retryAgain(policy, &lastErr, attempt) {
-					return nil, lastErr
+				m.diag(DiagWarn, "confirm", seq, "confirmation failed", err)
+				if deadlineErr := m.deadlineOrRetry(policy, &lastErr, attempt, deadline); deadlineErr != nil {
+					return nil, deadlineErr
 				}
-				m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after confirm failure (attempt %d)", attempt), lastErr)
 				continue
 			}
-			m.diag(DiagInfo, "confirm", seq, "confirmation received", nil)
 		}
 
-		// Wait for response
-		resp, err := m.waitForResponse()
+		// Wait for response.
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
 		if err != nil {
-			m.diag(DiagWarn, "receive", seq, "response failed", err)
 			lastErr, _ = m.markDisconnected(err)
-			if !m.retryAgain(policy, &lastErr, attempt) {
-				return nil, lastErr
+			m.diag(DiagWarn, "receive", seq, "response failed", err)
+			if deadlineErr := m.deadlineOrRetry(policy, &lastErr, attempt, deadline); deadlineErr != nil {
+				return nil, deadlineErr
 			}
-			m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after receive failure (attempt %d)", attempt), lastErr)
 			continue
 		}
 
@@ -1730,10 +2456,10 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		appData, err := m.processResponse(resp, outstationID, seq)
 		if err != nil {
 			lastErr = err
-			if !m.retryAgain(policy, &lastErr, attempt) {
-				return nil, lastErr
+			m.diag(DiagWarn, "retry", seq, "response error", err)
+			if deadlineErr := m.deadlineOrRetry(policy, &lastErr, attempt, deadline); deadlineErr != nil {
+				return nil, deadlineErr
 			}
-			m.diag(DiagWarn, "retry", seq, fmt.Sprintf("retry after response error (attempt %d)", attempt), lastErr)
 			continue
 		}
 
@@ -1743,11 +2469,69 @@ func (m *Master) sendWithRetryAndGetResponse(req *al.APDU, outstationID uint16) 
 		// confirmation + response all succeeded); toggle the FCB for the next
 		// transaction. Retries of a failed attempt keep the same FCB.
 		m.advanceOutstationFCB(outstationID)
-		// DNP3-044: emit a "receive" diagnostic event for the completed response.
 		m.diag(DiagInfo, "receive", seq, "response received", nil)
-		// Return the processed application layer data for the caller to decode
 		return appData, nil
 	}
+}
+
+// performance helpers
+
+// deadlineExpired reports whether deadline has passed (a zero deadline never
+// expires).
+func (m *Master) deadlineExpired(deadline time.Time) bool {
+	return !deadline.IsZero() && !time.Now().Before(deadline)
+}
+
+// waitHitBudget reports whether a blocking transport wait that returned an
+// error consumed essentially the whole budget because the deadline capped the
+// nominal timeout (VEC-01 B4 F2). When the deadline shortened the wait and the
+// wait then elapsed for most of that shortened window, the failure is an
+// operation-deadline overrun rather than a peer error. A genuine early failure
+// (the wait returns almost immediately) leaves the peer error to surface.
+func (m *Master) waitHitBudget(deadline time.Time, nominal, wait time.Duration, started time.Time) bool {
+	if deadline.IsZero() {
+		return false
+	}
+	if m.deadlineExpired(deadline) {
+		return true
+	}
+	if wait >= nominal {
+		// The deadline did not shorten this wait, so a failure is not a
+		// deadline overrun.
+		return false
+	}
+	return time.Since(started) >= wait-wait/8
+}
+
+// constrainTimeout returns the per-step timeout capped to the remaining
+// wall-clock budget, so a single blocking receive cannot overshoot the
+// operation deadline (VEC-01 B4 F2).
+func constrainTimeout(m *Master, step time.Duration, deadline time.Time) time.Duration {
+	if deadline.IsZero() {
+		return step
+	}
+	rem := time.Until(deadline)
+	if rem <= 0 {
+		return time.Millisecond
+	}
+	if step <= 0 || rem < step {
+		return rem
+	}
+	return step
+}
+
+// deadlineOrRetry applies the single-shot/retry decision for a mid-request
+// failure and enforces the operation deadline (VEC-01 B4 F1/F2). It returns a
+// non-nil error to surface immediately (single-shot path, retry budget
+// exhausted, or deadline exceeded) or nil when the caller should retry.
+func (m *Master) deadlineOrRetry(policy *RetryPolicy, lastErr *error, attempt int, deadline time.Time) error {
+	if !m.retryAgain(policy, lastErr, attempt) {
+		return *lastErr
+	}
+	if m.deadlineExpired(deadline) {
+		return ErrOperationDeadlineExceeded
+	}
+	return nil
 }
 
 // retryAgain decides whether to retry the current request after a failure and,
@@ -1795,6 +2579,26 @@ func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID u
 	return m.sendWithRetryAndGetResponse(req, outstationID)
 }
 
+// SendRequestWithRetryAndGetResponseDeadline is the deadline-aware read dispatch
+// (VEC-01 B4 F2). The caller supplies an absolute deadline that bounds the whole
+// read/response exchange (all bounded retries, confirm wait and response wait).
+// A zero deadline falls back to the master's configured read budget. This lets a
+// multi-group integrity poll share ONE budget across its primary and per-group
+// fallback exchanges instead of resetting the budget per group.
+func (m *Master) SendRequestWithRetryAndGetResponseDeadline(req *al.APDU, outstationID uint16, deadline time.Time) ([]byte, error) {
+	if deadline.IsZero() {
+		deadline = time.Now().Add(m.readTimeout)
+	}
+	return m.performReadRequest(req, outstationID, deadline)
+}
+
+// ReadBudget returns the configured whole-request budget (VEC-01 B4 F2) so the
+// public client can derive a shared absolute deadline for a multi-exchange
+// operation such as an integrity poll.
+func (m *Master) ReadBudget() time.Duration {
+	return m.readTimeout
+}
+
 // waitForConfirmation waits for an application-layer confirmation for a request
 // sent with the CON bit set (DNP3-009). A confirmation is an APDU with
 // FuncCode=FuncResponse. The confirmation's sequence number must match the
@@ -1806,10 +2610,17 @@ func (m *Master) SendRequestWithRetryAndGetResponse(req *al.APDU, outstationID u
 // lieu of a dedicated confirm; such a response is accepted as the confirmation.
 // Strict response-sequence matching is the responsibility of DNP3-010.
 func (m *Master) waitForConfirmation(expectedSeq uint8) error {
+	return m.waitForConfirmationTimeout(m.confirmTimeout, expectedSeq)
+}
+
+// waitForConfirmationTimeout waits for an application-layer confirmation with
+// stepTimeout already capped to the operation's remaining budget (VEC-01 B4 F2).
+func (m *Master) waitForConfirmationTimeout(stepTimeout time.Duration, expectedSeq uint8) error {
 	// DNP3-066: the confirm timeout is distinct from the response timeout. A
 	// confirm is a small dedicated reply, so it typically uses a shorter
-	// budget than a full object response.
-	m.transport.SetTimeout(int(m.confirmTimeout / time.Millisecond))
+	// budget than a full object response. VEC-01 B4 F2: the caller passes this
+	// timeout already capped to the operation's remaining wall-clock budget.
+	m.transport.SetTimeout(int(stepTimeout / time.Millisecond))
 
 	for {
 		data, err := m.transport.Receive()
@@ -1864,7 +2675,15 @@ func (m *Master) waitForConfirmation(expectedSeq uint8) error {
 // unchanged so the caller's markDisconnected wraps it with ErrTransportDisconnected
 // (unchanged behavior).
 func (m *Master) waitForResponse() ([]byte, error) {
-	m.transport.SetTimeout(m.config.Timeout)
+	return m.waitForResponseTimeout(time.Duration(m.config.Timeout) * time.Millisecond)
+}
+
+// waitForResponseTimeout waits for a response with stepTimeout already capped to
+// the operation's remaining budget (VEC-01 B4 F2).
+func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, error) {
+	// VEC-01 B4 F2: stepTimeout is the response timeout capped to the
+	// operation's remaining wall-clock budget by the caller.
+	m.transport.SetTimeout(int(stepTimeout / time.Millisecond))
 	data, err := m.transport.Receive()
 	if err != nil {
 		if isDisconnectError(err) {

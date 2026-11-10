@@ -125,6 +125,19 @@ func TestConnectCancelledMidDial(t *testing.T) {
 	if cc.State() != dnp3.StateDisconnected {
 		t.Fatalf("state = %v, want Disconnected (no live connection)", cc.State())
 	}
+	// VEC-01 B4 F2-R4: the teardown now runs asynchronously so Connect returns
+	// promptly even for an uncooperative transport. Wait (bounded) for the
+	// teardown to finish and then assert the transport was closed.
+	deadline := time.Now().Add(time.Second)
+	for {
+		cc.mu.RLock()
+		outstanding := cc.teardown != nil
+		cc.mu.RUnlock()
+		if !outstanding || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if !bt.closed {
 		t.Fatalf("transport was not Close()d; a live connection may remain")
 	}
