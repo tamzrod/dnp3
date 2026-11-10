@@ -4012,3 +4012,63 @@ or amend scope accordingly.
 - ifaces `lo`/`eth0`; default route via `169.254.1.1`; `ip_forward=1`.
 - tools present: `gcc g++ make curl wget git unshare nsenter nft iptables python3`;
   absent: `go gofmt cmake ip tcpdump tshark socat nc`.
+
+### 42. Owner-authorized VEC-01 container lab preparation via Operation CWAL — readiness checkpoint (2026-11-11)
+
+**Authorization.** Owner addendum "Owner-authorized VEC-01 container lab preparation via Operation
+CWAL" (commit `3ef08d2`), which supersedes the earlier prohibition on creating lab Compose/Dockerfile
+assets **only for the isolated VEC-01 lab**. Executed under `operation cwal` on permanent `work`.
+This is lab scaffolding and readiness only; no DNP3 protocol traffic and no control were executed, and
+no library code, supported profile, tests, CI or governance were changed.
+
+**42.1 Startup and baseline — PASS.**
+- Six markers identical; `HEAD == origin/work == 3ef08d2908659ff1ec973ad7ca6cdb0580623cf2` after a
+  safe non-force fast-forward from the §41 checkpoint `296325e…` (linear descendant).
+- `bash scripts/cwal-check.sh` → `CWAL CHECK OK` on the clean tree before writing.
+
+**42.2 Authorized scaffold delivered (allowlist only).**
+- `lab/vec01/compose.yaml` — one service, `network_mode: none`, no `ports`, no host networking, no
+  Docker socket; `cap_add: NET_ADMIN, SYS_ADMIN, NET_RAW` (not `privileged`); host bind mount
+  `${VEC01_CAPTURE_DIR:-./capture}:/capture`; `restart: "no"`.
+- `lab/vec01/Dockerfile` + `lab/vec01/acquire-pinned.sh` — pinned, sha256-verified acquisition of Go
+  `1.22.12`, OpenDNP3 `3.1.2` and its three FetchContent dependencies; runtime container offline.
+- `lab/vec01/lab-netns.sh` — builds the objective Gate B topology inside the container
+  (`vec01-master 10.77.0.1/24` ↔ `vec01-outstation 10.77.0.2/24`, one internal veth, no default
+  route, forwarding forced off fail-closed).
+- `lab/vec01/preflight.sh` — objective, fail-closed readiness checks.
+- `lab/vec01/entrypoint.sh`, `lab/vec01/README.md`, `lab/vec01/capture/{.gitignore,.gitkeep}`.
+- `git diff --check` clean; `bash -n` clean on all four shell scripts; `docker compose config` valid.
+
+**42.3 Dispositions (actual measured results).**
+- **`DESIGN_ONLY`** — the scaffold is reviewable and validated as configuration.
+- **`BUILD_PASS`** — `docker compose build` succeeded; acquisition log shows every pinned input
+  `OK` (`go.tgz`, `opendnp3.tar.gz`, `asio.zip`, `exe4cpp.zip`, `ser4cpp.zip`). Image
+  `vec01-lab:3.1.2` id `sha256:ab5b47b432a2370b14482b40e6c078d534927148f160eddd4a9fd7a5863813fe`;
+  in-image `go version go1.22.12 linux/amd64`.
+- **`GATE_B_PREFLIGHT_PASS`** — `docker compose run --rm lab` (readiness mode, no DNP3 traffic),
+  exit 0. Observed PASS: two private netns + one internal veth; `10.77.0.1/24` and `10.77.0.2/24`;
+  both namespaces have no default route; forwarding **off** in both; neither can resolve external
+  hosts; master reaches outstation over the internal veth; listener bound **only** `10.77.0.2:20000`;
+  no unexpected host interfaces; no `/var/run/docker.sock` inside the lab.
+- **`PERSISTENCE_PROBE_PASS`** — a probe artifact written at `/capture/probe.txt` inside the
+  container hashed in-container to
+  `43471c209333ca96a7b92e88089fd25871c1856f2784d19c713481e218652a22`; the **same** hash was
+  independently recomputed from the host bind-mount directory after the container exited. Probe
+  artifacts were then removed.
+
+**42.4 Runner / capability notes (objective).**
+- The OpenHands runner ships the Docker CLI + Compose plugin and a `dockerd` binary, but the daemon
+  is **not** running and the socket is root-only. A daemon start required `sudo` (`sudo -n` is
+  available to this pod). Inside a container, the Gate B topology requires `NET_ADMIN` **and**
+  `SYS_ADMIN` (`ip netns` needs the `/run/netns` mount); `SYS_ADMIN` is required; `NET_RAW` only for
+  capture. In this hardened runtime `/proc/sys` is mounted read-only (sysboxfs), so
+  `lab-netns.sh` remounts it read-write container-locally and verifies forwarding is actually `0`,
+  failing closed if it cannot.
+
+**42.5 Non-claims and boundary.**
+No DNP3 exchange, control, capture or `.vec` occurred; Gate C/D/E remain **NOT_REACHED**; the
+payload-block-CRC negative remains **NOT_TESTED**. No PR/merge/`main` push/archive/promotion/
+self-awarded CHECK/Gate/R4 closure; no conformance or interoperability claim. No invented paths or
+fictitious runtime results. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.** A successful readiness check permits a later separate `operation cwal`
+to resume the narrowly authorized Gate C positive, payload-CRC negative and Gate E originals.

@@ -762,3 +762,21 @@ Go gates **NOT_RUN** (`go`/`gofmt`/`cmake` MISSING; download prohibited). Result
 `TASK_BLOCKED` retained; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 See `docs/verification/VEC-01-LAB-EXEC-001.md` §41. Owner direction needed: durable artifact
 destination + runner with `CAP_NET_ADMIN`, Go toolchain and pinned peer.
+
+### VEC-01 container lab preparation — readiness checkpoint (2026-11-11)
+Owner addendum "container lab preparation via Operation CWAL" (`3ef08d2`) executed under
+`operation cwal` on `work` (`HEAD == origin/work == 3ef08d2`; six markers unchanged). **Lab
+scaffolding + readiness only; no DNP3 traffic, no control, no library/profile/test/CI changes.**
+Delivered allowlisted `lab/vec01/` scaffold: one-service `compose.yaml` with `network_mode: none`,
+no ports/host-net/socket, `cap_add: NET_ADMIN,SYS_ADMIN,NET_RAW` (not privileged); pinned
+sha256-verified acquisition (Go 1.22.12, OpenDNP3 3.1.2 + deps); `lab-netns.sh` builds the objective
+Gate B topology inside the container; `preflight.sh` fails closed. Measured dispositions:
+`DESIGN_ONLY`; `BUILD_PASS` (all pins `OK`; image `vec01-lab:3.1.2` `sha256:ab5b47b4…3813fe`;
+in-image `go1.22.12`); `GATE_B_PREFLIGHT_PASS` (exit 0: two private netns + one veth, no default
+route, forwarding off, no external resolution, listener only `10.77.0.2:20000`, no docker socket
+inside lab); `PERSISTENCE_PROBE_PASS` (in-container hash == host-side hash `43471c20…652a22`).
+Gate C/D/E **NOT_REACHED**; payload-CRC negative **NOT_TESTED**. No PR/merge/`main`
+push/archive/promotion/self-CHECK/Gate/R4 closure. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** See `docs/verification/VEC-01-LAB-EXEC-001.md`
+§42. Readiness is not interoperability acceptance; a later separate `operation cwal` may resume the
+authorized Gate C positive, payload-CRC negative and Gate E originals.
