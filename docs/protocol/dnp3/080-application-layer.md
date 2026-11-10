@@ -99,14 +99,13 @@ Function codes define the operation to perform:
 
 | Code | Name | Description |
 |------|------|-------------|
-| 1 | CONFIRM | Application layer confirmation |
-| 2 | READ | Read data from outstation |
-| 3 | WRITE | Write data to outstation |
-| 4 | SELECT | Select for operate |
-| 5 | OPERATE | Execute previously selected operation |
-| 6 | DIRECT_OPERATE | Direct operate (select + operate) |
-| 7 | DIRECT_OPERATE_NR | Direct operate, no response |
-| 8-9 | Reserved | - |
+| 1 | READ | Read data from outstation |
+| 2 | WRITE | Write data to outstation |
+| 3 | SELECT | Select for operate |
+| 4 | OPERATE | Execute previously selected operation |
+| 5 | DIRECT_OPERATE | Direct operate (select + operate) |
+| 6 | DIRECT_OPERATE_NR | Direct operate, no response |
+| 7-9 | Reserved | - |
 | 10 | FREEZE | Freeze counter values |
 | 11-12 | Reserved | - |
 | 13 | FILE_OPEN | Open file for transfer |
@@ -151,9 +150,10 @@ Function codes define the operation to perform:
 
 | Code | Name | Description |
 |------|------|-------------|
-| 0 | RESPONSE | Response with data |
-| 1 | UNSOLICITED_RESPONSE | Unsolicited response |
-| 127 | NO_ACK | No acknowledgment required |
+| 0 | CONFIRM | Application layer confirmation |
+| 127 (0x7F) | NO_ACK | No acknowledgment required |
+| 129 (0x81) | RESPONSE | Response with data |
+| 130 (0x82) | UNSOLICITED_RESPONSE | Unsolicited response |
 
 ## Response Structure
 

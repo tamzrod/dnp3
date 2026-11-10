@@ -565,3 +565,123 @@ and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN /
 THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §33 and
 `active_work/vec-01-opendnp3-lab-execution-evidence.md` §33.
+
+### VEC-01 lab exec — seven authorized v0 wire-format corrections implemented + lab-verified; new eighth defect STOP (2026-11-10)
+Owner authorization commit `25d7ea3` approved the seven demonstrated v0 wire-format
+corrections (§35.1) as a bounded functionality-correctness substep of the existing
+CURRENT. **Applied to the real `work` tree** (not scratch): secondary Link Status
+func `0x0B`/NOT_SUPPORTED `0x0F`; primary FCB post-reset = `true`; application
+function codes (READ `0x01`, WRITE `0x02`, SELECT `0x03`, OPERATE `0x04`,
+DIRECT_OPERATE `0x05`, DIRECT_OPERATE_NR `0x06`, RESPONSE `0x81`, UNSOLICITED
+`0x82`); master receive filter accepts outstation user-data func 3/4 regardless of
+PRM; leading bare link ACK consumed within one bounded deadline; all-objects
+`0x06` header = 3 octets; G12V1 control uses the count+index qualifier `0x28`.
+Only the affected regression tests/goldens/fixtures and the published tables
+(`docs/SUPPORTED.md`, `docs/protocol/dnp3/080-application-layer.md`) were updated.
+Mandatory Go gates all PASS on the exact tree (Go 1.22.12, `GOPROXY=off`):
+`gofmt -l` clean, `git diff --check` clean, `go vet ./...`, `go build ./...`,
+`go test ./... -count=1` (all packages `ok`), targeted `-race` (no races),
+`./scripts/verify-external-mvp.sh` (Tiers 1–3). A fresh owner-authorized isolated
+two-namespace lab (single internal veth, no default route, forwarding off; peer
+bound `10.77.0.2:20000`) ran the corrected master against the pinned OpenDNP3 3.1.2
+peer: `master exit=0`, capture-confirmed READ `0x01` with 3-octet all-objects
+headers, RESPONSE `0x81`, `IIN 90 00` (**no PARAM_ERROR** — the §35.2 scratch run
+returned `90 02`), DIRECT_OPERATE `0x05` with CROB qualifier `0x28` accepted, and
+the bare `SEC_ACK`/PRM=1 frames handled. **Defects 1–7 verified.** The run then
+revealed a **new, distinct eighth defect** outside the authorized seven: the G12V1
+CROB control-code byte is sent as the repo's one-hot `0x08`/`0x10` instead of the
+IEEE 1815 low-nibble `LATCH_ON=0x03`/`LATCH_OFF=0x04`, so the peer returns
+`operate status 4` (NOT_SUPPORTED). A scratch diagnostic (only that byte changed,
+untracked) yields `operate status 0` and peer `[LAB] BO[0] direct-operate LATCH_ON
+-> state=true`. Per the authorization (*"If actual test reveals a new defect
+outside these seven, STOP with precise repro rather than expanding scope"*) this
+pass **STOPs** without changing the CROB control-code constants. No PR/merge/`main`
+push/archive/promotion/self-signoff. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §36.
+
+### VEC-01 lab exec — eighth CROB operation-code correction BLOCKED (collision + allowlist); STOP / PUSHBACK (2026-11-10)
+Owner authorization commit `2a8c4ce` approved **only** the eighth demonstrated v0 defect
+(§36.4): realign the G12V1 CROB operation type to IEEE 1815/OpenDNP3 `LATCH_ON=0x03` /
+`LATCH_OFF=0x04`, baseline `0158b82`. Local `work` fast-forwarded `0158b82` → `2a8c4ce`
+(non-force, clean); `cwal-check.sh` OK; six markers unchanged; tree clean.
+**Collision check (authorization step 2) — the literal change is not compilable.** The
+pinned peer's authoritative model is a **low-nibble enum**
+(`OperationType{NUL=0, PULSE_ON=1, PULSE_OFF=2, LATCH_ON=3, LATCH_OFF=4}`,
+`from_type(rawCode & 0x0F)`), while the repo uses one-hot masks
+(`LatchOn=0x08, LatchOff=0x10, PulseOff=0x04`). Setting `LatchOff 0x10→0x04` alone
+collides with `PulseOff=0x04`; the outstation decode switch
+(`internal/outstation/outstation.go:410-422`) then has two `case 0x04` →
+`duplicate case 0x04` **compile failure** (reproduced in an untracked scratch copy). A
+coherent fix must realign the **whole** operation-type field (NUL/PulseOn/PulseOff/
+LatchOn/LatchOff; the repo's `Queue=0x80` is likewise non-conformant).
+**Allowlist boundary.** The coherent fix also requires the public outstation bridge
+`pkg/dnp3/outstation/server.go:473` (`switch crob.Code & 0x1F`) — the only other
+CROB-code consumer and **not** in the authorization's edit allowlist. Left unchanged it
+decodes the new `LATCH_ON=0x03` as `false`, breaking mandatory Tier-1 real-TCP tests
+(`TestOperateRealTCPSuccess`, `TestRealTCPFullMVPPath`, `TestOutstationSideMVPGate`).
+Per the authorization, a dependency outside the allowlist requires an observed
+explanation and STOP/owner pushback, not scope expansion.
+**Scratch validation (untracked; NOT applied to `work`).** The full coherent
+realignment (master + outstation + bridge + affected goldens/fixtures) compiles and
+passes `internal/master`, `internal/outstation`, `pkg/dnp3/outstation`,
+`test/integration` — feasible but spans a file outside the allowlist. **No change was
+applied to the tracked `work` tree**; §36 corrections untouched. Baseline on the
+unchanged tree (`2a8c4ce`): `gofmt` clean, `git diff --check` clean, `go vet ./...`
+PASS, `go build ./...` PASS, targeted `go test` PASS. The isolated lab re-run
+(authorization step 5) was **NOT executed** (the exercised change could not be applied
+within scope; prior lab namespace/peer build are not durable across runners).
+**Disposition — STOP / PUSHBACK.** Return to owner for authorization of the wider
+coherent scope (whole CROB operation-type field + the public bridge consumer). No
+PR/merge/`main` push/archive/promotion/self-signoff. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §37.
+
+### VEC-01 lab exec — coherent G12V1 CROB operation-type correction implemented + lab-verified (2026-11-10)
+
+Fifth pass of the owner addendum. Authorization commit `f2f50b6` ("authorize coherent
+G12V1 CROB enum and bridge correction") approved the exact corrective scope requested by
+the §37 STOP/PUSHBACK: coherent realignment of the G12V1 CROB operation-type field
+**including the public bridge consumer**, superseding the eighth-correction STOP only for
+that field/consumer collision. Baseline `3882410`; branch `work`; executor OpenHands
+agent (autonomous), Operation CWAL.
+
+**Applied (authorized scope only).** `internal/master/master.go` CROB operation-type
+constants → IEEE 1815 A.8.1 low-nibble enum (`NUL=0x00`, `PulseOn=0x01`, `PulseOff=0x02`,
+`LatchOn=0x03`, `LatchOff=0x04`); removed non-conformant `Queue=0x80`; encoder validates
+the raw code via `isSupportedCROBOpType` and returns nil (NOT_SENT) for unsupported
+codes/flags. `internal/outstation/outstation.go` decode switch realigned to the
+collision-free enum. `pkg/dnp3/outstation/server.go` bridge decoder realigned; removed
+the `crob.Code & 0x1F` one-hot fallback that silently mapped `0x03`→`false`; unsupported
+operation types now rejected. Goldens/fixtures/comment updated
+(`internal/master/control_vector_test.go`, `pkg/dnp3/outstation/bridge_status_matrix_test.go`,
+`internal/testutils/functional_test.go`, `active_work/testdata/direct-control-crob-vector.hex`).
+New focused tests: master LATCH_ON/OFF wire bytes + raw-code accept/reject + constant
+distinctness; outstation enum decode + LATCH cycle; bridge boolean mapping + rejection.
+`active_work/supported-profile.md` CROB row + R2 updated. G12V1 qualifier `0x28` and
+at-most-once/timeout semantics unchanged; no pulse execution, SBO, event/unsolicited or
+new queue semantics added.
+
+**Mandatory gates (exact `work` tree).** `gofmt` clean; `git diff --check` clean;
+`go vet ./...` PASS; `go build ./...` PASS; `go test ./... -count=1` PASS; `go test -race`
+on master/outstation/testutils/pkg-outstation/integration PASS (no races);
+`./scripts/verify-external-mvp.sh` PASS (Tiers 1–3).
+
+**Isolated lab re-run (owner-authorized).** Two private netns joined by one internal veth
+only, link-scoped route, no default route, `ip_forward=0` both sides, host blind
+(preflight PASS). Pinned peer `outstation-demo` SHA-256
+`b03c522b0871483e1c78731a6fb611fd8e1c07b1aacd21a5cc3ac87e19aa34d6` bound to
+`10.77.0.2:20000`; master built from the corrected tree (SHA-256
+`9bd9c7ac85febcb91abb602307be5e4965aa78ed1c940c2fe7bcf31f571c6621`). One single-shot
+G12V1 DirectOperate. Result: `master exit=0`, `operate status: 0` (**SUCCESS**), CROB code
+octet `0x03` (LATCH_ON) on the wire, IIN `90 00`, and independent peer readback
+`[LAB] BO[0] direct-operate LATCH_ON -> state=true`. No new defect observed. Namespaces
+torn down cleanly.
+
+**Disposition — corrections implemented and lab-verified; STOP for owner/independent
+CHECK.** This is owner-authorized **lab-only** interoperability functionality evidence
+against a pinned third-party peer; it is **not** independent Gate B acceptance, not
+certification, and does not close R4. No PR/merge/`main` push/archive/promotion/
+self-signoff/Gate B reviewer sign-off/Gate C/D/E closure/field I/O. Gate B and the CURRENT
+remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
+NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §38.

@@ -464,19 +464,18 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert CROB control-code bit field (IEEE 1815 G12V1, MEXT-011) to a
-	// binary value for the public command handler.
-	// 0x02 Pulse On / 0x08 Latch On -> true
-	// 0x04 Pulse Off / 0x10 Latch Off -> false
-	// 0x01 NUL -> no-op (false); 0x80 Queue is ignored for the bool mapping.
+	// Convert the CROB operation type (IEEE 1815 A.8.1 low-nibble enum) to a
+	// binary value for the public command handler. Unsupported operation
+	// types (including any trip/close or clear bits) are rejected explicitly
+	// rather than silently mapped.
 	var value bool
-	switch crob.Code & 0x1F {
-	case 0x02, 0x08: // Pulse On, Latch On
+	switch crob.Code {
+	case 0x01, 0x03: // Pulse On, Latch On
 		value = true
-	case 0x01, 0x04, 0x10: // NUL, Pulse Off, Latch Off
+	case 0x00, 0x02, 0x04: // NUL, Pulse Off, Latch Off
 		value = false
 	default:
-		value = false
+		return fmt.Errorf("unsupported CROB operation type: 0x%02X", crob.Code)
 	}
 
 	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)

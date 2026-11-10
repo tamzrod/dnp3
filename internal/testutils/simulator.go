@@ -337,19 +337,30 @@ func (s *MVPOutstationSimulator) buildOperateResponseData(reqData []byte) []byte
 		return nil
 	}
 	// The request layout for G12V1 DirectOperate is:
-	//   header(4): group, variation, qualifier(0x00), count(1)
-	//   index(2), CROB(11): code,count,onTime(4),offTime(4),status(1)
+	//   header: group, variation, qualifier, count, [index]
+	//     qualifier 0x28: count(2) + index(2)  -> 5-octet header
+	//     qualifier 0x00: count(1) + index(2)  -> 4-octet header
+	//   CROB(11): code,count,onTime(4),offTime(4),status(1)
 	// The response echoes header + index + CROB, replacing the status byte.
 	group := reqData[0]
 	variation := reqData[1]
 	if group != 12 || variation != 1 {
 		return nil
 	}
-	hdr := reqData[:4]
-	if len(reqData) < 4+2+11 {
+	hdrLen := 0
+	switch reqData[2] {
+	case 0x28:
+		hdrLen = 5
+	case 0x00:
+		hdrLen = 4
+	default:
 		return nil
 	}
-	rest := append([]byte(nil), reqData[4:]...) // index + CROB
+	if len(reqData) < hdrLen+2+11 {
+		return nil
+	}
+	hdr := reqData[:hdrLen]
+	rest := append([]byte(nil), reqData[hdrLen:]...) // index + CROB
 	// status byte is the last octet of the CROB (offset 2+10 within rest).
 	statusIdx := 2 + 10
 	if statusIdx >= len(rest) {
@@ -365,15 +376,19 @@ func requestedGroups(reqData []byte) []uint8 {
 	var groups []uint8
 	seen := make(map[uint8]bool)
 	off := 0
-	for off+4 <= len(reqData) {
+	for off+3 <= len(reqData) {
 		g := reqData[off]
 		q := reqData[off+2]
 		switch q {
+		case 0x06: // all-objects: 3-byte header (no range field)
+			off += 3
 		case 0x07: // count8: 4-byte header
 			off += 4
-		case 0x06: // all-objects: 4-byte header
-			off += 4
 		case 0x00: // index8: 4-byte header + per-point index (1 byte each)
+			if off+4 > len(reqData) {
+				off = len(reqData)
+				break
+			}
 			count := int(reqData[off+3])
 			off += 4 + count
 		default:

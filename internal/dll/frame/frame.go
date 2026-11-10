@@ -60,11 +60,11 @@ const (
 
 // Function codes for secondary station (PRM=0)
 const (
-	FuncAck                = 0
-	FuncNack               = 1
-	FuncLinkStatus         = 2
-	FuncNotSupported       = 3
-	FuncConfirmedUserDataR = 4
+	FuncAck                = 0x00
+	FuncNack               = 0x01
+	FuncLinkStatus         = 0x0B
+	FuncNotSupported       = 0x0F
+	FuncConfirmedUserDataR = 0x04
 )
 
 // Special addresses

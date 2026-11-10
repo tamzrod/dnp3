@@ -75,7 +75,7 @@ func TestAPDUEncode(t *testing.T) {
 
 	encoded := apdu.Encode()
 
-	expected := []byte{0xC5, 0x02, 0x01, 0x02, 0x03}
+	expected := []byte{0xC5, 0x01, 0x01, 0x02, 0x03}
 	if !bytes.Equal(encoded, expected) {
 		t.Errorf("Encode() = %v, want %v", encoded, expected)
 	}
@@ -99,7 +99,7 @@ func TestAPDUEncodeEmpty(t *testing.T) {
 }
 
 func TestDecodeAPDU(t *testing.T) {
-	data := []byte{0xC5, 0x02, 0x01, 0x02, 0x03}
+	data := []byte{0xC5, 0x01, 0x01, 0x02, 0x03}
 
 	apdu, err := Decode(data)
 	if err != nil {

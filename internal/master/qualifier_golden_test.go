@@ -51,29 +51,31 @@ func TestPollRequestQualifierAllowList(t *testing.T) {
 
 	// Class-0 / integrity poll golden: G60V1, 0x06 all-objects.
 	got := buildPollRequest(PollIntegrity)
-	want := []byte{60, 1, al.QualAllObjects, 0x00}
+	want := []byte{60, 1, al.QualAllObjects}
 	if string(got) != string(want) {
 		t.Fatalf("integrity poll = % X, want % X", got, want)
 	}
 }
 
 // TestControlRequestQualifierAllowList asserts the Operate/Select control
-// request builder emits the 0x00 (index8) qualifier with a single point,
-// locked as the v0 single-point control golden (MEXT-016).
+// request builder emits the 0x28 (16-bit count + 16-bit index) qualifier with
+// a single point, locked as the v0 single-point control golden (MEXT-016).
+// A bare index-only qualifier is rejected by conformant peers, so the control
+// path must carry an explicit count.
 func TestControlRequestQualifierAllowList(t *testing.T) {
 	m := &Master{}
 	req := m.buildControlRequest(al.FuncDirectOperate, 12, 1, 0x0001, uint8(CROBCodeLatchOn))
 	if req == nil {
 		t.Fatalf("buildControlRequest returned nil")
 	}
-	if len(req.Data) < 4 {
+	if len(req.Data) < 5 {
 		t.Fatalf("control request data too short: % X", req.Data)
 	}
-	if req.Data[2] != al.QualIndex8 {
-		t.Fatalf("control request qualifier = 0x%02X, want 0x00 (index8)", req.Data[2])
+	if req.Data[2] != al.QualRange16 {
+		t.Fatalf("control request qualifier = 0x%02X, want 0x28 (count+index)", req.Data[2])
 	}
-	if req.Data[3] != 1 {
-		t.Fatalf("control request count = %d, want 1", req.Data[3])
+	if count := int(req.Data[3]) | int(req.Data[4])<<8; count != 1 {
+		t.Fatalf("control request count = %d, want 1", count)
 	}
 }
 

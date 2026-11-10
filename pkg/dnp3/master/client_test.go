@@ -444,9 +444,9 @@ func TestBuildReadRequestGolden(t *testing.T) {
 	})
 	// ReadAllStatic = G1V0, G30V0, G20V0, each all-objects (0x06 0x00).
 	want := []byte{
-		0x01, 0x00, 0x06, 0x00, // G1V0 all
-		0x1E, 0x00, 0x06, 0x00, // G30V0 all
-		0x14, 0x00, 0x06, 0x00, // G20V0 all
+		0x01, 0x00, 0x06, // G1V0 all
+		0x1E, 0x00, 0x06, // G30V0 all
+		0x14, 0x00, 0x06, // G20V0 all
 	}
 	if string(req.Data) != string(want) {
 		t.Fatalf("buildReadRequest data = % X, want % X", req.Data, want)

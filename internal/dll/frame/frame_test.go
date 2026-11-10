@@ -332,8 +332,8 @@ func TestSecondaryFunctionCodes(t *testing.T) {
 	}{
 		{"ack", FuncAck, 0},
 		{"nack", FuncNack, 1},
-		{"link status", FuncLinkStatus, 2},
-		{"not supported", FuncNotSupported, 3},
+		{"link status", FuncLinkStatus, 0x0B},
+		{"not supported", FuncNotSupported, 0x0F},
 		{"confirmed user data response", FuncConfirmedUserDataR, 4},
 	}
 	for _, tt := range tests {
