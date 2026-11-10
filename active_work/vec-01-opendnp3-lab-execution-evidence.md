@@ -829,3 +829,64 @@ PR, merge, `main` push or R4 change. Full detail:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 29. B4 consolidated CHECK record and Gate B independent-reviewer handoff (append-only, 2026-11-10)
+
+Owner-approved documentation-only substep of the existing `VEC-01-LAB-EXEC-001`
+CURRENT (authorization in `workflow/active_work/VEC-01-LAB-EXEC-001.md`, commit
+`b4b4c73ab4200e6c0fd5d2384813d20b4a3a4e9c`; verified baseline `work` at
+`a877c77118191f631a15a0c194219ea5ea52dd44`). JR executed under `operation cwal`.
+**No production or test source changed.** Startup PASS (`cwal-check.sh` OK; six
+markers identical; tree clean; HEAD `b4b4c73` == `origin/work`).
+
+**Consolidated B4 safety CHECK record (JR source review, not independent
+acceptance).** Each B4 requirement was traced in `pkg/dnp3/master/client.go` and
+`internal/master/master.go` to its named tests:
+- **F1** — at-most-once DirectOperate, single shot, no blind retry, definite
+  pre-send NOT_SENT, post-send UNKNOWN, persistent UNKNOWN quarantine
+  (`Operate`/`AcquireControlGate`/`QuarantineOutstation`/`OperateWithStatusGated`).
+- **F2-R2/R3** — `connectGen`+`attemptCurrent` supersede; single connect-worker
+  slot held across connect and cleanup, cleared on termination.
+- **F2-R4** — bounded `Connect` with blocking dial/`Close`; async teardown;
+  replacement refused until teardown terminates.
+- **F2-R5** — teardown fence published **atomically** with the `Disconnected`
+  publication in `abortConnect`/`Disconnect`/`markTransportDisconnected`/
+  `cleanupConnectIfCurrent`; single owner via `registerTeardownLocked`; `teardownLoop`
+  clears only its own fence; no duplicated `Close`.
+- **F3-R3** — internal `beginTransmit` re-checks quarantine + `sessionGen` at the
+  transmission point; unresolved-session fence.
+- **F3-R4/R5** — `Disconnect(ctx)` registers the fence then returns promptly on
+  pre-cancelled/mid-teardown cancellation; persistent UNKNOWN quarantine kept
+  distinct from the temporary worker/teardown fence.
+- **Bounds** — `c.mu` never held across dial/Send/`Close`; whole-connect and
+  whole-control deadlines.
+
+**Offline selector evidence (JR-run).** `go1.22.12 linux/amd64` (private
+toolchain), `GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off`, cached modules, no
+sockets (candidate files pre-inspected; 0 `net.Dial`/`net.Listen`/
+`NewTCPTransport`/`ListenAndServe`). 24 named F1/F2/F3/R5 selectors across
+`./internal/master ./pkg/dnp3/master`: `go test -count=1 -v` PASS (24 `--- PASS`,
+exit 0); `go test -race -count=1` PASS (exit 0, no race output). Prohibited suites
+(`go test ./...`, `test/integration`, `verify-*.sh`) NOT_RUN. These are JR-run
+results, reproducible by a reviewer but **not** independent evidence until a
+**named reviewer distinct from JR** re-runs and signs.
+
+**Gate B reviewer-packet reconciliation (read-only/static).** The existing
+historical packet is documented in `docs/verification/VEC-01-LAB-EXEC-001.md`
+§9.5 (assembled at `/workspace/vec01-lab-artifacts/gate-b-reviewer-packet/`). In
+this fresh sandbox the durable store `/workspace/vec01-lab-artifacts` is **ABSENT**,
+so packet files and pinned peer bytes could not be hash-checked; topology (§11.1),
+isolation C1–C13 (§11.2), bind `10.77.0.2:20000` with link addrs 4/3 and peer
+hashes (§2.3/§15.5) are cited from recorded evidence, not re-verified. The
+`independent-preflight-checklist.md` remains **blank** for the named reviewer.
+
+**Disposition.** B4 safety: `B4_JR_EVIDENCE_READY_FOR_INDEPENDENT_CHECK` (not
+self-awarded `B4_SAFETY_PASS`). Gate B packet: `GATE_B_PACKET_INCOMPLETE`.
+Gate B sign-off: `GATE_B_SIGNOFF_PENDING`. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; markers stay `Status: TASK_BLOCKED`. No Gate C/D/E,
+TCP/DNP3 packet, listener/socket/PCAP, CROB, external/OT probe, release, PR, merge,
+`main` push, archive, promotion or R4 closure. Full detail:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §29.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

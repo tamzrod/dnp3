@@ -464,5 +464,24 @@ runs, 0 races). Gate B and the CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT
 EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §28.
 
+### Gate B4 consolidated CHECK + Gate B reviewer handoff (2026-11-10)
+Owner-approved documentation-only substep of the existing CURRENT (authorization
+commit `b4b4c73`; verified baseline `work` at `a877c77`). **No production/test
+source changed.** Startup PASS (`cwal-check.sh` OK; six markers identical).
+**Result: `B4_JR_EVIDENCE_READY_FOR_INDEPENDENT_CHECK`** — the full B4 safety
+contract (F1, F2-R2/R3/R4/R5, F3-R3/R4/R5, bounds) was traced in
+`pkg/dnp3/master/client.go` / `internal/master/master.go`, and 24 named F1/F2/F3/R5
+selectors pass under `go test -count=1` and `-race` (Go 1.22.12, offline, no
+sockets). This is JR self-review, not independent acceptance; `B4_SAFETY_PASS` is
+**not** self-awarded. Gate B reviewer packet: **`GATE_B_PACKET_INCOMPLETE`** — the
+existing packet is documented in §9.5 but the durable store
+`/workspace/vec01-lab-artifacts` is ABSENT in this fresh sandbox, so packet files
+and pinned peer bytes could not be hash-checked and the isolation evidence is
+UNVERIFIED here. Gate B sign-off: **`GATE_B_SIGNOFF_PENDING`** — a named
+independent reviewer distinct from JR must inspect/re-run before Gate B can be
+signed; this substep cannot grant or simulate that approval. Gate B and the CURRENT
+remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §29.
+
 ## Persistent working branch policy
 The maintainer designates `work` as the sole persistent execution branch for the remaining active DNP3 roadmap. New CWAL tasks are promoted and closed on `work`; no task-specific branch is created unless the maintainer explicitly reverses this direction. Every new CURRENT still requires explicit human promotion and bounded scope. `main` is the PR integration baseline, not the CWAL execution branch.

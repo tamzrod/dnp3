@@ -2700,3 +2700,158 @@ across 5 consecutive `-race` runs of both narrow suites.
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 29. B4 consolidated safety CHECK record and Gate B independent-reviewer handoff (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner-approved "B4 consolidated CHECK record and Gate B
+independent-signoff handoff" substep of the existing `VEC-01-LAB-EXEC-001`
+CURRENT, appended by the owner-authorized actor in
+`workflow/active_work/VEC-01-LAB-EXEC-001.md` (authorization commit
+`b4b4c73ab4200e6c0fd5d2384813d20b4a3a4e9c`), verified baseline permanent `work`
+at `a877c77118191f631a15a0c194219ea5ea52dd44`. JR executed under **`operation
+cwal`**. This is a documentation-only substep: **no production or test source was
+changed.**
+
+**Startup.** `bash scripts/cwal-check.sh` PASS (`CURRENT=VEC-01-LAB-EXEC-001
+branch=work`); six authority markers identical in `workflow/active_work/README.md`
+and `handoff.md`; required files (`AGENTS.md`, `operation cwal.md`,
+`BLACK_SHEEP_WALL.md`, the CURRENT task file, `active_work/supported-profile.md`)
+present; tree clean; HEAD `b4b4c73` == `origin/work`. No branch, force-push, reset,
+rebase, PR, merge, task promotion, Gate B/C/D/E, socket, listener, packet, capture,
+CROB or external/OT probe.
+
+### 29.1 Consolidated B4 safety CHECK record (source review, not independent acceptance)
+
+This section **reviews and traces** the implemented B4 safety contract in the
+fifth-correction source `pkg/dnp3/master/client.go` (and the internal-master fences
+in `internal/master/master.go`) against the recorded §22–§28 evidence and the
+named F1/F2/F3/R5 tests. It is a **JR source review plus JR-run output**; it is
+**not** independent CHECK acceptance. Each row states the requirement, the
+implementing source, and how it is exercised by named tests.
+
+| Req | Requirement | Implementing source | Named tests |
+|---|---|---|---|
+| F1 | At-most-once logical DirectOperate; single shot, no blind retry; definite pre-send NOT_SENT; post-send UNKNOWN; **persistent UNKNOWN quarantine** | `Operate` single-shot worker; `AcquireControlGate`; `QuarantineOutstation`; `OperateWithStatusGated` | `TestControlSingleShotNoRetryOnMissingResponse`, `TestControlSingleShotNoRetryOnDisconnect`, `TestControlPreSendFailureDoesNotQuarantine`, `TestControlCancelledBeforeSendNotSent`, `TestOperateCancelQuarantinesOutstation`, `TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion` |
+| F2-R2 | Superseded attempt cannot commit success / leave a late socket in a replacement session | `connectGen`; `attemptCurrent(gen)`; superseded branch in `Connect` | `TestSupersededConnectWorkerDoesNotTearDownReplacement`, `TestConnectRefusedWhileSupersededWorkerOutstanding` |
+| F2-R3 | Single connect-worker slot held across connect **and** cleanup, cleared on worker termination | `connectWorkerOutstanding` + deferred clear in `Connect` worker | `TestConnectBudgetBlockedDialBlockedClosePrompt`, `TestConnectRefusedWhileSupersededWorkerOutstanding` |
+| F2-R4 | Bounded public `Connect` even with blocking dial and blocking `Close`; async teardown; replacement refused until teardown terminates | `abortConnect` (async), `registerTeardownLocked`, `teardownLoop`, `cleanupConnectIfCurrent` | `TestConnectBudgetBlockedDialBlockedClosePrompt`, `TestSupersededConnectWorkerDoesNotTearDownReplacement` |
+| **F2-R5** | Teardown fence published **atomically** with the state transition that otherwise admits a replacement; single teardown owner; no duplicated `Close`; old teardown cannot clear a newer fence | `registerTeardownLocked` (called under `c.mu`), `teardownLoop` (`if c.teardown == t`), same-critical-section registration in `abortConnect`/`Disconnect`/`markTransportDisconnected`/`cleanupConnectIfCurrent` | `TestDisconnectAtomicTeardownFenceNoAdmissionWindow`, `TestAbortConnectAtomicFenceNoAdmissionWindow`, `TestConcurrentTeardownOwnersSingleClose`, `TestTeardownCompletionRacingReplacementAdmission`, `TestMarkTransportDisconnectedAtomicFence` |
+| F3-R3 | A control admitted then torn down cannot send into a replacement session; final pre-send safety check cannot be bypassed | internal `beginTransmit` (quarantine + `gen != m.sessionGen`); `HasUnresolvedSession` / `anySessionUnresolved` fence | `TestControlOldSessionSendNotContaminatingReplacement`, `TestControlQuarantineAdmissionBothOrdersNoSecondSend`, `TestControlDisconnectBlockedSendReplacementRefused` |
+| F3-R4 | Public `Disconnect` cancellation; pre-cancelled and mid-teardown cancel return promptly while still tearing down; no live session reused | `Disconnect(ctx)` | `TestDisconnectAlreadyCancelledContext`, `TestDisconnectCancelledMidTeardown`, `TestPreCancelledDisconnectFencesReplacementConnect`, `TestDisconnectCancellationRacingTeardown` |
+| **F3-R5** | Persistent UNKNOWN quarantine kept **distinct** from the temporary worker/teardown fence; quarantine never auto-cleared by Disconnect/reconnect/timeout/cleanup/late completion | `Disconnect` never clears `quarantine`; `ConnectContext` refuses while `anySessionUnresolved`; `HasUnresolvedSession` | `TestBlockedControlSendDisconnectRefusesConnectUnknownPersists`, `TestControlDisconnectBlockedSendReplacementRefused` |
+| Bounds | `c.mu` never held across dial/Send/`Close`; whole-connect and whole-control deadlines; no unbounded lock hold | `Connect` deadline; `connectBudget`; `OperateBudget`; teardown outside `c.mu` | `TestConnectBudgetBlockedDialBlockedClosePrompt`, `TestConnectAlreadyCancelledContext`, `TestConnectCancelledMidDial` |
+
+**Trace conclusions (source review).**
+- **Atomic Connect admission vs teardown publication (F2-R5):** `Connect` admits a
+  replacement only after acquiring `c.mu` and confirming `state == Disconnected`,
+  `!connectWorkerOutstanding`, `c.teardown == nil` and
+  `!internalMaster.HasUnresolvedSession()`. Every teardown-producing path
+  (`abortConnect`, `Disconnect`, `markTransportDisconnected`,
+  `cleanupConnectIfCurrent`) sets `Disconnected` **and** calls
+  `registerTeardownLocked()` inside the **same** `c.mu` critical section, so no
+  admitted `Connect` can observe `Disconnected` before the fence exists. Verified
+  by reading each of the four paths.
+- **Single teardown owner / no duplicate Close (F2-R5):** `registerTeardownLocked`
+  returns the existing handle when `c.teardown != nil`, starting the goroutine
+  only once; `teardownLoop` clears the fence only when `c.teardown == t`. So
+  concurrent owners join one teardown and one `transport.Close`.
+- **Stale worker (F2-R2/R3):** the worker clears `connectWorkerOutstanding` in a
+  `defer` on termination; `attemptCurrent(gen)` guards each mutating step; a
+  superseded worker returns without cleanup. A late worker cannot commit success or
+  tear down a replacement.
+- **Pending physical Send / UNKNOWN (F1/F3-R3/R5):** internal `beginTransmit`
+  re-checks `quarantine` and `gen == sessionGen` at the transmission point;
+  `Disconnect` bumps `sessionGen` and marks `sending` workers unresolved and
+  quarantined; `quarantine` is never cleared. `ConnectContext` refuses while any
+  session is unresolved.
+- **Deadlines/cancellation (F2-R4/F3-R4):** the whole-connect deadline is absolute
+  from entry; `Disconnect` registers the fence then returns promptly on a
+  pre-cancelled or mid-teardown context; no lock is held across I/O.
+
+**Finding (not a corrective).** The fifth corrective additionally fixed a genuine
+`Connect` data race (`c.state` read after `c.mu.Unlock()`), confirmed by the
+`-race` detector during the §28 implementation and now clean.
+
+### 29.2 Offline selector evidence (JR-run, this pass)
+
+All commands ran with `GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off` and cached
+modules; **no socket/listener/peer/CROB**. Candidate test files were individually
+pre-inspected (`grep -cE 'net\.Dial|net\.Listen|NewTCPTransport|ListenAndServe'`
+→ 0 matches in every file).
+
+| Field | Value |
+|---|---|
+| `go version` | `go version go1.22.12 linux/amd64` |
+| Toolchain | private `/workspace/toolchains/go1.22.12` (owner-authorized) |
+| Selectors (24 named) | F1: `TestControlSingleShotNoRetryOnMissingResponse`, `TestControlSingleShotNoRetryOnDisconnect`, `TestControlPreSendFailureDoesNotQuarantine`, `TestControlCancelledBeforeSendNotSent`, `TestOperateCancelQuarantinesOutstation`, `TestOperateUnknownPersistsAcrossDisconnectAndLateCompletion`; F2-R2/R3/R4: `TestSupersededConnectWorkerDoesNotTearDownReplacement`, `TestConnectRefusedWhileSupersededWorkerOutstanding`, `TestConnectBudgetBlockedDialBlockedClosePrompt`; F2-R5: `TestDisconnectAtomicTeardownFenceNoAdmissionWindow`, `TestAbortConnectAtomicFenceNoAdmissionWindow`, `TestConcurrentTeardownOwnersSingleClose`, `TestTeardownCompletionRacingReplacementAdmission`, `TestMarkTransportDisconnectedAtomicFence`; F3-R3: `TestControlOldSessionSendNotContaminatingReplacement`, `TestControlQuarantineAdmissionBothOrdersNoSecondSend`, `TestControlDisconnectBlockedSendReplacementRefused`; F3-R4/R5: `TestDisconnectAlreadyCancelledContext`, `TestDisconnectCancelledMidTeardown`, `TestPreCancelledDisconnectFencesReplacementConnect`, `TestDisconnectCancellationRacingTeardown`, `TestBlockedControlSendDisconnectRefusesConnectUnknownPersists`, `TestConnectAlreadyCancelledContext`, `TestConnectCancelledMidDial` |
+| `go test -count=1 -v` (selectors) | PASS — 24 `--- PASS`, exit 0 |
+| `go test -race -count=1` (selectors) | PASS, exit 0, **no race output** |
+| Packages | `./internal/master`, `./pkg/dnp3/master` |
+| NOT_RUN | `go test ./...`, `test/integration`, `verify-mvp.sh`, `verify-external-mvp.sh` (prohibited) |
+
+**Independence statement.** These are **JR-run** results in the JR sandbox. They
+are **reproducible by any reviewer** with the pinned private Go 1.22.12 toolchain
+and cached modules, but they are **not** independent evidence until a **named
+reviewer distinct from JR** re-runs and signs.
+
+### 29.3 Gate B reviewer-packet reconciliation (read-only / static)
+
+The Gate B reviewer packet is the **existing historical packet** documented in
+§9.5 (assembled at `/workspace/vec01-lab-artifacts/gate-b-reviewer-packet/`). In
+**this** fresh disposable sandbox the durable store `/workspace/vec01-lab-artifacts`
+is **ABSENT** (`ls` → "No such file or directory"), so no packet file could be
+hash-checked here; the packet contents and hashes below are cited from the
+recorded evidence, not re-verified this pass.
+
+| Required packet input | Where recorded | Status this pass |
+|---|---|---|
+| Precise non-routed lab topology (two netns, internal veth, `10.77.0.0/24`, master `10.77.0.1`, outstation `10.77.0.2`) | §11.1 | Recorded; **lab not present now** |
+| Fresh isolation evidence (C1–C13 PASS: no external route, forwarding off, deny-all, no bridge, no IPv6 globals) | §11.2 | Recorded for the earlier run; **UNVERIFIED now** (fresh sandbox, lab absent) |
+| Verified static bind `10.77.0.2:20000`; outstation addr 4, master addr 3 | §15.4 | Recorded (source + binary literal) |
+| Pinned OpenDNP3 3.1.2 peer hashes | §2.3 (`outstation-demo` `8ae8c841…093bb`, `libopendnp3.a` `e2926474…e0677`); §15.5 lab `6657ec80…0da3e7` / `25f83aaa…e03b0` | Recorded; **bytes absent now** |
+| G1V1/G30V1/G20V1 fixed points (index 0); fixed memory points BI[0]/AI[0]/CT[0] | §15.4 | Recorded (static source review) |
+| Memory-only BO[0] CROB target (`LabCrobCommandHandler`, DirectOperate only, read-back SUCCESS) | §15.4 | Recorded (static source review); **wire behaviour NOT_TESTED** |
+| No physical I/O (no ttyS*/ttyUSB*/mem/port/GPIO) | §11.3, §9.4 | Recorded for earlier run; **not re-verified now** |
+| Single-shot control policy | §15.4 + §29.1 (F1) | Recorded |
+| Capture placement (raw PCAP + derived `.vec`) | §9.5 packet `inspection/simulator-and-output-mapping.txt` | **Planned only; no capture exists** |
+| Watchdog / stop conditions | §9.5 packet `pending-deadlines-and-watchdog.md` | Recorded as packet input; **not re-verified now** |
+| Config-hash file `config-hashes/config-file-sha256.txt` | §9.5 packet | **Not hash-checkable now** (store absent) |
+| `independent-preflight-checklist.md` | §9.5 packet (blank) | **Blank — for the named reviewer** |
+
+**What a named independent reviewer (distinct from JR) must inspect before Gate B
+can be signed:** (1) re-establish or verify the actual isolated topology and
+re-run the C1–C13 objective isolation checks on the live lab; (2) confirm
+non-routed / no-OT-reachability with no physical output; (3) hash-check the pinned
+OpenDNP3 3.1.2 peer bytes against §2.3/§15.5; (4) confirm the v0 variations
+G1V1/G30V1/G20V1 and the sole memory-backed BO[0] CROB target; (5) confirm
+single-shot control policy and capture placement; (6) record a dated approval of
+exact topology, absence of physical output, and sole simulator CROB target. **This
+CWAL substep cannot grant or simulate that approval.**
+
+### 29.4 Disposition
+
+- **B4 safety:** `B4_JR_EVIDENCE_READY_FOR_INDEPENDENT_CHECK`. The full B4 safety
+  contract is implemented and traced in source (§29.1) and the named F1/F2/F3/R5
+  selectors pass under `-race` in JR's sandbox (§29.2), but this run is
+  **self-reviewed by JR**, so `B4_SAFETY_PASS` is **not** self-awarded.
+- **Gate B packet:** `GATE_B_PACKET_INCOMPLETE`. Required packet inputs are
+  recorded in evidence but the durable store and peer bytes are **absent** in this
+  fresh sandbox and could not be hash-checked; the isolation evidence is
+  **UNVERIFIED** here.
+- **Gate B sign-off:** `GATE_B_SIGNOFF_PENDING`. No named independent reviewer has
+  provided dated approval; this substep cannot supply it.
+
+### 29.5 Classification, limitations and non-claims
+
+- **Classification:** documentation-only handoff. No production/test source
+  changed; no dependency change; `go.mod`/`go.sum` unchanged.
+- The consolidated CHECK record is a **JR source review plus JR-run output**, not
+  independent CHECK acceptance and not `B4_SAFETY_PASS`.
+- Gate B remains **`TASK_BLOCKED`**; the CURRENT remains `TASK_BLOCKED`. No Gate
+  C/D/E, TCP/DNP3 packet, listener/socket/PCAP, CROB, external/OT probe, release,
+  PR, merge, `main` push, archive, task/queue promotion or R4 closure.
+- Prior unauthorized TCP / broad-`go test` deviations remain documented unchanged
+  (§26); the prohibited suites were not run.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**
