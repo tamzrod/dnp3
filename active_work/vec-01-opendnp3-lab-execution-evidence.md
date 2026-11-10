@@ -940,3 +940,38 @@ probe, PR, merge, `main` push, archive, promotion or R4 closure. Full detail:
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## §31 — Gate B repository-resident reviewer packet (owner-authorized, 2026-11-10)
+
+The owner addendum "Git repository is the Gate B evidence store" supersedes only
+the prior requirement for a separate persistent external artifact service/volume.
+The smallest reviewer packet now lives **in this repository** under
+`docs/verification/vec01-gate-b/` (tracked, non-secret): `README.md`,
+`provenance.md`, `rebuild-and-lab.md`, `lab-config.md`, `reviewer-checklist.md`,
+`SHA256SUMS.txt`.
+
+**Fresh verification this pass.** Pinned upstream provenance re-verified against
+freshly retrieved bytes (matches §2.1/§2.2): source tarball `183cc292…a36ff2`;
+asio `18883c35…928c5`; exe4cpp `2a8a2c7d…48db6c`; ser4cpp `5a78f83d…6762f6e`;
+catch `197640c0…ab7a028`; tag `3.1.2` = `523f7d2d…407d`, peeled `26b4c01e…ee53`.
+Packet `sha256sum -c SHA256SUMS.txt` → all `OK`. `git diff --check` clean;
+`bash scripts/cwal-check.sh` PASS. Packet file hashes:
+`README.md` `a276842c…0376a`, `provenance.md` `f790bbbb…6c5b3`,
+`rebuild-and-lab.md` `67631e4f…ffe0c`, `lab-config.md` `435b332d…71c57`,
+`reviewer-checklist.md` `03a47f80…c9871`.
+
+**Disposition.** Gate B packet: `GATE_B_REVIEW_PACKET_READY` (provisional) — the
+package is reconstructable from committed repository text. Gate B sign-off:
+`GATE_B_SIGNOFF_PENDING` — a **named independent reviewer distinct from JR** must
+inspect fresh actual isolation and the sole simulator CROB target and record a dated
+decision; this substep cannot grant or simulate it. **No fresh network-isolation
+PASS** is claimed (historical §11/§15.3 only); **no compiled peer binary** is
+committed (lab hashes remain rebuild expectations); **no** listener/socket/TCP,
+namespace execution, DNP3 packet, CROB, PCAP, `.vec`, external/OT probe or field I/O
+occurred. Gate B and the CURRENT remain **`TASK_BLOCKED`**. Full detail:
+`docs/verification/VEC-01-LAB-EXEC-001.md` §31.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

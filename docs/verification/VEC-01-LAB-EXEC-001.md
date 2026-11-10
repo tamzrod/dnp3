@@ -2976,3 +2976,79 @@ approval.**
 
 **No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.**
+
+## 31. Gate B repository-resident reviewer packet (owner-authorized, 2026-11-10)
+
+**Authorization.** Owner-approved addendum "Git repository is the Gate B evidence
+store" in CURRENT `workflow/active_work/VEC-01-LAB-EXEC-001.md`. It **supersedes
+only** the prior requirement that a separate persistent external artifact
+service/volume be provisioned before a reviewer packet can be prepared; **this
+repository is the durable, reviewable Gate B evidence store**. JR executed under
+**`operation cwal`**. This is a documentation/packet substep: **no Go production or
+test source, no protocol library and no capture changed.**
+
+**Startup.** `bash scripts/cwal-check.sh` PASS (`CURRENT=VEC-01-LAB-EXEC-001
+branch=work`); six authority markers identical in `workflow/active_work/README.md`
+and `handoff.md`; required files present; tree clean; HEAD `c6f48ab` == `origin/work`;
+`origin/main` = `bedce42` (work is ahead of main; no reset/rebase/force-push). CURRENT
+body not edited by JR.
+
+### 31.1 Packet created (repository-resident, tracked)
+
+Created the smallest reviewer packet under `docs/verification/vec01-gate-b/`
+(tracked evidence, not new runtime features):
+
+| File | SHA-256 |
+|------|---------|
+| `docs/verification/vec01-gate-b/README.md` | `a276842caf0d389a1ba0508836308f33ac902d282b4e238892cee3274d0d376a` |
+| `docs/verification/vec01-gate-b/provenance.md` | `f790bbbb797d10a5e22845867b5a0012aaf7ca7b3dc9478efb1e168372d6c5b3` |
+| `docs/verification/vec01-gate-b/rebuild-and-lab.md` | `67631e4f4557c39ce33fedae0fe245a798f1cff9f9ed4c6e895e7b5c32effe0c` |
+| `docs/verification/vec01-gate-b/lab-config.md` | `435b332d966edc46088bafe308f4e495dd91bc7c067eba096e26641679671c57` |
+| `docs/verification/vec01-gate-b/reviewer-checklist.md` | `03a47f801c28d7e85222cd5535b30c16af89ab154d6012b238ecc162e45c9871` |
+| `docs/verification/vec01-gate-b/SHA256SUMS.txt` | manifest of the five files above |
+
+Packet contents: index/status; pinned OpenDNP3 3.1.2 source/dependency URLs and
+expected SHA-256/SHA-1 with tag/peel refs; exact offline rebuild recipe and
+two-namespace isolation construction with the C1–C13 objective checks; the exact
+lab-only single-file C++ demo patch (bind `10.77.0.2:20000`, link 4/3, v0 variations
+G1V1/G30V1/G20V1, fixed points BI[0]=true/AI[0]=2300/CT[0]=42, memory-only BO[0]
+Direct-Operate handler) and the prospective Go master configuration; bounded
+deadlines/watchdog/stop rules; and a **blank** reviewer checklist.
+
+### 31.2 Fresh verification this pass
+
+- Pinned upstream provenance re-verified against freshly retrieved bytes (matches
+  §2.1/§2.2 exactly; also §30.2): source tarball `183cc292…a36ff2`; asio
+  `18883c35…928c5`; exe4cpp `2a8a2c7d…48db6c`; ser4cpp `5a78f83d…6762f6e`; catch
+  `197640c0…ab7a028`. Tag `3.1.2` = `523f7d2d…407d`, peeled `26b4c01e…ee53`.
+- Packet files hashed with `sha256sum`; `sha256sum -c SHA256SUMS.txt` → all `OK`.
+- `git diff --check` clean; `bash scripts/cwal-check.sh` PASS.
+
+### 31.3 Honest scope, limitations and non-claims
+
+- **No fresh network-isolation PASS is claimed.** The isolation results in §11/§15.3
+  are **historically documented**, not re-verified in this packet build. The
+  reviewer must re-run the isolation checks on a live lab at sign-off.
+- **No compiled peer binary is committed.** The lab `outstation-demo` `6657ec80…`
+  and `libopendnp3.a` `25f83aaa…` hashes remain **rebuild expectations**, not
+  retained bytes; path-dependent rebuilds differ only by embedded source-path
+  strings (§2.3, §15.2).
+- **No** listener activation, TCP/DNP3 traffic, network-namespace execution, CROB,
+  PCAP generation, `.vec` trace, external/OT probe or field I/O occurred. No Go
+  production/test source, protocol library, `go.mod`/`go.sum`, script, CI,
+  governance or peer configuration changed.
+- The packet is a **rebuildable input** set; reproducing a static lab-only C++ binary
+  is **not** authority to invoke it.
+- `GATE_B_REVIEW_PACKET_READY` (provisional) requires a distinct reviewer to
+  independently retrieve and hash-check the committed packet text and to reconstruct
+  the package from Git; **`GATE_B_SIGNOFF_PENDING`** remains until a **named
+  independent reviewer distinct from JR** inspects fresh actual isolation and the
+  sole simulator CROB target and records a dated decision. This substep **cannot
+  grant or simulate** that approval.
+- Gate B and the CURRENT remain **`TASK_BLOCKED`**; no Gate C/D/E, B4 independent
+  PASS, PR, merge, `main` push, archive, promotion, self-signoff or R4 closure.
+  Historical unauthorized TCP / broad-`go test` deviations remain documented
+  unchanged (§14, §26).
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

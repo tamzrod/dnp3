@@ -503,3 +503,22 @@ or simulate it. Offline C++ demo rebuild NOT_RUN (no `cmake`). Gate B and the
 CURRENT remain **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §30
 and `active_work/vec-01-opendnp3-lab-execution-evidence.md` §30.
+
+### Gate B repository-resident reviewer packet (2026-11-10)
+Owner-approved addendum "Git repository is the Gate B evidence store" supersedes
+only the prior external-persistent-store prerequisite. **Documentation/packet only;
+no Go production/test source or protocol library changed.** Startup PASS
+(`cwal-check.sh` OK; six markers identical). The smallest reviewer packet now lives
+in-repo under `docs/verification/vec01-gate-b/` (`README.md`, `provenance.md`,
+`rebuild-and-lab.md`, `lab-config.md`, `reviewer-checklist.md`, `SHA256SUMS.txt`),
+with pinned OpenDNP3 3.1.2 provenance, an offline rebuild + isolation recipe, the
+exact lab-only C++ patch, topology/points/control boundary, deadline/watchdog plan
+and a **blank** reviewer checklist. **Result: `GATE_B_REVIEW_PACKET_READY`
+(provisional)**; **`GATE_B_SIGNOFF_PENDING`** until a named independent reviewer
+distinct from JR inspects fresh actual isolation and the sole simulator CROB target.
+No fresh network-isolation PASS claimed; no peer binary committed; no
+listener/socket/TCP, namespace execution, DNP3 packet, CROB, PCAP, `.vec`,
+external/OT probe or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**;
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN**. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §31 and
+`active_work/vec-01-opendnp3-lab-execution-evidence.md` §31.
