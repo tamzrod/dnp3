@@ -545,3 +545,21 @@ If system Go missing, privately provision checksum-verified official Go 1.22.12 
 **Hard boundaries:** no Go production or test changes, no library feature expansion, no runtime peer invocation, network namespace or network-isolation execution, listener/socket/TCP/DNP3 traffic, CROB, PCAP generation, external/OT probe, Gate B self-signoff, Gates C/D/E, PR, merge, `main` push, task promotion/archive or R4 closure. Keep F1/F2/F3 B4 safety evidence and all earlier procedural deviations intact. Do not invent artificial evidence infrastructure.
 
 **Immutable markers:** `Repository: tamzrod/dnp3`; `Package: VEC-01-LAB-EXEC-001`; `Branch: work`; `CURRENT: VEC-01-LAB-EXEC-001`; `QUEUED: NONE`; `Status: TASK_BLOCKED`. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** JR's only command: **`operation cwal`**.
+
+---
+
+## Owner-approved corrective CWAL — three Gate B packet findings (2026-11-10)
+
+**Authority.** Owner explicitly authorizes one **surgical documentation-only corrective substep** on existing `VEC-01-LAB-EXEC-001` CURRENT, permanent branch `work`, baseline packet checkpoint `764f1a944ab2ec189c58d84d3f84bbd9da3a4f16`. This is the required new execution authority following independent pre-PR CHECK. It supersedes the prior packet step's STOP **only for the following three findings**, and does not promote, replace or unblock the CURRENT. JR's sole command remains `operation cwal`.
+
+**Exact corrections, no others:**
+
+1. Correct broken **relative Markdown links** in `docs/verification/vec01-gate-b/README.md` and any corresponding broken packet-relative references. From that directory, repository-root `active_work/` and `workflow/` paths require `../../../` (not `../../`). Verify actual target existence.
+2. Correct `docs/verification/vec01-gate-b/lab-config.md` single-file **lab-only C++ patch** to perform fixed memory point initialization `BI[0]=true`, `AI[0]=2300`, `CT[0]=42` and `outstation->Apply(init.Build())` **before** `outstation->Enable()`; ensure the patch's context and hunk line counts remain coherent and applicable to pinned OpenDNP3 3.1.2. Do not change the control handler, library, addresses, variations or supported behavior.
+3. In `docs/verification/vec01-gate-b/rebuild-and-lab.md`, delete the instruction to run `curl https://github.com` as an offline/no-route check. Replace with passive local network namespace, route, and interface inspection only; never probe external destinations.
+
+**Verification/checkpoint:** Recompute `docs/verification/vec01-gate-b/SHA256SUMS.txt` entries for the corrected tracked files, ensure `sha256sum -c SHA256SUMS.txt` succeeds, check relative link existence and inspect patch text/hunks (offline/static only), run `git diff --check` and `bash scripts/cwal-check.sh`. If the available offline tooling cannot establish patch applicability, report `NOT_VERIFIED` instead of claiming PASS; do not download/install tooling as a new subproject. Append only concise factual corrective results/limitations to `docs/verification/VEC-01-LAB-EXEC-001.md` and `active_work/vec-01-opendnp3-lab-execution-evidence.md`; optionally append concise matching handoffs to `workflow/active_work/README.md` and `handoff.md`, **without editing their six top authority markers**. Preserve prior history/evidence without rewrites. Commit/push only these authorized documents to `work`, inspect remote commit/file readback and markers, and **STOP for independent pre-PR CHECK**.
+
+**Hard exclusions:** no Go production/test changes, security hardening, optimization, infrastructure, new functionality, CI/governance refactoring, external storage, lab build/run, network namespace execution, listener/socket/TCP/DNP3 protocol packet, CROB/PCAP, OT connection/probe, Gate B self-signoff, Gate C/D/E, PR/merge/`main` push, archive/promotion, or R4 closure. No additional packet enhancements beyond the three identified defects. The existing independent Gate B sign-off remains pending, and packet-readiness is subject to CHECK.
+
+**Immutable state:** `Repository: tamzrod/dnp3`; `Package: VEC-01-LAB-EXEC-001`; `Branch: work`; `CURRENT: VEC-01-LAB-EXEC-001`; `QUEUED: NONE`; `Status: TASK_BLOCKED`. **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
