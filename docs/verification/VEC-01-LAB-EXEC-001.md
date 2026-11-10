@@ -3563,3 +3563,86 @@ end-to-end control success requires a **separately authorized eighth correction*
 No PR, merge, `main` push, archive, promotion, self-signoff, Gate C/D/E closure or
 field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED /
 R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### 37. Eighth CROB operation-code correction — BLOCKED by constant collision + allowlist boundary; STOP / PUSHBACK (2026-11-10)
+
+Fourth pass of the owner addendum. Authorization commit `2a8c4ce` ("authorize eighth
+CROB operation-code functionality correction") approved **only** the eighth demonstrated
+v0 defect (§36.4): realign the G12V1 CROB operation type to IEEE 1815/OpenDNP3
+`LATCH_ON=0x03` / `LATCH_OFF=0x04`, baseline `0158b82`. Executor: OpenHands agent
+(autonomous), Operation CWAL, branch `work`.
+
+**Startup.** Local `work` fast-forwarded `0158b82` → `2a8c4ce` (owner authorization;
+non-force, clean). `bash scripts/cwal-check.sh` OK. Six authority markers unchanged.
+Tree clean. No conflict, no drift.
+
+#### 37.1 Collision check required by the authorization (step 2) — FAILS as literally specified
+
+- **Authoritative peer model** (pinned OpenDNP3 3.1.2): the CROB operation type is the
+  **low nibble** of the code octet — `OperationType{NUL=0x0, PULSE_ON=0x1, PULSE_OFF=0x2,
+  LATCH_ON=0x3, LATCH_OFF=0x4}`, decoded `OperationTypeSpec::from_type(rawCode & 0x0F)`;
+  `0x08 & 0x0F = 8` → `Undefined`. Evidence: `cpp/lib/include/opendnp3/gen/OperationType.h`,
+  `cpp/lib/src/gen/OperationType.cpp`, `cpp/lib/src/app/ControlRelayOutputBlock.cpp`
+  (`rawCode = (tcc<<6)&0xC0 | (clear<<5)&0x20 | (opType & 0x0F)`).
+- **Repo model** (unchanged): one-hot masks `NUL=0x01, PulseOn=0x02, PulseOff=0x04,
+  LatchOn=0x08, LatchOff=0x10, Queue=0x80` (`internal/master/master.go:3240-3245`).
+- Applying the authorization's **literal** change (`LatchOn 0x08→0x03`, `LatchOff
+  0x10→0x04`, leaving the rest) makes `CROBCodeLatchOff == CROBCodePulseOff == 0x04`;
+  the outstation decode switch (`internal/outstation/outstation.go:410-422`) then has
+  **two `case 0x04`** → hard compile failure. Reproduced in an untracked scratch copy:
+  `internal/outstation/outstation.go:419:7: duplicate case 0x04 (constant 4 of type uint8)
+  in expression switch`.
+- A **coherent** fix therefore requires realigning the whole operation-type field
+  (NUL 0x01→0x00, PulseOn 0x02→0x01, PulseOff 0x04→0x02, LatchOn 0x08→0x03, LatchOff
+  0x10→0x04; the repo's `Queue=0x80` is likewise non-conformant, as the peer uses bits
+  6–7 for trip/close). This is **beyond** the authorization's stated "only the eighth
+  demonstrated defect" and its literal two-constant instruction.
+
+#### 37.2 Allowlist boundary — a required consumer is OUTSIDE the edit allowlist
+
+- The coherent fix additionally requires editing the public outstation bridge
+  `pkg/dnp3/outstation/server.go:473` (`switch crob.Code & 0x1F`), the **only other**
+  CROB-code consumer; it maps the code octet to the public bool command. Left unchanged,
+  it decodes the new `LATCH_ON=0x03` via its `default` branch as `false`, breaking
+  mandatory Gate Tier-1 real-TCP tests: `TestOperateRealTCPSuccess`,
+  `TestRealTCPFullMVPPath`, `TestOutstationSideMVPGate` (`dispatched command value =
+  &types.BinaryCommandValue{Value:false}, want BinaryCommandValue{true}`).
+- `pkg/dnp3/outstation/server.go` is **not** in the authorization's edit allowlist
+  (`internal/master/master.go`, `internal/outstation/outstation.go`; directly affected
+  CROB tests/fixtures; existing protocol docs containing the incorrect CROB values; the
+  two evidence files; optional handoff files). Per the authorization: *"A dependency
+  outside that allowlist requires a specific observed explanation and STOP/owner
+  pushback, not automatic scope expansion."*
+
+#### 37.3 Scratch validation (untracked; NOT applied to `work`)
+
+In an untracked copy, applying the full coherent realignment (master constants +
+outstation switch + bridge mapping + directly affected goldens/fixtures) compiles and
+passes `internal/master`, `internal/outstation`, `pkg/dnp3/outstation`,
+`test/integration`. The repair is feasible but spans a file outside the allowlist. **No
+change was applied to the tracked `work` tree.**
+
+#### 37.4 Disposition — STOP / PUSHBACK
+
+The eighth correction **cannot be implemented as authorized**: (a) the literal change is
+not compilable (constant/case collision), and (b) a coherent, test-green fix requires a
+full operation-type-field realignment **and** an edit to `pkg/dnp3/outstation/server.go`,
+outside the edit allowlist. Per the authorization's collision clause and allowlist rule,
+this pass **STOPs** and returns **PUSHBACK** for owner authorization of the wider,
+coherent scope (whole CROB operation-type field + the public bridge consumer). No
+implementation change was made to the tracked tree; the seven prior corrections (§36)
+are untouched.
+
+Baseline verification on the unchanged tree (`2a8c4ce`): `gofmt -l internal pkg test cmd
+examples` clean; `git diff --check` clean; `go vet ./...` PASS; `go build ./...` PASS;
+`go test ./internal/master ./internal/outstation ./pkg/dnp3/outstation ./test/integration
+-count=1` PASS (all four `ok`).
+
+**Outstanding checks:** owner decision on the wider scope; the isolated lab re-run
+(authorization step 5) was **NOT executed** because the code change it would exercise
+could not be applied within the authorized scope, and the prior lab namespace/peer
+build are not durable across runners.
+
+No PR, merge, `main` push, archive, promotion, self-signoff, Gate C/D/E closure or field
+I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**. **VEC-01 NOT EXECUTED / R4 OPEN /
+THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

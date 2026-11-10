@@ -653,3 +653,40 @@ pass **STOPs** without changing the CROB control-code constants. No PR/merge/`ma
 push/archive/promotion/self-signoff. Gate B and the CURRENT remain
 **`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY
 NOT PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §36.
+
+### VEC-01 lab exec — eighth CROB operation-code correction BLOCKED (collision + allowlist); STOP / PUSHBACK (2026-11-10)
+Owner authorization commit `2a8c4ce` approved **only** the eighth demonstrated v0 defect
+(§36.4): realign the G12V1 CROB operation type to IEEE 1815/OpenDNP3 `LATCH_ON=0x03` /
+`LATCH_OFF=0x04`, baseline `0158b82`. Local `work` fast-forwarded `0158b82` → `2a8c4ce`
+(non-force, clean); `cwal-check.sh` OK; six markers unchanged; tree clean.
+**Collision check (authorization step 2) — the literal change is not compilable.** The
+pinned peer's authoritative model is a **low-nibble enum**
+(`OperationType{NUL=0, PULSE_ON=1, PULSE_OFF=2, LATCH_ON=3, LATCH_OFF=4}`,
+`from_type(rawCode & 0x0F)`), while the repo uses one-hot masks
+(`LatchOn=0x08, LatchOff=0x10, PulseOff=0x04`). Setting `LatchOff 0x10→0x04` alone
+collides with `PulseOff=0x04`; the outstation decode switch
+(`internal/outstation/outstation.go:410-422`) then has two `case 0x04` →
+`duplicate case 0x04` **compile failure** (reproduced in an untracked scratch copy). A
+coherent fix must realign the **whole** operation-type field (NUL/PulseOn/PulseOff/
+LatchOn/LatchOff; the repo's `Queue=0x80` is likewise non-conformant).
+**Allowlist boundary.** The coherent fix also requires the public outstation bridge
+`pkg/dnp3/outstation/server.go:473` (`switch crob.Code & 0x1F`) — the only other
+CROB-code consumer and **not** in the authorization's edit allowlist. Left unchanged it
+decodes the new `LATCH_ON=0x03` as `false`, breaking mandatory Tier-1 real-TCP tests
+(`TestOperateRealTCPSuccess`, `TestRealTCPFullMVPPath`, `TestOutstationSideMVPGate`).
+Per the authorization, a dependency outside the allowlist requires an observed
+explanation and STOP/owner pushback, not scope expansion.
+**Scratch validation (untracked; NOT applied to `work`).** The full coherent
+realignment (master + outstation + bridge + affected goldens/fixtures) compiles and
+passes `internal/master`, `internal/outstation`, `pkg/dnp3/outstation`,
+`test/integration` — feasible but spans a file outside the allowlist. **No change was
+applied to the tracked `work` tree**; §36 corrections untouched. Baseline on the
+unchanged tree (`2a8c4ce`): `gofmt` clean, `git diff --check` clean, `go vet ./...`
+PASS, `go build ./...` PASS, targeted `go test` PASS. The isolated lab re-run
+(authorization step 5) was **NOT executed** (the exercised change could not be applied
+within scope; prior lab namespace/peer build are not durable across runners).
+**Disposition — STOP / PUSHBACK.** Return to owner for authorization of the wider
+coherent scope (whole CROB operation-type field + the public bridge consumer). No
+PR/merge/`main` push/archive/promotion/self-signoff. Gate B and the CURRENT remain
+**`TASK_BLOCKED`**; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN**. See `docs/verification/VEC-01-LAB-EXEC-001.md` §37.
