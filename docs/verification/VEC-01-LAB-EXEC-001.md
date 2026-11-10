@@ -3220,3 +3220,34 @@ interoperability claim is **not made**.
   self-signoff or R4 closure.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### 33.6 Applicability refinement — exact apply command and the unavoidable gate conflict
+
+Follow-up verification on the **committed** embedded packet patch (extracted verbatim
+from `lab-config.md`, SHA-256 `692e252c…`) sharpens §33.1:
+
+- The embedded copy is **whitespace-normalized** for the repository's `git diff --check`
+  gate: blank context lines are truly empty, the whitespace-only deletion line is a bare
+  `-`, and one TAB was expanded to spaces. Consequently **plain `patch -p2` and
+  `git apply -p2` fail** on it (hunks #2/#4), **but `patch -l -p2` (ignore whitespace)
+  succeeds (exit 0)** and produces the byte-faithful result `main.cpp` SHA-256
+  `4380b16f75d83192a2ffc55f9cb4f85aae520cf4b81f3a457e180a3a1aa41afc`. The
+  reviewer-applicable command for the embedded copy is therefore
+  **`patch -l -p2 < lab-demo.patch`**; the authoritative byte-exact external artifact
+  `b3-lab-demo.patch` (`1758ad1c…`) applies with plain `git apply`/`patch`.
+- A **minimal 2-line byte-exact correction** (restore the whitespace-only deletion line
+  to its 12 spaces; restore the TAB at `main.cpp` line 104) makes plain `patch -p2`
+  **and** `git apply -p2` succeed — but it reintroduces exactly one trailing-whitespace
+  line, which `git diff --check` flags. **There is no byte-exact form of the embedded
+  patch that is simultaneously applicable by plain `patch`/`git apply` and
+  `git diff --check`-clean.** Because the CURRENT's mandatory gates include a clean
+  `git diff --check`, the packet keeps the gate-clean normalized copy and the reviewer
+  uses `patch -l -p2` (or the external byte-exact artifact). Recorded for maintainer
+  resolution.
+- The packet's existing "Whitespace note" is correct in intent; for full precision it
+  could also mention the whitespace-only deletion line and the single TAB expansion.
+  Per the addendum's "do not rewrite accepted packet documentation", the note was left
+  unchanged and the precise facts are recorded here instead.
+
+**No protocol execution occurred. VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.**

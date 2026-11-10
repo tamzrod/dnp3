@@ -1058,3 +1058,19 @@ gate. No Gate C/D/E, PR, merge, `main` push, archive, promotion, self-signoff or
 closure. Full detail: `docs/verification/VEC-01-LAB-EXEC-001.md` §33.
 
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+### §33.6 — Applicability refinement (exact apply command; unavoidable gate conflict)
+
+On the **committed** embedded packet patch (SHA-256 `692e252c…`): plain `patch -p2` and
+`git apply -p2` **fail** (hunks #2/#4) because the copy is whitespace-normalized for the
+`git diff --check` gate (empty blank context, bare `-` for the whitespace-only deletion,
+one TAB expanded). **`patch -l -p2` (ignore whitespace) succeeds (exit 0)** and yields the
+byte-faithful `main.cpp` SHA-256 `4380b16f…41afc`; the byte-exact external artifact
+`b3-lab-demo.patch` (`1758ad1c…`) applies with plain `git apply`/`patch`. A minimal 2-line
+byte-exact correction (restore the 12-space deletion line; restore the TAB at line 104)
+makes plain `patch`/`git apply` succeed but reintroduces one trailing-whitespace line that
+`git diff --check` flags — **no byte-exact form is both plainly applicable and
+gate-clean**. Reviewer command for the embedded copy: `patch -l -p2 < lab-demo.patch`.
+Packet "Whitespace note" left unchanged per the addendum's no-rewrite instruction.
+
+**VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
