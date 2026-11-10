@@ -780,3 +780,19 @@ push/archive/promotion/self-CHECK/Gate/R4 closure. **`TASK_BLOCKED` retained; VE
 R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** See `docs/verification/VEC-01-LAB-EXEC-001.md`
 §42. Readiness is not interoperability acceptance; a later separate `operation cwal` may resume the
 authorized Gate C positive, payload-CRC negative and Gate E originals.
+
+### VEC-01 final Docker-lab interoperability campaign — fail-closed PUSHBACK (2026-11-11)
+Owner addendum `21fb6b0` ("final VEC-01 Docker-lab interoperability execution after readiness
+`26d016a`") executed under `operation cwal` on `work` (`HEAD == origin/work == 21fb6b0`; six markers
+unchanged). Its fail-closed preconditions must PASS **before any DNP3 frame**. **Precondition 1
+(cross-runner durable evidence store outside Git and the runner) is NOT MET:** no object-store
+credentials/destination; no network/persistent mounts; `/workspace` is a pod-local block device
+(explicitly excluded); daemon storage on same pod-local rootfs; all historical artifact paths
+ephemeral. Provisioning a store is forbidden. -> **STOP / EVIDENCE_INCOMPLETE / PUSHBACK before
+traffic.** Discrepancy surfaced for owner resolution: 2026-11-10 corrective made Git the *Gate B*
+durable store; this addendum requires an *outside-Git* destination for *Gate E* raw captures before
+traffic. No TCP/DNP3 frame, listener, capture, control or `.vec` produced; preconditions 2-3 not
+evaluated (moot). Gate C/D/E **NOT_REACHED**; payload-block-CRC negative **NOT_TESTED**. No
+PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure; no new storage provisioned.
+**`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+See `docs/verification/VEC-01-LAB-EXEC-001.md` §43.

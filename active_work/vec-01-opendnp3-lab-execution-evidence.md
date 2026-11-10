@@ -1471,3 +1471,29 @@ socket); daemon start required `sudo`. In-container topology needs `NET_ADMIN`+`
 **Non-claims:** Gate C/D/E `NOT_REACHED`; payload-CRC negative `NOT_TESTED`; no PR/merge/`main`
 push/archive/promotion/self-CHECK/Gate/R4 closure; no conformance/interoperability claim.
 `TASK_BLOCKED` retained; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## §43 — Final Docker-lab interoperability campaign: fail-closed PUSHBACK at precondition 1 (2026-11-11)
+
+Authorization: owner addendum at `21fb6b0` ("Owner-approved final VEC-01 Docker-lab interoperability
+execution after readiness commit 26d016a"). Executed under `operation cwal` on `work`
+(`HEAD == origin/work == 21fb6b0`; six markers unchanged; `cwal-check.sh` OK).
+
+**Precondition 1 — cross-runner durable evidence store: NOT MET → STOP/PUSHBACK before any traffic.**
+The addendum requires a concrete authorized destination outside Git and the ephemeral
+runner/daemon storage, proven independently retrievable after runner disposal, and forbids asserting
+it from a bind mount, ordinary Docker volume, same-pod dir, `/workspace`, or by provisioning a new
+service. Measured: no object-store credentials/destination (0 env matches); no network/persistent FS
+mounts (0 matches); `/workspace` is pod-local `/dev/nvme0n2 ext4` (excluded); `/var/lib/docker` on
+same pod-local `/dev/root` (excluded); all historical artifact paths ephemeral; `/mnt`,`/media`
+empty. **No durable store available and provisioning one is forbidden → hard STOP.**
+
+**Discrepancy surfaced (not silently resolved):** the 2026-11-10 corrective declared Git the durable
+store for *Gate B* evidence; the 2026-11-11 addendum requires a destination *outside Git* for *Gate E*
+raw captures, and to exist *before traffic*. Flagged for maintainer resolution.
+
+**Preconditions 2–3:** NOT EVALUATED (moot; no traffic). No TCP/DNP3 frame, listener, capture,
+control or `.vec` produced. Gate C/D/E `NOT_REACHED`; payload-block-CRC negative `NOT_TESTED`.
+No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure; no new storage provisioned.
+**`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

@@ -4072,3 +4072,64 @@ self-awarded CHECK/Gate/R4 closure; no conformance or interoperability claim. No
 fictitious runtime results. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
 INTEROPERABILITY NOT PROVEN.** A successful readiness check permits a later separate `operation cwal`
 to resume the narrowly authorized Gate C positive, payload-CRC negative and Gate E originals.
+
+### 43. Owner-approved final VEC-01 Docker-lab interoperability campaign — fail-closed PUSHBACK at precondition 1 (2026-11-11)
+
+**Authorization.** Owner addendum "Owner-approved final VEC-01 Docker-lab interoperability execution
+after readiness commit 26d016a" (commit `21fb6b0`, `workflow/active_work/VEC-01-LAB-EXEC-001.md`),
+executed under `operation cwal` on permanent `work`. The addendum supersedes the §42
+readiness-only/no-DNP3-traffic restriction **only after** its fail-closed preconditions 1–3 actually
+PASS. It permits `lab/vec01/` lab-only scripts and the two existing evidence Markdown files plus
+optional handoffs, and forbids provisioning new storage infrastructure.
+
+**43.1 Baseline — PASS.** `HEAD == origin/work == 21fb6b06546a329731d75ce2016109c0c511045e` (safe
+non-force fast-forward from the §42 checkpoint `26d016a`; linear descendant). Six top markers
+identical in `workflow/active_work/README.md` and `handoff.md`; clean tree;
+`bash scripts/cwal-check.sh` → `CWAL CHECK OK`.
+
+**43.2 Precondition 1 — cross-runner durable evidence store: NOT MET → STOP/PUSHBACK.**
+The addendum requires, *before any DNP3 frame*, a concrete authorized storage destination **outside
+both Git and the ephemeral runner/daemon storage**, proven accessible from an independently retained
+context after runner disposal, with retrieval URI/path, lifetime and access controls, and explicitly
+forbids asserting this from an unverified bind mount, an ordinary Docker volume, a same-pod
+directory or `/workspace`, or from provisioning a new storage service without additional owner
+authority. Objective measurements in this runner:
+
+| Candidate | Measured result | Verdict |
+|---|---|---|
+| Object/artifact store credentials | no `AWS_*`/`S3_*`/`GOOGLE_*`/`GCS`/`AZURE_*`/`MINIO`/`BUCKET`/`ENDPOINT` variables set (0 matches); no configured bucket or destination | absent |
+| Network/persistent filesystem | no `nfs`/`cifs`/`9p`/`gluster`/`ceph`/`s3fs`/`gcsfuse`/`blobfuse` mounts (0 matches) | absent |
+| Independently mounted durable volume | `/workspace` is a pod-local block device (`/dev/nvme0n2 ext4`); the addendum explicitly excludes `/workspace` and same-pod directories | excluded |
+| Docker daemon storage | `/var/lib/docker` on `/dev/root` (same pod-local rootfs); daemon data-root also under `/workspace`; an ordinary Docker volume is explicitly not proof | excluded |
+| Historical artifact paths | every recorded path is ephemeral (`/tmp/…`, `/workspace/…`, `/vec01.pcap`) | not durable |
+| Other mounts | `/mnt`, `/media` empty; no CI artifact upload configured for captures | absent |
+
+No demonstrably cross-runner persistent store is available, and the addendum forbids provisioning
+one. Per the addendum ("If no demonstrably cross-runner persistent store is available, **STOP /
+EVIDENCE_INCOMPLETE / PUSHBACK before TCP/DNP3 traffic**") this is a hard stop. **No TCP/DNP3 frame,
+no listener, no capture, no control and no `.vec` were produced in this run.**
+
+**43.3 Documented discrepancy surfaced for owner resolution (not silently resolved).**
+- The owner corrective of 2026-11-10 ("Git repository is the Gate B evidence store") declared the
+  repository the durable store for **Gate B** evidence and rejected a separate external service for
+  that packaging.
+- The owner addendum of 2026-11-11 (this campaign) instead requires, for **Gate E raw original
+  captures**, a durable destination **outside Git**.
+These are not necessarily contradictory — Gate B reviewable text is Git-committable, whereas Gate E
+raw binary `.pcap`/`.pcapng` originals may not be committed to Git — but they disagree on whether an
+external store must exist *before traffic*. This run followed the later, more specific addendum
+(fail-closed). Flagged for maintainer resolution rather than choosing a convenient interpretation.
+
+**43.4 Preconditions 2 and 3 — NOT EVALUATED (moot).** Objective Gate B for the actual protocol run
+(including IPv6 isolation) and the pinned runnable peer cannot be exercised because precondition 1
+halts the campaign before traffic. Noting also that `lab/vec01` currently ships the pinned peer
+*sources* only; a runnable memory-only outstation would be bounded lab-local preparation under
+precondition 3, which is not reached.
+
+**43.5 Non-claims and boundary.** No PR/merge/`main` push/archive/promotion/self-awarded CHECK/Gate
+or R4 closure; no conformance or interoperability claim; no new storage provisioned. Gate C/D/E
+remain **NOT_REACHED**; payload-block-CRC negative remains **NOT_TESTED**. Historical §39–§42 records
+preserved. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN.** Disposition: **EVIDENCE_INCOMPLETE / PUSHBACK — precondition 1 (cross-runner durable
+evidence store) not met.** A later separate `operation cwal` may proceed only if the owner supplies
+or authorizes a concrete durable destination outside Git and the runner.
