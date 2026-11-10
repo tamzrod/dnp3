@@ -745,3 +745,20 @@ No fix applied (outside allowlist); scratch-only correction recorded as evidence
 **Status unchanged: `TASK_BLOCKED`; VEC-01 NOT CLOSED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
 PROVEN.** No PR/merge/`main` push/archive/promotion/self-signoff/Gate closure. A separately human-promoted
 corrective task is required for the Class-0 qualifier defect.
+
+### VEC-01 final post-fix verification — fail-closed STOP (2026-11-11)
+Owner-approved "final VEC-01 verification" addendum executed under `operation cwal` on `work`
+(`HEAD == origin/work == bc919d9d386a1cbb9428be31797418bd6af9e5af`; six markers unchanged;
+`cwal-check.sh` OK; PR #25 merge `363d3cf` is an ancestor). **Evidence-only; no Go source change.**
+Both objective prerequisites fail, so the campaign stopped **before any traffic**:
+**Gate E FAIL** — no durable artifact destination outside Git/runner exists
+(`/workspace/vec01-lab-artifacts`, `/workspace/vec01`, `/tmp/vec01-lab` all ABSENT; no persistent
+volume/credentials) → `EVIDENCE_INCOMPLETE`. **Gate B FAIL** — no `CAP_NET_ADMIN`
+(`unshare(CLONE_NEWNET)`→EPERM; `--user --net` uid_map EPERM); `ip` MISSING; only `lo`/`eth0`; default
+route `169.254.1.1`, `ip_forward=1`, internet egress (routed k8s pod already FAIL per 2026-11-08
+correction) → isolated two-netns lab unprovable. Gate C/D/E **NOT_REACHED** (no TCP/DNP3/CROB/capture).
+Go gates **NOT_RUN** (`go`/`gofmt`/`cmake` MISSING; download prohibited). Result:
+**`VEC-01_FINAL_VERIFICATION_STOPPED_FAIL_CLOSED`** — `EVIDENCE_READY_FOR_CHECK` **not** met.
+`TASK_BLOCKED` retained; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+See `docs/verification/VEC-01-LAB-EXEC-001.md` §41. Owner direction needed: durable artifact
+destination + runner with `CAP_NET_ADMIN`, Go toolchain and pinned peer.

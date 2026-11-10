@@ -3938,3 +3938,77 @@ PCAP not durably preserved). The independent-peer re-verification in addendum it
 unmodified Go master returning `BI[0]=true / AI[0]=2300 / CT[0]=42`) was **NOT executed** in this
 runner (no verified pinned peer artifacts/isolated lab available); it remains required before any
 interoperability statement. **`TASK_BLOCKED` retained; VEC-01 NOT CLOSED / R4 OPEN.**
+
+### 41. Owner-approved final post-fix verification — fail-closed STOP before any lab run (2026-11-11)
+
+**Authorization.** Owner-approved final verification section in `workflow/active_work/VEC-01-LAB-EXEC-001.md`
+("Owner-approved final VEC-01 verification — post-PR #25 peer retest, payload CRC and durable capture").
+Executed under `operation cwal` only, on permanent `work`. Evidence-only; no Go source change.
+
+**41.1 CWAL readiness and provenance — PASS.**
+- Six authority markers identical in `workflow/active_work/README.md` and `handoff.md`:
+  `Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`, `Branch: work`,
+  `CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED`.
+- `HEAD == origin/work == bc919d9d386a1cbb9428be31797418bd6af9e5af`; working tree clean;
+  `bash scripts/cwal-check.sh` → `CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001 branch=work`.
+- Baseline ancestry verified: merged PR #25 main merge commit
+  `363d3cfef0e6ca321db3cc8ee57330106bb2e943` **is** an ancestor of `HEAD` (confirmed via
+  `git merge-base --is-ancestor`). Repo is a shallow clone (`is-shallow-repository=true`);
+  earlier named baselines (e.g. `0f4c05c8777753b6fdcd304c0642f72c130f4a94`) are within the
+  deepened window; the authorization's named baseline is present and consistent.
+
+**41.2 Objective Gate B and Gate E — FAIL, fail closed; no listener, no packet, no capture.**
+
+Two independent objective prerequisites fail in this runner. Per the authorization ("Any uncertainty/unsafe path causes STOP/PUSHBACK without traffic") and addendum item 5 ("If no such destination exists, STOP / EVIDENCE_INCOMPLETE before spending another ephemeral run"), the campaign is stopped before any traffic.
+
+*Gate E — no durable artifact destination (decisive, fail-closed):*
+- `/workspace/vec01-lab-artifacts` **ABSENT**; `/workspace/vec01` **ABSENT**; `/tmp/vec01-lab` **ABSENT**.
+- No durable, access-controlled artifact destination exists outside Git and outside the disposable
+  runner filesystem: no persistent volume, no cloud/object-store credentials or bucket in the
+  environment, no previously recorded persistent location is present in this pod.
+- Required by item 5 **before** the lab run: identify a destination that can receive bytes and be
+  retrieved independently of the runner with matching SHA-256. None exists → **`EVIDENCE_INCOMPLETE`; STOP**.
+
+*Gate B — isolated lab cannot be constructed (decisive, fail-closed):*
+- No `CAP_NET_ADMIN`: `CapPrm=CapEff=0000000000000000`. `unshare(CLONE_NEWNET)` → `EPERM (errno=1)`
+  (direct libc probe). `unshare --user --map-root-user --net` fails at
+  `write /proc/self/uid_map: Operation not permitted`.
+- `ip` **MISSING**; no named netns (`/run/netns`, `/var/run/netns` absent); only `lo`/`eth0`.
+- Live network state: default route via `169.254.1.1` on `eth0`, `ip_forward=1`, internet egress
+  confirmed (TLS fetch to a public host returned HTTP 200). This pod is the routed Kubernetes pod the
+  2026-11-08 owner correction already classified as **FAIL** for lab traffic.
+- Therefore the required two private netns connected only by one internal veth, with no default
+  route/forwarding/NAT, cannot be established or proven → **Gate B FAIL / `NOT_TESTED`**.
+
+*Toolchain (informational):* `go`/`gofmt` **MISSING**, no module cache, no `vendor/` directory,
+`cmake` **MISSING** (pinned OpenDNP3 3.1.2 peer cannot be rebuilt offline here). `gcc`/`g++`/`make`
+present. Per the addendum, dependency download/installation and network access are not authorized,
+so the Go gates could be neither executed nor the peer rebuilt.
+
+**41.3 Gate C / Gate D / Gate E execution — NOT_REACHED.**
+Gate B and Gate E are hard preconditions. No TCP connect, no DNP3 link/Class-0 exchange, no G12V1
+CROB, no corrupt-payload-CRC negative, no `.pcap`, no `.vec` were produced. Nothing is claimed as
+PASS. Historical §39 Gate D results (5 cases; header-CRC evidence only for D1) and §40/§41 evidence
+are preserved unchanged; the payload-block-CRC negative remains **NOT_TESTED**.
+
+**41.4 Mandatory Go gates — NOT_RUN.**
+`gofmt -l .`, `git diff --check`, `go vet ./...`, `go build ./...`, `go test ./... -count=1`,
+targeted `go test -race`, `./scripts/verify-mvp.sh`, `./scripts/verify-external-mvp.sh`: **NOT_RUN**
+(no Go toolchain; dependency download prohibited by the addendum). `bash scripts/cwal-check.sh` **PASS**
+(state consistency only). `git diff --check` not applicable to the tree (evidence-only append).
+
+**41.5 Disposition.**
+`VEC-01_FINAL_VERIFICATION_STOPPED_FAIL_CLOSED`. The authorization's `EVIDENCE_READY_FOR_CHECK`
+condition is **not** met (durable artifact retrieval did not PASS). No PR/merge/`main` push/archive/
+promotion/self-awarded CHECK/Gate/R4 closure. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED /
+R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** Owner direction needed: provide a durable
+artifact destination and a runner with `CAP_NET_ADMIN` plus a Go toolchain (and the pinned peer),
+or amend scope accordingly.
+
+**41.6 Runner environment snapshot (actual measured values).**
+- pod hostname `runtime-zzxozsypekjssktu-948747c8b-29db8`; snapshot UTC `2026-11-10T22:22:25Z`.
+- `HEAD=bc919d9d386a1cbb9428be31797418bd6af9e5af`; `origin/work` same; tree clean.
+- caps: `CapPrm=CapEff=0000000000000000`; `CapBnd=000001ffffffffff`.
+- ifaces `lo`/`eth0`; default route via `169.254.1.1`; `ip_forward=1`.
+- tools present: `gcc g++ make curl wget git unshare nsenter nft iptables python3`;
+  absent: `go gofmt cmake ip tcpdump tshark socat nc`.

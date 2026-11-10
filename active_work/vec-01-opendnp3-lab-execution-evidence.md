@@ -1409,3 +1409,37 @@ truncation bound, multi-header mixed-qualifier no-loss) and `internal/outstation
 independent-peer re-verification (unmodified Go master returning `BI[0]=true / AI[0]=2300 / CT[0]=42`)
 was **NOT executed** here (no verified pinned peer/isolated lab in this runner). Gate D unchanged
 (5 cases; D1 header-CRC only) and Gate E `EVIDENCE_INCOMPLETE`. `TASK_BLOCKED` retained.
+
+---
+
+## §41 — Owner-approved final post-fix verification: fail-closed STOP (2026-11-11)
+
+Authorization: "Owner-approved final VEC-01 verification — post-PR #25 peer retest, payload CRC and
+durable capture". Executed under `operation cwal` only, on permanent `work`; evidence-only.
+
+**CWAL readiness/provenance — PASS.** Six markers identical; `HEAD == origin/work == bc919d9`;
+clean tree; `cwal-check.sh` → `CWAL CHECK OK`; merged PR #25 main merge commit `363d3cf` is an
+ancestor of `HEAD`.
+
+**Gate E — FAIL (decisive, fail-closed).** No durable artifact destination exists outside Git and
+outside the disposable runner filesystem: `/workspace/vec01-lab-artifacts`, `/workspace/vec01` and
+`/tmp/vec01-lab` all **ABSENT**; no persistent volume or object-store credentials present. Item 5
+requires a retrievable durable destination **before** the lab run → **`EVIDENCE_INCOMPLETE`; STOP**.
+
+**Gate B — FAIL (decisive, fail-closed).** No `CAP_NET_ADMIN` (`CapPrm=CapEff=0`);
+`unshare(CLONE_NEWNET)` → `EPERM`; `unshare --user --map-root-user --net` fails at `uid_map`
+(`Operation not permitted`); `ip` **MISSING**; no netns dirs; only `lo`/`eth0`; default route
+`169.254.1.1`, `ip_forward=1`, internet egress present (routed k8s pod already classified FAIL by the
+2026-11-08 correction). The required isolated two-netns lab cannot be built/proven → **`NOT_TESTED`**.
+
+**Gate C / D / E execution — NOT_REACHED.** No TCP connect, no DNP3 frame, no CROB, no capture, no
+`.vec`. Historical §39 Gate D (5 cases; D1 header-CRC only) and §40 preserved unchanged; the
+payload-block-CRC negative remains **NOT_TESTED**.
+
+**Go gates — NOT_RUN.** `go`/`gofmt` **MISSING**, no module cache, no `vendor/`, `cmake` **MISSING**;
+dependency download/network is not authorized by the addendum. `cwal-check.sh` **PASS** (state only).
+
+**Disposition: `VEC-01_FINAL_VERIFICATION_STOPPED_FAIL_CLOSED`.** `EVIDENCE_READY_FOR_CHECK` not met.
+No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure. **`TASK_BLOCKED` retained;
+VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** Owner direction needed:
+durable artifact destination + runner with `CAP_NET_ADMIN`, Go toolchain and pinned peer.
