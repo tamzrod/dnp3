@@ -3215,6 +3215,8 @@ interoperability claim is **not made**.
 - Two-namespace isolation: verified statically (single veth, no default route, forwarding
   off).
 - Go side untouched; `go build ./...` exit 0.
+- The two lab namespaces were **torn down at the end of this bounded pass**; no listener,
+  route or namespace persists (consistent with the non-durability recorded in §30).
 - **No protocol execution occurred.** Gate B and the CURRENT remain **`TASK_BLOCKED`** at
   the human-reviewer gate. No Gate C/D/E, PR, merge, `main` push, archive, promotion,
   self-signoff or R4 closure.
