@@ -1346,3 +1346,33 @@ No PR, merge, `main` push, archive, promotion, self-signoff, Gate B reviewer sig
 Gate C/D/E closure or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**;
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN** pending
 separate independent acceptance.
+
+---
+
+## §39 — Gates C/D/E completion campaign (owner-authorized, 2026-11-10) — STOP / PUSHBACK
+
+Baseline `work` @ `c38a323`; Go 1.22.12; `GOPROXY=off`; peer pinned OpenDNP3 3.1.2 (independent C++).
+
+| Gate | Scope | Verdict |
+|------|-------|---------|
+| A | pinned peer source/deps/binary SHA-256 | PASS |
+| B | objective fail-closed isolation (netns + veth, no default route, forwarding off, no hardware I/O, listener `10.77.0.2:20000`) | PASS |
+| C | protocol exchange (link reset, Class-0 READ, DIRECT_OPERATE CROB `SUCCESS(0)` + `BO[0]=true` readback, clean close) | PASS |
+| C | Class-0 static point decode (G1V1/G30V1/G20V1) | **FAIL — new v0 defect** |
+| D | D1 bad CRC, D2 wrong link address, D3 TCP drop, D4 CROB rejection, D5 truncated capture | PASS (5/5) |
+| E | faithful `.vec` derived from observed bytes; durable store | `.vec` PASS; store **EVIDENCE_INCOMPLETE** |
+| — | mandatory Go gates (`gofmt`/`diff --check`/`vet`/`build`/`test`/`-race`/`verify-mvp`/`verify-external-mvp`/`cwal-check`) | PASS |
+
+**New decisive defect.** The peer's conformant Class-0 RESPONSE uses object-header qualifier `0x00`
+(IEEE 1815 `UINT8_START_STOP`, 8-bit start/stop). `internal/al/object_header.go` labels `0x00` as
+`QualIndex8`, and the repo outstation also emits `0x00` as a count, so self-interop masks the bug.
+Against the independent peer the unmodified master decodes `BI=0 AI=0 CT=0` while the wire carries
+`BI[0]=true / AI[0]=2300 / CT[0]=42`. Repro bytes and logs: `docs/verification/VEC-01-LAB-EXEC-001.md` §39.3.
+
+**Evidence (outside Git, ephemeral).** `/workspace/vec01/run-gate-c/gate-c.pcap`
+(`19201f46…70ad0d`), `/workspace/vec01/run-defect/defect-confirm.pcap` (`b6d2d35c…440bb`),
+`/workspace/vec01/run-gate-e/VEC-01-lab-gate-c-class0-crob.vec` (10 CRC-verified link frames).
+
+**Non-claims.** Not Gate C/D/E closure, not R4 closure, not certification, not a general
+interoperability claim. No fix applied (outside allowlist); a scratch-only correction is recorded as
+evidence only. `TASK_BLOCKED` retained; a separately human-promoted corrective task is required.

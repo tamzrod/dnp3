@@ -3738,3 +3738,135 @@ No PR, merge, `main` push, archive, promotion, self-signoff, Gate B reviewer sig
 Gate C/D/E closure or field I/O. Gate B and the CURRENT remain **`TASK_BLOCKED`**;
 **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN** pending
 separate independent acceptance.
+
+---
+
+### 39. Owner-approved Gates C/D/E completion campaign — isolated OpenDNP3 3.1.2 execution; NEW decisive Class-0 qualifier defect; STOP / PUSHBACK (append-only, 2026-11-10)
+
+**Authorization.** Owner-approved "VEC-01 Gates C/D/E completion campaign after merged PR #24"
+(section 681 of `workflow/active_work/VEC-01-LAB-EXEC-001.md`), executed under `operation cwal`
+only, on permanent `work`. This section is append-only; no historical section was modified.
+
+**Baseline.** `HEAD=c38a323c3bfe0dc5703c940ba4c238f68ba51fd3`, branch `work`, clean tree,
+`bash scripts/cwal-check.sh` → `CWAL CHECK OK: CURRENT=VEC-01-LAB-EXEC-001 branch=work`.
+Toolchain: `go1.22.12 linux/amd64` (sha256-verified official tarball). `GOPROXY=off` for all
+Go work. Peer: pinned OpenDNP3 3.1.2 lab build (independent C++ stack).
+
+#### 39.1 Gate A — pinned peer artifacts (PASS)
+
+SHA-256 re-verified against expected: `opendnp3-3.1.2.tar.gz 183cc292…a36ff2`,
+`asio-1-16-0.zip 18883c35…92e928c5`, `exe4cpp.zip 2a8a2c7d…48db6c`, `ser4cpp.zip 5a78f83d…76762f6e`.
+Lab patch `b3-lab-demo.patch` (sha256 `692e252c…f7f3ebe`) applied to
+`cpp/examples/outstation/main.cpp` → digest `4380b16f75d83192a2ffc55f9cb4f85aae520cf4b81f3a457e180a3a1aa41afc`.
+Offline build: `outstation-demo` sha256 `6fee5bdca2cff8119b548c0aeef774d960fb498a2f92fc7175300cab79364911`,
+`libopendnp3.a` sha256 `55795b645140576bc8b81a69a3fa570838ec82978667fc1c01ebb9964307af37`.
+
+#### 39.2 Gate B — objective fail-closed isolation (PASS)
+
+Re-verified at campaign time (no reviewer signature required per the 2026-11-08 objective-gate correction):
+
+| Check | Measured |
+|-------|----------|
+| Namespaces | `vec01-master` (id 1), `vec01-outstation` (id 2), one internal veth pair (`veth-m`/`veth-o`) |
+| Addresses | master `10.77.0.1/24`, outstation `10.77.0.2/24` |
+| Default route | none in either namespace (only `10.77.0.0/24 … scope link`) |
+| Forwarding | `net.ipv4.ip_forward=0`, `net.ipv6.conf.all.forwarding=0` in both |
+| IPv6 | link-local only; no global route |
+| Hardware I/O | `/dev/ttyS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/mem`, `/dev/port` absent |
+| Listener bind | outstation listening on `10.77.0.2:20000` only (verified with `ss -ltn`) |
+| Master binary | `vec01-master` sha256 `b91b914b61c5370486b5ee43aee712b9f51972dda38c1abbf21f1a356ad241bf` (built from `work`) |
+
+#### 39.3 Gate C — positive matrix (protocol exchange PASS; Class-0 point decode FAIL)
+
+Raw capture started before connection and stopped after close
+(`/workspace/vec01/run-gate-c/gate-c.pcap`, sha256 `19201f4695e7a910b2148604e5a21d56188da85eb71bcb7c7952604ecc70ad0d`).
+Independent decode (CRCs recomputed over header and every 16-byte payload block; all valid):
+
+- TCP connect `10.77.0.1:33588 → 10.77.0.2:20000` established.
+- Reset-link-states (`PRI_RESET_LINK_STATES`, ctrl `0xC0`, src 3 → dst 4) and its ACK; link-status request/response.
+- Confirmed user data READ (`0x01`) with three all-objects headers `G1V0 / G20V0 / G30V0`.
+- RESPONSE (`0x81`) IIN `90 00`; DIRECT_OPERATE (`0x05`) CROB `G12V1` qualifier `0x28`, op code `0x03` (LATCH_ON);
+  operate RESPONSE status byte `0x00` = SUCCESS; peer log `[LAB] BO[0] direct-operate LATCH_ON -> state=true`.
+- Bounded clean close.
+
+**Gate C (e) passes** (control status `SUCCESS(0)` + independent simulated `BO[0]=true` readback; TCP ACK/exit-0 alone was not counted).
+
+**Gate C (c)/(d) FAIL — NEW decisive defect.** The peer's conformant Class-0 RESPONSE object headers use
+qualifier `0x00` (IEEE 1815 `UINT8_START_STOP`):
+
+```
+O->M RESPONSE data: c0 81 90 00 | 01 01 00 00 00 | 01 01 02 00 01 09 | 1e 01 00 00 09 01 … | 14 01 00 00 09 01 …
+                                   G1 V1 Q00 start=0 stop=0   G1V2 Q00 start=0 stop=1   G30V1 Q00 start=0 stop=1   G20V1 Q00 start=0 stop=1
+```
+
+Running the **unmodified `work` master** against this peer produced
+`RESULT read_ok IIN=90 00 BI=0 AI=0 CT=0` (`/workspace/vec01/run-defect/defect-confirm.log`,
+pcap sha256 `b6d2d35c2269caed1112681ca9438e2b87fd8d2900cd9966b3ed55ce2aa440bb`). The expected
+ground truth `BI[0]=true / AI[0]=2300 / CT[0]=42` is present on the wire (bytes `… 01 01 02 00 01 09`
+then `… FC 08 00 00 …` then `… 2A 00 00 00 …`) but **no points are decoded**.
+
+Root cause: `internal/al/object_header.go` defines `QualIndex8 uint8 = 0x00`, i.e. it maps the
+IEEE 1815 `UINT8_START_STOP` code (`0x00`) to the 8-bit-index qualifier. The repo's own outstation
+compounds this: `buildBinaryInputData`/`buildAnalogInputData`/`buildCounterData` emit qualifier `0x00`
+with a **count** octet for the non-packed legacy path, so the defect is masked by self-interop and
+only surfaces against an independent peer. In-tree reproduction with the exact wire bytes
+(scratch, untracked): `parseBinaryInputs`/`parseAnalogInputs`/`parseCounters` all return 0 items.
+
+#### 39.4 Gate D — five lab-only negatives (all PASS)
+
+Each with a fresh run ID, original capture, bounded deadline, isolated deterministic input. Faults were
+injected by a lab-only TCP proxy inside `vec01-master` (never a production/OT destination).
+
+| ID | Fault | Observed | Verdict |
+|----|-------|----------|---------|
+| D1 | Corrupt link header CRC on the O->M response frame | master `read failed: operation deadline exceeded`; no false success, no hang; capture `d1.pcap` | PASS |
+| D2 | Rewrite O->M link SRC to 5 (header CRC fixed) | `invalid reset link ACK: ACK source address=0x0005, expected outstation 0x0004`; connect refused, bounded | PASS |
+| D3 | TCP drop mid-exchange | `failed to receive reset acknowledgment: transport closed`; classified bounded failure, no deadlock; `d3.pcap` | PASS |
+| D4 | Outstation rejects CROB at index 1 (`0x01`) | RESPONSE status byte `0x01` (NOT_SUPPORTED) → public `ControlNotSupported`; exactly one control send, no false `ControlSuccess`; `d4c.pcap` | PASS |
+| D5 | Deliberately truncated derived capture | classified `INCOMPLETE / REJECT AS EVIDENCE` (packet 4 declares 74 bytes, 58 remain) | PASS |
+
+No original captured evidence was altered; D5 used a separate derived file.
+
+#### 39.5 Mandatory Go regression gates (all PASS, exact `work` tree @ `c38a323`)
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Format | `gofmt -l .` | empty, exit 0 |
+| Whitespace | `git diff --check` | exit 0 |
+| Vet | `go vet ./...` | exit 0 |
+| Build | `go build ./...` | exit 0 |
+| Test | `go test ./... -count=1` | all packages `ok` (incl. `internal/master`, `pkg/dnp3/master`, `test/integration`) |
+| Race | `go test -race ./internal/outstation/... -count=1` | `ok` |
+| MVP gate | `./scripts/verify-mvp.sh` | `verify-mvp: OK` |
+| External-MVP gate | `./scripts/verify-external-mvp.sh` | `OK` (Tiers 1–3); advisory: no third-party capture proof |
+| CWAL | `bash scripts/cwal-check.sh` | `CWAL CHECK OK` |
+
+Note: the in-repo external-MVP Tiers 1–3 are self-interop; they do **not** constitute independent third-party proof.
+
+#### 39.6 Gate E — faithful `.vec` derived; durable store INCOMPLETE
+
+`.vec` derived strictly from observed frame bytes per `active_work/testdata/external/FORMAT.md`
+(no synthetic/placeholder bytes): `/workspace/vec01/run-gate-e/VEC-01-lab-gate-c-class0-crob.vec`
+(10 link frames, chronological; each header and payload-block CRC verified; link payload ≤250).
+Raw captures and logs retained outside Git at `/workspace/vec01/…`.
+
+**Durable-store status: `EVIDENCE_INCOMPLETE`.** `/workspace` is an ext4 volume but is an ephemeral
+runner mount (`/dev/nvme0n2`); no independently verified cross-runner persistent, access-controlled
+artifact destination is available in this runner. Per the owner correction (repository is the durable
+store) the derived `.vec`, hashes and results are recorded here in Git, but raw `.pcap` is **outside Git**
+and therefore not durably retained. This is reported, not rounded up.
+
+#### 39.7 Disposition — STOP / PUSHBACK
+
+- Gate B PASS; Gate C protocol exchange PASS; **Gate C Class-0 point decode FAIL** due to a newly
+  demonstrated v0 defect (qualifier `0x00` mislabeled as `QualIndex8`; outstation also emits it as a count).
+- Gate D PASS; Gate E `.vec` faithful but durable store `EVIDENCE_INCOMPLETE`; all mandatory Go gates PASS.
+- The defect is outside this campaign's allowlist (no Go source/fixture edits). Per the authorization
+  ("STOP/PUSHBACK for a newly demonstrated implementation defect, not an unauthorized fix"), **no fix was
+  applied**. A scratch-only (untracked) correction changing `QualIndex8` to `0x17`, adding
+  `QualStartStop8=0x00` and wiring `sequentialRange` for `0x00` decodes `BI[0]=true` (scratch test PASS);
+  it is recorded as evidence only and is **not** committed.
+
+**`TASK_BLOCKED` retained. VEC-01 NOT CLOSED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+No PR, merge, `main` push, archive, promotion, self-signoff or R4/Gate closure. Requires a separately
+human-promoted corrective task for the Class-0 qualifier defect.
