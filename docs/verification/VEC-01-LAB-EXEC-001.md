@@ -4870,3 +4870,87 @@ default route and cannot resolve external hosts (proven in §51.2), so it is unr
 listener was verified to bind only `10.77.0.2:20000` and was closed. Next authorized action: **Gate C**
 (positive independent-wire re-test). `TASK_BLOCKED` retained; independent third-party interoperability
 NOT PROVEN.
+
+---
+
+### 52. Post-corrective re-test — Gate C: positive independent-wire re-test (2026-11-11)
+
+Authorization: same owner addendum as §50/§51. Executed under `operation cwal` on permanent `work`;
+six authority markers unchanged; `bash scripts/cwal-check.sh` **OK**. This is the **new post-correction
+execution**, not the prior §44 failed run. Environment re-verified: Gate B topology still up; no
+listener before start; bounded 30 s master deadline; **exactly one** Class-0 READ and **exactly one**
+Direct-Operate (verified below) — no blind retry.
+
+#### 52.1 Original lab-only PCAP
+
+`tcpdump` on `veth-o` in `vec01-outstation`, started **before** TCP connect and stopped after close.
+
+| Item | Value |
+|------|-------|
+| Path (lab) | `/capture/gatec.pcap` (bind mount `lab/vec01/capture/`, untracked by design) |
+| Size | 2163 bytes |
+| SHA-256 | `38630381a0c4c31a6efee94119c79c8c0f970c5df7264f99da14181bc3f7f7d2` |
+
+#### 52.2 Independent decode — distinct DNP3 dissector (Wireshark/tshark 4.4.19, host)
+
+tshark decodes the full link-reset → READ → RESPONSE → Direct-Operate → RESPONSE exchange
+(`DNP 3.0 90 Read, Binary Input, Counter, Analog Input`; `DNP 3.0 229 Response`; `DNP 3.0 101 Direct
+Operate`; `DNP 3.0 103 Response`). Key field-level observations:
+
+- **READ request** (frame 10) application bytes `c0 c0 01 01 00 06 14 00 06 1e 00 06` = G1V1 any/all,
+  G20V1 any/all, G30V1 any/all (Class-0 G60V1 all-objects read).
+- **RESPONSE** (frame 13) object headers, in order, decoded by tshark:
+  `Obj:01,Var:01` (packed BI, 1 pt) → `Point 0, Value: 1 (On)`;
+  `Obj:01,Var:02` (BI with flags, 9 pts) → `Offline, Restart, 0`;
+  `Obj:30,Var:01` (32-bit AI, 10 pts) → **`Point 0 (Quality: Online), Value: 2300`**;
+  `Obj:20,Var:01` (32-bit counter, 10 pts) → **`Counter 42`**.
+- **Direct-Operate RESPONSE** (frame 18): `Obj:12,Var:01` CROB, 2-octet index prefix, count 1,
+  `Point Number 0 [Latch On]`, `Control Status: Req. Accepted/Init/Queued (0)` = **SUCCESS**.
+
+The G30V1 object header `1E 01 00 00 09` uses start/stop qualifier `0x00`; the first AI object is the
+flags-first pair `01 FC 08 00 00` = flags `0x01` (ONLINE) then int32 LE `2300` — the corrected field
+order. The G20V1 first counter object `01 2A 00 00 00` = flags `0x01` (ONLINE) then uint32 LE `42`.
+
+#### 52.3 Go master output (same exchange)
+
+```
+connected
+IIN: 90 00
+  BI[0] = true (quality ONLINE)
+  AI[0] = 2300 (quality ONLINE)
+  CT[0] = 42 (quality ONLINE)
+operate status: 0
+```
+
+`operate status: 0` = `CommandStatus::SUCCESS`. Peer log confirms the control actually mutated the
+in-memory output: `[LAB] BO[0] direct-operate LATCH_ON -> state=true`.
+
+#### 52.4 Locked v0 acceptance — result
+
+| Criterion | Required | Observed (master + tshark + peer log) | Result |
+|-----------|----------|----------------------------------------|--------|
+| BI[0] | `true` | `true` / tshark `On` | **PASS** |
+| AI[0] | `2300` ONLINE | `2300` (ONLINE) / tshark `2300 (Quality: Online)` | **PASS** |
+| CT[0] | `42` ONLINE | `42` (ONLINE) / tshark `Counter 42` | **PASS** |
+| Command status | SUCCESS | master `0` / tshark `Req. Accepted/Init/Queued (0)` | **PASS** |
+| Simulated BO[0] | `true` | peer `state=true` (memory write+read-back) | **PASS** |
+| Historical misreads absent | no `588801`/`10753` | neither observed | **PASS** |
+| Single control, no retry | exactly one Direct-Operate | tshark count of `dnp3.al.func==5` = 1 | **PASS** |
+
+**Gate C PASS** on all locked v0 criteria. The corrected values `2300` and `42` are observed on the
+wire and decoded independently — not `588801`/`10753`.
+
+#### 52.5 Out-of-scope observation (recorded, not fixed, not claimed)
+
+The peer additionally served `BI[1..9]` as **G1V2** (Binary Input With Flags, flags octet `0x02` =
+offline/restart). The Go master reported these as `true`/ONLINE; tshark correctly shows them as
+`Offline, Restart, Value: 0`. This is the already-classified `G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`
+(§45.5/§47): the G1V2 flags octet is consumed as the point value. Per the CURRENT this is documented
+as **OUT_OF_SCOPE / possible compatibility limitation**, **not** silently fixed and **not** claimed
+supported. The locked v0 G1V1 BI[0] acceptance is unaffected and PASSES.
+
+#### 52.6 Gate C disposition
+
+**Gate C PASS.** PCAP identity/digest recorded above; durable Git evidence is produced at Gate E. Next
+authorized action: **Gate D** (negative payload-block CRC). `TASK_BLOCKED` retained; independent
+third-party interoperability NOT PROVEN.

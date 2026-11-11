@@ -992,3 +992,22 @@ observed: IPv4 route only `10.77.0.0/24`, IPv6 only `fe80::/64`, per-ns interfac
 exchange. Host has no `10.77.0.0/24` route and cannot reach `10.77.0.2`. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §51. Next authorized action: **Gate C**. `TASK_BLOCKED`
 retained; independent third-party interoperability NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — Gate C: positive independent-wire re-test (2026-11-11)
+Same owner addendum; `operation cwal` on permanent `work`; six authority markers unchanged;
+`scripts/cwal-check.sh` OK. **Gate C — PASS** on all locked v0 criteria. New post-correction run, not
+the prior §44 failed run. No blind retry: exactly one Class-0 READ and one Direct-Operate in the PCAP.
+
+Original lab-only PCAP `/capture/gatec.pcap` (2163 bytes, sha256 `38630381a0c4…f7f7d2`), captured
+before connect through close. Independently decoded with **tshark 4.4.19** (distinct dissector) plus the
+pinned peer log: READ `c0 c0 01 01 00 06 14 00 06 1e 00 06` (G1V1/G20V1/G30V1 all-objects); RESPONSE
+`Obj:30,Var:01` **AI[0]=2300 (Quality: Online)**; `Obj:20,Var:01` **Counter 42**; `Obj:01,Var:01`
+BI[0]=On; Direct-Operate RESPONSE `Obj:12,Var:01` CROB **Control Status 0 (SUCCESS)**; peer log
+`[LAB] BO[0] direct-operate LATCH_ON -> state=true`. Go master output: `BI[0]=true`, `AI[0]=2300
+(ONLINE)`, `CT[0]=42 (ONLINE)`, `operate status: 0`. Corrected values `2300`/`42` observed on wire, not
+`588801`/`10753`. Out-of-scope: peer also served `BI[1..9]` as G1V2; master misreads it — recorded as
+`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`, not fixed, not claimed. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §52. Next authorized action: **Gate D** (negative
+payload-block CRC). `TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
