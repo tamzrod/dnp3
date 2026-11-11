@@ -68,6 +68,16 @@ type AnalogCommandValue struct {
 
 func (a *AnalogCommandValue) isCommandValue() {}
 
+// AnalogInt32CommandValue represents a Group 41 Variation 1 (32-bit signed
+// integer) analog output command value. It is the typed, exactly-representable
+// carrier for the G41V1 path (an int32 setpoint round-trips through float64, but
+// a typed value avoids any implicit conversion at the API boundary).
+type AnalogInt32CommandValue struct {
+	Value int32
+}
+
+func (a *AnalogInt32CommandValue) isCommandValue() {}
+
 // ControlStatus represents the status of a control command
 type ControlStatus uint8
 
@@ -177,13 +187,31 @@ func NewBinaryControl(index uint16, value bool, cmdType CommandType) *ControlOut
 
 // NewAnalogControl creates a new analog control command (Group 41).
 // Supported-profile: Reject — Group 41 and related analog-output variations are
-// out of scope for v0.
+// out of scope for v0. Its Variation 1 label is legacy/incorrect; use
+// NewAnalogInt32Control for the verified Group 41 Variation 1 path.
 func NewAnalogControl(index uint16, value float64, cmdType CommandType) *ControlOutput {
 	return &ControlOutput{
 		Group:       41, // Group 41 = Analog Output
 		Variation:   1,  // Variation 1 = Analog Output (32-bit)
 		Index:       index,
 		Value:       &AnalogCommandValue{Value: value},
+		CommandType: cmdType,
+	}
+}
+
+// NewAnalogInt32Control creates a Group 41 Variation 1 (32-bit signed integer)
+// analog output command. Per the verified independent OpenDNP3 3.1.2 reference
+// (see docs/verification/AO-001.md), G41V1 is a signed int32 serialized
+// little-endian followed by one status octet.
+// Supported-profile: Reject until AO-004 independent peer verification and
+// AO-005 approved supported-profile changes. AO-002 implements only the
+// DirectOperate-with-response path for G41V1.
+func NewAnalogInt32Control(index uint16, value int32, cmdType CommandType) *ControlOutput {
+	return &ControlOutput{
+		Group:       41, // Group 41 = Analog Output
+		Variation:   1,  // Variation 1 = 32-bit signed integer
+		Index:       index,
+		Value:       &AnalogInt32CommandValue{Value: value},
 		CommandType: cmdType,
 	}
 }

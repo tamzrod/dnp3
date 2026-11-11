@@ -1096,3 +1096,28 @@ representable by float64; group/variation/qualifier notation corrected in the go
   protocol execution **NOT_RUN** (documentation-only closure).
 Next: **STOP after this transition checkpoint.** AO-002 implementation begins only on a *separate*
 subsequent `operation cwal` invocation. No PR/merge/`main` push.
+
+---
+
+### AO-002 implementation checkpoint — 2026-11-11 (G41V1 int32 Direct Operate, first slice)
+Executed on a separate `operation cwal` invocation after the owner-approved transition. Six markers
+read `Package: AO-002`, `Branch: work`, `CURRENT: AO-002`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`
+at baseline `1e4a0af`. Scope: **Group 41 Variation 1 (signed int32) Direct Operate with response
+only**; V2–V4, SBO, Direct-Operate-No-Response and G42–G44 are **not** implemented or advertised.
+- Master encoder now emits conformant G41V1 (`29 01 28 01 00` + index LE + int32 LE + `00`) and
+  rejects other G41 variations and non-exact/out-of-range values before sending. Independent
+  literals verified: `2300`@0 = `29 01 28 01 00 00 00 FC 08 00 00 00`; `-1` = `29 01 28 01 00 00 00 FF FF FF FF 00`.
+- Master status parser is group-aware (G12V1 + G41V1) and requires the echoed group/variation/index
+  to match; absent, truncated, malformed, mismatched or non-SUCCESS statuses are never success.
+- Outstation parses G41V1 with exact bounded length, rejects unsupported variations/qualifiers and
+  malformed records **without calling the host handler**, and echoes the object with a status octet.
+- Public bridge carries a typed `AnalogInt32CommandValue` with `DirectOperate` semantics; public
+  master gate fails closed (only G12V1 + G41V1 admitted) before any wire traffic.
+- Tests added: master golden/rejection/status-matrix, outstation decode/rejection/echo, public gate
+  and status surface, bridge semantics, typed constructor. G12V1 regression suite unchanged.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` on touched packages PASS, `git diff --check` PASS.
+  `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback tiers; not independent peer proof).
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED** pending AO-004
+  independent verification and AO-005 approved profile changes. Evidence: `docs/verification/AO-002.md`.
+Next: **STOP for independent CHECK.** No AO-003 promotion, no PR/merge, no `main` push, no release.

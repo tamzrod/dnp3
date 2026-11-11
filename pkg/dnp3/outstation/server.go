@@ -514,40 +514,59 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 
 // WriteAnalogOutput handles writing an analog output from the master.
 // Converts internal value to public ControlOutput and delegates to commandHandler.
+// AO-002: Group 41 Variation 1 (int32) is carried as a typed
+// AnalogInt32CommandValue with DirectOperate semantics (the supported mode);
+// SelectThenOperate is not falsely presented.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
 	if h.commandHandler == nil {
 		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert interface{} to float64
-	var floatValue float64
-	switch v := value.(type) {
-	case int16:
-		floatValue = float64(v)
-	case uint16:
-		floatValue = float64(v)
-	case int32:
-		floatValue = float64(v)
-	case uint32:
-		floatValue = float64(v)
-	case float32:
-		floatValue = float64(v)
-	case float64:
-		floatValue = v
-	default:
-		floatValue = 0
-	}
-
-	debugLog("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
-
 	cmd := &types.ControlOutput{
 		Group:       41, // Analog Output
 		Variation:   variation,
 		Index:       index,
-		Value:       &types.AnalogCommandValue{Value: floatValue},
-		CommandType: types.SelectThenOperate,
+		CommandType: types.DirectOperate,
 	}
+
+	if variation == 1 {
+		// G41V1: signed int32. The value arrives as int32 from the outstation
+		// G41V1 parser; int16 is also accepted for direct bridge callers.
+		var intVal int32
+		switch v := value.(type) {
+		case int32:
+			intVal = v
+		case int16:
+			intVal = int32(v)
+		default:
+			return fmt.Errorf("unsupported G41V1 analog output type: %T", value)
+		}
+		cmd.Value = &types.AnalogInt32CommandValue{Value: intVal}
+	} else {
+		// Out of AO-002 scope (only Variation 1 is implemented). Retain the
+		// generic float64 carrier for API continuity.
+		var floatValue float64
+		switch v := value.(type) {
+		case int16:
+			floatValue = float64(v)
+		case uint16:
+			floatValue = float64(v)
+		case int32:
+			floatValue = float64(v)
+		case uint32:
+			floatValue = float64(v)
+		case float32:
+			floatValue = float64(v)
+		case float64:
+			floatValue = v
+		default:
+			floatValue = 0
+		}
+		cmd.Value = &types.AnalogCommandValue{Value: floatValue}
+	}
+
+	debugLog("WriteAnalogOutput: index=%d, variation=%d", index, variation)
 
 	status, err := h.commandHandler.HandleAnalogCommand(cmd)
 	if err != nil {

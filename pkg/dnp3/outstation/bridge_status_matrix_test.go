@@ -64,6 +64,65 @@ func TestBridgeAnalogOutputNonSuccessStatusIsFailure(t *testing.T) {
 	}
 }
 
+// aoRecordingHandler records the ControlOutput the analog bridge builds.
+type aoRecordingHandler struct {
+	got *types.ControlOutput
+}
+
+func (h *aoRecordingHandler) HandleBinaryCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
+	s := types.ControlSuccess
+	return &s, nil
+}
+
+func (h *aoRecordingHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*types.ControlStatus, error) {
+	h.got = cmd
+	s := types.ControlSuccess
+	return &s, nil
+}
+
+// TestBridgeAnalogOutputG41V1Semantics locks the AO-002 bridge contract: a G41V1
+// analog output is carried as a typed AnalogInt32CommandValue with DirectOperate
+// semantics (not the previously hard-coded SelectThenOperate).
+func TestBridgeAnalogOutputG41V1Semantics(t *testing.T) {
+	h := &aoRecordingHandler{}
+	d := &internalDataHandler{commandHandler: h}
+	if err := d.WriteAnalogOutput(7, int32(2300), 1); err != nil {
+		t.Fatalf("WriteAnalogOutput G41V1: %v", err)
+	}
+	if h.got == nil {
+		t.Fatal("handler not called")
+	}
+	if h.got.Group != 41 || h.got.Variation != 1 {
+		t.Fatalf("group/variation = %d/%d, want 41/1", h.got.Group, h.got.Variation)
+	}
+	if h.got.CommandType != types.DirectOperate {
+		t.Fatalf("CommandType = %v, want DirectOperate (not SelectThenOperate)", h.got.CommandType)
+	}
+	if h.got.Index != 7 {
+		t.Fatalf("index = %d, want 7", h.got.Index)
+	}
+	v, ok := h.got.Value.(*types.AnalogInt32CommandValue)
+	if !ok {
+		t.Fatalf("value type = %T, want *types.AnalogInt32CommandValue", h.got.Value)
+	}
+	if v.Value != 2300 {
+		t.Fatalf("value = %d, want 2300", v.Value)
+	}
+}
+
+// TestBridgeAnalogOutputG41V1RejectsWrongType asserts a G41V1 write with a value
+// that is not an int32/int16 is rejected before reaching the handler.
+func TestBridgeAnalogOutputG41V1RejectsWrongType(t *testing.T) {
+	h := &aoRecordingHandler{}
+	d := &internalDataHandler{commandHandler: h}
+	if err := d.WriteAnalogOutput(0, float64(1.5), 1); err == nil {
+		t.Fatal("expected rejection for a non-integer G41V1 value")
+	}
+	if h.got != nil {
+		t.Fatal("handler invoked for a rejected G41V1 value")
+	}
+}
+
 // crobRecordingHandler records the boolean value the bridge maps from the
 // CROB operation type.
 type crobRecordingHandler struct {
