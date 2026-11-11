@@ -1,9 +1,9 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: AO-001
+Package: AO-002
 Branch: work
-CURRENT: AO-001
+CURRENT: AO-002
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
@@ -1116,3 +1116,23 @@ G41 remains UNSUPPORTED). Baseline `199b0da`. Six markers unchanged; `scripts/cw
 - Divergences D1–D7 recorded (highest: D2 G41 big-endian on both sides = silent/loopback-false-pass;
   D3 no group gate; D4 G41 response unparseable). Full contract + test matrix + AO-002 sequence in §5–§8.
 Checkpoint `d8e4400` (remote work, verified). Next: **STOP for independent read-only CHECK**; AO-002 needs its own human promotion. No PR/merge/main.
+
+---
+
+### AO-001 closure / AO-002 activation checkpoint — 2026-11-11 (owner-approved transition)
+Owner addendum (`archive/active-work/AO-001.md`, "Owner-approved closure and AO-002 promotion addendum"):
+"Owner authorizes formal AO-001 closure and AO-002 promotion." Independent read-only CHECK accepted
+AO-001 as a read-only technical contract after documentation corrections at `fab31e3` (int32 exactly
+representable by float64; group/variation/qualifier notation corrected in the golden header example).
+- **AO-001 → CLOSED / TASK_CHECKPOINTED.** Original task archived unchanged at
+  `archive/active-work/AO-001.md` (original requirements + owner authorization preserved). Accepted
+  contract: `docs/verification/AO-001.md` (corrected through `fab31e3`).
+- **AO-002 → CURRENT / TASK_IN_PROGRESS** (owner-approved promotion, not a generic auto-promotion).
+  Staged task `workflow/active_work/AO-002.md` — G41V1 signed int32 Direct-Operate-with-response,
+  first bounded slice. **NOT yet executed in this invocation.**
+- G41 remains **UNSUPPORTED** in `active_work/supported-profile.md` until AO-004 independent peer
+  verification and AO-005 approved profile changes.
+- Transition checks: `git diff --check` PASS, `bash scripts/cwal-check.sh` OK; Go build/tests and
+  protocol execution **NOT_RUN** (documentation-only closure).
+Next: **STOP after this transition checkpoint.** AO-002 implementation begins only on a *separate*
+subsequent `operation cwal` invocation. No PR/merge/`main` push.
