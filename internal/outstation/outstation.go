@@ -1611,19 +1611,26 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			}
 			dataIdx += 11
 
-		case 41: // Analog Output — AO-002 implements only Variation 1 (int32, LE)
-			// G41V1 record: index (already consumed) then a signed int32
-			// little-endian value and one command-status octet.
-			if variation != 1 {
+		case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16), little-endian
+			// G41 record: index (already consumed) then a signed little-endian
+			// value and one command-status octet.
+			width := g41ValueWidth(variation)
+			if width == 0 {
 				o.iin.ParameterError = true
 				return nil, fmt.Errorf("unsupported analog variation: %d", variation)
 			}
-			if dataIdx+5 > len(req.Data) {
+			if dataIdx+width+1 > len(req.Data) {
 				o.iin.ParameterError = true
 				return nil, ErrInvalidRequest
 			}
-			value := int32(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
-			dataIdx += 5
+			var value interface{}
+			switch width {
+			case 4:
+				value = int32(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
+			default: // 2
+				value = int16(uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8)
+			}
+			dataIdx += width + 1
 			if dh, ok := o.data.(DataWriter); ok {
 				if err := dh.WriteAnalogOutput(index, value, variation); err != nil {
 					o.iin.ParameterError = true
@@ -1793,16 +1800,19 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 
 	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, count=%d, valueLen=%d", group, variation, index, count, len(value))
 
-	// AO-002 F3: this first slice supports exactly ONE G41V1 point per Direct
-	// Operate. Validate the count and the record length before any side effect so
-	// a batch, empty or malformed request is rejected without calling the output
-	// handler and without echoing SUCCESS. parseControlObjectHeader discards the
-	// count for G12V1, whose single-point behavior is unchanged and covered by
-	// the existing CROB suite.
-	if group == 41 && variation == 1 && (count != 1 || len(value) != 5) {
-		debugLog("handleDirectOperate: rejecting G41V1 count=%d valueLen=%d", count, len(value))
-		o.iin.ParameterError = true
-		return nil, ErrInvalidRequest
+	// AO-002 F3 / AO-003: this slice supports exactly ONE G41 point per Direct
+	// Operate. Validate the variation, count and record length before any side
+	// effect so a batch, empty, wrong-variation or malformed request is rejected
+	// without calling the output handler and without echoing SUCCESS.
+	// parseControlObjectHeader discards the count for G12V1, whose single-point
+	// behavior is unchanged and covered by the existing CROB suite.
+	if group == 41 {
+		width := g41ValueWidth(variation)
+		if width == 0 || count != 1 || len(value) != width+1 {
+			debugLog("handleDirectOperate: rejecting G41 variation=%d count=%d valueLen=%d", variation, count, len(value))
+			o.iin.ParameterError = true
+			return nil, ErrInvalidRequest
+		}
 	}
 
 	// Execute the control operation directly.
@@ -1835,26 +1845,40 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil,
 	}
-	// G41V1 (AO-002): echo the object with the index, the int32 value and a
-	// command-status octet (SUCCESS here — the handler accepted the value). A
-	// handler refusal returns an error above, which yields an error response the
-	// master classifies as a failure (never success), not an echo.
-	if group == 41 && variation == 1 && len(value) == 5 {
-		resp.Data = buildG41V1EchoObject(index, value)
+	// G41 (AO-002 V1 / AO-003 V2): echo the object with the index, the numeric
+	// value and a command-status octet (SUCCESS here — the handler accepted the
+	// value). A handler refusal returns an error above, which yields an error
+	// response the master classifies as a failure (never success), not an echo.
+	if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
+		resp.Data = buildG41EchoObject(variation, index, value)
 	}
 	return resp, nil
 }
 
-// buildG41V1EchoObject builds the G41V1 response object echoed for a Direct
-// Operate: group(0x29) variation(0x01) qualifier(0x28) count(01 00), then the
-// 16-bit index (LE), the int32 value (LE, taken from the request record) and a
-// SUCCESS command-status octet.
-func buildG41V1EchoObject(index uint16, requestValue []byte) []byte {
-	return []byte{
-		41, 1, 0x28, 0x01, 0x00,
-		byte(index), byte(index >> 8),
-		requestValue[0], requestValue[1], requestValue[2], requestValue[3],
-		0x00, // command status = SUCCESS
+// buildG41EchoObject builds the G41 response object echoed for a Direct Operate:
+// group(0x29) variation qualifier(0x28) count(01 00), then the 16-bit index (LE),
+// the little-endian numeric value (taken from the request record) and a SUCCESS
+// command-status octet. The value width follows the variation (V1 int32 = 4
+// octets, V2 int16 = 2 octets).
+func buildG41EchoObject(variation uint8, index uint16, requestValue []byte) []byte {
+	width := g41ValueWidth(variation)
+	out := []byte{41, variation, 0x28, 0x01, 0x00, byte(index), byte(index >> 8)}
+	out = append(out, requestValue[:width]...)
+	return append(out, 0x00) // command status = SUCCESS
+}
+
+// g41ValueWidth returns the numeric value width in octets for a supported Group
+// 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets). V3/V4 (floating) are not
+// implemented.
+func g41ValueWidth(variation uint8) int {
+	switch variation {
+	case 1:
+		return 4 // int32
+	case 2:
+		return 2 // int16
+	default:
+		return 0
 	}
 }
 
@@ -1878,21 +1902,29 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
 
-	case 41: // Analog Output — AO-002 implements only Variation 1 (int32, LE)
-		// G41V1 object: signed int32 little-endian value then one command-status
-		// octet. Reject any other variation and any wrong length rather than
-		// falling back to a guessed decode.
-		if variation != 1 {
+	case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16), little-endian
+		// G41 object: signed little-endian value then one command-status octet.
+		// Reject any other variation and any wrong length rather than falling back
+		// to a guessed decode.
+		width := g41ValueWidth(variation)
+		if width == 0 {
 			debugLog("executeControl: unsupported G41 variation %d", variation)
 			return ErrInvalidRequest
 		}
-		if len(value) != 5 {
-			debugLog("executeControl: G41V1 value must be 5 bytes (int32+status), got %d", len(value))
+		if len(value) != width+1 {
+			debugLog("executeControl: G41 variation %d value must be %d bytes, got %d", variation, width+1, len(value))
 			return ErrInvalidRequest
 		}
-		intVal := int32(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
-		debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
-		return dh.WriteAnalogOutput(index, intVal, variation)
+		switch width {
+		case 4:
+			intVal := int32(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
+			return dh.WriteAnalogOutput(index, intVal, variation)
+		default: // 2
+			intVal := int16(uint16(value[0]) | uint16(value[1])<<8)
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
+			return dh.WriteAnalogOutput(index, intVal, variation)
+		}
 
 	default:
 		debugLog("executeControl: unknown group %d", group)

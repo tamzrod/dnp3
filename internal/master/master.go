@@ -2095,13 +2095,14 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 // response with error IIN is a failure (never success). A truncated G12V1
 // object is a failure (CommandStatusUnknown), never success.
 func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
-	// G41V1 (AO-002): the outstation echoes the object with index, int32 value and
-	// a command-status octet. The status is accepted only when the echoed object
-	// matches the request's group/variation/index exactly; a missing, truncated,
-	// malformed or mismatched object is never success. There is deliberately no
-	// IIN-only success fallback for G41V1: a conformant response carries the object.
-	if group, variation, index, value, ok := controlRequestKey(req); ok && group == 41 && variation == 1 {
-		return g41v1CommandStatus(resp.Data, index, value, resp.IIN)
+	// G41 (AO-002 V1, AO-003 V2): the outstation echoes the object with index, the
+	// numeric value and a command-status octet. The status is accepted only when the
+	// echoed object matches the request's group/variation/index exactly; a missing,
+	// truncated, malformed or mismatched object is never success. There is
+	// deliberately no IIN-only success fallback for G41: a conformant response
+	// carries the object.
+	if group, variation, index, value, ok := controlRequestKey(req); ok && group == 41 && g41ValueWidth(variation) != 0 {
+		return g41CommandStatus(resp.Data, variation, index, value, resp.IIN)
 	}
 
 	status := parseCommandStatus(resp.Data)
@@ -2120,12 +2121,14 @@ func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
 	return commandStatusFromIIN(resp.IIN)
 }
 
-// controlRequestKey extracts the group, variation, first index and G41V1 int32
-// value from a control request APDU's object data (the request header built by
-// buildControlRequest). Only the single-point qualifier 0x28 this slice emits is
-// recognized; any other qualifier yields ok=false, so it is never treated as a
-// matching G41V1 request. The value is meaningful only for G41V1 (four
-// little-endian octets at offset 7).
+// controlRequestKey extracts the group, variation, first index and the G41
+// numeric value from a control request APDU's object data (the request header
+// built by buildControlRequest). Only the single-point qualifier 0x28 this slice
+// emits is recognized; any other qualifier yields ok=false, so it is never
+// treated as a matching G41 request. The value is the raw little-endian payload
+// normalized into a uint32 and is meaningful only for the G41 variations this
+// slice emits (four octets for V1, two octets for V2); the comparison width is
+// derived from the variation, not from this field alone.
 func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, value uint32, ok bool) {
 	if req == nil || len(req.Data) < 7 {
 		return 0, 0, 0, 0, false
@@ -2137,20 +2140,46 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 		return 0, 0, 0, 0, false
 	}
 	index = uint16(req.Data[5]) | uint16(req.Data[6])<<8
-	if group == 41 && variation == 1 {
-		if len(req.Data) < 11 {
+	if group == 41 {
+		switch g41ValueWidth(variation) {
+		case 4:
+			if len(req.Data) < 11 {
+				return 0, 0, 0, 0, false
+			}
+			value = uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24
+		case 2:
+			if len(req.Data) < 9 {
+				return 0, 0, 0, 0, false
+			}
+			value = uint32(req.Data[7]) | uint32(req.Data[8])<<8
+		default:
 			return 0, 0, 0, 0, false
 		}
-		value = uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24
 	}
 	return group, variation, index, value, true
 }
 
-// g41v1CommandStatus returns the per-point command status from a G41V1 response
-// object. The response is accepted only when it is structurally exactly one
-// G41V1 record using qualifier 0x28 (16-bit count = 1, 16-bit index) with no
-// surplus bytes or extra records, and the echoed index AND int32 value both
-// match the request. Any deviation yields CommandStatusUnknown (never success).
+// g41ValueWidth returns the numeric value width in octets for a supported Group
+// 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets). V3/V4 (floating) are not
+// implemented.
+func g41ValueWidth(variation uint8) int {
+	switch variation {
+	case 1:
+		return 4 // int32
+	case 2:
+		return 2 // int16
+	default:
+		return 0
+	}
+}
+
+// g41CommandStatus returns the per-point command status from a G41 response
+// object. The response is accepted only when it is structurally exactly one G41
+// record of the requested variation using qualifier 0x28 (16-bit count = 1,
+// 16-bit index) with no surplus bytes or extra records, and the echoed index AND
+// numeric value both match the request. Any deviation yields
+// CommandStatusUnknown (never success).
 //
 // AO-002 F6: when the echoed per-point status is SUCCESS, it is reconciled
 // against the response IIN before SUCCESS is returned. An error-indicating IIN
@@ -2159,8 +2188,8 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 // BadFormat, AlreadyExecuting -> AlreadyActive, LocalControl -> Local,
 // BufferOverflow -> Unknown). A clean or non-error IIN leaves SUCCESS. An
 // explicit non-SUCCESS per-point status is never overwritten.
-func g41v1CommandStatus(data []byte, wantIndex uint16, wantValue uint32, iin al.IIN) CommandStatus {
-	idx, value, status, ok := parseG41V1Record(data, 0)
+func g41CommandStatus(data []byte, variation uint8, wantIndex uint16, wantValue uint32, iin al.IIN) CommandStatus {
+	idx, value, status, ok := parseG41Record(data, 0, variation)
 	if !ok || idx != wantIndex || value != wantValue {
 		return CommandStatusUnknown
 	}
@@ -2170,17 +2199,22 @@ func g41v1CommandStatus(data []byte, wantIndex uint16, wantValue uint32, iin al.
 	return status
 }
 
-// parseG41V1Record reads a single G41V1 record at the given header offset. The
-// only supported qualifier is 0x28 (16-bit count + 16-bit index) with a count of
-// exactly 1; the record is exactly header(5) + index(2 LE) + int32 value(4 LE) +
-// status(1) with no surplus bytes. The legacy 0x00 branch is not accepted as a
-// valid G41V1 control record. ok is false for any other shape.
-func parseG41V1Record(data []byte, offset int) (index uint16, value uint32, status CommandStatus, ok bool) {
-	const recordLen = 5 + 2 + 4 + 1
+// parseG41Record reads a single G41 record of the given variation at the given
+// header offset. The only supported qualifier is 0x28 (16-bit count + 16-bit
+// index) with a count of exactly 1; the record is exactly header(5) + index(2 LE)
+// + value(LE, g41ValueWidth octets) + status(1) with no surplus bytes. The legacy
+// 0x00 branch is not accepted as a valid G41 control record. ok is false for any
+// other shape or an unsupported variation.
+func parseG41Record(data []byte, offset int, variation uint8) (index uint16, value uint32, status CommandStatus, ok bool) {
+	width := g41ValueWidth(variation)
+	if width == 0 {
+		return 0, 0, 0, false
+	}
+	recordLen := 5 + 2 + width + 1
 	if offset < 0 || offset+recordLen != len(data) {
 		return 0, 0, 0, false
 	}
-	if data[offset] != 41 || data[offset+1] != 1 || data[offset+2] != 0x28 {
+	if data[offset] != 41 || data[offset+1] != variation || data[offset+2] != 0x28 {
 		return 0, 0, 0, false
 	}
 	count := int(data[offset+3]) | int(data[offset+4])<<8
@@ -2188,8 +2222,13 @@ func parseG41V1Record(data []byte, offset int) (index uint16, value uint32, stat
 		return 0, 0, 0, false
 	}
 	index = uint16(data[offset+5]) | uint16(data[offset+6])<<8
-	value = uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24
-	status = CommandStatus(data[offset+11])
+	switch width {
+	case 4:
+		value = uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24
+	case 2:
+		value = uint32(data[offset+7]) | uint32(data[offset+8])<<8
+	}
+	status = CommandStatus(data[offset+7+width])
 	return index, value, status, true
 }
 
@@ -3176,22 +3215,33 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 		}
 
 	case 41:
-		// Group 41 (Analog Output) — AO-002 implements only Variation 1
-		// (32-bit signed integer). Per the verified independent OpenDNP3 3.1.2
-		// reference (docs/verification/AO-001.md), a G41V1 object is a signed
-		// int32 serialized little-endian followed by one command-status octet.
-		// Any other Group 41 variation, a wrong value type, a non-integral
-		// float, or an out-of-range value is rejected before sending.
-		if variation != 1 {
+		// Group 41 (Analog Output). AO-002 implements Variation 1 (32-bit signed
+		// integer); AO-003 adds Variation 2 (16-bit signed integer). Per the verified
+		// independent OpenDNP3 3.1.2 reference (docs/verification/AO-001.md), a G41
+		// object is a signed value serialized little-endian followed by one
+		// command-status octet. Any other Group 41 variation, a wrong value type, a
+		// non-integral float, or an out-of-range value is rejected before sending.
+		switch variation {
+		case 1:
+			intVal, ok := controlInt32Value(value)
+			if !ok {
+				return nil
+			}
+			valueBytes = []byte{
+				byte(intVal), byte(intVal >> 8), byte(intVal >> 16), byte(intVal >> 24),
+				0x00, // request object command status (SUCCESS)
+			}
+		case 2:
+			intVal, ok := controlInt16Value(value)
+			if !ok {
+				return nil
+			}
+			valueBytes = []byte{
+				byte(intVal), byte(intVal >> 8),
+				0x00, // request object command status (SUCCESS)
+			}
+		default:
 			return nil
-		}
-		intVal, ok := controlInt32Value(value)
-		if !ok {
-			return nil
-		}
-		valueBytes = []byte{
-			byte(intVal), byte(intVal >> 8), byte(intVal >> 16), byte(intVal >> 24),
-			0x00, // request object command status (SUCCESS)
 		}
 
 	default:
@@ -3328,9 +3378,10 @@ func parseCommandStatus(data []byte) CommandStatus {
 
 // isControlObject reports whether group/variation is a control object whose
 // response echoes a per-point command status. AO-002 covers Group 12 Variation 1
-// (CROB) and Group 41 Variation 1 (32-bit signed analog output).
+// (CROB) and Group 41 Variation 1 (32-bit signed analog output); AO-003 adds
+// Group 41 Variation 2 (16-bit signed analog output).
 func isControlObject(group, variation uint8) bool {
-	return (group == 12 && variation == 1) || (group == 41 && variation == 1)
+	return (group == 12 && variation == 1) || (group == 41 && g41ValueWidth(variation) != 0)
 }
 
 // controlPointValueSize returns the per-point value size in octets (value plus
@@ -3339,11 +3390,12 @@ func controlPointValueSize(group, variation uint8) int {
 	switch {
 	case group == 12 && variation == 1:
 		return 11 // code(1)+count(1)+onTime(4)+offTime(4)+status(1)
-	case group == 41 && variation == 1:
-		return 5 // int32 value(4)+status(1)
-	default:
-		return 0
+	case group == 41:
+		if w := g41ValueWidth(variation); w != 0 {
+			return w + 1 // numeric value(w)+status(1)
+		}
 	}
+	return 0
 }
 
 // commandStatusForQualifier reads the per-point command status byte from a
@@ -3449,11 +3501,12 @@ func objectLayout(group, variation, qualifier uint8) (pointSize int, hasIndexPre
 	switch {
 	case group == 12 && variation == 1:
 		return 11, qualifier == 0x00 || qualifier == 0x28, 2 // CROB; count+index uses a 2-octet index
-	case group == 41 && variation == 1:
-		return 5, qualifier == 0x00 || qualifier == 0x28, 2 // G41V1 int32 value + status
-	default:
-		return 0, false, 0
+	case group == 41:
+		if w := g41ValueWidth(variation); w != 0 {
+			return w + 1, qualifier == 0x00 || qualifier == 0x28, 2 // G41 numeric value + status
+		}
 	}
+	return 0, false, 0
 }
 
 // WriteBinaryOutput writes a binary output (CROB) to an outstation.
@@ -3673,6 +3726,34 @@ func controlInt32Value(value interface{}) (int32, bool) {
 			return 0, false
 		}
 		return int32(v), true
+	default:
+		return 0, false
+	}
+}
+
+// controlInt16Value returns the exact int16 carried by a G41V2 value, rejecting
+// any source that is not an exactly-representable, in-range integer (an out-of-
+// range value is rejected rather than wrapped/truncated). The caller treats a
+// false result as a definite pre-send rejection.
+func controlInt16Value(value interface{}) (int16, bool) {
+	switch v := value.(type) {
+	case int16:
+		return v, true
+	case int32:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
+	case int:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
+	case int64:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
 	default:
 		return 0, false
 	}

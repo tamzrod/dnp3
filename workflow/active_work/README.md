@@ -1229,3 +1229,24 @@ accepted at `8d75292`. Documentation-only transition; no Go/test/CI/protocol cha
   (documentation-only transition).
 Next: **STOP after remote-verified transition.** Do not execute AO-003 implementation in this
 invocation. No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V2 (int16) bounded slice — 2026-11-11
+Executed under `operation cwal` on the separate invocation the AO-003 task requires. Promotion gate
+verified first: HEAD == `origin/work` == `44429d7`, both marker blocks `Package: AO-003` /
+`CURRENT: AO-003` / `QUEUED: NONE` / `Status: TASK_IN_PROGRESS`, `cwal-check.sh` OK.
+- **One bounded variation delivered: G41V2 (signed int16) Direct Operate with response.** V1
+  (int32) and AO-002 F1–F6 fail-closed behavior preserved. Additive public API
+  (`AnalogInt16CommandValue`, `NewAnalogInt16Control`); master object gate admits G41V2; outstation
+  bridge maps a typed `*types.AnalogInt16CommandValue` with `DirectOperate` semantics.
+- Edit allowlist honored: `internal/master/master.go`, `internal/outstation/outstation.go`,
+  `pkg/dnp3/{master/client.go,outstation/server.go,types/commands.go}`, targeted `*_test.go` in those
+  directories, one `test/integration/g41v2_real_tcp_test.go`, and `docs/verification/AO-003.md` plus
+  these factual checkpoints. `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648…dac1bd5f`) — Group 41 remains **UNSUPPORTED**.
+- Checks: `gofmt` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3);
+  `git diff --check` PASS; `cwal-check.sh` OK.
+- **Blocker/PUSHBACK:** G41V3/V4 (IEEE-754 float) require an owner-approved NaN/Inf/float policy
+  (AO-001 §5.3/§7.4) that is not granted; not implemented rather than guessed.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.

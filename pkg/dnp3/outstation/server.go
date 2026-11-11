@@ -32,6 +32,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -543,6 +544,23 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 			return fmt.Errorf("unsupported G41V1 analog output type: %T", value)
 		}
 		cmd.Value = &types.AnalogInt32CommandValue{Value: intVal}
+	} else if variation == 2 {
+		// G41V2 (AO-003): signed int16. The value arrives as int16 from the
+		// outstation G41V2 parser; an in-range int32 is also accepted for direct
+		// bridge callers (an out-of-range int32 is rejected, not narrowed).
+		var intVal int16
+		switch v := value.(type) {
+		case int16:
+			intVal = v
+		case int32:
+			if v < math.MinInt16 || v > math.MaxInt16 {
+				return fmt.Errorf("G41V2 analog output value %d out of int16 range", v)
+			}
+			intVal = int16(v)
+		default:
+			return fmt.Errorf("unsupported G41V2 analog output type: %T", value)
+		}
+		cmd.Value = &types.AnalogInt16CommandValue{Value: intVal}
 	} else {
 		// Out of AO-002 scope (only Variation 1 is implemented). Retain the
 		// generic float64 carrier for API continuity.

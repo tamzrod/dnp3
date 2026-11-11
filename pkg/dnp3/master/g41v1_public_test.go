@@ -51,16 +51,15 @@ func (t *pubG41V1EchoTransport) Receive() ([]byte, error) {
 // AO-002 — public master client gate and G41V1 status surface.
 
 // TestPublicOperateGateRejectsUnsupportedObjects asserts the public Operate gate
-// fails closed for control objects outside the verified set (G12V1 and G41V1):
-// an unsupported group/variation is rejected with ErrUnsupportedOption BEFORE any
-// wire traffic (no request is sent).
+// fails closed for control objects outside the verified set (G12V1, G41V1 and
+// G41V2): an unsupported group/variation is rejected with ErrUnsupportedOption
+// BEFORE any wire traffic (no request is sent).
 func TestPublicOperateGateRejectsUnsupportedObjects(t *testing.T) {
 	cases := []struct {
 		name      string
 		group     uint8
 		variation uint8
 	}{
-		{"G41V2", 41, 2},
 		{"G41V3", 41, 3},
 		{"G41V4", 41, 4},
 		{"G42V1", 42, 1},

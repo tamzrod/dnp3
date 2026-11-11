@@ -78,6 +78,15 @@ type AnalogInt32CommandValue struct {
 
 func (a *AnalogInt32CommandValue) isCommandValue() {}
 
+// AnalogInt16CommandValue represents a Group 41 Variation 2 (16-bit signed
+// integer) analog output command value. It is the typed, exactly-representable
+// carrier for the G41V2 path (AO-003).
+type AnalogInt16CommandValue struct {
+	Value int16
+}
+
+func (a *AnalogInt16CommandValue) isCommandValue() {}
+
 // ControlStatus represents the status of a control command
 type ControlStatus uint8
 
@@ -212,6 +221,23 @@ func NewAnalogInt32Control(index uint16, value int32, cmdType CommandType) *Cont
 		Variation:   1,  // Variation 1 = 32-bit signed integer
 		Index:       index,
 		Value:       &AnalogInt32CommandValue{Value: value},
+		CommandType: cmdType,
+	}
+}
+
+// NewAnalogInt16Control creates a Group 41 Variation 2 (16-bit signed integer)
+// analog output command. Per the verified independent OpenDNP3 3.1.2 reference
+// (see docs/verification/AO-001.md), G41V2 is a signed int16 serialized
+// little-endian followed by one status octet.
+// Supported-profile: Reject until AO-004 independent peer verification and
+// AO-005 approved supported-profile changes. AO-003 implements the
+// DirectOperate-with-response path for G41V2.
+func NewAnalogInt16Control(index uint16, value int16, cmdType CommandType) *ControlOutput {
+	return &ControlOutput{
+		Group:       41, // Group 41 = Analog Output
+		Variation:   2,  // Variation 2 = 16-bit signed integer
+		Index:       index,
+		Value:       &AnalogInt16CommandValue{Value: value},
 		CommandType: cmdType,
 	}
 }

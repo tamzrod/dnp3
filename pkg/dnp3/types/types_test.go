@@ -204,6 +204,29 @@ func TestNewAnalogInt32Control(t *testing.T) {
 	}
 }
 
+// TestNewAnalogInt16Control locks the AO-003 G41V2 constructor: Group 41
+// Variation 2, a typed int16 carrier, and DirectOperate.
+func TestNewAnalogInt16Control(t *testing.T) {
+	cmd := NewAnalogInt16Control(7, -1234, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 2 {
+		t.Errorf("group/variation = %d/%d, want 41/2", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogInt16CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogInt16CommandValue", cmd.Value)
+	}
+	if v.Value != -1234 {
+		t.Errorf("value = %d, want -1234", v.Value)
+	}
+}
+
 func TestReadRequest(t *testing.T) {
 	req := NewReadRequest(
 		GroupRequest{Group: 1, Variation: 1},

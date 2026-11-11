@@ -123,6 +123,62 @@ func TestBridgeAnalogOutputG41V1RejectsWrongType(t *testing.T) {
 	}
 }
 
+// TestBridgeAnalogOutputG41V2Semantics locks the AO-003 bridge contract: a G41V2
+// analog output is carried as a typed AnalogInt16CommandValue with DirectOperate
+// semantics.
+func TestBridgeAnalogOutputG41V2Semantics(t *testing.T) {
+	h := &aoRecordingHandler{}
+	d := &internalDataHandler{commandHandler: h}
+	if err := d.WriteAnalogOutput(9, int16(-42), 2); err != nil {
+		t.Fatalf("WriteAnalogOutput G41V2: %v", err)
+	}
+	if h.got == nil {
+		t.Fatal("handler not called")
+	}
+	if h.got.Group != 41 || h.got.Variation != 2 {
+		t.Fatalf("group/variation = %d/%d, want 41/2", h.got.Group, h.got.Variation)
+	}
+	if h.got.CommandType != types.DirectOperate {
+		t.Fatalf("CommandType = %v, want DirectOperate", h.got.CommandType)
+	}
+	if h.got.Index != 9 {
+		t.Fatalf("index = %d, want 9", h.got.Index)
+	}
+	v, ok := h.got.Value.(*types.AnalogInt16CommandValue)
+	if !ok {
+		t.Fatalf("value type = %T, want *types.AnalogInt16CommandValue", h.got.Value)
+	}
+	if v.Value != -42 {
+		t.Fatalf("value = %d, want -42", v.Value)
+	}
+}
+
+// TestBridgeAnalogOutputG41V2RejectsWrongTypeAndRange asserts a G41V2 write with
+// a non-integer value, or an int32 outside the int16 range, is rejected before
+// reaching the handler (no silent narrowing/wrap).
+func TestBridgeAnalogOutputG41V2RejectsWrongTypeAndRange(t *testing.T) {
+	cases := []struct {
+		name  string
+		value interface{}
+	}{
+		{"float64", float64(1.5)},
+		{"int32 overflow", int32(32768)},
+		{"int32 underflow", int32(-32769)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &aoRecordingHandler{}
+			d := &internalDataHandler{commandHandler: h}
+			if err := d.WriteAnalogOutput(0, tc.value, 2); err == nil {
+				t.Fatalf("expected rejection for G41V2 value %v", tc.value)
+			}
+			if h.got != nil {
+				t.Fatal("handler invoked for a rejected G41V2 value")
+			}
+		})
+	}
+}
+
 // crobRecordingHandler records the boolean value the bridge maps from the
 // CROB operation type.
 type crobRecordingHandler struct {
