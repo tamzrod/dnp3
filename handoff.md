@@ -796,3 +796,28 @@ evaluated (moot). Gate C/D/E **NOT_REACHED**; payload-block-CRC negative **NOT_T
 PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure; no new storage provisioned.
 **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
 See `docs/verification/VEC-01-LAB-EXEC-001.md` §43.
+
+### VEC-01 Docker-lab execution — Gate C positive reproduced a protocol defect; GATE_C_FAIL / STOP (2026-11-11)
+Owner addenda `21fb6b0` (final Docker-lab campaign) as overridden by `cab599d` (Git is the durable
+Gate E store) and `922c130` (mandatory per-subtask remote checkpoint), executed under `operation cwal`
+on `work` (`HEAD == origin/work == 922c13026a7f7243a6ff4b5835ac053b5bcd1139`; six markers unchanged;
+`scripts/cwal-check.sh` **OK**). The pinned lab image `vec01-lab:3.1.2` built with all build-time pins
+**sha256-verified**; the pinned OpenDNP3 3.1.2 peer and the committed Go master harness were built
+fully **offline**. Objective **Gate B PASS** (two private netns, one internal veth, no default routes,
+forwarding off, listener only `10.77.0.2:20000`, no Docker socket). Gate C positive READ+CROB
+executed single-shot with capture: **the Class-0 READ decode FAILED** — the master reported
+`AI[0]=588801`, `CT[0]=10753`, `BI[1..9]=true`, while the wire (confirmed by the peer's own decoder
+**and** Wireshark 4.0.17) carries `AI[0]=2300`, `CT[0]=42`, `BI[1..9]=false/offline`. Exact bytes:
+G30V1 `01 fc 08 00 00` = flags(0x01)+int32 2300; G20V1 `01 2a 00 00 00` = flags(0x01)+uint32 42 — i.e.
+IEEE 1815 static with-flag objects are **flags-then-value**, but the Go master decodes
+**value-then-flags** (`pkg/dnp3/master/client.go` `parseAnalogInputs`/`parseCounters`), and the repo
+**outstation** emits the same value-then-flags order so repo-to-repo self-tests mask it. The G12V1
+Direct-Operate returned `operate status: 0` (SUCCESS). All mandatory Go gates on the committed tree
+**PASS** (`gofmt -l .` clean, `go vet`, `go build`, `go test ./... -count=1`, `-race`,
+`verify-mvp.sh`, `verify-external-mvp.sh`). -> **GATE_C_FAIL / PROTOCOL_DEFECT_SUSPECTED; STOP /
+PUSHBACK** per the CURRENT critical-diagnostic rule. Gate D payload-CRC negative and Gate E
+Git-tracked originals were **not** executed (a known-failing decode must not be published as accepted
+evidence); no `.pcap`/`.vec` committed. No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4
+closure. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
+PROVEN.** Required next step: a **separately human-promoted corrective task** for the static-object
+field order. See `docs/verification/VEC-01-LAB-EXEC-001.md` §44.

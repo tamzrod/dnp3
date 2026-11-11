@@ -4140,3 +4140,174 @@ AFTER all preconditions PASS"; the campaign halted at precondition 1, so they we
 required. Independently, the base runner has no Go toolchain (Go 1.22.12 exists only inside the
 built `vec01-lab:3.1.2` image), and no Go source changed, so a bare-runner Go run would also be
 inapplicable. Recorded truthfully as NOT_RUN, not inferred as PASS.
+
+---
+
+### 44. VEC-01 lab execution — Gate C positive run reproduced a protocol defect; GATE_C_FAIL / STOP (2026-11-11)
+
+Authorization: owner addenda `21fb6b0` (final Docker-lab campaign) **as overridden by** `cab599d`
+("Git is the durable Gate E store", 2026-11-11) and `922c130` (mandatory per-subtask remote
+checkpoint, 2026-11-11). Executed under `operation cwal` on permanent `work`
+(`HEAD == origin/work == 922c13026a7f7243a6ff4b5835ac053b5bcd1139`; six authority markers unchanged;
+`bash scripts/cwal-check.sh` **CWAL CHECK OK**; clean tree). Executor: OpenHands agent (autonomous).
+**No Go source, tests, goldens, supported-profile, governance, CI or `.vec`/PCAP were committed by
+this run.**
+
+**44.1 Environment and pinned inputs (Milestone A).** The base runner has no Go toolchain and no
+`CAP_NET_ADMIN`, so the owner-authorized `lab/vec01` container path was used. Docker daemon was
+started on the runner (management context only); the lab image was built from the committed
+`lab/vec01/compose.yaml` with all build-time pins **sha256-verified by `acquire-pinned.sh`**:
+
+- `go1.22.12.linux-amd64.tar.gz` → `4fa4f869b0f7fc6bb1eb2660e74657fbf04cdd290b5aef905585c86051b34d43` **OK**
+- OpenDNP3 `3.1.2` source tarball → `183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2` **OK**
+- asio `asio-1-16-0` → `18883c350558eadf91218ae5ce9a8f8f85099c2f036c1c8579fb639092e928c5` **OK**
+- exe4cpp `fb878a4…` → `2a8a2c7d9982f54858b92c03cff91ef433907472039f8e61ff7c9f9b3d48db6c` **OK**
+- ser4cpp `3c44973…` → `5a78f83de2d70bdf4be2ab607bc4416c6866ce64a257a8f19948cf5746762f6e` **OK**
+
+Built image: `vec01-lab:3.1.2` digest `sha256:50a33f58197cc6cd4dd6373e6a9437d7388fba50e64320812b2e2bf82384b64f`
+(`ab5b47b4…` was the readiness-runner image id; ids/digests are environment-derived and not
+byte-stable across builds, per `rebuild-and-lab.md`). In-image `go version go1.22.12 linux/amd64`.
+
+The pinned lab peer was built **offline** (`--network none`, `FETCHCONTENT_FULLY_DISCONNECTED=ON`)
+from the pinned source with the documented single-file patch (`docs/verification/vec01-gate-b/
+lab-config.md`). Measured lab-build bytes:
+- `outstation-demo` SHA-256 `4766578b075fd1e6a595a2ac5b144a1ae191e290e52c9476a564714e27115ddc`
+- `libopendnp3.a` SHA-256 `ac7e87e5bc35a4efc41662b91712653a989345781c1fe8de5c3b74922c8f9503`
+
+These differ from the historical §13.4/§15.5 "lab expectations" (`6657ec80…`, `25f83aaa…`). The
+recorded patch was reconstructed verbatim (7687 bytes; applied cleanly at `-p2`) and applied, and the
+pinned source tarball hash matched exactly; the difference is attributable to the different offline
+toolchain/paths (Debian 12 `g++ 12.2.0` / `cmake 3.25.1` vs the historical Debian 13 `g++ 14.2.0` /
+`cmake 3.31.x`), which `rebuild-and-lab.md` and `provenance.md` explicitly document as expected and
+non-byte-stable (embedded source-path strings). Stock offline build reproduced `outstation-demo`
+`2b7e2c45f290687e20339e26a98dcc2b33182f53a2c8cdc522684a57bfcdf8ed` (also differing from historical
+stock `8ae8c841…` for the same reason). The Go master harness was built from the **committed tree
+unmodified** (`./examples/master` → `8709fe100b876cf877b41c496cd5e6fde2408155ff1be5c663ffc49b47a76f4c`).
+No network downloads occurred at lab runtime; the peer and master ran fully offline.
+
+**44.2 Objective Gate B (Milestone B) — PASS for the actual run.** `preflight.sh` inside the lab
+container reported `GATE_B_PREFLIGHT: PASS`: two private netns (`vec01-master` `10.77.0.1/24`,
+`vec01-outstation` `10.77.0.2/24`) joined by exactly one internal veth; no default route in either
+namespace; `net.ipv4.ip_forward=0` in both; no external DNS resolution; lab-local-only reachability;
+listener bound **only** to `10.77.0.2:20000`; no unexpected host interfaces; **no Docker daemon
+socket inside the lab**. The `compose.yaml` service is `network_mode: none` with no published ports,
+no host network, no host devices, `cap_add: NET_ADMIN,SYS_ADMIN,NET_RAW` (not privileged). IPv6
+forwarding/route checks were performed by the netns preflight (`ip -6`/forwarding). The container
+carried **no** path to OT/production.
+
+**44.3 Gate C positive run (Milestone C) — executed; observed values FAIL the acceptance.** One
+bounded, single-shot exchange was captured from before TCP connect through close
+(`tcpdump -i veth-o -w positive.pcap 'tcp port 20000'`; 22 packets). Peer log confirms the exact
+intended static ground truth was configured and served: `BI[0]=true`, `AI[0]=2300`, `CT[0]=42`
+(`lab-config.md` init block, `Update(Binary(true),0)`, `Update(Analog(2300.0),0)`,
+`Update(Counter(42),0)`).
+
+Observed master output (`examples/master`, master 3 → outstation 4):
+
+```
+IIN: 90 00
+  BI[0..9] = true (quality ONLINE)          <- BI[1..9] wrong (peer sent 0 / offline)
+  AI[0] = 588801 (quality BAD)              <- expected 2300
+  AI[1..9] = 2 (quality BAD)                <- expected 0
+  CT[0] = 10753 (quality BAD)               <- expected 42
+  CT[1..9] = 2 (quality BAD)                <- expected 0
+operate status: 0                            <- CROB SUCCESS (single-shot, correct)
+```
+
+The `operate status: 0` (SUCCESS) and the peer's own `[LAB] BO[0] direct-operate LATCH_ON ->
+state=true` confirm the G12V1 Direct-Operate control path worked; the **Class-0 READ decode is
+wrong**.
+
+**44.4 Independent confirmation of the wire values (two decoders).** (a) The pinned OpenDNP3 peer's
+own `--AL->` decoder log reports the served response as
+`001,001 Binary Input - Packed Format, 8-bit start stop [0, 0]`, `001,002 Binary Input - With Flags,
+8-bit start stop [1, 9]`, `030,001 Analog Input - 32-bit With Flag, 8-bit start stop [0, 9]`,
+`020,001 Counter - 32-bit With Flag, 8-bit start stop [0, 9]`. (b) Wireshark 4.0.17 (independent
+`packet-dnp.c` dissector, IEEE 1815-derived) decoded the reassembled response as
+`32-Bit Analog Input (Obj:30, Var:01) … Point Number 0 (Quality: Online), Value: 2300` and
+`32-Bit Binary Counter (Obj:20, Var:01) … Point Number 0 (Quality: Online), Count: 42`, and
+`Single-Bit Binary Input (Obj:01, Var:01) Point Number 0, Value: On` / `Binary Input With Status
+(Obj:01, Var:02) Point Number 1 (Quality: Offline, Restart), Value: 0`. The wire therefore carries
+`BI[0]=true`, `AI[0]=2300`, `CT[0]=42`; the Go master decoded `AI[0]=588801`, `CT[0]=10753`,
+`BI[1..9]=true`.
+
+**44.5 Exact bytes and offsets (from the original capture).** Response AL payload (after the 2-octet
+transport header), object region:
+
+```
+G30V1 header @25: 1e 01 00  start=0 stop=9
+AI[0] object bytes @30..34: 01 fc 08 00 00
+  interpreted as flags-then-value : flags=0x01  value=2300      (matches peer + Wireshark)
+  interpreted as value-then-flags : value=588801 flags=0x00     (matches Go master output)
+G20V1 header @80: 14 01 00  start=0 stop=9
+CT[0] object bytes @85..89: 01 2a 00 00 00
+  interpreted as flags-then-value : flags=0x01  value=42        (matches peer + Wireshark)
+  interpreted as value-then-flags : value=10753 flags=0x00      (matches Go master output)
+```
+
+`01 fc 08 00 00` = `flags(0x01=ONLINE)` then `int32 LE 0x000008FC = 2300`; `01 2a 00 00 00` =
+`flags(0x01)` then `uint32 LE 42`. IEEE 1815 static with-flag objects place the **flags octet first,
+then the value**, which is what both the peer and Wireshark implement; the Go master decodes
+**value first, then flags**.
+
+**44.6 Suspected defect location (source, unmodified; not fixed under this authority).**
+- `pkg/dnp3/master/client.go` `parseAnalogInputs` G30V1 branch reads
+  `binary.LittleEndian.Uint32(data[offset:offset+4])` then `types.QualityFlags(data[offset+4])`
+  (value-then-flags) — and likewise `parseCounters` G20V1 (`Uint32` then flags), and the
+  `objectValueBytes`/`pointLayout` size model assumes value+flags.
+- The repo **outstation** encoder `internal/outstation/outstation.go` `buildAnalogData`/`buildCounterData`
+  (variation 1) emits value bytes then `ai.Quality`/`c.Quality` — the same value-then-flags order —
+  so **repo-to-repo self-interoperability masks the defect**: `verify-mvp.sh`,
+  `verify-external-mvp.sh` (Tiers 1–3, loopback against the repo's own outstation) and
+  `test/integration` all PASS, yet the master cannot decode a conforming third-party peer.
+- Binary-input decode is separately affected: BI[0] (served as G1V1 packed) decoded correctly, but
+  BI[1..9] (served as G1V2 With Flags, flags byte `0x02` = offline/restart) were decoded by the
+  master as ONLINE `true` — `parseBinaryInputs`'s fallback switch maps variation 2 to a "without
+  flags" value-byte read, so the G1V2 flags octet is treated as the point value.
+
+This is consistent with the owner's §44-critical-diagnostic note ("potential flags/value ordering
+issue in G30V1/G20V1"). It is **not** the same as the corrected #9 Class-0 qualifier defect
+(qualifier `0x00` UINT8_START_STOP is now handled correctly — headers parse, `start/stop` are read,
+and the object stream consumes exactly 135 bytes). The remaining failure is **field ordering within
+the object body**, not the header.
+
+**44.7 Go gates on the exact committed tree (Milestone F, run inside the lab image, offline).** All
+mandatory gates **PASS** on `work` @ `922c130…` (Go `1.22.12`):
+
+| Gate | Result |
+|------|--------|
+| `gofmt -l .` | clean (no output) — **PASS** |
+| `go vet ./...` | **PASS** |
+| `go build ./...` | **PASS** |
+| `go test ./... -count=1` | **PASS** (all packages ok) |
+| `go test -race` (master/outstation/integration) | **PASS** (no races) |
+| `./scripts/verify-mvp.sh` | **PASS** |
+| `./scripts/verify-external-mvp.sh` | **PASS** (Tiers 1–3; Tier advisory: no third-party capture) |
+| `bash scripts/cwal-check.sh` | **CWAL CHECK OK** |
+
+`git diff --check` was run on the host (git present outside the image); clean.
+
+**44.8 Artifact hashes (this run; NOT committed — see 44.9).** All artifacts were produced outside
+Git on the ephemeral runner and are **not durable**:
+- `positive.pcap` SHA-256 `962056819f9d102e8b3452c3f022444bf12e29f65d3eb55d39d27035cbdbeada` (2163 bytes)
+- `master-positive.log` SHA-256 `00115765502b4a7e43fb023694b8a669490b3ac609faf4b8d4ff7ef0b8260278`
+- `peer-positive.log` SHA-256 `22ec82ac53d21b932e54a05d12b7a5963398afd0873bc59089a301192649adea`
+- `b3-lab-demo.patch` SHA-256 `8ab119527922876a0332e5525b4b540c4aacafb8c4620a5c9970d9a1eddda5d4`
+
+**44.9 Gate E / durability — NOT performed (STOP).** Per the CURRENT's critical diagnostic stop rule,
+a reproduced protocol defect requires a **STOP/PUSHBACK for separately approved protocol-code
+correction**; it does **not** authorize manufacturing a PASS, rewriting the Go decoder, or continued
+evidence campaigns. Because Gate C positive acceptance failed, the payload-block-CRC negative
+(Milestone D) and the Gate E Git-tracked original-PCAP/`.vec` publication (Milestone E) were **not**
+executed. Committing a capture that demonstrates a known failing decode as if it were accepted
+evidence would misrepresent the campaign, and no code fix is permitted under this evidence-only
+authority, so **no `.pcap`/`.vec` was added to Git**. The lab container and namespaces were torn
+down; the ephemeral artifacts are expected to be lost on runner disposal (`CAPTURE_NOT_PERSISTED`).
+
+**44.10 Disposition — `GATE_C_FAIL / PROTOCOL_DEFECT_SUSPECTED`; STOP / PUSHBACK.** A real third-party
+interoperability defect is now **demonstrated on the wire** (Class-0 G30V1/G20V1 flags/value ordering;
+binary-input flag mapping), confirmed by two independent decoders. Required next step is a **separate
+human-promoted corrective task** to fix the master/outstation static-object field order (and matching
+goldens) — this run may not fix it. No PR/merge/`main` push/archive/promotion/self-awarded CHECK/Gate
+or R4 closure; no conformance or interoperability claim. Historical §39–§43 records preserved.
+**`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
