@@ -5254,3 +5254,93 @@ This is a documentation assessment, not an acceptance or closure of any item.
   task; running them would exceed the authorized scope and is not required.
 
 Checkpoint-1 remote SHA and changed-file scope are recorded after the push in §57.
+
+---
+
+### 57. R4 documentation reconciliation — reconciled acceptance docs, inventory, audit (2026-11-11)
+
+Authorization: same owner-approved scoped checkpoint as §56
+(`0b1f67ceaeef4671f44feada80bcf03f6bfc1d3f`). This is **checkpoint 2**. Six authority markers
+unchanged; `bash scripts/cwal-check.sh` **OK**. Documentation only; no protocol/Go/test/evidence/PCAP/
+`.vec`/lab-script/ignore/governance/CI/dependency changes.
+
+#### 57.1 Scoped disposition recorded
+
+`R4 RESOLVED — VEC-01 v0 independent-lab evidence accepted` is recorded as a **documentation-only,
+scoped** disposition on `work`, with explicit baseline/date/peer and evidentiary limits. It is **not**
+branch integration, general certification, production or release approval.
+
+#### 57.2 Changed-doc inventory (this checkpoint)
+
+| File | Change |
+|------|--------|
+| `docs/verification/VEC-01-LAB-EXEC-001.md` | Appended §56 (checkpoint-1 assessment) and §57 (this reconciliation, inventory, audit) |
+| `active_work/supported-profile.md` | Reconciled Current Verification State; R4 row updated to historical-blocker + scoped resolution; MVP-record note; External Residuals intro; wire-reference item 3 marked satisfied (scoped); Public API Disposition intro |
+| `active_work/external-acceptance.md` | Header note separating historical MEXT-035 acceptance from the dated independent VEC-01 acceptance; checklist line clarified; dated independent VEC-01 acceptance record with limitations added; historical 2026-11-08 R4 row explicitly labelled history |
+| `README.md` | Reconciled the third-party-interoperability bullets and the "Not yet verified" list to the scoped evidence and the open G1V2 caveat; no generalized interop/production claim added |
+| `workflow/active_work/README.md` | Concise checkpoint IDs + next-action lines below the unchanged six markers |
+| `handoff.md` | Concise checkpoint IDs + next-action lines below the unchanged six markers |
+
+Historical R4 wording and dates in `active_work/external-acceptance.md` and the historical handoff
+records are **preserved as history**, not rewritten.
+
+#### 57.3 Additional roadmap/status docs — assessed only, NOT modified
+
+Per the authorization, `active_work/MEXT_MASTER_ROADMAP.md`,
+`active_work/dnp3-interoperability-remediation-plan.md`, `docs/roadmap/roadmap.md` and
+`active_work/postgate-backlog.md` were **assessed and listed** in §56.3 (present release prerequisites
+vs historical/stale assertions) and **not** edited. Any change to these files needs separately explicit
+scope authorization. `active_work/DNP3_MASTER_ROADMAP.md` is already an archived pointer (v1 internal
+MVP) and is not the active roadmap.
+
+Note: these older docs still contain stale current-state lines (e.g. the remediation plan's
+`REMAINING` markers and the MEXT roadmap's `R4 OPEN` / "VEC-01 capture: Not present" rows). They are
+left intact on purpose; §56.3 is the authoritative reconciliation list, and their correction requires
+separate authorization.
+
+#### 57.4 Text/diff consistency audit
+
+Objective: no *current* document simultaneously asserts "R4 OPEN because no independent PCAP exists"
+and "scoped R4 RESOLVED" without explicit historical labelling.
+
+- `grep` across `README.md`, `active_work/supported-profile.md`, `active_work/external-acceptance.md`:
+  the only remaining "R4 … OPEN" text is `active_work/external-acceptance.md` line 34, which sits
+  inside the explicitly dated `## Evidence reconciliation — 2026-11-08` historical table and is
+  immediately followed by a sentence labelling it the 2026-11-08 historical record superseded by the
+  dated 2026-11-11 acceptance below. **Labelled history — acceptable.**
+- No current-state prose in the three reconciled files still claims third-party evidence is absent.
+- G1V2 caveat present in `supported-profile.md` (R4 row + Current Verification State), `README.md`
+  (both bullets), and `external-acceptance.md` (limitations). **Not suppressed.**
+- No new object groups/variations, SBO, unsolicited/events, TLS, auth, serial, time sync, freeze, or
+  file transfer claimed; unsupported/deferred lists unchanged in substance.
+- `git diff --check` — clean (no whitespace errors).
+
+#### 57.5 Scope-gated verification (documentation-only task)
+
+| Check | Result |
+|-------|--------|
+| Exact ancestry of `6c297df0fb7c702f66818e506008e00e9d716ea4` | **Verified** ancestor of `HEAD` |
+| Six matching markers | **Verified unchanged** |
+| `bash scripts/cwal-check.sh` | **OK** |
+| Evidence + SHA-256 manifest references | **Re-read** (§§50–55; `vec01-20261111/SHA256SUMS.txt`) |
+| `git diff --check` | **PASS** (clean) |
+| Text/diff consistency audit | **PASS** (§57.4) |
+| Live protocol/peer/network/field/production gates | **NOT_RUN** — documentation-only task; not applicable |
+| Full Go gates (build/vet/test/race) | **NOT_RUN** — no Go source changed; already recorded PASS at §55 on the accepted baseline; not applicable to a docs-only commit |
+
+Changed files staged are documentation-only and limited to the authorized allowlist.
+
+#### 57.6 Release prerequisites remain separate (unchanged by this checkpoint)
+
+Per §56.3: API-02 in-repo capture seam, `main` integration, CI on `work`, release/version decisions,
+and any generalized conformance/support-matrix promotion remain **pending / needing separate
+authorization**. Raw Gate D payload-block CRC rejection is **not** equated to closure of all
+integration/release acceptance tests. No archival or full package/release closure.
+
+#### 57.7 STOP
+
+**STOP for independent read-only review before any PR, merge, release, or other implementation.** No
+change to the six CWAL authority markers; no CURRENT archival; no queue promotion; no self-approved PR;
+no merge; no `main` push; no release; no closure of unrelated readiness gates. R4 is documented as
+scoped owner-accepted/resolved on `work` only. Checkpoint-2 remote SHA and changed-file scope are
+recorded after the push in the handoffs.

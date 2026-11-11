@@ -47,8 +47,9 @@ them:
 
 ## Public API Disposition
 
-`Target` means it belongs to the initial interoperability path but is not yet
-externally verified. `Reject` means the public API must return a clear
+`Target` means it belongs to the initial interoperability path (the tested v0
+subset now carries scoped external evidence as of 2026-11-11; broader claims are
+not made). `Reject` means the public API must return a clear
 unsupported error until a later profile adds it. `Defer` means it remains
 available only after its dedicated verification task proves its behavior.
 
@@ -86,10 +87,16 @@ available only after its dedicated verification task proves its behavior.
 ## Current Verification State
 
 The v0 MVP path below is verified by the repository's own deterministic
-loopback and unit tests (internal verification, not external
-interoperability). External interoperability (VEC-01) remains pending. Every
-"Target" capability in the disposition table now has at least one in-repo test
-reference:
+loopback and unit tests (internal verification). Scoped **external** v0
+evidence now also exists: the owner-accepted, isolated-lab VEC-01 campaign
+(2026-11-11, `work` checkpoint `6c297df0fb7c702f66818e506008e00e9d716ea4`)
+demonstrated one Go Master interoperating with an independently implemented
+**OpenDNP3 3.1.2** outstation for this v0 path only. See
+[`../docs/verification/VEC-01-LAB-EXEC-001.md`](../docs/verification/VEC-01-LAB-EXEC-001.md)
+§§50–55 and the durable evidence under
+[`testdata/external/vec01-20261111/`](testdata/external/vec01-20261111/README.md).
+Every "Target" capability in the disposition table now has at least one in-repo
+test reference:
 
 | Capability | Test reference | Task |
 |------------|----------------|------|
@@ -130,8 +137,16 @@ reference:
 | Transport fragment-size boundaries (0/249/250) | `internal/tl/boundary_test.go` | DNP3-059 |
 | MVP acceptance gate (single command) | `scripts/verify-mvp.sh` | DNP3-052/056 |
 
-No capability in this profile is verified for **external** interoperability
-yet; an independent raw capture (VEC-01) is still required for that claim.
+The v0 path now has scoped external evidence from a single independently
+implemented peer (OpenDNP3 3.1.2) in an isolated lab. This is **not** a general
+external-interoperability, conformance, or production-readiness claim: it covers
+only the tested v0 subset (Class-0 G1V1/G30V1/G20V1 read and one G12V1
+Direct-Operate) against that one peer/version, and independent evidence for any
+other peer, vendor, version, or profile is still required. A known unresolved
+defect remains: the master mis-decodes **G1V2** (Binary Input With Flags) by
+consuming the flags octet as the point value — outside the locked v0 G1V1
+profile, not fixed and not claimed supported (see the G1V2 caveat in the
+verification document §52.5).
 
 ### MVP Acceptance Gate Record (DNP3-056)
 
@@ -145,21 +160,25 @@ The Master MVP acceptance gate was run on this commit via
 - `go test -race -count=1` (MVP race-relevant packages) — all OK
 - `verify-mvp.sh` exit code: 0
 
-**MVP COMPLETE** (internal verification; external VEC-01 interoperability
-remains pending). The gate is reproducible: any session may re-run
+**MVP COMPLETE** (internal verification; scoped external VEC-01 v0 evidence was
+separately accepted on 2026-11-11 — see the Current Verification State note and
+R4 above — while general external interoperability beyond the tested v0 path
+remains unproven). The gate is reproducible: any session may re-run
 `./scripts/verify-mvp.sh` to confirm.
 
 ## External Residuals
 
-These residuals block external use of the v0 profile. Each has a resolving
-MEXT task; the list is authoritative so agents need not read git history.
+These residuals describe boundaries of external use of the v0 profile. Each has
+a resolving MEXT task; the list is authoritative so agents need not read git
+history. R4 now carries a scoped, documentation-only resolution for the tested
+v0 path (see its row); the others remain as stated.
 
 | ID | Residual | Impact | Resolving task(s) |
 |----|----------|--------|-------------------|
 | R1 | Operate against a real outstation often `ControlTimeout` because real outstations may omit the G12V1 control-status echo on a valid Direct-Operate success. **Resolved by MEXT-012/013** — MEXT-012: IIN-only response with clear IIN now treated as success (error IIN never success; truncated G12V1 never success); MEXT-013: proven on real TCP — DirectOperate against the in-repo outstation (IIN-only response, no G12V1 echo) returns ControlSuccess, not ControlTimeout. | Resolved. | MEXT-012 ✅, MEXT-013 ✅ |
 | R2 | CROB control-code values were a 1..8 enum, then (MEXT-011) an incorrect one-hot bitfield. **Resolved** by the owner-authorized coherent correction (constants now the IEEE 1815 A.8.1 low-nibble enum 0x00/0x01/0x02/0x03/0x04; master encoder, outstation decode, public bridge and goldens updated). | Resolved. Real IEDs receive spec-correct codes. | MEXT-010/011; coherent CROB correction ✅ |
 | R3 | Multi-object-header Class-0 parse can lose points; `IntegrityPoll` used a per-group workaround. Fragile versus real multi-header responses. **Resolved by MEXT-014/015** — `skipGroupData` is qualifier-aware (G1+G20+G30 in one APDU parsed without point loss), and `IntegrityPoll` now uses a single Class-0 multi-group read as the primary path (one exchange returns the full set), with a per-group fallback for peers that reject the multi-group exchange. | Resolved. | MEXT-014 ✅, MEXT-015 ✅ |
-| R4 | No VEC-01 / independent PCAP or third-party stack capture proof exists. Repository self-encoded frames are not acceptable evidence. | Cannot claim external interop. | MEXT-020, MEXT-022, MEXT-033 |
+| R4 | **Historical blocker:** no VEC-01 / independent PCAP or third-party stack capture proof existed; repository self-encoded frames were not acceptable evidence. **Scoped resolution (2026-11-11):** the owner accepted the isolated-lab VEC-01 campaign at `work` checkpoint `6c297df0fb7c702f66818e506008e00e9d716ea4` — one Go Master ↔ independently implemented OpenDNP3 3.1.2 outstation for the v0 subset only (Class-0 G1V1/G30V1/G20V1 read `BI[0]=true`, `AI[0]=2300` ONLINE, `CT[0]=42` ONLINE; one G12V1 Direct-Operate SUCCESS with `BO[0]=true`; negative payload-block CRC rejection). **Documented disposition: `R4 RESOLVED — VEC-01 v0 independent-lab evidence accepted`** (documentation-only, scoped). | Scoped external interop is evidenced for the tested v0 path with that single peer/version in the isolated lab; it is **not** general conformance, production readiness, or interoperability with any other peer. See `docs/verification/VEC-01-LAB-EXEC-001.md` §§50–55 and `testdata/external/vec01-20261111/`. | MEXT-020, MEXT-022, MEXT-033; VEC-01 post-corrective campaign ✅ (scoped) |
 | R5 | Marketing/docs risk of over-claiming; consumers may assume production-ready. | Consumers assume production-ready. | MEXT-005, MEXT-034, MEXT-035 |
 | R6 | Qualifier `0x00` was mislabelled `QualIndex8` (count + 2-octet index) instead of IEEE 1815 `UINT8_START_STOP` (8-bit start + 8-bit stop); the indexed-count code `0x17` was absent. **Resolved** by the owner-authorized VEC-01 corrective #9: `0x00` now decodes/encodes as a 5-octet start/stop header, `0x17` as count8 with per-point 8-bit index prefixes, and the outstation static builders emit `0x17`/`0x07` accordingly. | Resolved. Conformant peers' start/stop Class-0 responses decode. | VEC-01 corrective #9 |
 
@@ -190,3 +209,8 @@ These references define the wire behavior used by the remediation fixtures:
    [Public PDF](https://www.dnp.org/Portals/0/Public%20Documents/DNP3%20AN2013-004b%20Validation%20of%20Incoming%20DNP3%20Data.pdf)
 3. An independent raw capture or independently generated frame is required
    for VEC-01. Repository self-encoded frames are not acceptable evidence.
+   **Satisfied (scoped) 2026-11-11:** the accepted VEC-01 campaign used original
+   lab-only PCAPs from an independently implemented OpenDNP3 3.1.2 peer, with
+   packet-derived `.vec` vectors and a SHA-256 manifest under
+   `testdata/external/vec01-20261111/`. Independent captures for other peers,
+   versions, or profiles would still be required for any broader claim.

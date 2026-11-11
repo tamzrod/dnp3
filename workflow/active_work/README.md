@@ -1032,3 +1032,27 @@ verifies all SHA-256 and re-decodes identically. Final Go gates all PASS: `gofmt
 **STOP for independent read-only CHECK.** No self-approval of interoperability/compliance, no
 PR/merge/`main` push, no production control/release, no R4 closure, no CURRENT archival/promotion.
 `Status: TASK_BLOCKED` and R4 remain OPEN; independent third-party interoperability NOT PROVEN.
+
+---
+
+### VEC-01 R4 documentation reconciliation — scoped owner acceptance (2026-11-11; post-6c297df)
+Authorization: owner-approved scoped VEC-01 acceptance / R4 documentation-closure checkpoint
+(`workflow/active_work/VEC-01-LAB-EXEC-001.md`; commit `0b1f67c`). `operation cwal` on permanent
+`work`; six authority markers unchanged (`Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`,
+`Branch: work`, `CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED`);
+`scripts/cwal-check.sh` OK; accepted baseline `6c297df` confirmed an ancestor. Documentation-only.
+
+- **Checkpoint 1** `a814ded`: §56 — accepted-evidence traceability (baseline `6c297df`; §50–55 checkpoints
+  `e99b1e0`/`6a4babe`/`9fd8828`/`2e464c8`/`3442518`; evidence SHA-256s) and release-prerequisite
+  classification against actual current evidence (API-02 pending in-repo seam; API-03/SAFE-03/SAFE-04/
+  CTRL-01/REL-02 proven and plan text stale; CTRL-02 SBO N/A, Direct-Operate covered; DOC-01 partial;
+  REL-01 satisfied by equivalent scripts; `main`/CI-on-`work`/release pending).
+- **Checkpoint 2** `<sha>`: §57 — reconciled `active_work/supported-profile.md` (R4 row now
+  historical-blocker + scoped `R4 RESOLVED — VEC-01 v0 independent-lab evidence accepted`, documentation-only),
+  `active_work/external-acceptance.md` (separate dated 2026-11-11 independent VEC-01 acceptance with
+  limitations; historical 2026-11-08 R4 row labelled history), `README.md` (scoped-interop bullets +
+  G1V2 caveat; no generalized claim). §57.4 text/diff consistency audit PASS; G1V2 mis-decode kept
+  prominent. Older roadmap docs assessed only, NOT modified.
+
+Next: **STOP for independent read-only review** before any PR/merge/release. `TASK_BLOCKED` retained;
+`main`/CI/release separate; no CURRENT archival or promotion.
