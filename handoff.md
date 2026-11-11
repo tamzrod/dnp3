@@ -1,9 +1,9 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: AO-002
+Package: AO-003
 Branch: work
-CURRENT: AO-002
+CURRENT: AO-003
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
@@ -1243,3 +1243,29 @@ AO-003, supported-profile change, or new operation mode.
   `docs/verification/AO-002.md` §9.
 Next: **STOP for independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release,
 no task closure.
+
+---
+
+### AO-002 closure → AO-003 promotion transition checkpoint — 2026-11-11
+Owner addendum "Owner-authorized AO-002 closure → AO-003 promotion (documentation-only,
+2026-11-11)" (`archive/active-work/AO-002.md`, committed `1488382`). Independent AO-002 F1–F6 CHECK
+accepted at `8d75292`. Documentation-only transition; no Go/test/CI/protocol changes.
+- **AO-002 CLOSED / TASK_CHECKPOINTED.** Task file (with all owner addenda) archived unchanged by
+  pure rename `workflow/active_work/AO-002.md` → `archive/active-work/AO-002.md` (byte-identical to
+  the pre-rename blob). Verified baseline `8d75292`. Closure evidence: `docs/verification/AO-002.md`
+  §10.
+- **AO-003 CURRENT** (`workflow/active_work/AO-003.md`, header activated to `CURRENT: AO-003`,
+  `Status: TASK_IN_PROGRESS`). Bounded G41 additional-variation implementation and regressions;
+  **implementation not started** — a separate subsequent `operation cwal` is required. No concurrent
+  AO-002/AO-003 CURRENT.
+- Both authority marker blocks changed consistently: `Package: AO-003`, `CURRENT: AO-003`,
+  `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Roadmap `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md`: `AO-002 DONE` (bounded G41V1 + F1–F6 internal
+  verification), `AO-003 CURRENT` (implementation not started); AO-004/AO-005 remain deferred.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains
+  **UNSUPPORTED**; no generalized compliance or production claim.
+- Checks: `git diff --check` PASS; `bash scripts/cwal-check.sh` OK; Go build/tests **NOT_RUN**
+  (documentation-only transition).
+Next: **STOP after remote-verified transition.** Do not execute AO-003 implementation in this
+invocation. No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.
