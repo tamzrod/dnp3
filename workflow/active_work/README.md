@@ -1047,7 +1047,7 @@ Authorization: owner-approved scoped VEC-01 acceptance / R4 documentation-closur
   classification against actual current evidence (API-02 pending in-repo seam; API-03/SAFE-03/SAFE-04/
   CTRL-01/REL-02 proven and plan text stale; CTRL-02 SBO N/A, Direct-Operate covered; DOC-01 partial;
   REL-01 satisfied by equivalent scripts; `main`/CI-on-`work`/release pending).
-- **Checkpoint 2** `<sha>`: §57 — reconciled `active_work/supported-profile.md` (R4 row now
+- **Checkpoint 2** `832ecb5`: §57 — reconciled `active_work/supported-profile.md` (R4 row now
   historical-blocker + scoped `R4 RESOLVED — VEC-01 v0 independent-lab evidence accepted`, documentation-only),
   `active_work/external-acceptance.md` (separate dated 2026-11-11 independent VEC-01 acceptance with
   limitations; historical 2026-11-08 R4 row labelled history), `README.md` (scoped-interop bullets +

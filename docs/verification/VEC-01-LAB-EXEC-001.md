@@ -5342,5 +5342,13 @@ integration/release acceptance tests. No archival or full package/release closur
 **STOP for independent read-only review before any PR, merge, release, or other implementation.** No
 change to the six CWAL authority markers; no CURRENT archival; no queue promotion; no self-approved PR;
 no merge; no `main` push; no release; no closure of unrelated readiness gates. R4 is documented as
-scoped owner-accepted/resolved on `work` only. Checkpoint-2 remote SHA and changed-file scope are
-recorded after the push in the handoffs.
+scoped owner-accepted/resolved on `work` only.
+
+#### 57.8 Checkpoint remote SHAs (verified by fetch/readback)
+
+| Checkpoint | Remote `work` SHA | Scope |
+|-----------|-------------------|-------|
+| 1 — assessment (§56) | `a814ded800818c12faa06a66d5c70578d33e7155` | `docs/verification/VEC-01-LAB-EXEC-001.md` |
+| 2 — reconciled acceptance docs (§57) | `832ecb5844afc8dc53bf6d5b72e8e06963ff2c9a` | `README.md`, `active_work/supported-profile.md`, `active_work/external-acceptance.md`, `docs/verification/VEC-01-LAB-EXEC-001.md`, `handoff.md`, `workflow/active_work/README.md` |
+
+Both SHAs were read back from `origin/work` after non-force push. Six authority markers unchanged.
