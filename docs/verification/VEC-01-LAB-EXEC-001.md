@@ -5078,14 +5078,23 @@ e95b568a07a214d3960348e909cc8b747e05c8d69d3734840be4c52e293a43e7  vec01-20261111
 6982b17ff3ca4c984db440b76e3bdd8d9c5600127bd2d0039d0415aad0074629  vec01-20261111-positive-class0-crob.vec
 ```
 
-#### 54.4 Git durability — fresh independent checkout verification
+#### 54.4 Git durability — fresh independent checkout verification (OBSERVED)
 
-Durability is established only by an actual push plus a **fresh independent checkout/fetch** of the
-pushed commit, with SHA-256 of the checked-out originals/vectors matching the manifest. See §54.5 for
-the observed result.
+- Committed and pushed to `work`: `3442518ed615bd3c19ed953e0c602a2c6faafc92`
+  (`2e464c8..3442518  work -> work`).
+- Fresh independent clone of `https://github.com/tamzrod/dnp3.git`, then
+  `git checkout 3442518ed615bd3c19ed953e0c602a2c6faafc92` (HEAD confirmed at that SHA).
+- `sha256sum -c SHA256SUMS.txt` in the fresh checkout: **all four files `OK`** (both original PCAPs
+  and both `.vec` vectors match the committed manifest).
+- Independent re-decode from the fresh clone: positive PCAP shows the Class-0 READ → RESPONSE →
+  Direct-Operate → RESPONSE exchange with `Point Number 0 (Quality: Online), Value: 2300` and
+  `Point Number 0, Value: 1`; negative PCAP shows `Data Chunk checksum: 0x460c incorrect, should be
+  0xb9f3` (last payload block) with the link header CRC still valid.
 
 #### 54.5 Gate E disposition
 
-PASS is labelled only upon independently verified Git durability (§54.4), not mere local existence.
-Durable original captures, faithful `.vec` vectors, manifest and SHA-256 are committed to `work`.
-`TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
+**Gate E PASS.** Git durability is independently verified: the pushed commit
+`3442518ed615bd3c19ed953e0c602a2c6faafc92` on `work` yields a fresh checkout whose originals and
+vectors match the committed SHA-256 manifest, and the evidence re-decodes to the same results. This is
+verified Git durability, not mere local file existence. `TASK_BLOCKED` retained; independent
+third-party interoperability NOT PROVEN.
