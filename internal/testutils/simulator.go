@@ -416,29 +416,31 @@ func encodeBinaryInputs(points []*types.BinaryInput) []byte {
 	return append(out, packed...)
 }
 
-// encodeCounters encodes G20V1 counter points (5 octets/point: uint32 + flags)
-// with a count8 qualifier.
+// encodeCounters encodes G20V1 counter points (5 octets/point: flags then
+// uint32) with a count8 qualifier. The flags octet is first, matching IEEE 1815
+// and the pinned peer (opendnp3 3.1.2 Group20Var1 = (flags, count32)).
 func encodeCounters(points []*types.Counter) []byte {
 	n := uint8(len(points))
 	out := []byte{0x14, 0x01, 0x07, n} // G20V1, count8
 	for _, p := range points {
 		var buf [5]byte
-		binary.LittleEndian.PutUint32(buf[:4], p.Value)
-		buf[4] = byte(p.Quality)
+		buf[0] = byte(p.Quality)
+		binary.LittleEndian.PutUint32(buf[1:], p.Value)
 		out = append(out, buf[:]...)
 	}
 	return out
 }
 
-// encodeAnalogInputs encodes G30V1 analog input points (5 octets/point: int32 +
-// flags) with a count8 qualifier.
+// encodeAnalogInputs encodes G30V1 analog input points (5 octets/point: flags
+// then int32) with a count8 qualifier. The flags octet is first, matching IEEE
+// 1815 and the pinned peer (opendnp3 3.1.2 Group30Var1 = (flags, value32)).
 func encodeAnalogInputs(points []*types.AnalogInput) []byte {
 	n := uint8(len(points))
 	out := []byte{0x1E, 0x01, 0x07, n} // G30V1, count8
 	for _, p := range points {
 		var buf [5]byte
-		binary.LittleEndian.PutUint32(buf[:4], uint32(int32(p.Value)))
-		buf[4] = byte(p.Quality)
+		buf[0] = byte(p.Quality)
+		binary.LittleEndian.PutUint32(buf[1:], uint32(int32(p.Value)))
 		out = append(out, buf[:]...)
 	}
 	return out

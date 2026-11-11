@@ -600,8 +600,8 @@ func buildMultiFragmentClass0Response(appSeq uint8) []byte {
 		0x01, 0x01, 0x07, 0x02, // G1V1 count8 count=2
 		0x03,                   // packed binary: bits 0,1 set
 		0x1E, 0x01, 0x07, 0x01, // G30V1 count8 count=1
+		0x01,                   // flags online (first, per IEEE 1815)
 		0x2A, 0x00, 0x00, 0x00, // value 42 (int32 LSB)
-		0x01, // flags online
 	}
 	// Split: fragment 1 = bytes [0:9] (through the G1V1 packed byte),
 	// fragment 2 = bytes [9:] (G30V1 header + point).
@@ -1091,7 +1091,7 @@ func TestMultiFragmentClass0Reassembly(t *testing.T) {
 			if qual != 0x07 || cnt != 1 {
 				t.Errorf("G30V1 header = qual %#x count %d, want 0x07/1", qual, cnt)
 			}
-			// G30V1: 1 point = int32(4) + flags(1); advance header(4)+5.
+			// G30V1: 1 point = flags(1) + int32(4); advance header(4)+5.
 			off += 4 + 5
 		default:
 			t.Fatalf("unexpected object header g=%d v=%d at offset %d", g, v, off)

@@ -26,14 +26,14 @@ func buildMVPSingleGroupResponse(seq uint8, group uint8) []byte {
 	case 30: // G30V1 analog input, count8, 1 point, 5 octets
 		obj = []byte{
 			0x1E, 0x01, 0x07, 0x01,
+			0x01,                   // flags online
 			0x2A, 0x00, 0x00, 0x00, // value 42 (int32 LSB)
-			0x01, // flags online
 		}
 	case 20: // G20V1 counter, count8, 1 point, 5 octets
 		obj = []byte{
 			0x14, 0x01, 0x07, 0x01,
+			0x01,                   // flags online
 			0x64, 0x00, 0x00, 0x00, // value 100 (uint32 LSB)
-			0x01, // flags online
 		}
 	default:
 		panic("unsupported MVP group in test helper")

@@ -4427,3 +4427,172 @@ order; affected vectors are enumerated above. Next authorized action: Milestone 
 `parseAnalogInputs`/`parseCounters` G30V1/G20V1 flags-first correction plus byte-exact golden/negative
 tests. No Go source changed at this milestone. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4
 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+### 46. Gate C static-object field-order corrective — Milestones 2–4 (implementation, tests, gates; append-only, 2026-11-11)
+
+Authorization: owner addendum "Owner-authorized Gate C static-object field-order corrective
+(2026-11-11; post-26dd70f)" in `workflow/active_work/VEC-01-LAB-EXEC-001.md`, executed under
+`operation cwal` on permanent `work`. Baseline for this work: `HEAD == origin/work ==
+02378ae5d74e610dd1e15a28741cda3a7b240d41` with Milestone 1 already checkpointed at
+`58c08cac609c19ae2a06ea4c09ca43cce6af6b28`. Six authority markers unchanged
+(`Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`, `Branch: work`,
+`CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED`).
+
+#### 46.1 Corrective wire contract (re-confirmed independently at implementation time)
+
+The §45.2 contract was re-verified directly against the pinned peer's committed generated source
+(`dnp3/opendnp3`, tag `3.1.2`), fetched read-only:
+
+- `cpp/lib/src/gen/objects/Group30.cpp`:
+  `bool Group30Var1::Write(const Group30Var1& arg, wseq_t& buffer) { return LittleEndian::write(buffer, arg.flags, arg.value); }`
+  and `Group30Var1::Read` = `LittleEndian::read(buffer, output.flags, output.value)`.
+- `cpp/lib/src/gen/objects/Group20.cpp`: identical shape for `Group20Var1`
+  (`LittleEndian::write(buffer, arg.flags, arg.value)`).
+
+So the object body is **`flags` octet first, then the 4-octet little-endian value/count** (5 octets),
+consistent with the §44 raw bytes (`01 fc 08 00 00` = flags 0x01 ONLINE + int32 2300; `01 2a 00 00 00`
+= flags 0x01 ONLINE + uint32 42) and Wireshark 4.0.17. No source change was made to any golden
+expectation in order to pass; expected bytes are stated independently from the peer/spec.
+
+#### 46.2 Master static decode fix — `pkg/dnp3/master/client.go`
+
+- `parseAnalogInputs`, G30V1 fast path: now reads the **flags octet first**
+  (`types.QualityFlags(data[offset])`) then the LE int32 (`data[offset+1:offset+5]`). The fast path was
+  generalised to reuse the existing `pointLayout` helper, so it also correctly handles the indexed
+  qualifier (`0x17`) with a per-point 1-octet index prefix (previously that qualifier fell through to
+  the generic path). A declared count that does not fit the remaining bytes is rejected (`break`)
+  without emitting partial points.
+- `parseCounters`, G20V1 fast path: same flags-first fix, LE uint32 (`data[offset+1:offset+5]`),
+  indexed-qualifier and truncation handling as above.
+- Historical misreads (`AI[0]=588801`, `CT[0]=10753`, quality 0x00) can no longer be produced by these
+  paths. The generic `case 1` fallback (non-v0 qualifiers, and the shared event-group path) was left
+  unchanged to avoid touching G31V1/G21V1 event semantics, which are outside the locked v0 profile and
+  the corrective allowlist.
+
+#### 46.3 Outstation static encode fix — `internal/outstation/outstation.go`
+
+- `buildAnalogInputData` variation 1: emits `ai.Quality` **then** the four LE value octets.
+- `buildCounterData` variation 1: emits `c.Quality` **then** the four LE value octets.
+
+This makes the in-repo outstation wire-conformant and, critically, removes the self-consistency that
+had masked the defect (repo outstation ↔ repo master previously agreed on the wrong order).
+
+#### 46.4 Test / vector corrections and additions (externally grounded)
+
+Corrected to flags-first (value/quality semantics unchanged):
+
+- `pkg/dnp3/master/analog_input_test.go`, `pkg/dnp3/master/counter_test.go` (rewritten to assert the
+  locked layout for count8/range16/index8, signed vs unsigned ranges, LSB byte order, quality byte).
+- `pkg/dnp3/master/object_vector_test.go` (`TestParseClass0AnalogInputVector`,
+  `TestParseClass0CounterVector`, `TestParseAnalogInputLSBNotBigEndian`, `TestParseCounterLSBNotBigEndian`).
+- `pkg/dnp3/master/class0_qualifier_test.go` (`TestClass0G30V1StartStop8`,
+  `TestClass0CounterStartStop8`, `TestClass0MultiHeaderMixedQualifiers`).
+- `pkg/dnp3/master/multi_header_test.go`, `pkg/dnp3/master/read_response_shape_test.go` (canned APDUs).
+- `internal/testutils/simulator.go` (`encodeAnalogInputs`, `encodeCounters` — the loopback simulator).
+- `internal/master/master_test.go` (multi-fragment Class-0 fixture and its header-scan comment).
+- `internal/al/object_header_test.go` (header example trailing bytes corrected for clarity; assertions
+  are on the 4-octet header only, so behaviour is unchanged).
+- Tracked static fixtures `active_work/testdata/class0-analog-input-vector.hex`,
+  `active_work/testdata/class0-counter-vector.hex`, `active_work/testdata/class0-multifragment-apdu.hex`.
+
+`active_work/testdata/external/sample-vec01-placeholder.vec` was **deliberately left unchanged** (it is
+a governance-protected MEXT-020/MEXT-033 placeholder not consumed by any test; correcting it was
+outside the bounded allowlist, so the discrepancy is recorded here rather than silently edited).
+
+New externally grounded byte-exact tests (expected bytes stated from the peer/spec, not from the code
+under test):
+
+- `pkg/dnp3/master/field_order_golden_test.go`: decisive §44 goldens
+  (`TestG30V1FlagsFirstGolden` = `01 fc 08 00 00` → 2300 ONLINE; `TestG20V1FlagsFirstGolden` =
+  `01 2a 00 00 00` → 42 ONLINE), value-then-flags negative guards
+  (`TestG30V1ValueThenFlagsRejected`, `TestG20V1ValueThenFlagsRejected`), offline-quality goldens,
+  truncated-object rejection, and indexed-qualifier (`0x17`) flags-first decode.
+- `internal/outstation/field_order_test.go`: byte-exact G30V1/G20V1 encoder goldens including offline
+  flags, asserting the flags octet is emitted first.
+- `test/integration/static_field_order_e2e_test.go`: real-TCP Master↔Outstation Class-0 regression with
+  AI[0]=2300 and CT[0]=42 over the wire, asserting the corrected values (fails with 588801/10753 if the
+  defect regresses).
+
+#### 46.5 Verification results (actual observation)
+
+Go toolchain: pinned `go1.22.12 linux/amd64` (sha-verified).
+
+| Check | Result |
+|---|---|
+| `gofmt -l .` | PASS (no output) |
+| `git diff --check` | PASS (no output) |
+| `go vet ./...` | PASS |
+| `go build ./...` | PASS |
+| `go test ./... -count=1` | PASS (all packages `ok`, incl. `internal/master`, `internal/outstation`, `pkg/dnp3/master`, `internal/testutils`, `test/integration`) |
+| `./scripts/verify-mvp.sh` | PASS (incl. `-race` on MVP race packages) |
+| `./scripts/verify-external-mvp.sh` | PASS (Tiers 1–3; Tier 4 advisory third-party capture not present — unchanged, not claimed) |
+| `bash scripts/cwal-check.sh` | PASS on the committed tree |
+
+No in-repo test alone establishes independent OpenDNP3 interoperability; that remains unproven and is
+not claimed.
+
+#### 46.6 Disposition — Milestones 2–4
+
+**PASS (implementation + in-repo regression + Go gates).** G30V1/G20V1 static field order is now
+flags-then-value in both the Master decoder and the Outstation encoder, with externally grounded
+byte-exact golden/negative tests and an end-to-end real-TCP regression. `TASK_BLOCKED` retained;
+VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+
+---
+
+### 47. Gate C static-object field-order corrective — Milestone 5: G1V2 read-only impact report (append-only, 2026-11-11)
+
+Per the CURRENT addendum ("G1V2 separate investigation — no silent feature promotion"), this is
+**read-only diagnosis only**; no G1V2 decoder change, no profile change, no fixture that conceals it.
+
+#### 47.1 Trace (source inspection, no change)
+
+`pkg/dnp3/master/client.go` `parseBinaryInputs`:
+
+- `group == 1 && variation == 1` is handled by the dedicated **packed** path (`packedBinaryRange`),
+  which is correct for G1V1 (8 points/octet, no per-point quality).
+- `variation == 2` falls through to the shared generic `switch`, whose `case 2` is commented
+  `// Without flags` and does `value = data[offset] != 0; quality = types.QualityOnline; offset++`.
+
+For IEEE 1815 **Group 1 Variation 2 (Binary Input With Flags)** the object body is a **single flags
+octet** where bit `0x80` is the point state and bits `0x7F` are quality flags — i.e. the same shape as
+the generic `case 1` ("With flags"), **not** a bare value byte. The `case 2` branch therefore consumes
+the flags octet as a raw value (any nonzero byte → `true`) and forces `QualityOnline`, discarding the
+state bit and the quality bits.
+
+#### 47.2 Consistency with §44 observation
+
+This exactly explains the §44.6 observation: `BI[1..9]` served as G1V2 with flags byte `0x02`
+(offline/restart) was decoded by the master as ONLINE `true`. The flags octet `0x02` is nonzero →
+`value=true`; the forced `QualityOnline` hides the offline/restart bits; the true state bit `0x80`
+(clear = off) is ignored.
+
+#### 47.3 Compatibility / scope impact
+
+- **G1V2 is outside the locked v0 profile.** `active_work/supported-profile.md` lists the Class-0 read
+  as `Group 1 Variation 1` (packed). G1V1 is unaffected by this defect and by this corrective.
+- The shared generic `switch` is keyed only on `variation` and is used for both Group 1 (static) and
+  Group 2 (event) points; the Group 2 variation space (timestamp semantics) differs from Group 1's, so
+  the `case 2` label "Without flags" is itself a latent mislabel. Correcting it would touch event
+  semantics outside the corrective allowlist and is **not** attempted here.
+- No test fixture was added or altered to conceal the defect; the real-TCP corrective regression uses
+  only G1V1 (packed) binary inputs, matching the v0 profile.
+
+#### 47.4 Disposition
+
+`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE` (read-only). A separate explicit owner authorization is
+required to fix G1V2 or to promote it into the supported profile. `TASK_BLOCKED` retained; VEC-01 NOT
+EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+
+---
+
+### 48. Gate C static-object field-order corrective — STOP for independent CHECK (append-only, 2026-11-11)
+
+All five bounded micro-milestones are complete and remotely checkpointed: (1) diagnosis, (2) master
+G30V1/G20V1 fix + byte-exact tests, (3) outstation fix + byte-exact tests, (4) in-repo end-to-end
+regression + Go gates, (5) G1V2 read-only impact report. Per the addendum this is a **STOP for
+independent read-only CHECK**: no automatic restart of live peer Gate C, no Gate D/E captures, no R4
+change, no CURRENT closure/archive, no promotion, no PR/merge, no `main` push. `TASK_BLOCKED` retained;
+VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.

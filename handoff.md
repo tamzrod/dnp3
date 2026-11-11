@@ -839,3 +839,26 @@ defect classified read-only/out-of-scope (no change). Affected vectors enumerate
 `docs/verification/VEC-01-LAB-EXEC-001.md` §45. **Next authorized action: Milestone 2 — master
 `parseAnalogInputs`/`parseCounters` flags-first fix + byte-exact tests.** `TASK_BLOCKED` retained;
 VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+
+---
+
+### VEC-01 Gate C static-object field-order corrective — Milestones 2–5 complete; STOP for CHECK (2026-11-11)
+Owner-authorized corrective under `operation cwal` on `work`; six markers unchanged; `scripts/cwal-check.sh`
+OK on the committed tree. **Milestones 2–4 (implementation + in-repo regression + Go gates) — PASS.**
+Master `parseAnalogInputs`/`parseCounters` G30V1/G20V1 now decode **flags-then-value** (flags octet first,
+then LE int32/uint32; indexed qualifier `0x17` and truncation handled via the shared `pointLayout`
+helper); outstation `buildAnalogInputData`/`buildCounterData` variation 1 now **encode flags first**.
+Contract re-verified against pinned OpenDNP3 3.1.2 generated `Group30.cpp`/`Group20.cpp`
+(`LittleEndian::write(buffer, arg.flags, arg.value)`) and the §44 bytes (`01 fc 08 00 00`→2300 ONLINE;
+`01 2a 00 00 00`→42 ONLINE). Added externally grounded byte-exact goldens/negatives
+(`pkg/dnp3/master/field_order_golden_test.go`, `internal/outstation/field_order_test.go`) and a real-TCP
+Master↔Outstation Class-0 regression (`test/integration/static_field_order_e2e_test.go`); corrected all
+affected self-consistent vectors/fixtures. Gates all **PASS**: `gofmt -l .`, `git diff --check`,
+`go vet ./...`, `go build ./...`, `go test ./... -count=1`, `./scripts/verify-mvp.sh` (incl. `-race`),
+`./scripts/verify-external-mvp.sh` (Tiers 1–3). **Milestone 5 (G1V2)** — read-only report:
+`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE` (G1V2 With Flags is mis-decoded by the generic `case 2`,
+but G1V2 is outside the locked v0 G1V1 profile; no decoder/profile/fixture change). See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §46–§48. **STOP for independent read-only CHECK** — no
+automatic live peer Gate C restart, no Gate D/E, no R4 change, no CURRENT closure/archive, no promotion,
+no PR/merge, no `main` push. `TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY
+INTEROPERABILITY NOT PROVEN.

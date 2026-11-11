@@ -261,9 +261,9 @@ func TestEncodeObjectHeaderUnsupportedQualifier(t *testing.T) {
 // TestDecodeObjectHeaderCount8LSB verifies the count field is read
 // little-endian for 0x07 and the value matches the wire byte.
 func TestDecodeObjectHeaderCount8LSB(t *testing.T) {
-	// Golden G30V1 vector: 1E 01 07 01 E8 03 00 00 01
+	// Golden G30V1 vector: 1E 01 07 01 01 E8 03 00 00 (flags first)
 	// Header is 1E 01 07 01 -> count=1.
-	data := []byte{0x1E, 0x01, 0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0x01}
+	data := []byte{0x1E, 0x01, 0x07, 0x01, 0x01, 0xE8, 0x03, 0x00, 0x00}
 	h, n, err := DecodeObjectHeader(data, 0)
 	if err != nil {
 		t.Fatalf("DecodeObjectHeader error: %v", err)
