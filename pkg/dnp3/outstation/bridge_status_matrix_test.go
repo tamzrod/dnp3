@@ -37,7 +37,7 @@ func TestBridgeBinaryOutputNonSuccessStatusIsFailure(t *testing.T) {
 	}{
 		{"success", types.ControlSuccess, true},
 		{"not_supported", types.ControlNotSupported, false},
-		{"blocked", types.ControlBlocked, false},
+		{"hardware_error", types.ControlHardwareError, false},
 		{"no_select", types.ControlNoSelect, false},
 		{"local", types.ControlLocal, false},
 	}

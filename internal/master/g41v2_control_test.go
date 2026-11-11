@@ -194,7 +194,7 @@ func TestOperateG41V2StatusMatrix(t *testing.T) {
 	}{
 		{"success", g41v2Record(0x28, 1, 0, 42, 0x00), CommandStatusSuccess, false, false},
 		{"rejected_not_supported", g41v2Record(0x28, 1, 0, 42, 0x04), CommandStatusNotSupported, false, false},
-		{"rejected_blocked", g41v2Record(0x28, 1, 0, 42, 0x06), CommandStatusBlocked, false, false},
+		{"rejected_hardware_error", g41v2Record(0x28, 1, 0, 42, 0x06), CommandStatusHardwareError, false, false},
 		{"rejected_no_select", g41v2Record(0x28, 1, 0, 42, 0x02), CommandStatusNoSelect, false, false},
 		{"iin_only_no_object", nil, CommandStatusUnknown, true, true},
 	}
@@ -309,7 +309,7 @@ func TestOperateG41V2ConflictingIIN(t *testing.T) {
 // little-endian (returned as the raw uint16 payload) and the per-point status
 // octet, and rejects an unsupported variation (V5) or a truncated record.
 func TestParseG41RecordG41V2(t *testing.T) {
-	// 42 -> value bytes 2A 00, status 0x06 (Blocked).
+	// 42 -> value bytes 2A 00, status 0x06 (HardwareError).
 	rec := g41v2Record(0x28, 1, 0x0004, 42, 0x06)
 	idx, value, status, ok := parseG41Record(rec, 0, 2)
 	if !ok {
@@ -321,8 +321,8 @@ func TestParseG41RecordG41V2(t *testing.T) {
 	if value != 42 {
 		t.Fatalf("value = %d, want 42", value)
 	}
-	if status != CommandStatusBlocked {
-		t.Fatalf("status = %d, want Blocked (6)", status)
+	if status != CommandStatusHardwareError {
+		t.Fatalf("status = %d, want HardwareError (6)", status)
 	}
 
 	// Negative boundary: -32768 -> 0x8000 -> 32768 as the raw uint16 payload.

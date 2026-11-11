@@ -1564,8 +1564,8 @@ func parseControlObjectHeader(data []byte) (group, variation uint8, count int, i
 
 // handleWrite handles WRITE requests.
 func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
-	// Parse write request header (group, variation, qualifier, count, index).
-	group, variation, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
+	// Parse write request header (group, qualifier, count, index).
+	group, _, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		o.iin.ParameterError = true
 		return nil, ErrInvalidRequest
@@ -1611,47 +1611,15 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			}
 			dataIdx += 11
 
-		case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32)/V4 (float64), little-endian
-			// G41 record: index (already consumed) then a signed little-endian
-			// value and one command-status octet.
-			width := g41ValueWidth(variation)
-			if width == 0 {
-				o.iin.ParameterError = true
-				return nil, fmt.Errorf("unsupported analog variation: %d", variation)
-			}
-			if dataIdx+width+1 > len(req.Data) {
-				o.iin.ParameterError = true
-				return nil, ErrInvalidRequest
-			}
-			var value interface{}
-			switch variation {
-			case 1:
-				value = int32(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
-			case 2:
-				value = int16(uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8)
-			case 3: // float32
-				f := math.Float32frombits(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
-				if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = f
-			default: // 4: float64
-				f := math.Float64frombits(uint64(req.Data[dataIdx]) | uint64(req.Data[dataIdx+1])<<8 | uint64(req.Data[dataIdx+2])<<16 | uint64(req.Data[dataIdx+3])<<24 |
-					uint64(req.Data[dataIdx+4])<<32 | uint64(req.Data[dataIdx+5])<<40 | uint64(req.Data[dataIdx+6])<<48 | uint64(req.Data[dataIdx+7])<<56)
-				if math.IsNaN(f) || math.IsInf(f, 0) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = f
-			}
-			dataIdx += width + 1
-			if dh, ok := o.data.(DataWriter); ok {
-				if err := dh.WriteAnalogOutput(index, value, variation); err != nil {
-					o.iin.ParameterError = true
-					return nil, err
-				}
-			}
+		case 41: // Analog Output (Group 41)
+			// Fail closed (AO-004 pre-PR corrective F2): the approved G41 command
+			// profile permits only FuncDirectOperate WITH RESPONSE. An application
+			// WRITE carrying any G41 object must not invoke a host analog command
+			// handler or mutate state, and must not be acknowledged as success.
+			// The G41 value is never decoded here; the request is rejected before
+			// any side effect regardless of variation or record shape.
+			o.iin.ParameterError = true
+			return nil, fmt.Errorf("G41 analog output is not supported via WRITE; use DirectOperate with response")
 
 		default:
 			o.iin.ParameterError = true

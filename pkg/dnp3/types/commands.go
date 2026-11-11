@@ -125,8 +125,13 @@ const (
 	ControlNotSupported ControlStatus = 4
 	// ControlAlreadyActive indicates the output is already active
 	ControlAlreadyActive ControlStatus = 5
-	// ControlBlocked indicates the output is blocked
-	ControlBlocked ControlStatus = 6
+	// ControlHardwareError indicates something is stopping the command, often a
+	// local/remote interlock (IEEE 1815 command status 6). The pinned OpenDNP3
+	// 3.1.2 reference names code 6 HARDWARE_ERROR.
+	ControlHardwareError ControlStatus = 6
+	// ControlBlocked is a deprecated alias for ControlHardwareError. Code 6 is
+	// HARDWARE_ERROR in the reference; the wire value is unchanged.
+	ControlBlocked = ControlHardwareError
 	// ControlLocal indicates the output is in local mode
 	ControlLocal ControlStatus = 7
 	// ControlTooMany indicates too many commands are queued
@@ -156,8 +161,8 @@ func (s ControlStatus) String() string {
 		return "not_supported"
 	case ControlAlreadyActive:
 		return "already_active"
-	case ControlBlocked:
-		return "blocked"
+	case ControlHardwareError:
+		return "hardware_error"
 	case ControlLocal:
 		return "local"
 	case ControlTooMany:

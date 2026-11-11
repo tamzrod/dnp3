@@ -146,7 +146,7 @@ func TestOperateG41V1StatusMatrix(t *testing.T) {
 	}{
 		{"success", 0, false, CommandStatusSuccess, false},
 		{"rejected_not_supported", 4, false, CommandStatusNotSupported, false},
-		{"rejected_blocked", 6, false, CommandStatusBlocked, false},
+		{"rejected_hardware_error", 6, false, CommandStatusHardwareError, false},
 		{"rejected_no_select", 2, false, CommandStatusNoSelect, false},
 		{"iim_only_no_object", 0, true, CommandStatusUnknown, true},
 	}
@@ -208,8 +208,8 @@ func TestOperateG41V1MismatchedObjectNotSuccess(t *testing.T) {
 func TestParseCommandStatusG41V1(t *testing.T) {
 	// header(5) + index(2) + value(4) + status(1)
 	data := []byte{0x29, 0x01, 0x28, 0x01, 0x00, 0x00, 0x00, 0xFC, 0x08, 0x00, 0x00, 0x06}
-	if got := parseCommandStatus(data); got != CommandStatusBlocked {
-		t.Fatalf("G41V1 status = %d, want Blocked (6)", got)
+	if got := parseCommandStatus(data); got != CommandStatusHardwareError {
+		t.Fatalf("G41V1 status = %d, want HardwareError (6)", got)
 	}
 	// Truncated (status octet missing) -> Unknown, never success.
 	trunc := []byte{0x29, 0x01, 0x28, 0x01, 0x00, 0x00, 0x00, 0xFC, 0x08, 0x00}

@@ -165,7 +165,7 @@ func TestOperateG41V3StatusMatrix(t *testing.T) {
 	}{
 		{"success", g41v3Record(0x28, 1, 0, math.Float32bits(1.0), 0x00), CommandStatusSuccess, false, false},
 		{"rejected_not_supported", g41v3Record(0x28, 1, 0, math.Float32bits(1.0), 0x04), CommandStatusNotSupported, false, false},
-		{"rejected_blocked", g41v3Record(0x28, 1, 0, math.Float32bits(1.0), 0x06), CommandStatusBlocked, false, false},
+		{"rejected_hardware_error", g41v3Record(0x28, 1, 0, math.Float32bits(1.0), 0x06), CommandStatusHardwareError, false, false},
 		{"rejected_no_select", g41v3Record(0x28, 1, 0, math.Float32bits(1.0), 0x02), CommandStatusNoSelect, false, false},
 		{"iin_only_no_object", nil, CommandStatusUnknown, true, true},
 	}

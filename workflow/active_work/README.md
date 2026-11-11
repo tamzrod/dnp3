@@ -1401,3 +1401,36 @@ protocol/simulator/lab execution.
   (documentation-only transition). Evidence: `docs/verification/AO-003.md` §11.
 Next: **STOP for independent CHECK** of the transition. No PR/merge, no `main` push, no release, no
 AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 pre-PR corrective checkpoint — command status 6 and G41 `FuncWrite` boundary — 2026-11-12
+Owner addendum "Owner-authorized Pre-PR corrective CWAL" (`workflow/active_work/AO-004.md`, committed
+`45d699a`). Single bounded corrective microtask routed by `operation cwal`. No independent-peer/PCAP
+execution, no lab network, no live control, no PR/merge/release, no supported-profile expansion.
+- **F1 (status octet 6).** Independently re-checked pinned OpenDNP3 3.1.2 `CommandStatus.h`
+  (`cpp/lib/include/opendnp3/gen/CommandStatus.h`, commit `26b4c01e4839bbbda8866655e086471c4917ee53`,
+  SHA-256 `69d02051a0e17756a967dff7617af75e4eb4def772042ec1c10e2fca59829885`): code **6 = `HARDWARE_ERROR`**,
+  code **15 = `BLOCKED`**. Confirmed the prior in-repo `Blocked = 6` was a naming defect. Introduced
+  canonical `CommandStatusHardwareError = 6` (internal) and `ControlHardwareError = 6` (public) with
+  `String()` → `"hardware_error"`; retained deprecated aliases `CommandStatusBlocked`/`ControlBlocked`
+  at the **same numeric value** (non-breaking); updated `pkg/dnp3/master/client.go` mapping. Wire value 6
+  unchanged; no other codes renumbered; status remains a non-success explicit failure (not UNKNOWN).
+- **F2 (G41 `FuncWrite`).** Traced the reachable incoming path `ProcessRequest` → `handleWrite` → G41
+  `case 41` → `DataWriter.WriteAnalogOutput` → `CommandHandler.HandleAnalogCommand`. `internal/outstation/outstation.go`
+  `handleWrite` `case 41:` now **fails closed** before any decode/handler call/state mutation with
+  `ParameterError` IIN and no success acknowledgement. Valid G41 `FuncDirectOperate` (one-point `0x28`)
+  and non-G41 `FuncWrite` (G12/CROB) are unchanged; `FuncSelect`/`FuncOperate`/`FuncDirectOperateNoResp`
+  were not newly enabled.
+- Tests: stale G41V4 WRITE success test replaced with an honest rejection test; new
+  `internal/outstation/g41_write_rejection_test.go` (V1–V4 + malformed/multi-point zero-side-effect +
+  CROB regression) and `internal/master/command_status_hardware_error_test.go` (wire-6 → HardwareError,
+  non-success). Affected status matrix/label tests updated to preferred `HardwareError`.
+- Checks (observed PASS): `gofmt`, `go build ./...`, `go vet ./...`, `go test ./... -count=1`,
+  `go test -race` (affected packages), `./scripts/verify-external-mvp.sh`, `git diff --check`. Revert-proof
+  mutation probes confirmed both new test sets fail on the old behavior. Go `go1.22.0` used.
+- `active_work/supported-profile.md` **byte-identical** (blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06`):
+  Group 41 remains **UNSUPPORTED**. Evidence: `docs/verification/AO-004-PREPR-CORRECTIVE.md`.
+Next: **STOP for independent CHECK** of this corrective. A distinct later `operation cwal` may resume the
+original AO-004 isolation/readiness-first plan only after that CHECK. No PR/merge, no `main` push, no
+release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.

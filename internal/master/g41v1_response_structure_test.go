@@ -152,8 +152,8 @@ func TestOperateG41V1F5ExplicitNonSuccessStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("explicit non-success status should classify (not error), got %v", err)
 	}
-	if status != CommandStatusBlocked {
-		t.Fatalf("status = %d, want Blocked (6)", status)
+	if status != CommandStatusHardwareError {
+		t.Fatalf("status = %d, want HardwareError (6)", status)
 	}
 }
 
@@ -218,8 +218,8 @@ func TestOperateG41V1F6ExplicitNonSuccessStatusPreserved(t *testing.T) {
 		iin    [2]byte
 		want   CommandStatus
 	}{
-		{"Blocked, clean IIN", 0x06, [2]byte{0x00, 0x00}, CommandStatusBlocked},
-		{"Blocked, conflicting ParameterError", 0x06, [2]byte{0x00, 0x20}, CommandStatusBlocked},
+		{"HardwareError, clean IIN", 0x06, [2]byte{0x00, 0x00}, CommandStatusHardwareError},
+		{"HardwareError, conflicting ParameterError", 0x06, [2]byte{0x00, 0x20}, CommandStatusHardwareError},
 		{"NoSelect, clean IIN", 0x02, [2]byte{0x00, 0x00}, CommandStatusNoSelect},
 	}
 	for _, row := range rows {

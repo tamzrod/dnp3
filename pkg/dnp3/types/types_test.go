@@ -295,7 +295,7 @@ func TestControlStatus(t *testing.T) {
 		{ControlSuccess, "success"},
 		{ControlTimeout, "timeout"},
 		{ControlNotSupported, "not_supported"},
-		{ControlBlocked, "blocked"},
+		{ControlHardwareError, "hardware_error"},
 		{ControlSuccess + 99, "unknown"},
 	}
 
@@ -305,5 +305,23 @@ func TestControlStatus(t *testing.T) {
 				t.Errorf("ControlStatus.String() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+// TestControlHardwareErrorAlias pins the corrected public status name for wire
+// code 6 (HARDWARE_ERROR per the pinned OpenDNP3 3.1.2 reference) and confirms
+// the deprecated ControlBlocked alias keeps the same numeric value.
+func TestControlHardwareErrorAlias(t *testing.T) {
+	if ControlHardwareError != 6 {
+		t.Fatalf("ControlHardwareError = %d, want 6", ControlHardwareError)
+	}
+	if ControlBlocked != ControlHardwareError {
+		t.Fatalf("deprecated ControlBlocked = %d, want %d (ControlHardwareError)", ControlBlocked, ControlHardwareError)
+	}
+	if ControlHardwareError.String() != "hardware_error" {
+		t.Fatalf("ControlHardwareError.String() = %q, want %q", ControlHardwareError.String(), "hardware_error")
+	}
+	if ControlHardwareError == ControlSuccess {
+		t.Fatalf("ControlHardwareError must not alias ControlSuccess")
 	}
 }

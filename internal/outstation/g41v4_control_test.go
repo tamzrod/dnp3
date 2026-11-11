@@ -232,11 +232,13 @@ func TestOutstationG41V4RejectionsNoHandlerCall(t *testing.T) {
 	}
 }
 
-// TestOutstationG41V4WritePathDecode verifies the FuncWrite (WRITE) path also
-// decodes G41V4 little-endian and dispatches a typed float64 (this path is
-// distinct from DirectOperate's executeControl). The response is a plain
-// FuncResponse with no echo object, as WRITE returns no per-point status.
-func TestOutstationG41V4WritePathDecode(t *testing.T) {
+// TestOutstationG41V4WritePathRejectsWithNoHandlerCall verifies the FuncWrite
+// (WRITE) path fails closed for a well-formed G41V4 record: the approved G41
+// command profile permits only FuncDirectOperate with response, so an
+// application WRITE carrying G41 must reject before any host analog command
+// handler call or state mutation, with no success acknowledgement.
+// (AO-004 pre-PR corrective F2.)
+func TestOutstationG41V4WritePathRejectsWithNoHandlerCall(t *testing.T) {
 	h := &g41v4RecordingHandler{}
 	o := newG41V4Outstation(h)
 	bits := math.Float64bits(123.456789)
@@ -245,27 +247,25 @@ func TestOutstationG41V4WritePathDecode(t *testing.T) {
 		data = append(data, byte(bits>>(8*uint(i))))
 	}
 	data = append(data, 0x00)
-	req := &al.APDU{
+	resp, err := o.ProcessRequest(&al.APDU{
 		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncWrite,
 		Data:     data,
+	})
+	if err == nil {
+		t.Fatalf("expected G41V4 WRITE to be rejected, got resp=%v", resp)
 	}
-	resp, err := o.ProcessRequest(req)
-	if err != nil {
-		t.Fatalf("WRITE G41V4 failed: %v", err)
+	if resp != nil {
+		t.Fatalf("G41V4 WRITE rejection must not acknowledge success, got %v", resp)
 	}
-	if resp == nil || resp.FuncCode != al.FuncResponse {
-		t.Fatalf("expected a FuncResponse, got %v", resp)
+	if h.calls != 0 || h.seenCROB != 0 {
+		t.Fatalf("handler invoked for a rejected G41V4 WRITE: analogCalls=%d crobCalls=%d", h.calls, h.seenCROB)
 	}
-	if h.calls != 1 || h.seenCROB != 0 {
-		t.Fatalf("analogCalls=%d crobCalls=%d, want 1/0", h.calls, h.seenCROB)
+	if h.lastAnalog != nil {
+		t.Fatalf("state mutated by a rejected G41V4 WRITE: lastAnalog=%v", h.lastAnalog)
 	}
-	f, ok := h.gotValue.(float64)
-	if !ok || math.Float64bits(f) != bits {
-		t.Fatalf("decoded value = %v (%T), want float64 with bits %016X", h.gotValue, h.gotValue, bits)
-	}
-	if h.gotVar != 4 {
-		t.Fatalf("variation = %d, want 4", h.gotVar)
+	if !o.iin.ParameterError {
+		t.Fatalf("expected ParameterError IIN for a rejected G41V4 WRITE")
 	}
 }
 

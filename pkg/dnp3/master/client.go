@@ -2164,8 +2164,8 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 		return types.ControlNotSupported
 	case master.CommandStatusAlreadyActive:
 		return types.ControlAlreadyActive
-	case master.CommandStatusBlocked:
-		return types.ControlBlocked
+	case master.CommandStatusHardwareError:
+		return types.ControlHardwareError
 	case master.CommandStatusLocal:
 		return types.ControlLocal
 	case master.CommandStatusTooMany:

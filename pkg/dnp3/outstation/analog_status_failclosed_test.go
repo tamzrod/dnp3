@@ -32,7 +32,7 @@ func (h *scriptedAnalogHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*
 func TestBridgeAnalogOutputF2FailClosed(t *testing.T) {
 	success := types.ControlSuccess
 	notSupported := types.ControlNotSupported
-	blocked := types.ControlBlocked
+	blocked := types.ControlHardwareError
 	local := types.ControlLocal
 
 	rows := []struct {
@@ -44,7 +44,7 @@ func TestBridgeAnalogOutputF2FailClosed(t *testing.T) {
 		{"explicit success", &success, nil, false},
 		{"nil status (nil, nil)", nil, nil, true},
 		{"not supported", &notSupported, nil, true},
-		{"blocked", &blocked, nil, true},
+		{"hardware_error", &blocked, nil, true},
 		{"local", &local, nil, true},
 		{"nil status with error", nil, errors.New("boom"), true},
 	}

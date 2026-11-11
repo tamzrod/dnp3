@@ -3376,8 +3376,13 @@ const (
 	CommandStatusNotSupported CommandStatus = 4
 	// CommandStatusAlreadyActive indicates the output is already in that state.
 	CommandStatusAlreadyActive CommandStatus = 5
-	// CommandStatusBlocked indicates the output is blocked from operation.
-	CommandStatusBlocked CommandStatus = 6
+	// CommandStatusHardwareError indicates something is stopping the command,
+	// often a local/remote interlock (IEEE 1815 command status 6). The pinned
+	// OpenDNP3 3.1.2 reference names code 6 HARDWARE_ERROR.
+	CommandStatusHardwareError CommandStatus = 6
+	// CommandStatusBlocked is a deprecated alias for CommandStatusHardwareError.
+	// Code 6 is HARDWARE_ERROR in the reference; the wire value is unchanged.
+	CommandStatusBlocked = CommandStatusHardwareError
 	// CommandStatusLocal indicates the output is in local control mode.
 	CommandStatusLocal CommandStatus = 7
 	// CommandStatusTooMany indicates too many commands are queued.

@@ -123,7 +123,7 @@ func TestPublicOperateG41V1NonSuccess(t *testing.T) {
 		want   types.ControlStatus
 	}{
 		{"not_supported", 4, types.ControlNotSupported},
-		{"blocked", 6, types.ControlBlocked},
+		{"hardware_error", 6, types.ControlHardwareError},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
