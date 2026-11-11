@@ -923,3 +923,30 @@ Results on `work`: `gofmt -l` clean; `go vet ./internal/outstation/` PASS; `go t
 governance or CI were modified. **Next authorized action: T3 — run the full authorized Go gates and
 append the truthful correction of the false §46/handoff new-file and milestone-separation claims.**
 `TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+
+---
+
+### VEC-01 corrective — T3: full Go gates + truthful §46/handoff correction (2026-11-11)
+Owner-authorized corrective ("restore missing golden/negative test files (2026-11-11; post-28e9772
+CHECK)") under `operation cwal` on permanent `work`; six authority markers unchanged; `scripts/cwal-check.sh`
+OK. **T3 (full authorized gates + truthful correction) — SUBTASK_CHECKPOINTED / PASS.**
+
+**Truthful retrospective correction (append-only; originals preserved):** §46.4 and both handoffs
+wrongly claimed `pkg/dnp3/master/field_order_golden_test.go` and `internal/outstation/field_order_test.go`
+existed, and wrongly implied milestones 2–5 were four distinct remote checkpoints (they were one commit,
+`28e9772`; milestone 1 was `58c08cac…`). Root cause of the missing files: `.gitignore` bare `master`/
+`outstation` patterns match the `pkg/dnp3/master` and `internal/outstation` **directories**, so Git
+silently skips new files there on `git add`; the authorized files are now staged with `git add -f`.
+Editing `.gitignore` is outside this CURRENT's allowlist and is recorded for a separately authorized fix.
+
+**Go gates actually run** on `work` @ `b3be4327cc0b57c31127de15399ba5be9f905d3f` with pinned
+`go1.22.12 linux/amd64`: `gofmt -l .` **PASS**; `git diff --check` **PASS**; `go vet ./...` **PASS**;
+`go build ./...` **PASS**; `go test ./... -count=1` **PASS** (all packages `ok`); `go test -race
+./pkg/dnp3/master/... ./internal/outstation/... ./test/integration/...` **PASS**; `./scripts/verify-mvp.sh`
+**PASS** (incl. `-race`); `./scripts/verify-external-mvp.sh` **PASS** (Tiers 1–3; Tier 4 advisory
+third-party capture absent — unchanged, not claimed); `bash scripts/cwal-check.sh` **OK**. No in-repo
+test alone establishes independent OpenDNP3 interoperability; that remains unproven and is not claimed.
+See `docs/verification/VEC-01-LAB-EXEC-001.md` §49. **STOP for independent read-only CHECK** — no
+self-awarded acceptance, no automatic live-peer Gate C restart, no Gate D/E captures, no R4 change, no
+CURRENT closure/archive, no promotion, no PR/merge, no `main` push. `TASK_BLOCKED` retained; VEC-01 NOT
+EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
