@@ -1,0 +1,42 @@
+id: vec01-20261111-negative-payloadcrc
+title: Negative: single corrupted payload-block CRC on O->M response; bounded rejection
+source: third-party OpenDNP3 3.1.2 (pinned 26b4c01e; tarball 183cc292)
+capture: isolated lab master-ns loopback via deterministic fault proxy, 2026-11-11
+role: master
+master-addr: 3
+outstation-addr: 4
+pcap: vec01-20261111-negative-payloadcrc.pcap
+notes: last payload-block CRC corrupted f3b9->0c46; header CRC valid; master fail-closed, no control
+
+@ M->O link
+05 64 05 C0 04 00 03 00 F9 56
+
+@ M->O link
+05 64 05 C9 04 00 03 00 B6 20
+
+@ M->O link
+05 64 11 F3 04 00 03 00 93 B4 C0 C0 01 01 00 06 14 00 06 1E 00 06 A4 E9
+
+@ M->O link
+05 64 11 F3 04 00 03 00 93 B4 C1 C1 01 01 00 06 14 00 06 1E 00 06 CD 13
+
+@ M->O link
+05 64 11 F3 04 00 03 00 93 B4 C2 C2 01 01 00 06 14 00 06 1E 00 06 0F 50
+
+@ O->M link
+05 64 05 00 03 00 04 00 3C 56
+
+@ O->M link
+05 64 05 0B 03 00 04 00 7F 66
+
+@ O->M link
+05 64 05 00 03 00 04 00 3C 56
+
+@ O->M link
+05 64 8C 44 03 00 04 00 26 D4 C0 C0 81 90 00 01 01 00 00 00 01 01 02 00 01 09 C6 8B 02 02 02 02 02 02 02 02 02 1E 01 00 00 09 01 FC 9D 7B 08 00 00 02 00 00 00 00 02 00 00 00 00 02 00 00 4F A8 00 00 02 00 00 00 00 02 00 00 00 00 02 00 00 00 4D BA 00 02 00 00 00 00 02 00 00 00 00 02 00 00 00 00 7E AE 14 01 00 00 09 01 2A 00 00 00 02 00 00 00 00 02 0A 32 00 00 00 00 02 00 00 00 00 02 00 00 00 00 02 00 69 CE 00 00 00 02 00 00 00 00 02 00 00 00 00 02 00 00 DD 5E 00 00 02 00 00 00 00 0C 46
+
+@ O->M link
+05 64 05 00 03 00 04 00 3C 56
+
+@ O->M link
+05 64 05 00 03 00 04 00 3C 56

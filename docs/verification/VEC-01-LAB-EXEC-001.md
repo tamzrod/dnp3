@@ -5026,3 +5026,66 @@ ambiguous control outcome and no blind retry of a control.
 **Gate D PASS.** Next authorized action: **Gate E** (durable original capture/.vec evidence). Historical
 §39 D1–D5 preserved as-is (not rerun). `TASK_BLOCKED` retained; independent third-party interoperability
 NOT PROVEN.
+
+---
+
+### 54. Post-corrective re-test — Gate E: durable original-capture/vector evidence (2026-11-11)
+
+Authorization: same owner addendum as §50–§53; owner Git evidence correction `cab599d` obeyed.
+Executed under `operation cwal` on permanent `work`; six authority markers unchanged;
+`bash scripts/cwal-check.sh` **OK**. Only after observed Gate C PASS (§52) and Gate D PASS (§53).
+
+#### 54.1 Evidence path, quota and content
+
+Dedicated path `active_work/testdata/external/vec01-20261111/`:
+
+| File | Bytes | Purpose |
+|------|-------|---------|
+| `vec01-20261111-positive-class0-crob.pcap` | 2163 | Original Gate C positive PCAP (unchanged) |
+| `vec01-20261111-positive-class0-crob.vec` | 1572 | Packet-derived chronological link frames |
+| `vec01-20261111-negative-payloadcrc.pcap` | 2231 | Original Gate D negative PCAP (unchanged) |
+| `vec01-20261111-negative-payloadcrc.vec` | 1533 | Packet-derived link frames (one bad block CRC) |
+| `SHA256SUMS.txt` | 424 | SHA-256 of every file above |
+| `README.md` | — | Provenance, results and limits |
+
+Quota compliance: **2** original PCAPs (limit ≤2); each ≤1 MiB; **total evidence bytes 7499**
+(limit ≤4 MiB). No secrets (`strings` scan clean), no live/production/OT packets, no binaries, no
+third-party archives. Non-sensitive content review performed. Files are not covered by any ignore
+pattern (`git check-ignore` empty); they were staged explicitly with `git add -f` (the branch's known
+bare `master`/`outstation` ignore hazard does not apply here, and `.gitignore` was not touched).
+
+#### 54.2 Faithful `.vec` derivation (no synthetic bytes)
+
+`.vec` records were derived strictly from observed frame bytes via TCP reassembly of the original
+PCAPs (retransmissions de-duplicated by sequence), per `active_work/testdata/external/FORMAT.md`
+(`link` layer, chronological direction, full `05 64` frames including CRCs). Positive: 10 link
+frames; negative: 11 link frames. No synthetic/protocol-code-generated acceptance bytes are present.
+
+Independent CRC-16/DNP validation of the derived bytes (separate implementation):
+
+- Positive `.vec`: all header CRCs valid and all payload-block CRCs valid (0 faults).
+- Negative `.vec`: all header CRCs valid; exactly **one** invalid payload block (the last,
+  `0c46` vs expected `b9f3`).
+
+This matches the tshark decode in §53.3 and confirms the negative isolates a payload-block CRC fault.
+
+#### 54.3 SHA-256 manifest (as committed)
+
+```
+e95b568a07a214d3960348e909cc8b747e05c8d69d3734840be4c52e293a43e7  vec01-20261111-negative-payloadcrc.pcap
+38630381a0c4c31a6efee94119c79c8c0f970c5df7264f99da14181bc3f7f7d2  vec01-20261111-positive-class0-crob.pcap
+16c9b5e7f94a0f326bcaaa2f7a6d474f44f7ead906b8c6d0fb2eede356fcef98  vec01-20261111-negative-payloadcrc.vec
+6982b17ff3ca4c984db440b76e3bdd8d9c5600127bd2d0039d0415aad0074629  vec01-20261111-positive-class0-crob.vec
+```
+
+#### 54.4 Git durability — fresh independent checkout verification
+
+Durability is established only by an actual push plus a **fresh independent checkout/fetch** of the
+pushed commit, with SHA-256 of the checked-out originals/vectors matching the manifest. See §54.5 for
+the observed result.
+
+#### 54.5 Gate E disposition
+
+PASS is labelled only upon independently verified Git durability (§54.4), not mere local existence.
+Durable original captures, faithful `.vec` vectors, manifest and SHA-256 are committed to `work`.
+`TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.

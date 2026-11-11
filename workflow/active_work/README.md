@@ -990,3 +990,22 @@ through close. tshark 4.4.19 on frame 13: `Data Link Header checksum: 0xd426 [co
 points accepted, no false success, no hang; `dnp3.al.func==5` count = 0 (no control). See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §53. Next authorized action: **Gate E** (durable original
 capture/.vec evidence). `TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — Gate E: durable original-capture/vector evidence (2026-11-11)
+Same owner addendum; owner Git evidence correction `cab599d`; `operation cwal` on permanent `work`;
+six authority markers unchanged; `scripts/cwal-check.sh` OK. **Gate E — PASS** (pending fresh-checkout
+SHA verification, recorded below). Only after Gate C PASS (§52) and Gate D PASS (§53).
+
+Durable path `active_work/testdata/external/vec01-20261111/`: original Gate C positive PCAP
+(`vec01-20261111-positive-class0-crob.pcap`, 2163 B) and Gate D negative PCAP
+(`vec01-20261111-negative-payloadcrc.pcap`, 2231 B), packet-derived faithful `.vec` vectors, a
+`SHA256SUMS.txt` manifest and a provenance/limits `README.md`. Quota: 2 PCAPs (≤2), each ≤1 MiB, total
+7499 B (≤4 MiB); no secrets (`strings` clean), no live/OT packets, no binaries. `.vec` derived strictly
+from observed frame bytes via TCP reassembly per `FORMAT.md`; independent CRC-16/DNP validation: positive
+= all header+payload CRCs valid; negative = all header CRCs valid and exactly one bad payload block (the
+last, `0c46` vs expected `b9f3`). Files not ignored (`git check-ignore` empty); staged explicitly; no
+`.gitignore` change. Durability established by real push + fresh independent checkout/fetch with
+matching SHA-256 (recorded in `docs/verification/VEC-01-LAB-EXEC-001.md` §54). Next: **final gates**.
+`TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
