@@ -5153,3 +5153,104 @@ independent read-only CHECK**: no self-approval of third-party interoperability 
 PR/merge/`main` push, no production controls or release, no R4 closure, no CURRENT archival/promotion.
 `Status: TASK_BLOCKED` and R4 remain **OPEN**; independent third-party interoperability remains
 **NOT PROVEN**. VEC-01 is **not** marked EXECUTED and R4 is **not** closed.
+
+---
+
+### 56. R4 documentation reconciliation — evidence and release-prerequisite assessment (2026-11-11)
+
+Authorization: owner-approved scoped VEC-01 acceptance and R4 documentation-closure checkpoint,
+`workflow/active_work/VEC-01-LAB-EXEC-001.md` "Owner-approved scoped VEC-01 acceptance and R4
+documentation-closure checkpoint (2026-11-11; post-6c297df)" (commit
+`0b1f67ceaeef4671f44feada80bcf03f6bfc1d3f`). Executed under `operation cwal` on permanent `work`. This
+section is the **checkpoint-1 assessment**; the reconciled acceptance docs and final changed-doc
+inventory are recorded in §57. Six authority markers unchanged; `bash scripts/cwal-check.sh` **OK**.
+
+#### 56.1 Accepted evidence baseline (traceability)
+
+Owner-accepted independent read-only CHECK of the bounded VEC-01 post-corrective OpenDNP3 3.1.2 lab
+campaign at verified `work` checkpoint **`6c297df0fb7c702f66818e506008e00e9d716ea4`** (confirmed an
+ancestor of current `HEAD` `0b1f67c…`). Evidence chain (§§50–55, each with its own remote checkpoint):
+
+| Milestone | Remote checkpoint | Evidence |
+|-----------|-------------------|----------|
+| A pinned env/storage readiness | `e99b1e0412ea58b92e77bf0634e2394ceba1a116` | §50 |
+| B isolation + safety proof | `6a4babe6babc378fa056134d96cb4b620668d40d` | §51 |
+| C positive independent-wire | `9fd88282b6f64e9c1ad00abf7bdf1d64fd23c512` | §52 |
+| D negative payload-block CRC | `2e464c85973145cdc01aad567802f229c5b9fd24` | §53 |
+| E durable evidence | `3442518ed615bd3c19ed953e0c602a2c6faafc92` | §54 |
+| Final gates/handoff | `6c297df0fb7c702f66818e506008e00e9d716ea4` | §55 |
+
+Durable artifacts under `active_work/testdata/external/vec01-20261111/` (verified by fresh independent
+clone at `3442518`):
+
+| Artifact | SHA-256 |
+|----------|---------|
+| `vec01-20261111-positive-class0-crob.pcap` | `38630381a0c4c31a6efee94119c79c8c0f970c5df7264f99da14181bc3f7f7d2` |
+| `vec01-20261111-negative-payloadcrc.pcap` | `e95b568a07a214d3960348e909cc8b747e05c8d69d3734840be4c52e293a43e7` |
+| `vec01-20261111-positive-class0-crob.vec` | `6982b17ff3ca4c984db440b76e3bdd8d9c5600127bd2d0039d0415aad0074629` |
+| `vec01-20261111-negative-payloadcrc.vec` | `16c9b5e7f94a0f326bcaaa2f7a6d474f44f7ead906b8c6d0fb2eede356fcef98` |
+
+Peer provenance: OpenDNP3 **3.1.2**, peel `26b4c01e4839bbbda8866655e086471c4917ee53`, tarball
+`183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2`. Observed on the wire and
+independently decoded (tshark 4.4.19): Class-0 G1V1 `BI[0]=true`, G30V1 `AI[0]=2300` ONLINE, G20V1
+`CT[0]=42` ONLINE; one G12V1 Direct-Operate CROB `BO[0]` LATCH_ON with protocol status SUCCESS and peer
+readback `state=true`; negative last-payload-block CRC rejection (header CRC valid; no control; bounded
+failure).
+
+#### 56.2 What this evidence does and does not support
+
+- **Supports:** scoped, isolated-lab interoperability of the tested **v0 path only** (one Go Master ↔
+  one independently implemented OpenDNP3 3.1.2 outstation): Class-0 G1V1/G30V1/G20V1 read and one
+  memory-only G12V1 Direct-Operate, plus a payload-block CRC negative. This satisfies the *precise
+  historical R4 evidence-absence blocker* ("no independent PCAP / third-party-stack capture proof").
+- **Does not support:** IEEE 1815 conformance, production/SCADA readiness, release readiness,
+  interoperability with any other peer, vendor, version, or profile; multiple peers; performance; or
+  any object group/variation outside G1V1/G30V1/G20V1/G12V1.
+- **Unresolved defect (prominent caveat):** `G1V2` Binary-Input-With-Flags mis-decode — the master
+  consumes the G1V2 flags octet as the point value
+  (`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`, §45.5/§47/§52.5). Outside the locked v0 G1V1
+  profile; **not** fixed, **not** claimed supported. It must remain a visible peer-compatibility
+  caveat and must not be suppressed because the tested G1V1 BI[0] passed.
+
+#### 56.3 Release-prerequisite assessment (classification only — no closure asserted)
+
+Classification of the named release prerequisites against **actual current repository evidence**.
+This is a documentation assessment, not an acceptance or closure of any item.
+
+| Item | Authoritative entry | Classification | Basis |
+|------|--------------------|----------------|-------|
+| API-02 observer/proxy capture seam | `active_work/dnp3-interoperability-remediation-plan.md` ("BLOCKED") | **Still pending / needs authorization** (in-repo test seam) | No transport-observer or in-repo capture seam exists in the public API. The VEC-01 campaign captured the wire with an external lab TCP proxy + `tcpdump`, which satisfies the *evidence* need but is **not** an in-repo test seam; the plan's blocked item is not closed. |
+| API-03 invalid-CRC integration test | remediation plan ("REMAINING/Not started") | **Proven by current evidence; plan text stale** | `pkg/dnp3/master/crc_reject_test.go` (`TestReadRejectsInvalidCRC`, `TestReadRejectsInvalidCRCIsNoPartial`, `TestReadBadCRCNoHangDeadline`, `TestALRejectsInvalidCRC`) and `test/integration/rogue_peer_negative_test.go` (`TestRoguePeerBadCRCNoHang`). Gate D adds external-lab payload-block CRC rejection, but raw Gate D rejection is **not** equated to closure of all integration/release acceptance tests. |
+| SAFE-03 context cancellation tests | remediation plan ("NEXT") | **Proven by current evidence; plan text stale** | `pkg/dnp3/master/connect_cancel_test.go`, `read_cancel_test.go`, `operate_disconnect_cancel_test.go` (`TestConnectAlreadyCancelledContext`, `TestConnectCancelledMidDial`, `TestReadAlreadyCancelledContext`, `TestReadCancelledMidRequest`). |
+| SAFE-04 serialize + race concurrent read | remediation plan ("REMAINING") | **Proven by current evidence; plan text stale** | `pkg/dnp3/master/race_test.go` (`TestConcurrentReadsRaceFree`, `TestConcurrentOperateRaceFree`), `control_safety_r5_test.go`; `go test -race` PASS (§55). |
+| CTRL-01 per-point control status | remediation plan ("REMAINING") | **Proven by current evidence; plan text stale** | `pkg/dnp3/master/operate_status_test.go` (`TestPublicOperateSurfacesStatus`, `TestPublicOperateMissingStatusIINOnlySuccess`, `TestPublicOperateMissingStatusErrorIINNotSuccess`). |
+| CTRL-02 select/operate timeout + mismatch | remediation plan ("REMAINING") | **Mixed: SBO portion N/A (Reject in v0); Direct-Operate timeout portion appears covered** | SBO is explicitly unsupported (`supported-profile.md` *Reject*; `postgate-backlog.md` MEXT-040). Direct-Operate status/timeout coverage in `test/integration/operate_status_matrix_test.go` and the control-safety tests. |
+| DOC-01 README/STATUS/CONTRIBUTING/support-matrix rewrite | remediation plan ("REMAINING") | **Partially complete / stale task scope** | `README.md`, `active_work/supported-profile.md` exist and are maintained; no `STATUS` file exists. Reconciled under this checkpoint (§57). |
+| REL-01 one reproducible verification command | remediation plan ("REMAINING") | **Satisfied by equivalent scripts; named script absent** | `scripts/verify-interoperability.sh` does not exist; `scripts/verify-mvp.sh` and `scripts/verify-external-mvp.sh` provide the reproducible gates (§55). |
+| REL-02 run gate + record results | remediation plan ("REMAINING") | **Proven by current evidence; plan text stale** | Dated results in `active_work/external-acceptance.md` and `docs/verification/DNP3-058.md`; §55 records the post-corrective gate run. |
+| Profile/docs synchronization | this checkpoint | **Addressed by this checkpoint** (§56–§57) | Current-state R4 prose reconciled; historical wording preserved as history. |
+| `main` integration | `active_work/external-acceptance.md` (PR #17 @ `95ac1028`) | **Still pending / needs separate authorization** | `work` is ahead of `main`; no `main` push is authorized. |
+| CI on current `work` | repository CI | **Still pending / needs separate review** | Only historical PR #17 `main` CI is recorded; current-`work` CI status not established here. |
+| Release/version decisions | `docs/roadmap/roadmap.md` (Phase 7) | **Still pending / needs authorization** | No release/version decision recorded; roadmap Phase 7 is planned. |
+| Older roadmap/status docs (`active_work/MEXT_MASTER_ROADMAP.md`, `active_work/dnp3-interoperability-remediation-plan.md`, `docs/roadmap/roadmap.md`, `active_work/postgate-backlog.md`) | — | **Assessed only; NOT modified** | Their present release prerequisites and stale/historical assertions are listed above. Any edit to these files requires separately explicit scope authorization. |
+
+#### 56.4 Required follow-up approvals (not self-approved)
+
+- Independent read-only review of this documentation checkpoint before any PR/merge/release.
+- Separate owner authorization for any edit to `active_work/MEXT_MASTER_ROADMAP.md`,
+  `active_work/dnp3-interoperability-remediation-plan.md`, `docs/roadmap/roadmap.md`, or
+  `active_work/postgate-backlog.md`.
+- Separate authorization for `main` integration, CI runs on `work`, release/version decisions, and any
+  generalized conformance or support-matrix promotion.
+- A separately authorized fix (if ever desired) for the `G1V2` mis-decode.
+
+#### 56.5 Checks performed at checkpoint 1
+
+- `bash scripts/cwal-check.sh` — **OK** (`CURRENT=VEC-01-LAB-EXEC-001 branch=work`).
+- Ancestry: `6c297df0fb7c702f66818e506008e00e9d716ea4` confirmed an ancestor of `HEAD`.
+- Six authority markers read and unchanged.
+- Evidence and SHA-256 manifest references re-read (§§50–55; `vec01-20261111/SHA256SUMS.txt`).
+- Go/live protocol/peer/network/field/production gates: **NOT_RUN** — this is a documentation-only
+  task; running them would exceed the authorized scope and is not required.
+
+Checkpoint-1 remote SHA and changed-file scope are recorded after the push in §57.
