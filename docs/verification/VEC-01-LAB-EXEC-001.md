@@ -4954,3 +4954,75 @@ supported. The locked v0 G1V1 BI[0] acceptance is unaffected and PASSES.
 **Gate C PASS.** PCAP identity/digest recorded above; durable Git evidence is produced at Gate E. Next
 authorized action: **Gate D** (negative payload-block CRC). `TASK_BLOCKED` retained; independent
 third-party interoperability NOT PROVEN.
+
+---
+
+### 53. Post-corrective re-test — Gate D: negative payload-block CRC (2026-11-11)
+
+Authorization: same owner addendum as §50/§51/§52. Executed under `operation cwal` on permanent `work`;
+six authority markers unchanged; `bash scripts/cwal-check.sh` **OK**. This is the specifically required
+**payload-block** CRC negative (distinct from the historical §39 D1 header-CRC evidence), not a
+header-CRC substitute. Read-only fault: **no control is sent** in this gate.
+
+#### 53.1 Deterministic lab-only fault emitter
+
+A deterministic proxy inside `vec01-master` listened on `127.0.0.1:20000` and forwarded raw TCP to the
+pinned outstation at `10.77.0.2:20000`. On the **first data-bearing** outstation→master DNP3 link frame
+it flipped the final two octets — the **last payload-block CRC** — leaving framing, length, control,
+addresses, the link **header CRC** and all user data unchanged. Emitted evidence:
+`frame_len=140 user_data=135 orig_last_block_crc=f3b9 new_last_block_crc=0c46`.
+
+#### 53.2 Original negative PCAP
+
+| Item | Value |
+|------|-------|
+| Path (lab) | `/capture/gated.pcap` (bind mount `lab/vec01/capture/`, untracked by design) |
+| Size | 2231 bytes |
+| SHA-256 | `e95b568a07a214d3960348e909cc8b747e05c8d69d3734840be4c52e293a43e7` |
+
+Captured on the master-namespace loopback (`tcpdump -i lo`) before connect through close; the master's
+own view of the corrupted frame.
+
+#### 53.3 Independent decode — distinguishes payload-block CRC from header CRC
+
+tshark 4.4.19 on the negative PCAP, response frame 13 (`DNP 3.0 229 from 4 to 3, len=140, Unconfirmed
+User Data`):
+
+- `Data Link Header checksum: 0xd426 [correct]` / `[Data Link Header Checksum Status: Good]` —
+  the **header CRC is valid**.
+- Data Chunks 0–7 correct; the **final partial chunk** (7 bytes) shows
+  `Data Chunk checksum: 0x460c incorrect, should be 0xb9f3` /
+  `[Expert Info (Warning/Checksum): Data Chunk Checksum incorrect [should be 0xb9f3]]` /
+  `[Data Chunk Checksum Status: Bad]` — the **payload-block CRC is invalid**.
+
+The expected-good value `0xb9f3` is exactly the original last-block CRC observed in the Gate C positive
+frame (`…f3b9` little-endian). This **isolates a payload-block CRC fault** from the header-CRC fault
+class: header CRC Good, payload CRC Bad.
+
+#### 53.4 Master behaviour — bounded, fail-closed, no false success, no control
+
+```
+connected
+integrity poll failed: integrity poll: read group 1: read failed: operation deadline exceeded
+```
+
+Exit rc = 1. The corrupted response was **rejected**; the master performed a bounded retry of the
+**read** only (READ at t≈0.0046, 0.146, 5.25 s — three attempts within its budget) and then failed with
+a classified `operation deadline exceeded`. It did **not** accept any point, report a false success, or
+hang. `dnp3.al.func==5` count in the negative PCAP is **0**: no control was ever sent, so there is no
+ambiguous control outcome and no blind retry of a control.
+
+#### 53.5 Gate D disposition
+
+| Requirement | Observed | Result |
+|-------------|----------|--------|
+| Payload-block CRC corrupted (not header) | header CRC Good; last block CRC Bad | **PASS** |
+| Original negative PCAP | 2231 B, sha256 `e95b568a…a43e7` | **PASS** |
+| Bounded refusal / timeout | `operation deadline exceeded`, rc=1, ~5.25 s | **PASS** |
+| No false data / false control success | no points accepted; no `operate status` success | **PASS** |
+| No hang | exited within bounded deadline | **PASS** |
+| No uncontrolled retry / no ambiguous control | read-only fault; 0 controls sent | **PASS** |
+
+**Gate D PASS.** Next authorized action: **Gate E** (durable original capture/.vec evidence). Historical
+§39 D1–D5 preserved as-is (not rerun). `TASK_BLOCKED` retained; independent third-party interoperability
+NOT PROVEN.

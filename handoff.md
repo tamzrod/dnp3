@@ -1011,3 +1011,22 @@ BI[0]=On; Direct-Operate RESPONSE `Obj:12,Var:01` CROB **Control Status 0 (SUCCE
 `G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`, not fixed, not claimed. See
 `docs/verification/VEC-01-LAB-EXEC-001.md` §52. Next authorized action: **Gate D** (negative
 payload-block CRC). `TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — Gate D: negative payload-block CRC (2026-11-11)
+Same owner addendum; `operation cwal` on permanent `work`; six authority markers unchanged;
+`scripts/cwal-check.sh` OK. **Gate D — PASS.** Specifically the required payload-block CRC negative
+(distinct from historical §39 D1 header-CRC evidence). Read-only fault: no control sent.
+
+Deterministic lab-only proxy in `vec01-master` (127.0.0.1:20000 → 10.77.0.2:20000) flipped only the
+last payload-block CRC of the first data-bearing outstation→master frame:
+`frame_len=140 user_data=135 orig_last_block_crc=f3b9 new_last_block_crc=0c46`. Original negative PCAP
+`/capture/gated.pcap` (2231 B, sha256 `e95b568a07a2…93a43e7`), captured on master `lo` before connect
+through close. tshark 4.4.19 on frame 13: `Data Link Header checksum: 0xd426 [correct]` (header CRC
+**Good**) but final partial chunk `Data Chunk checksum: 0x460c incorrect, should be 0xb9f3`
+(**payload-block CRC Bad**) — precisely isolating a payload-block fault. Master failed closed:
+`integrity poll failed: … operation deadline exceeded`, rc=1, ~5.25 s, bounded read-only retries, no
+points accepted, no false success, no hang; `dnp3.al.func==5` count = 0 (no control). See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §53. Next authorized action: **Gate E** (durable original
+capture/.vec evidence). `TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
