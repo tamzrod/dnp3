@@ -219,20 +219,30 @@ tested profile adds them):**
   Tier 3 multi-header Class-0 parse. See
   [`active_work/MEXT_MASTER_ROADMAP.md`](active_work/MEXT_MASTER_ROADMAP.md) and
   [`active_work/external-acceptance.md`](active_work/external-acceptance.md).
-- 🔒 **Third-party interoperability is NOT claimed.** There is no independent
-  raw capture / VEC-01 / third-party-stack proof (residual R4 remains open);
-  verification is against the in-repo outstation over real TCP. The gate's
-  VEC-01 third-party-capture tier is advisory and non-blocking; set
+- 🔒 **Third-party interoperability is scoped, not general.** A single
+  owner-accepted isolated-lab VEC-01 campaign (2026-11-11) exercised the v0 path
+  against one independently implemented **OpenDNP3 3.1.2** outstation (Class-0
+  G1V1/G30V1/G20V1 read + one G12V1 Direct-Operate, plus a payload-block CRC
+  negative); see
+  [`docs/verification/VEC-01-LAB-EXEC-001.md`](docs/verification/VEC-01-LAB-EXEC-001.md)
+  §50–55 and [`active_work/testdata/external/vec01-20261111/`](active_work/testdata/external/vec01-20261111/README.md).
+  This does **not** establish interoperability with any other peer, vendor, or
+  version, and residual R4's scoped resolution is documented in
+  [`active_work/supported-profile.md`](active_work/supported-profile.md). The
+  gate's VEC-01 third-party-capture tier remains advisory and non-blocking; set
   `REQUIRE_EXTERNAL=1` to make it blocking.
 - 🔒 **Not full IEEE 1815.** Only the v0 object subset (G1V1, G30V1, G20V1,
   G12V1) is implemented and verified; this is not a conformance claim.
-- Known external blockers (residuals R1–R5) are listed in
+- External residual boundaries (R1–R6, including the scoped R4 resolution and
+  the open G1V2 defect) are listed in
   [`active_work/supported-profile.md`](active_work/supported-profile.md).
 
 **Not yet verified:**
-- ⚠️ Third-party interoperability (independent raw capture / VEC-01) is still
-  pending. The v0 path is verified over real TCP against the in-repo
-  outstation, not against an external/third-party stack.
+- ⚠️ Third-party interoperability is proven only for the tested v0 path against
+  one independent peer (OpenDNP3 3.1.2) in an isolated lab; other peers,
+  vendors, and versions remain unverified. A known defect remains: **G1V2**
+  (Binary Input With Flags) is mis-decoded (the flags octet is read as the
+  value) — outside the locked v0 G1V1 profile, not fixed, not claimed supported.
 - ⚠️ Not IEEE 1815 complete (only the v0 object subset is implemented).
 - ⚠️ Workbench is an engineering tool, not production SCADA.
 

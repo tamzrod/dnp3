@@ -1492,19 +1492,30 @@ func parseAnalogInputs(data []byte) []*types.AnalogInput {
 		}
 
 		// IEEE 1815: Group 30 Variation 1 is a signed 32-bit value with a
-		// 1-octet flags byte (5 octets per point), sequential with no
-		// per-point index. The qualifier fixes the index base: count8/count16
-		// are sequential from 0; range16 is sequential from Start.
+		// 1-octet flags byte (5 octets per point). The flags octet is first,
+		// then the little-endian value, matching the pinned peer's own
+		// generated serializer (opendnp3 3.1.2 Group30Var1 = (flags, value32)).
+		// pointLayout fixes the index base and, for the indexed qualifier
+		// (0x17), a per-point 1-octet index prefix. A declared count that does
+		// not fit the remaining bytes is rejected without partial points.
 		if group == 30 && variation == 1 {
-			if base, n, ok := sequentialRange(h); ok {
-				if offset+n*5 > len(data) {
+			if n, base, idxPrefix, ok := pointLayout(h); ok {
+				size := 5 + idxPrefix
+				if offset+n*size > len(data) {
 					break
 				}
 				for i := 0; i < n; i++ {
-					value := int32(binary.LittleEndian.Uint32(data[offset : offset+4]))
-					quality := types.QualityFlags(data[offset+4])
-					result = append(result, &types.AnalogInput{Index: uint16(base + i), Value: float64(value), Quality: quality})
+					var index uint16
+					if idxPrefix > 0 {
+						index = uint16(data[offset])
+						offset++
+					} else {
+						index = uint16(base + i)
+					}
+					quality := types.QualityFlags(data[offset])
+					value := int32(binary.LittleEndian.Uint32(data[offset+1 : offset+5]))
 					offset += 5
+					result = append(result, &types.AnalogInput{Index: index, Value: float64(value), Quality: quality})
 				}
 				continue
 			}
@@ -1614,19 +1625,30 @@ func parseCounters(data []byte) []*types.Counter {
 		}
 
 		// IEEE 1815: Group 20 Variation 1 is an unsigned 32-bit counter with a
-		// 1-octet flags byte (5 octets per point), sequential with no
-		// per-point index. The qualifier fixes the index base: count8/count16
-		// are sequential from 0; range16 is sequential from Start.
+		// 1-octet flags byte (5 octets per point). The flags octet is first,
+		// then the little-endian value, matching the pinned peer's own
+		// generated serializer (opendnp3 3.1.2 Group20Var1 = (flags, count32)).
+		// pointLayout fixes the index base and, for the indexed qualifier
+		// (0x17), a per-point 1-octet index prefix. A declared count that does
+		// not fit the remaining bytes is rejected without partial points.
 		if group == 20 && variation == 1 {
-			if base, n, ok := sequentialRange(h); ok {
-				if offset+n*5 > len(data) {
+			if n, base, idxPrefix, ok := pointLayout(h); ok {
+				size := 5 + idxPrefix
+				if offset+n*size > len(data) {
 					break
 				}
 				for i := 0; i < n; i++ {
-					value := binary.LittleEndian.Uint32(data[offset : offset+4])
-					quality := types.QualityFlags(data[offset+4])
-					result = append(result, &types.Counter{Index: uint16(base + i), Value: value, Quality: quality})
+					var index uint16
+					if idxPrefix > 0 {
+						index = uint16(data[offset])
+						offset++
+					} else {
+						index = uint16(base + i)
+					}
+					quality := types.QualityFlags(data[offset])
+					value := binary.LittleEndian.Uint32(data[offset+1 : offset+5])
 					offset += 5
+					result = append(result, &types.Counter{Index: index, Value: value, Quality: quality})
 				}
 				continue
 			}

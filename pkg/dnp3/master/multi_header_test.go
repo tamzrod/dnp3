@@ -21,12 +21,12 @@ func buildMultiHeaderResponse(seq uint8) []byte {
 		0x03,
 		// G20V1 counter, count8, 1 point, 5 octets (uint32 + flags)
 		0x14, 0x01, 0x07, 0x01,
+		0x01,                   // flags online
 		0x64, 0x00, 0x00, 0x00, // value 100
-		0x01, // flags online
 		// G30V1 analog input, count8, 1 point, 5 octets (int32 + flags)
 		0x1E, 0x01, 0x07, 0x01,
+		0x01,                   // flags online
 		0x2A, 0x00, 0x00, 0x00, // value 42
-		0x01, // flags online
 	}
 	apdu := &al.APDU{
 		Control:  al.AppControl{FIR: true, FIN: true, Seq: seq},

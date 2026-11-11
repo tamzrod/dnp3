@@ -1,0 +1,38 @@
+# VEC-01 isolated DNP3 interoperability lab (readiness scaffolding).
+#
+# Defines exactly ONE lab container with NO network of its own. The container
+# runs with network_mode: none; the only network that exists is the private
+# veth pair the entrypoint builds between two internal network namespaces
+# (see lab-netns.sh / preflight.sh).
+#
+#   docker compose -f lab/vec01/compose.yaml build
+#   docker compose -f lab/vec01/compose.yaml run --rm lab    # Gate B preflight
+#
+# Untouched original captures/logs are written to a host bind mount so they
+# survive container restart/recreation: set VEC01_CAPTURE_DIR to a persistent
+# host path (default ./capture next to this file).
+services:
+  lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vec01-lab:3.1.2
+    # Network isolation by construction: no ports, no host networking, no
+    # default bridge. Only loopback exists until the entrypoint builds the
+    # private netns/veth topology.
+    network_mode: none
+    # Least-required privileges: NET_ADMIN (veth/routes), SYS_ADMIN (ip netns
+    # /run/netns), NET_RAW (tcpdump capture). NOT privileged; no host devices,
+    # no host PID namespace, no docker socket.
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - NET_RAW
+    # Untouched original captures and logs live here, outside the container
+    # filesystem, so they remain retrievable after container recreation.
+    volumes:
+      - ${VEC01_CAPTURE_DIR:-./capture}:/capture
+    # Bounded lifetime; no restart loop.
+    restart: "no"
+    stop_grace_period: 10s
+    command: []

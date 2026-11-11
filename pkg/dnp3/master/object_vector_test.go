@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseClass0AnalogInputVector(t *testing.T) {
-	data := []byte{0x1E, 0x01, 0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0x01}
+	data := []byte{0x1E, 0x01, 0x07, 0x01, 0x01, 0xE8, 0x03, 0x00, 0x00}
 	result := parseAnalogInputs(data)
 	if len(result) != 1 {
 		t.Fatalf("expected one analog input, got %d", len(result))
@@ -21,7 +21,7 @@ func TestParseClass0AnalogInputVector(t *testing.T) {
 }
 
 func TestParseClass0CounterVector(t *testing.T) {
-	data := []byte{0x14, 0x01, 0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0x01}
+	data := []byte{0x14, 0x01, 0x07, 0x01, 0x01, 0xE8, 0x03, 0x00, 0x00}
 	result := parseCounters(data)
 	if len(result) != 1 {
 		t.Fatalf("expected one counter, got %d", len(result))
@@ -40,7 +40,7 @@ func TestParseClass0CounterVector(t *testing.T) {
 // (3892314112), which is clearly wrong. This is the BE-negative case required
 // by DNP3-001.
 func TestParseAnalogInputLSBNotBigEndian(t *testing.T) {
-	data := []byte{0x1E, 0x01, 0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0x01}
+	data := []byte{0x1E, 0x01, 0x07, 0x01, 0x01, 0xE8, 0x03, 0x00, 0x00}
 	result := parseAnalogInputs(data)
 	if len(result) != 1 {
 		t.Fatalf("expected one analog input, got %d", len(result))
@@ -53,7 +53,7 @@ func TestParseAnalogInputLSBNotBigEndian(t *testing.T) {
 // TestParseCounterLSBNotBigEndian verifies the G20V1 parser decodes the value
 // field as little-endian, the BE-negative case for counters (DNP3-001).
 func TestParseCounterLSBNotBigEndian(t *testing.T) {
-	data := []byte{0x14, 0x01, 0x07, 0x01, 0xE8, 0x03, 0x00, 0x00, 0x01}
+	data := []byte{0x14, 0x01, 0x07, 0x01, 0x01, 0xE8, 0x03, 0x00, 0x00}
 	result := parseCounters(data)
 	if len(result) != 1 {
 		t.Fatalf("expected one counter, got %d", len(result))

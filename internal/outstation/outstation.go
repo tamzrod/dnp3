@@ -1264,11 +1264,13 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 	result = append(result, variation) // Variation
 	if variation == 1 {
 		// Variation 1 is a signed 32-bit value with flags. Qualifier 0x07
-		// carries an 8-bit count and sequential points without indexes.
+		// carries an 8-bit count and sequential points without indexes. The
+		// flags octet is first, then the little-endian value (IEEE 1815;
+		// opendnp3 3.1.2 Group30Var1 = (flags, value32)).
 		result = append(result, 0x07, byte(len(data)))
 		for _, ai := range data {
 			value := int32(ai.Value)
-			result = append(result, byte(value), byte(value>>8), byte(value>>16), byte(value>>24), ai.Quality)
+			result = append(result, ai.Quality, byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
 		}
 		return result
 	}
@@ -1323,9 +1325,11 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 	if variation == 1 {
 		// Variation 1 is an unsigned 32-bit counter with flags. Qualifier
 		// 0x07 carries an 8-bit count and sequential points without indexes.
+		// The flags octet is first, then the little-endian value (IEEE 1815;
+		// opendnp3 3.1.2 Group20Var1 = (flags, count32)).
 		result = append(result, 0x07, byte(len(data)))
 		for _, c := range data {
-			result = append(result, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24), c.Quality)
+			result = append(result, c.Quality, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
 		}
 		return result
 	}

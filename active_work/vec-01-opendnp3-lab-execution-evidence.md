@@ -1409,3 +1409,95 @@ truncation bound, multi-header mixed-qualifier no-loss) and `internal/outstation
 independent-peer re-verification (unmodified Go master returning `BI[0]=true / AI[0]=2300 / CT[0]=42`)
 was **NOT executed** here (no verified pinned peer/isolated lab in this runner). Gate D unchanged
 (5 cases; D1 header-CRC only) and Gate E `EVIDENCE_INCOMPLETE`. `TASK_BLOCKED` retained.
+
+---
+
+## §41 — Owner-approved final post-fix verification: fail-closed STOP (2026-11-11)
+
+Authorization: "Owner-approved final VEC-01 verification — post-PR #25 peer retest, payload CRC and
+durable capture". Executed under `operation cwal` only, on permanent `work`; evidence-only.
+
+**CWAL readiness/provenance — PASS.** Six markers identical; `HEAD == origin/work == bc919d9`;
+clean tree; `cwal-check.sh` → `CWAL CHECK OK`; merged PR #25 main merge commit `363d3cf` is an
+ancestor of `HEAD`.
+
+**Gate E — FAIL (decisive, fail-closed).** No durable artifact destination exists outside Git and
+outside the disposable runner filesystem: `/workspace/vec01-lab-artifacts`, `/workspace/vec01` and
+`/tmp/vec01-lab` all **ABSENT**; no persistent volume or object-store credentials present. Item 5
+requires a retrievable durable destination **before** the lab run → **`EVIDENCE_INCOMPLETE`; STOP**.
+
+**Gate B — FAIL (decisive, fail-closed).** No `CAP_NET_ADMIN` (`CapPrm=CapEff=0`);
+`unshare(CLONE_NEWNET)` → `EPERM`; `unshare --user --map-root-user --net` fails at `uid_map`
+(`Operation not permitted`); `ip` **MISSING**; no netns dirs; only `lo`/`eth0`; default route
+`169.254.1.1`, `ip_forward=1`, internet egress present (routed k8s pod already classified FAIL by the
+2026-11-08 correction). The required isolated two-netns lab cannot be built/proven → **`NOT_TESTED`**.
+
+**Gate C / D / E execution — NOT_REACHED.** No TCP connect, no DNP3 frame, no CROB, no capture, no
+`.vec`. Historical §39 Gate D (5 cases; D1 header-CRC only) and §40 preserved unchanged; the
+payload-block-CRC negative remains **NOT_TESTED**.
+
+**Go gates — NOT_RUN.** `go`/`gofmt` **MISSING**, no module cache, no `vendor/`, `cmake` **MISSING**;
+dependency download/network is not authorized by the addendum. `cwal-check.sh` **PASS** (state only).
+
+**Disposition: `VEC-01_FINAL_VERIFICATION_STOPPED_FAIL_CLOSED`.** `EVIDENCE_READY_FOR_CHECK` not met.
+No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure. **`TASK_BLOCKED` retained;
+VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.** Owner direction needed:
+durable artifact destination + runner with `CAP_NET_ADMIN`, Go toolchain and pinned peer.
+
+---
+
+## §42 — Owner-authorized container lab preparation: readiness checkpoint (2026-11-11)
+
+Authorization: "Owner-authorized VEC-01 container lab preparation via Operation CWAL" (`3ef08d2`).
+Lab scaffolding + readiness only; no DNP3 traffic, no control, no library/profile/test/CI changes.
+
+**Scaffold (allowlist):** `lab/vec01/{compose.yaml, Dockerfile, acquire-pinned.sh, lab-netns.sh,
+preflight.sh, entrypoint.sh, README.md, capture/{.gitignore,.gitkeep}}`. One service,
+`network_mode: none`, no ports/host-net/socket, `cap_add: NET_ADMIN,SYS_ADMIN,NET_RAW` (not
+privileged), host bind mount `VEC01_CAPTURE_DIR -> /capture`.
+
+**Measured dispositions:** `DESIGN_ONLY` (validated config; `bash -n` clean; `docker compose config`
+valid); `BUILD_PASS` (all pinned inputs sha256-`OK`; image `vec01-lab:3.1.2`
+`sha256:ab5b47b432a2370b14482b40e6c078d534927148f160eddd4a9fd7a5863813fe`; in-image
+`go1.22.12`); `GATE_B_PREFLIGHT_PASS` (exit 0: two private netns + one veth, `10.77.0.1/24` /
+`10.77.0.2/24`, no default route, forwarding off, no external resolution, lab-local reachability,
+listener only `10.77.0.2:20000`, no docker socket inside lab); `PERSISTENCE_PROBE_PASS` (in-container
+hash == independent host-side hash `43471c20…652a22` after container exit; probe removed).
+
+**Capability note:** runner has Docker CLI/Compose + `dockerd` but no running daemon (root-only
+socket); daemon start required `sudo`. In-container topology needs `NET_ADMIN`+`SYS_ADMIN`
+(`NET_RAW` for capture); `/proc/sys` is read-only (sysboxfs) → container-local remount then verify.
+
+**Non-claims:** Gate C/D/E `NOT_REACHED`; payload-CRC negative `NOT_TESTED`; no PR/merge/`main`
+push/archive/promotion/self-CHECK/Gate/R4 closure; no conformance/interoperability claim.
+`TASK_BLOCKED` retained; **VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+## §43 — Final Docker-lab interoperability campaign: fail-closed PUSHBACK at precondition 1 (2026-11-11)
+
+Authorization: owner addendum at `21fb6b0` ("Owner-approved final VEC-01 Docker-lab interoperability
+execution after readiness commit 26d016a"). Executed under `operation cwal` on `work`
+(`HEAD == origin/work == 21fb6b0`; six markers unchanged; `cwal-check.sh` OK).
+
+**Precondition 1 — cross-runner durable evidence store: NOT MET → STOP/PUSHBACK before any traffic.**
+The addendum requires a concrete authorized destination outside Git and the ephemeral
+runner/daemon storage, proven independently retrievable after runner disposal, and forbids asserting
+it from a bind mount, ordinary Docker volume, same-pod dir, `/workspace`, or by provisioning a new
+service. Measured: no object-store credentials/destination (0 env matches); no network/persistent FS
+mounts (0 matches); `/workspace` is pod-local `/dev/nvme0n2 ext4` (excluded); `/var/lib/docker` on
+same pod-local `/dev/root` (excluded); all historical artifact paths ephemeral; `/mnt`,`/media`
+empty. **No durable store available and provisioning one is forbidden → hard STOP.**
+
+**Discrepancy surfaced (not silently resolved):** the 2026-11-10 corrective declared Git the durable
+store for *Gate B* evidence; the 2026-11-11 addendum requires a destination *outside Git* for *Gate E*
+raw captures, and to exist *before traffic*. Flagged for maintainer resolution.
+
+**Preconditions 2–3:** NOT EVALUATED (moot; no traffic). No TCP/DNP3 frame, listener, capture,
+control or `.vec` produced. Gate C/D/E `NOT_REACHED`; payload-block-CRC negative `NOT_TESTED`.
+No PR/merge/`main` push/archive/promotion/self-CHECK/Gate/R4 closure; no new storage provisioned.
+**`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+**§43.6 Go gates — NOT_RUN:** item 7 gates are conditional on preconditions passing (halted at
+precondition 1); base runner has no Go toolchain (Go only inside the lab image) and no Go source
+changed. NOT_RUN, not inferred PASS.
