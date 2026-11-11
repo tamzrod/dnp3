@@ -2101,7 +2101,7 @@ func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
 	// malformed or mismatched object is never success. There is deliberately no
 	// IIN-only success fallback for G41V1: a conformant response carries the object.
 	if group, variation, index, value, ok := controlRequestKey(req); ok && group == 41 && variation == 1 {
-		return g41v1CommandStatus(resp.Data, index, value)
+		return g41v1CommandStatus(resp.Data, index, value, resp.IIN)
 	}
 
 	status := parseCommandStatus(resp.Data)
@@ -2152,13 +2152,20 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 // surplus bytes or extra records, and the echoed index AND int32 value both
 // match the request. Any deviation yields CommandStatusUnknown (never success).
 //
-// NOTE (AO-002 F6): this does not reconcile a matching SUCCESS octet against an
-// error-indicating IIN. See TestOperateG41V1F6... — the contradiction is
-// confirmed but a fix requires separate owner authorization.
-func g41v1CommandStatus(data []byte, wantIndex uint16, wantValue uint32) CommandStatus {
+// AO-002 F6: when the echoed per-point status is SUCCESS, it is reconciled
+// against the response IIN before SUCCESS is returned. An error-indicating IIN
+// contradicts a SUCCESS echo, so the IIN's implied failure status wins
+// (FuncUnknown/ObjectUnknown -> NotSupported, ParameterError/BadConfig ->
+// BadFormat, AlreadyExecuting -> AlreadyActive, LocalControl -> Local,
+// BufferOverflow -> Unknown). A clean or non-error IIN leaves SUCCESS. An
+// explicit non-SUCCESS per-point status is never overwritten.
+func g41v1CommandStatus(data []byte, wantIndex uint16, wantValue uint32, iin al.IIN) CommandStatus {
 	idx, value, status, ok := parseG41V1Record(data, 0)
 	if !ok || idx != wantIndex || value != wantValue {
 		return CommandStatusUnknown
+	}
+	if status == CommandStatusSuccess {
+		return commandStatusFromIIN(iin)
 	}
 	return status
 }

@@ -157,44 +157,83 @@ func TestOperateG41V1F5ExplicitNonSuccessStatus(t *testing.T) {
 	}
 }
 
-// TestOperateG41V1F6IINContradictsSuccessEcho CONFIRMS F6: when a syntactically
-// matching G41V1 SUCCESS echo is accompanied by error-indicating IIN bits, the
-// current implementation still reports CommandStatusSuccess — the IIN is not
-// reconciled against the echoed command-status octet. This test documents the
-// demonstrated current (defective) behavior; it is NOT an assertion of desired
-// behavior. A fix requires separate owner authorization (see docs/verification/
-// AO-002.md §9). A clear-IIN SUCCESS echo is the positive control.
+// TestOperateG41V1F6IINContradictsSuccessEcho verifies the AO-002 F6 fail-closed
+// correction: a syntactically matching G41V1 SUCCESS echo is reconciled against
+// the response IIN. An error-indicating IIN overrides the SUCCESS octet with the
+// implied failure status; an IIN error that is not positively classifiable
+// (BufferOverflow) fails closed as UNKNOWN with ErrControlOutcomeUnknown and
+// quarantine. A clean or non-error IIN keeps SUCCESS.
 func TestOperateG41V1F6IINContradictsSuccessEcho(t *testing.T) {
 	successEcho := g41Record(41, 1, 0x28, 1, 0, 2300, 0x00)
 
-	// (name, IIN bytes, current-behavior status)
 	cases := []struct {
-		name string
-		iin  [2]byte
+		name        string
+		iin         [2]byte
+		want        CommandStatus
+		wantErr     bool // ErrControlOutcomeUnknown expected
+		wantQuarant bool
 	}{
-		{"clear IIN + SUCCESS echo (positive control)", [2]byte{0x00, 0x00}},
-		{"ParameterError + SUCCESS echo", [2]byte{0x00, 0x20}},
-		{"ObjectUnknown + SUCCESS echo", [2]byte{0x00, 0x40}},
-		{"FuncUnknown + SUCCESS echo", [2]byte{0x00, 0x80}},
-		{"BadConfig + SUCCESS echo", [2]byte{0x00, 0x04}},
-		{"AlreadyExecuting + SUCCESS echo", [2]byte{0x00, 0x08}},
-		{"LocalControl + SUCCESS echo", [2]byte{0x04, 0x00}},
+		{"clear IIN + SUCCESS echo", [2]byte{0x00, 0x00}, CommandStatusSuccess, false, false},
+		{"non-error IIN (Class1Events) + SUCCESS echo", [2]byte{0x40, 0x00}, CommandStatusSuccess, false, false},
+		{"non-error IIN (NeedTime) + SUCCESS echo", [2]byte{0x08, 0x00}, CommandStatusSuccess, false, false},
+		{"ParameterError contradicts SUCCESS", [2]byte{0x00, 0x20}, CommandStatusBadFormat, false, false},
+		{"ObjectUnknown contradicts SUCCESS", [2]byte{0x00, 0x40}, CommandStatusNotSupported, false, false},
+		{"FuncUnknown contradicts SUCCESS", [2]byte{0x00, 0x80}, CommandStatusNotSupported, false, false},
+		{"BadConfig contradicts SUCCESS", [2]byte{0x00, 0x04}, CommandStatusBadFormat, false, false},
+		{"AlreadyExecuting contradicts SUCCESS", [2]byte{0x00, 0x08}, CommandStatusAlreadyActive, false, false},
+		{"LocalControl contradicts SUCCESS", [2]byte{0x04, 0x00}, CommandStatusLocal, false, false},
+		{"BufferOverflow ambiguity fails closed", [2]byte{0x00, 0x10}, CommandStatusUnknown, true, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := newG41RawMaster(&rawG41Transport{object: successEcho, iin: tc.iin})
 			status, err := m.OperateWithStatus(1, false, 41, 1, 0, int32(2300))
+			if tc.wantErr {
+				if !errors.Is(err, ErrControlOutcomeUnknown) {
+					t.Fatalf("error = %v, want ErrControlOutcomeUnknown", err)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if status != tc.want {
+				t.Fatalf("status = %d, want %d", status, tc.want)
+			}
+			if status == CommandStatusSuccess && tc.want != CommandStatusSuccess {
+				t.Fatalf("contradictory IIN surfaced as success")
+			}
+			if got := m.IsQuarantined(1); got != tc.wantQuarant {
+				t.Fatalf("quarantined = %v, want %v", got, tc.wantQuarant)
+			}
+		})
+	}
+}
+
+// TestOperateG41V1F6ExplicitNonSuccessStatusPreserved confirms F6 does not
+// overwrite an explicit non-SUCCESS per-point status: it is surfaced as-is even
+// with a clean IIN, and an error IIN does not turn it into SUCCESS.
+func TestOperateG41V1F6ExplicitNonSuccessStatusPreserved(t *testing.T) {
+	rows := []struct {
+		name   string
+		status byte
+		iin    [2]byte
+		want   CommandStatus
+	}{
+		{"Blocked, clean IIN", 0x06, [2]byte{0x00, 0x00}, CommandStatusBlocked},
+		{"Blocked, conflicting ParameterError", 0x06, [2]byte{0x00, 0x20}, CommandStatusBlocked},
+		{"NoSelect, clean IIN", 0x02, [2]byte{0x00, 0x00}, CommandStatusNoSelect},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			m := newG41RawMaster(&rawG41Transport{
+				object: g41Record(41, 1, 0x28, 1, 0, 2300, row.status),
+				iin:    row.iin,
+			})
+			status, err := m.OperateWithStatus(1, false, 41, 1, 0, int32(2300))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			// Confirmed current behavior: the echoed SUCCESS octet wins regardless
-			// of error IIN, and no quarantine is applied. Recorded as evidence of
-			// F6, not as desired behavior.
-			if status != CommandStatusSuccess {
-				t.Fatalf("current F6 behavior changed: status = %d, want Success (defect still reproduced)", status)
-			}
-			if m.IsQuarantined(1) {
-				t.Fatalf("F6: contradictory IIN SUCCESS echo quarantined; behavior changed")
+			if status != row.want {
+				t.Fatalf("status = %d, want %d", status, row.want)
 			}
 		})
 	}

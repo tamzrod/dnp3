@@ -1177,3 +1177,29 @@ continuation; not a new package. No new protocol variation, no public API change
   `docs/verification/AO-002.md` §9.
 Next: **STOP for independent CHECK.** F6 confirmed but unfixed pending separate authorization.
 AO-003 not authorized; no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 F6 correction checkpoint — 2026-11-11
+Owner addendum "Owner-authorized AO-002 F6 Correction CWAL" (`workflow/active_work/AO-002.md`,
+committed `9d03f88`; pre-correction baseline `1ebcc59`). CURRENT AO-002 continuation; not closure,
+AO-003, supported-profile change, or new operation mode.
+- **F6** (`internal/master/master.go`, `g41v1CommandStatus`): a structurally valid G41V1 echo whose
+  per-point status is SUCCESS is now reconciled against the response IIN before returning SUCCESS,
+  reusing `commandStatusFromIIN`: FuncUnknown/ObjectUnknown → NotSupported; ParameterError/BadConfig →
+  BadFormat; AlreadyExecuting → AlreadyActive; LocalControl → Local; BufferOverflow (unclassifiable) →
+  Unknown + ErrControlOutcomeUnknown + quarantine. Clean/non-error IIN keeps SUCCESS. An explicit
+  non-SUCCESS per-point status is never overwritten. No new numeric command-status values; G12V1 IIN
+  policy and F1–F5 guards unchanged.
+- Tests: `internal/master/g41v1_response_structure_test.go` — `TestOperateG41V1F6IINContradictsSuccessEcho`
+  rewritten from defect-characterization to desired fail-closed assertions (clear/non-error IIN success;
+  six mapped failures; BufferOverflow ambiguity → Unknown + quarantine);
+  `TestOperateG41V1F6ExplicitNonSuccessStatusPreserved` added. Revert-proof: F6 tests fail against
+  pre-fix `master.go`.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback;
+  not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §9.
+Next: **STOP for independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release,
+no task closure.
