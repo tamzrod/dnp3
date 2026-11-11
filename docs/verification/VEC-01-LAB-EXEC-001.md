@@ -4311,3 +4311,119 @@ human-promoted corrective task** to fix the master/outstation static-object fiel
 goldens) — this run may not fix it. No PR/merge/`main` push/archive/promotion/self-awarded CHECK/Gate
 or R4 closure; no conformance or interoperability claim. Historical §39–§43 records preserved.
 **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**
+
+---
+
+### 45. Gate C static-object field-order corrective — diagnosis and externally grounded wire contract (append-only, 2026-11-11)
+
+Authorization: owner addendum in `workflow/active_work/VEC-01-LAB-EXEC-001.md`
+("Owner-authorized Gate C static-object field-order corrective (2026-11-11; post-26dd70f)"),
+executed under `operation cwal` on permanent `work`. Baseline at this milestone:
+`HEAD == origin/work == 02378ae5d74e610dd1e15a28741cda3a7b240d41` ("docs(cwal): authorize bounded
+G30V1 G20V1 static field-order correction"); six authority markers unchanged
+(`Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`, `Branch: work`,
+`CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED`); `bash scripts/cwal-check.sh`
+**OK**. This milestone is **diagnosis only — no Go source change yet.**
+
+#### 45.1 Defect (from §44, re-confirmed against the wire)
+
+§44 observed, on the wire, a conforming pinned OpenDNP3 3.1.2 Class-0 response where the Go master
+decoded G30V1/G20V1 static objects incorrectly. The wire bytes were:
+
+```
+G30V1 object 0: 01 fc 08 00 00   -> flags 0x01 (ONLINE), int32 LE 0x000008FC = 2300
+G20V1 object 0: 01 2a 00 00 00   -> flags 0x01 (ONLINE), uint32 LE 42
+```
+
+The Go master read these as value-then-flags (`AI[0]=588801`, `CT[0]=10753`, quality 0x00 = not
+online), while the pinned peer's own decoder **and** Wireshark 4.0.17 both read flags-then-value
+(`AI[0]=2300`, `CT[0]=42`, ONLINE). The defect is **field ordering inside the static object body**,
+not the object header (the header/qualifier defect was already fixed as corrective #9).
+
+#### 45.2 Independent wire-contract evidence (pinned peer source, not repo tests)
+
+The pinned independent peer is OpenDNP3 **3.1.2** (`dnp3/opendnp3`, tag `3.1.2`, tarball SHA-256
+`183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2`, as pinned in
+`lab/vec01/acquire-pinned.sh`). Its own object model is generated from:
+
+- `generation/dnp3/.../objects/groups/Group30.scala`:
+  `object Group30Var1 extends FixedSize(Group30, 1, bit32WithFlag)(flags, value32)` — the field
+  tuple is **`(flags, value32)`**, i.e. flags octet first.
+- `generation/dnp3/.../objects/groups/Group20.scala`:
+  `object Group20Var1 extends FixedSize(Group20, 1, bit32WithFlag)(flags, count32)` — **`(flags, count32)`**.
+
+The generated serializer confirms the order explicitly (`cpp/lib/src/gen/objects/Group30.cpp`,
+`Group20.cpp`):
+
+```cpp
+bool Group30Var1::Write(const Group30Var1& arg, ser4cpp::wseq_t& buffer)
+{ return LittleEndian::write(buffer, arg.flags, arg.value); }
+bool Group20Var1::Write(const Group20Var1& arg, ser4cpp::wseq_t& buffer)
+{ return LittleEndian::write(buffer, arg.flags, arg.value); }
+```
+
+So for G30V1 and G20V1 the correct IEEE 1815 layout is **`flags` octet, then the 4-octet
+little-endian value** (5 octets total), matching the §44 wire bytes and Wireshark. The same
+generator shows `Group1Var2` (Binary Input With Flags) is a **single** flags octet
+(`LittleEndian::write(buffer, arg.flags)`), with the point state in flags bit 0x80 — which is also the
+G1V2 interpretation the master currently gets wrong (§44.6; see the G1V2 note in §45.5).
+
+#### 45.3 Current repo source (before the fix)
+
+- `pkg/dnp3/master/client.go` `parseAnalogInputs` G30V1 branch (fast path, lines ~1495-1505) reads
+  `binary.LittleEndian.Uint32(data[offset:offset+4])` **then** `types.QualityFlags(data[offset+4])`
+  — value-then-flags. The generic switch (`case 1`) does the same (`Uint32` then flags).
+- `pkg/dnp3/master/client.go` `parseCounters` G20V1 branch (fast path, lines ~1617-1627) and its
+  `case 1` do the same value-then-flags read.
+- `internal/outstation/outstation.go` `buildAnalogInputData` / `buildCounterData` variation 1
+  branches emit value bytes **then** `ai.Quality` / `c.Quality` — the same (wrong) order — so
+  repo-to-repo self-interoperability (`verify-mvp.sh`, `verify-external-mvp.sh` Tiers 1–3,
+  `test/integration`) masks the defect.
+
+#### 45.4 Affected in-repo test vectors (to be corrected in the same corrective)
+
+Because the self-consistent (but wrong) order is baked into golden/unit vectors, the corrective must
+update them to the externally grounded order (expected bytes specified independently, not generated
+by the changed code):
+
+- `pkg/dnp3/master/analog_input_test.go` (`TestG30V1Count8Boundary`, `TestG30V1SignedRange`,
+  `TestG30V1Range16Boundary`, `TestG30V1LSBByteOrder`, `TestG30V1QualityByte`)
+- `pkg/dnp3/master/counter_test.go` (the G20V1 equivalents)
+- `pkg/dnp3/master/object_vector_test.go` (`TestParseClass0AnalogInputVector`,
+  `TestParseClass0CounterVector`, `TestParseAnalogInputLSBNotBigEndian`,
+  `TestParseCounterLSBNotBigEndian`)
+- `pkg/dnp3/master/class0_qualifier_test.go` (`TestClass0G30V1StartStop8`,
+  `TestClass0CounterStartStop8`, `TestClass0G30V2IndexedCount8`, `TestClass0IndexedCount8TruncatedPrefix`,
+  `TestClass0MultiHeaderMixedQualifiers`)
+- `pkg/dnp3/master/multi_header_test.go`, `pkg/dnp3/master/read_response_shape_test.go` (canned APDUs)
+- `internal/testutils/simulator.go` (`encodeAnalogInputs`, `encodeCounters` — used by
+  `test/integration/*` loopback tests)
+- `internal/al/object_header_test.go` uses these bytes only as **header** examples
+  (`1E 01 07 01 E8 03 00 00 01`); its assertions are on the 4-octet header, so it is unaffected, but
+  the trailing value bytes should be corrected for clarity where they are not asserted.
+
+G31V1/G21V1 (event, with-timestamp) shares the same field-order question but is **outside the locked
+v0 profile**; the corrective's allowlist covers the static variations only (see the CURRENT
+"Implementation allowlist"). Event builders are left unchanged (see §45.5).
+
+#### 45.5 G1V2 (Binary Input With Flags) — read-only classification (no change here)
+
+§44.6 recorded that `BI[1..9]` served as **G1V2 With Flags** (flags byte `0x02` = offline/restart)
+was decoded by the master as ONLINE `true`. Trace: `parseBinaryInputs` handles `variation == 1`
+(packed, correct) and `variation == 2` via the generic switch `case 2: // Without flags` which reads a
+**value byte** and forces `QualityOnline` — so the G1V2 **flags** octet is consumed as the point value
+and the point state bit (0x80) is ignored. This is a genuine decoder defect for G1V2, but **G1V2 is
+outside the locked v0 G1V1 profile** (`active_work/supported-profile.md`: Class-0 read is
+`Group 1 Variation 1`). Per the CURRENT, G1V2 is **read-only diagnosis**: no decoder change, no
+profile change, no test fixture that conceals it. A separate owner authorization is required to fix
+G1V2. Disposition: `G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`.
+
+#### 45.6 Disposition — Milestone 1 (diagnosis)
+
+**PASS (diagnosis).** The correct wire contract for G30V1/G20V1 (flags octet then 4-octet LE value)
+is grounded in the pinned peer's own generated serializer (`flags, value32` / `flags, count32`), the
+§44 wire bytes, and Wireshark. The repo's master decoder and outstation encoder both use the wrong
+order; affected vectors are enumerated above. Next authorized action: Milestone 2 — master
+`parseAnalogInputs`/`parseCounters` G30V1/G20V1 flags-first correction plus byte-exact golden/negative
+tests. No Go source changed at this milestone. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4
+OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.**

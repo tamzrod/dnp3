@@ -821,3 +821,21 @@ evidence); no `.pcap`/`.vec` committed. No PR/merge/`main` push/archive/promotio
 closure. **`TASK_BLOCKED` retained; VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT
 PROVEN.** Required next step: a **separately human-promoted corrective task** for the static-object
 field order. See `docs/verification/VEC-01-LAB-EXEC-001.md` §44.
+
+---
+
+### VEC-01 Gate C static-object field-order corrective — Milestone 1 diagnosis (2026-11-11)
+Owner-authorized corrective ("Gate C static-object field-order corrective (2026-11-11; post-26dd70f)")
+under `operation cwal` on `work` (`HEAD == origin/work == 02378ae5d74e610dd1e15a28741cda3a7b240d41`;
+six markers unchanged; `scripts/cwal-check.sh` OK). **Milestone 1 (diagnosis) — PASS; no Go source
+change.** Grounded the correct G30V1/G20V1 layout in the pinned peer itself: OpenDNP3 3.1.2
+`Group30.scala`/`Group20.scala` declare `Group30Var1 = FixedSize(...)(flags, value32)` and
+`Group20Var1 = FixedSize(...)(flags, count32)`, and the generated `Group30.cpp`/`Group20.cpp`
+`Write()` is `LittleEndian::write(buffer, arg.flags, arg.value)` → **flags octet first, then the
+4-octet LE value** (5 octets), matching the §44 wire bytes (`01 fc 08 00 00` = flags 0x01 + int32
+2300; `01 2a 00 00 00` = flags 0x01 + uint32 42) and Wireshark. The repo master decodes and the repo
+outstation encodes **value-then-flags** (wrong), which self-tests mask. G1V2 (With Flags) decoder
+defect classified read-only/out-of-scope (no change). Affected vectors enumerated. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §45. **Next authorized action: Milestone 2 — master
+`parseAnalogInputs`/`parseCounters` flags-first fix + byte-exact tests.** `TASK_BLOCKED` retained;
+VEC-01 NOT EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
