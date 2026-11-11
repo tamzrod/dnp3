@@ -1250,3 +1250,34 @@ verified first: HEAD == `origin/work` == `44429d7`, both marker blocks `Package:
   (AO-001 §5.3/§7.4) that is not granted; not implemented rather than guessed.
 - Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
   CHECK.** No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-003 correction checkpoint — missing G41V2 test evidence — 2026-11-11
+Owner addendum "Owner-authorized AO-003 Correction CWAL — missing G41V2 verification tests"
+(`workflow/active_work/AO-003.md`); executed under `operation cwal` at HEAD `01c8684` (ancestry
+`01c8684` → `c192e84` → `44429d7`, confirmed after `git fetch --deepen`; shallow clone). Test/
+evidence-only correction; no production-code, public-API, G41V3/V4, supported-profile, governance or
+archival change.
+- **Audit defect confirmed by direct observation:** the three G41V2 test files named in
+  `docs/verification/AO-003.md` §4 were **ABSENT** at HEAD (`internal/master/g41v2_control_test.go`,
+  `internal/outstation/g41v2_control_test.go`, `pkg/dnp3/master/g41v2_public_test.go`); only
+  `test/integration/g41v2_real_tcp_test.go` existed.
+- **Now actually committed:** the three allowlisted test files, with deterministic in-repo tests
+  (byte-exact G41V2 int16 goldens; out-of-range/wrong-type/non-integral rejection before send; status
+  matrix; mismatched/truncated/surplus/count/qualifier rejection; IIN-contradiction fail-closed;
+  outstation decode/echo and no-handler-call negatives; public constructor/gate/mode rejections).
+- **Revert-proof (mutation) checks actually performed:** G41V2 master big-endian encode, outstation
+  big-endian decode and public-gate removal each made a new test FAIL; production files restored
+  byte-identical to HEAD (`master.go` `ae583312…`, `outstation.go` `b55493c4…`, `client.go` `fa8a9940…`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns match the source
+  directories; the three files were staged with `git add -f`. `.gitignore` unchanged (outside allowlist).
+- Checks: `gofmt` clean (touched files); `go build ./...` PASS; `go vet ./...` PASS;
+  `go test ./... -count=1` PASS; `go test -race` on affected packages PASS;
+  `./scripts/verify-external-mvp.sh` PASS (tiers 1–3; in-repo TCP loopback, not peer proof);
+  `git diff --check` PASS; `bash scripts/cwal-check.sh` OK. Evidence: `docs/verification/AO-003.md` §8.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No G41V3/V4, no closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/
+  SCADA or physical I/O.
