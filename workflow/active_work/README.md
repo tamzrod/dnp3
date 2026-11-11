@@ -1061,3 +1061,18 @@ Next: **STOP for independent read-only review** before any PR/merge/release. `TA
 
 ### SCV analog-output mission activated — 2026-11-11
 Owner accepted scoped VEC-01 v0 evidence and completed pre-PR review; original full CURRENT archived unchanged as `archive/active-work/VEC-01-LAB-EXEC-001.md` (historical `TASK_BLOCKED` markers belong to its past state). PR #26 is OPEN, not merged; this roadmap transition is not a PR/merge/release approval. New CURRENT `AO-001` is a **design-and-golden-contract microtask**, not G41 implementation approval. Read `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md` and `workflow/active_work/AO-001.md`. G41 remains UNSUPPORTED until independently verified; NGCP point list/SBO requirements unknown. JR command: `operation cwal`.
+
+---
+
+### AO-001 checkpoint — G41 contract inventory + authoritative reference (2026-11-11)
+Read-only design microtask. Deliverable `docs/verification/AO-001.md` (no Go/test/profile change;
+G41 remains UNSUPPORTED). Baseline `199b0da`. Six markers unchanged; `scripts/cwal-check.sh` OK.
+- Inventory: G41 master encode `buildControlRequest` (reachable via public `Operate`, **no group gate**);
+  outstation `executeControl`/`handleWrite`; public bridge `server.go` WriteAnalogOutput; internal
+  placeholder `buildAnalogOutputRequest`.
+- Authoritative peer ref (hash-verified OpenDNP3 3.1.2, sha256 `183cc292…a36ff2`): **V1=int32, V2=int16,
+  V3=float32, V4=float64**; value **little-endian** + 1 status octet; qualifiers `0x28`/`0x17`;
+  response echoes object+status; CommandStatus 0–9 map.
+- Divergences D1–D7 recorded (highest: D2 G41 big-endian on both sides = silent/loopback-false-pass;
+  D3 no group gate; D4 G41 response unparseable). Full contract + test matrix + AO-002 sequence in §5–§8.
+Next: **STOP for independent read-only CHECK**; AO-002 needs its own human promotion. No PR/merge/main.
