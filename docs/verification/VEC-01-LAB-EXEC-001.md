@@ -4800,3 +4800,73 @@ open, to be proven by later gates, not assumed): live two-namespace isolation (G
 on-wire values `2300`/`42` and command SUCCESS (Gate C), payload-block CRC rejection (Gate D), and
 durable capture/vector evidence (Gate E). Independent third-party interoperability remains **NOT
 PROVEN**. Next authorized action: **Gate B**. `TASK_BLOCKED` retained.
+
+---
+
+### 51. Post-corrective re-test — Gate B: objective live isolation and safety proof (2026-11-11)
+
+Authorization: the same owner addendum as §50. Executed under `operation cwal` on permanent `work`;
+six authority markers unchanged; `bash scripts/cwal-check.sh` **OK**. No Gate C protocol traffic was
+generated during this gate.
+
+#### 51.1 Container isolation by construction (host-side inspect)
+
+`docker inspect vec01-lab-campaign` observed:
+
+| Property | Value |
+|----------|-------|
+| `HostConfig.NetworkMode` | `none` |
+| `HostConfig.PortBindings` / `NetworkSettings.Ports` | `{}` / `{}` (no published ports) |
+| `HostConfig.CapAdd` | `["CAP_NET_ADMIN","CAP_NET_RAW","CAP_SYS_ADMIN"]` only |
+| `HostConfig.Privileged` | `false` |
+| `HostConfig.PidMode` | `""` (no host PID namespace) |
+| `NetworkSettings.Networks` | only the `none` network, no IP/gateway |
+| `HostConfig.RestartPolicy` | `no` |
+
+#### 51.2 Two private namespaces + one internal veth (in-container, live)
+
+`/opt/vec01/preflight.sh` (the objective, fail-closed Gate B preflight) reported **GATE_B_PREFLIGHT:
+PASS** with every check PASS: two private netns + one internal veth created; master `10.77.0.1/24`,
+outstation `10.77.0.2/24`; **no default route** and **forwarding off** in each namespace; neither
+namespace can resolve external hosts; master reaches outstation over the internal veth; a lab-local
+listener binds `10.77.0.2:20000` only; no unexpected host interfaces; no docker socket inside the lab.
+
+Directly observed live:
+
+- IPv4 routes: `10.77.0.0/24 dev veth-m/veth-o proto kernel scope link` only — no `default`.
+- IPv6 routes: only `fe80::/64 dev veth-m/veth-o` — no global IPv6 route.
+- Interfaces per namespace: `lo` and the single `veth-m@if4` / `veth-o@if5` only.
+- `net.ipv4.ip_forward = 0` and `conf.all.forwarding = 0` in both namespaces.
+
+#### 51.3 Pinned peer binds ONLY the isolated lab address (live, no DNP3 traffic)
+
+Started the pinned, lab-patched `outstation-demo` inside `vec01-outstation`. Peer log:
+`INFO server - Listening on: 10.77.0.2:20000`. `ss -ltnp` in `vec01-outstation` showed exactly
+`LISTEN 0 4096 10.77.0.2:20000 0.0.0.0:* users:(("outstation-demo",...))`; `vec01-master` had **no**
+listening sockets. After the peer was stopped, no listener remained. No TCP connection was opened and
+no DNP3 exchange occurred; the listener was bound and then closed.
+
+#### 51.4 Static safety configuration (from the lab-only patch; §50.3)
+
+`IPEndpoint("10.77.0.2", 20000)` (no wildcard bind), `config.link.LocalAddr = 4`,
+`config.link.RemoteAddr = 3` (master source `3`), static variations `Group1Var1`/`Group30Var1`/
+`Group20Var1` at index 0, `allowUnsolicited = false`, `typesAllowedInClass0` restricted to
+BinaryInput|AnalogInput|Counter, and the memory-only `LabCrobCommandHandler` (DirectOperate only, index
+0, LATCH_ON/OFF, `count == 1`; SBO/DirectOperateNoAck/analog → NOT_SUPPORTED; index≠0 → OUT_OF_RANGE;
+count≠1 → FORMAT_ERROR; SUCCESS only after in-memory write+read-back). No physical I/O path exists:
+`/dev/ttyS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` are absent and the handler holds a single in-memory bool.
+Bounded deadlines and a **single** non-retrying control are used at Gate C.
+
+#### 51.5 Host boundary unchanged
+
+Host routes contain only `eth0` (default) and `docker0` (`172.17.0.0/16`); **no** route to
+`10.77.0.0/24` and no host veth for the lab. A host TCP attempt to `10.77.0.2:20000` fails as expected.
+The container's `/etc/resolv.conf` nameserver is the platform resolver, but the lab namespaces have no
+default route and cannot resolve external hosts (proven in §51.2), so it is unreachable from the lab.
+
+#### 51.6 Gate B disposition
+
+**Gate B PASS.** All objective isolation preconditions hold; no Gate C traffic has yet been sent. The
+listener was verified to bind only `10.77.0.2:20000` and was closed. Next authorized action: **Gate C**
+(positive independent-wire re-test). `TASK_BLOCKED` retained; independent third-party interoperability
+NOT PROVEN.

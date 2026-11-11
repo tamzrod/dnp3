@@ -933,3 +933,22 @@ tested SHA `6eaeee0`: `7b74aa54…0f44b`; no source modified. Capture space ≈2
 `docs/verification/VEC-01-LAB-EXEC-001.md` §50. Next authorized action: **Gate B** (objective live
 isolation proof). No Gate C traffic yet. `TASK_BLOCKED` retained; independent third-party
 interoperability NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — Gate B: objective live isolation proof (2026-11-11)
+Same owner addendum; `operation cwal` on permanent `work`; six authority markers unchanged;
+`scripts/cwal-check.sh` OK. **Gate B — PASS.** No Gate C traffic yet.
+
+Container `vec01-lab-campaign` verified host-side: `NetworkMode=none`, no published ports
+(`PortBindings`/`Ports` empty), `CapAdd=[NET_ADMIN,NET_RAW,SYS_ADMIN]` only, `Privileged=false`, no host
+PID namespace, only the `none` network, `RestartPolicy=no`. In-container `preflight.sh` →
+**GATE_B_PREFLIGHT: PASS**: two private netns + one internal veth; `10.77.0.1/24` / `10.77.0.2/24`; no
+default route and forwarding off in both; no external DNS; lab-local reachability only; listener binds
+`10.77.0.2:20000` only; no unexpected host interfaces; no docker socket inside the lab. Directly
+observed: IPv4 route only `10.77.0.0/24`, IPv6 only `fe80::/64`, per-ns interfaces `lo`+one veth,
+`ip_forward=0`/`all.forwarding=0` both ns. The real lab-patched `outstation-demo` logged
+`Listening on: 10.77.0.2:20000`; `ss -ltnp` showed only that listener; it was closed with no DNP3
+exchange. Host has no `10.77.0.0/24` route and cannot reach `10.77.0.2`. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §51. Next authorized action: **Gate C**. `TASK_BLOCKED`
+retained; independent third-party interoperability NOT PROVEN.
