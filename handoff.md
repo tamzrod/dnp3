@@ -950,3 +950,26 @@ See `docs/verification/VEC-01-LAB-EXEC-001.md` §49. **STOP for independent read
 self-awarded acceptance, no automatic live-peer Gate C restart, no Gate D/E captures, no R4 change, no
 CURRENT closure/archive, no promotion, no PR/merge, no `main` push. `TASK_BLOCKED` retained; VEC-01 NOT
 EXECUTED / R4 OPEN / THIRD-PARTY INTEROPERABILITY NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — Milestone A: pinned environment/storage readiness (2026-11-11)
+Owner addendum "Owner-authorized post-corrective isolated OpenDNP3 3.1.2 re-test (2026-11-11;
+post-8aa7d32)" under `operation cwal` on permanent `work`; six authority markers unchanged;
+`scripts/cwal-check.sh` OK; baseline `HEAD == origin/work == 6eaeee0`. **Milestone A — PASS.**
+
+Pinned inputs re-verified live this run (all MATCH): OpenDNP3 3.1.2 tarball
+`183cc292…a36ff2`; tag/peel `3.1.2^{} = 26b4c01e4839bbbda8866655e086471c4917ee53`; asio `18883c35…928c5`;
+exe4cpp `2a8a2c7d…48db6c`; ser4cpp `5a78f83d…762f6e`. Isolated lab image `vec01-lab:3.1.2`
+(`sha256:71ac3b1560cb…`) built; in-image `acquire-pinned: OK (all inputs sha256-verified)`; runtime is
+`network_mode: none`. In-image toolchain: `go1.22.12`, `cmake 3.25.1`, `g++ 12.2.0`, `tcpdump 4.99.3`.
+
+Peer rebuilt offline from verified pins (patched with the `lab-config.md` single-file lab patch; needed
+`patch -l` because the committed patch copy is whitespace-stripped); all lab markers present.
+`outstation-demo` `502527ff…4c370a`, `libopendnp3.a` `d28b9c70…a8527` — differ from historical pins only
+by documented path-dependence; NOT claimed equal to pinned binaries. Go master built from the exact
+tested SHA `6eaeee0`: `7b74aa54…0f44b`; no source modified. Capture space ≈25 GiB free; ceilings
+≤2 PCAPs, each ≤1 MiB, total ≤4 MiB; push/readback durability already proven this session. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §50. Next authorized action: **Gate B** (objective live
+isolation proof). No Gate C traffic yet. `TASK_BLOCKED` retained; independent third-party
+interoperability NOT PROVEN.
