@@ -5303,11 +5303,17 @@ separate authorization.
 Objective: no *current* document simultaneously asserts "R4 OPEN because no independent PCAP exists"
 and "scoped R4 RESOLVED" without explicit historical labelling.
 
-- `grep` across `README.md`, `active_work/supported-profile.md`, `active_work/external-acceptance.md`:
-  the only remaining "R4 … OPEN" text is `active_work/external-acceptance.md` line 34, which sits
-  inside the explicitly dated `## Evidence reconciliation — 2026-11-08` historical table and is
-  immediately followed by a sentence labelling it the 2026-11-08 historical record superseded by the
-  dated 2026-11-11 acceptance below. **Labelled history — acceptable.**
+- `grep` across the three **current-state** docs (`README.md`, `active_work/supported-profile.md`,
+  `active_work/external-acceptance.md`): the only remaining "R4 … OPEN" text is
+  `active_work/external-acceptance.md` line 34, which sits inside the explicitly dated
+  `## Evidence reconciliation — 2026-11-08` historical table and is immediately followed by a
+  sentence labelling it the 2026-11-08 historical record superseded by the dated 2026-11-11
+  acceptance below. **Labelled history — acceptable.**
+- This verification document (`docs/verification/VEC-01-LAB-EXEC-001.md`) is append-only history and
+  therefore still contains many `VEC-01 NOT EXECUTED / R4 OPEN` lines from §§1–55 STOP records.
+  Those are preserved prior-state records and are **not** current-status prose; the current
+  reconciliation is §§56–57. A reader must not treat an earlier STOP record as the current R4
+  status. No earlier section was rewritten.
 - No current-state prose in the three reconciled files still claims third-party evidence is absent.
 - G1V2 caveat present in `supported-profile.md` (R4 row + Current Verification State), `README.md`
   (both bullets), and `external-acceptance.md` (limitations). **Not suppressed.**
