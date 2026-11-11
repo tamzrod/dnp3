@@ -1,9 +1,9 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: AO-003
+Package: AO-004
 Branch: work
-CURRENT: AO-003
+CURRENT: AO-004
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
@@ -1374,3 +1374,30 @@ owner-approved float policy.
 - Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
   CHECK.** No AO-003 closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/SCADA or
   physical I/O.
+
+---
+
+### AO-003 closure → AO-004 promotion transition checkpoint — 2026-11-12
+Owner addendum "Owner-authorized AO-003 closure → AO-004 promotion (documentation-only, 2026-11-12)"
+(`workflow/active_work/AO-003.md`, committed `c4859cb`). Documentation-only transition; no Go/test/CI/
+protocol/simulator/lab execution.
+- **AO-003 CLOSED / TASK_CHECKPOINTED.** Task file archived by **pure rename**
+  `workflow/active_work/AO-003.md` → `archive/active-work/AO-003.md`, byte-identical (blob
+  `08e39dcf9caee9e7e6abc99a90712356c058c94b`). Baseline `c4859cb` descends from V4 `217c02f` and the
+  independent G41V4 CHECK record `1035b16`.
+- **AO-004 CURRENT** (`workflow/active_work/AO-004.md`, header-only activation: `CURRENT: AO-004`,
+  `Status: TASK_IN_PROGRESS`). Independent isolated OpenDNP3 G41 peer validation — **NOT RUN**; a
+  fresh later `operation cwal` after transition independent CHECK is required to start the isolated
+  lab-preparation microtask.
+- Both authority marker blocks changed consistently: `Package: AO-004`, `CURRENT: AO-004`,
+  `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Roadmap `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md`: `AO-003 DONE` (G41V2/V3/V4 source/evidence
+  checked; V1 done in AO-002), `AO-004 CURRENT` (independent peer validation NOT RUN), AO-005
+  deferred.
+- `active_work/supported-profile.md` **byte-identical** (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`): Group 41 remains **UNSUPPORTED**; no generalized
+  compliance, interoperability or production claim.
+- Checks: `git diff --check` PASS; `bash scripts/cwal-check.sh` OK; Go build/tests **NOT_RUN**
+  (documentation-only transition). Evidence: `docs/verification/AO-003.md` §11.
+Next: **STOP for independent CHECK** of the transition. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
