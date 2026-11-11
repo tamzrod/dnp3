@@ -1,11 +1,11 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: VEC-01-LAB-EXEC-001
+Package: AO-001
 Branch: work
-CURRENT: VEC-01-LAB-EXEC-001
+CURRENT: AO-001
 QUEUED: NONE
-Status: TASK_BLOCKED
+Status: TASK_IN_PROGRESS
 
 
 
@@ -1096,3 +1096,8 @@ Authorization: owner-approved scoped VEC-01 acceptance / R4 documentation-closur
 
 Next: **STOP for independent read-only review** before any PR/merge/release. `TASK_BLOCKED` retained;
 `main`/CI/release separate; no CURRENT archival or promotion.
+
+---
+
+### SCV analog-output mission activated — 2026-11-11
+Owner accepted scoped VEC-01 v0 evidence and completed pre-PR review; original full CURRENT archived unchanged as `archive/active-work/VEC-01-LAB-EXEC-001.md` (historical `TASK_BLOCKED` markers belong to its past state). PR #26 is OPEN, not merged; this roadmap transition is not a PR/merge/release approval. New CURRENT `AO-001` is a **design-and-golden-contract microtask**, not G41 implementation approval. Read `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md` and `workflow/active_work/AO-001.md`. G41 remains UNSUPPORTED until independently verified; NGCP point list/SBO requirements unknown. JR command: `operation cwal`.
