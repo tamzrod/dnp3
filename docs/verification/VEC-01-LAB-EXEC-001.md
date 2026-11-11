@@ -5098,3 +5098,58 @@ e95b568a07a214d3960348e909cc8b747e05c8d69d3734840be4c52e293a43e7  vec01-20261111
 vectors match the committed SHA-256 manifest, and the evidence re-decodes to the same results. This is
 verified Git durability, not mere local file existence. `TASK_BLOCKED` retained; independent
 third-party interoperability NOT PROVEN.
+
+---
+
+### 55. Post-corrective re-test — Final gates and handoff (2026-11-11)
+
+Authorization: same owner addendum as §50–§54. Executed under `operation cwal` on permanent `work`.
+Baseline SHA at gate execution: `3442518ed615bd3c19ed953e0c602a2c6faafc92` (final push
+`b4869ef3a4fbee4d9ac468397f0159143a5fd50c` after this record). Six authority markers unchanged
+(`Repository: tamzrod/dnp3`; `Package: VEC-01-LAB-EXEC-001`; `Branch: work`;
+`CURRENT: VEC-01-LAB-EXEC-001`; `QUEUED: NONE`; `Status: TASK_BLOCKED`).
+
+#### 55.1 Go quality/negative gates — observed results on the exact tested SHA
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Format | `gofmt -l .` | **PASS** (no files listed) |
+| Vet | `go vet ./...` | **PASS** (rc=0) |
+| Build | `go build ./...` | **PASS** (rc=0) |
+| Unit/integration | `go test ./... -count=1` | **PASS** (all packages `ok`) |
+| Race | `go test -race ./pkg/dnp3/master/... ./pkg/dnp3/outstation/... ./test/integration/... ./internal/master/... ./internal/outstation/... -count=1` | **PASS** |
+| MVP gate | `./scripts/verify-mvp.sh` | **PASS** (`all MVP gate checks passed`) |
+| External MVP | `./scripts/verify-external-mvp.sh` | **PASS** (Tiers 1–3 passed) |
+| Whitespace | `git diff --check` | **PASS** (clean) |
+| CWAL | `bash scripts/cwal-check.sh` | **OK** (`CURRENT=VEC-01-LAB-EXEC-001 branch=work`) |
+
+No gate failed or was skipped; nothing is reported NOT_RUN.
+
+#### 55.2 Campaign disposition (this new post-correction execution)
+
+| Milestone | Result | Checkpoint (remote SHA) |
+|-----------|--------|--------------------------|
+| A — pinned environment/storage readiness | **PASS** | `e99b1e0412ea58b92e77bf0634e2394ceba1a116` |
+| B — objective live isolation + safety proof | **PASS** | `6a4babe6babc378fa056134d96cb4b620668d40d` |
+| C — positive independent-wire re-test | **PASS** | `9fd88282b6f64e9c1ad00abf7bdf1d64fd23c512` |
+| D — negative payload-block CRC | **PASS** | `2e464c85973145cdc01aad567802f229c5b9fd24` |
+| E — durable original capture/vector evidence | **PASS** | `3442518ed615bd3c19ed953e0c602a2c6faafc92` |
+| Final gates/handoff | **PASS** | `b4869ef3a4fbee4d9ac468397f0159143a5fd50c` |
+
+#### 55.3 Provenance, peer version and known v0 limitations
+
+- Peer: OpenDNP3 **3.1.2** (peel `26b4c01e4839bbbda8866655e086471c4917ee53`; tarball
+  `183cc29222c3cb58099a9753c43defed5cb8677fda985c3f88e38b5c19a36ff2`), built offline from verified
+  pins; lab-only single-file patch (§50.3). Go master built from `6eaeee0`.
+- Known v0 limitation carried forward, **not** fixed or claimed: `G1V2` Binary-Input-With-Flags
+  decoding (`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE`, §52.5).
+- Independent decode used tshark 4.4.19 (distinct dissector) plus the pinned peer log; `.vec` bytes
+  are packet-derived, never synthetic.
+
+#### 55.4 STOP disposition
+
+All authorized gates A–E and the final gates **PASS**. Per the authorization this is **STOP for
+independent read-only CHECK**: no self-approval of third-party interoperability or compliance, no new
+PR/merge/`main` push, no production controls or release, no R4 closure, no CURRENT archival/promotion.
+`Status: TASK_BLOCKED` and R4 remain **OPEN**; independent third-party interoperability remains
+**NOT PROVEN**. VEC-01 is **not** marked EXECUTED and R4 is **not** closed.

@@ -1009,3 +1009,26 @@ last, `0c46` vs expected `b9f3`). Files not ignored (`git check-ignore` empty); 
 `.gitignore` change. Durability established by real push + fresh independent checkout/fetch with
 matching SHA-256 (recorded in `docs/verification/VEC-01-LAB-EXEC-001.md` §54). Next: **final gates**.
 `TASK_BLOCKED` retained; independent third-party interoperability NOT PROVEN.
+
+---
+
+### VEC-01 post-corrective re-test — FINAL: all gates A–E + final Go gates PASS; STOP for independent CHECK (2026-11-11)
+Same owner addendum; `operation cwal` on permanent `work`; six authority markers unchanged
+(`Repository: tamzrod/dnp3`, `Package: VEC-01-LAB-EXEC-001`, `Branch: work`,
+`CURRENT: VEC-01-LAB-EXEC-001`, `QUEUED: NONE`, `Status: TASK_BLOCKED`); `scripts/cwal-check.sh` OK.
+
+Bounded post-corrective isolated OpenDNP3 3.1.2 re-test **complete, all authorized gates PASS**:
+A `e99b1e0`, B `6a4babe`, C `9fd8828`, D `2e464c8`, E `3442518`, final `b4869ef`. Gate C: Class-0
+G60V1 READ `BI[0]=true`, `AI[0]=2300` ONLINE, `CT[0]=42` ONLINE + one G12V1 Direct-Operate CROB
+`BO[0]` LATCH_ON status SUCCESS, peer readback `state=true`, independently decoded with tshark 4.4.19.
+Gate D: one payload-block CRC corrupted (header CRC valid) → master failed closed, no control, no hang.
+Gate E: 2 original PCAPs + faithful `.vec` + manifest committed; fresh independent clone at `3442518`
+verifies all SHA-256 and re-decodes identically. Final Go gates all PASS: `gofmt -l .`, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`, race (master/outstation/integration/internal),
+`verify-mvp.sh`, `verify-external-mvp.sh`, `git diff --check`, `cwal-check.sh`. Known v0 limitation
+`G1V2_DECODER_DEFECT_CLASSIFIED_OUT_OF_SCOPE` recorded, not fixed. See
+`docs/verification/VEC-01-LAB-EXEC-001.md` §50–§55.
+
+**STOP for independent read-only CHECK.** No self-approval of interoperability/compliance, no
+PR/merge/`main` push, no production control/release, no R4 closure, no CURRENT archival/promotion.
+`Status: TASK_BLOCKED` and R4 remain OPEN; independent third-party interoperability NOT PROVEN.
