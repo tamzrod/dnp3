@@ -573,15 +573,21 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 		debugLog("WriteAnalogOutput ERROR: %v", err)
 		return err
 	}
-	if status != nil && *status != types.ControlSuccess {
-		// MEXT-024: see WriteBinaryOutput — a non-success status with no error
-		// must not surface as ControlSuccess.
+	// AO-002 F2: fail closed. Only an explicit ControlSuccess is success. A nil
+	// status (handler returned (nil, nil)) or any non-success status must not be
+	// coerced into success — otherwise the outstation echoes a SUCCESS command
+	// status for a command the handler did not actually accept.
+	if status == nil {
+		debugLog("WriteAnalogOutput: nil status -> failure (not success)")
+		return fmt.Errorf("command handler returned no status")
+	}
+	if *status != types.ControlSuccess {
+		// MEXT-024: a handler that signals a non-success status with no error
+		// must NOT surface as ControlSuccess.
 		debugLog("WriteAnalogOutput: non-success status %d -> failure", *status)
 		return fmt.Errorf("command rejected by handler: status %d", *status)
 	}
-	if status != nil {
-		debugLog("WriteAnalogOutput result: status=%d", *status)
-	}
+	debugLog("WriteAnalogOutput result: status=%d", *status)
 	return nil
 }
 

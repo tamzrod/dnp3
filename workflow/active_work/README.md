@@ -1121,3 +1121,27 @@ only**; V2–V4, SBO, Direct-Operate-No-Response and G42–G44 are **not** imple
 - `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED** pending AO-004
   independent verification and AO-005 approved profile changes. Evidence: `docs/verification/AO-002.md`.
 Next: **STOP for independent CHECK.** No AO-003 promotion, no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 corrective checkpoint — F1/F2 fail-closed fixes — 2026-11-11
+Owner addendum "Owner-authorized corrective AO-002 CWAL — F1/F2" (`workflow/active_work/AO-002.md`,
+committed `5ad4391`; baseline `b42e694`). CURRENT AO-002 corrective scope; not a new task. No new
+protocol variation, no public API change.
+- **F1** (`internal/outstation/outstation.go`): `handleDirectOperate` no longer constructs a success
+  response when the data handler is not a `DataWriter`. It fails closed with `ErrNotSupported`
+  (added), sets `ParameterError`, calls no handler and mutates no output state — never a SUCCESS
+  echo. Shared fix for all control objects; verified G12V1 success path unchanged.
+- **F2** (`pkg/dnp3/outstation/server.go`): `WriteAnalogOutput` now requires an explicit
+  `status != nil && *status == ControlSuccess && err == nil`. Nil status, an error, or any
+  non-SUCCESS status fails closed (no synthesized/coerced success).
+- Tests: `internal/outstation/g41v1_f1_failclosed_test.go` (no-DataWriter G41V1+G12V1 negatives,
+  DataWriter positive control with byte-exact SUCCESS echo); `pkg/dnp3/outstation/analog_status_failclosed_test.go`
+  (status matrix + bounded end-to-end false-success propagation). Revert-proof: both suites fail
+  against the pre-fix code.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP
+  loopback; not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §8.
+Next: **STOP for a new independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release.

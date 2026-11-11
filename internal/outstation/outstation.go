@@ -67,6 +67,10 @@ var (
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrBufferFull      = errors.New("event buffer full")
 	ErrTransportNotSet = errors.New("transport not configured")
+	// ErrNotSupported: the request cannot be executed because the configured
+	// data handler does not support the required operation. Fail-closed: a
+	// non-success response is returned rather than a false success (AO-002 F1).
+	ErrNotSupported = errors.New("operation not supported by data handler")
 	// SBO errors
 	ErrSelectTimeout   = errors.New("select timeout - no operate received")
 	ErrNoSelectPending = errors.New("no select pending for this point")
@@ -1789,17 +1793,23 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 
 	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
-	// Execute the control operation directly
-	if dh, ok := o.data.(DataWriter); ok {
-		debugLog("handleDirectOperate: calling executeControl")
-		err := o.executeControl(dh, group, variation, index, value)
-		if err != nil {
-			o.iin.ParameterError = true
-			debugLog("handleDirectOperate: executeControl error: %v", err)
-			return nil, err
-		}
-	} else {
-		debugLog("handleDirectOperate: data handler does not implement DataWriter!")
+	// Execute the control operation directly.
+	dh, ok := o.data.(DataWriter)
+	if !ok {
+		// AO-002 F1: fail closed. Without a DataWriter the control cannot be
+		// executed, so a success response must never be constructed. For G41V1
+		// the master reads the echoed object's command-status octet, so emitting
+		// a SUCCESS echo here would be reported as a false success despite no
+		// execution. No handler is called and no output state is mutated.
+		debugLog("handleDirectOperate: data handler does not implement DataWriter; failing closed")
+		o.iin.ParameterError = true
+		return nil, ErrNotSupported
+	}
+	debugLog("handleDirectOperate: calling executeControl")
+	if err := o.executeControl(dh, group, variation, index, value); err != nil {
+		o.iin.ParameterError = true
+		debugLog("handleDirectOperate: executeControl error: %v", err)
+		return nil, err
 	}
 
 	resp := &al.APDU{
