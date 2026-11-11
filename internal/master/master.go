@@ -2161,14 +2161,16 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 
 // g41ValueWidth returns the numeric value width in octets for a supported Group
 // 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
-// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets). V3/V4 (floating) are not
-// implemented.
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets) and V3 (float32, 4
+// octets). V4 (float64) is not implemented.
 func g41ValueWidth(variation uint8) int {
 	switch variation {
 	case 1:
 		return 4 // int32
 	case 2:
 		return 2 // int16
+	case 3:
+		return 4 // float32
 	default:
 		return 0
 	}
@@ -3216,11 +3218,12 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 
 	case 41:
 		// Group 41 (Analog Output). AO-002 implements Variation 1 (32-bit signed
-		// integer); AO-003 adds Variation 2 (16-bit signed integer). Per the verified
-		// independent OpenDNP3 3.1.2 reference (docs/verification/AO-001.md), a G41
-		// object is a signed value serialized little-endian followed by one
-		// command-status octet. Any other Group 41 variation, a wrong value type, a
-		// non-integral float, or an out-of-range value is rejected before sending.
+		// integer); AO-003 adds Variation 2 (16-bit signed integer) and Variation 3
+		// (single-precision IEEE-754 float). Per the verified independent OpenDNP3
+		// 3.1.2 reference (docs/verification/AO-001.md), a G41 object is a value
+		// serialized little-endian followed by one command-status octet. Any other
+		// Group 41 variation, a wrong value type, a non-integral float, an
+		// out-of-range integer, or a NaN/±Inf float is rejected before sending.
 		switch variation {
 		case 1:
 			intVal, ok := controlInt32Value(value)
@@ -3238,6 +3241,18 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			}
 			valueBytes = []byte{
 				byte(intVal), byte(intVal >> 8),
+				0x00, // request object command status (SUCCESS)
+			}
+		case 3:
+			// V3 float32: reject NaN/±Inf before transmission; preserve the exact
+			// IEEE-754 bits (including signed zero and subnormals) via Float32bits.
+			f, ok := controlFloat32Value(value)
+			if !ok {
+				return nil
+			}
+			bits := math.Float32bits(f)
+			valueBytes = []byte{
+				byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24),
 				0x00, // request object command status (SUCCESS)
 			}
 		default:
@@ -3757,6 +3772,33 @@ func controlInt16Value(value interface{}) (int16, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// controlFloat32Value returns the exact float32 carried by a G41V3 value. NaN
+// and ±Inf are rejected before transmission (the owner-approved AO-003 float
+// policy), as is any source type that is not exactly representable as a float32:
+// a float64 is accepted only when converting to float32 and back is bit-exact
+// (rejecting precision loss, overflow to ±Inf and subnormal underflow to zero).
+// Signed zero is preserved because the value is compared by bits, not by ==. The
+// caller treats a false result as a definite pre-send rejection.
+func controlFloat32Value(value interface{}) (float32, bool) {
+	var f float32
+	switch v := value.(type) {
+	case float32:
+		f = v
+	case float64:
+		c := float32(v)
+		if float64(c) != v || math.IsInf(float64(c), 0) {
+			return 0, false
+		}
+		f = c
+	default:
+		return 0, false
+	}
+	if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+		return 0, false
+	}
+	return f, true
 }
 
 // =============================================================================

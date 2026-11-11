@@ -1281,3 +1281,48 @@ archival change.
 - Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
   CHECK.** No G41V3/V4, no closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/
   SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V3 (float32) bounded slice — 2026-11-11
+Owner authorization "Owner-approved AO-003 IEEE-754 float policy and bounded continuation — V3 then
+V4" (`workflow/active_work/AO-003.md`, commit `f5bc63a`, read back from `origin/work`); executed
+under `operation cwal`. Bounded continuation: **G41V3 (single-precision IEEE-754 float) only**,
+under the owner-approved float policy. G41V4 (float64) is deferred to a separate later invocation
+after a passing independent CHECK on this V3 work.
+- **Preflight:** `bash scripts/cwal-check.sh` OK (`CURRENT=AO-003 branch=work`); local fast-forwarded
+  (non-force) to `origin/work` `f5bc63a`; the six authority markers unchanged.
+- **Wire contract (independent):** G41V3 = four-octet little-endian IEEE-754 float32 + one
+  command-status octet, qualifier `0x28` (count 1). Confirmed against `docs/verification/AO-001.md`
+  §3.1/§6.1 and an independent IEEE-754 computation; no reference contradiction → no PUSHBACK.
+- **Implemented (authorized V3 file set):** `internal/master/master.go` (`g41ValueWidth` +V3=4,
+  `buildControlRequest` V3 case via `math.Float32bits`, new `controlFloat32Value`),
+  `internal/outstation/outstation.go` (`g41ValueWidth` +V3, `executeControl`/`handleWrite` V3 decode
+  with inbound NaN/±Inf rejection), `pkg/dnp3/master/client.go` (gate + `rawValue` for the typed
+  carrier), `pkg/dnp3/outstation/server.go` (variation 3 bridge), `pkg/dnp3/types/commands.go`
+  (`AnalogFloat32CommandValue` + `NewAnalogFloat32Control`).
+- **Float policy:** reject NaN/±Inf before transmission and before any outstation handler side effect
+  (no coercion to zero/SUCCESS); finite values preserve exact IEEE-754 bits incl. signed zero and
+  subnormals; a float64 source is accepted only when exactly representable as float32 (no silent
+  narrowing/overflow/underflow); echoed setpoints compared by raw bits (sign-bit flip → UNKNOWN +
+  quarantine). Only Direct Operate with response; G41V4/SBO/no-response/other qualifiers rejected.
+- **Tests added:** `internal/master/g41v3_control_test.go`, `internal/outstation/g41v3_control_test.go`,
+  `pkg/dnp3/master/g41v3_public_test.go`, `test/integration/g41v3_real_tcp_test.go`, plus
+  `TestNewAnalogFloat32Control` in `pkg/dnp3/types/types_test.go`. Stale "V3 unsupported" assertions
+  in the G41V1/V2 suites were corrected truthfully (G41V4 still rejected; the old 10-octet V3 records
+  relabelled "wrong length"), not weakened.
+- **Revert-proof (mutation) checks actually performed:** master V3 big-endian encode, outstation
+  inbound non-finite rejection removal, outstation V3 big-endian decode and public-gate removal each
+  made a new test FAIL; production files restored byte-identical (`master.go` `c05e07dd587f`,
+  `outstation.go` `2347bffd9016`, `client.go` `fc584a8df971`, `server.go` `a0d89518693b`,
+  `commands.go` `dc5902993a8f`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns also match the source
+  directories; the three new in-tree `*_test.go` files were staged with `git add -f`. `.gitignore`
+  unchanged (outside the authorized allowlist).
+- Checks: `gofmt -l` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3;
+  in-repo TCP loopback, not peer proof); `git diff --check` PASS; `bash scripts/cwal-check.sh` OK.
+  Evidence: `docs/verification/AO-003.md` §9.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No G41V4, no AO-003 closure/promotion, no PR/merge, no `main` push, no release, no
+  field/NGCP/SCADA or physical I/O.

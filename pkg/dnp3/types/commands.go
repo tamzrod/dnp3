@@ -87,6 +87,17 @@ type AnalogInt16CommandValue struct {
 
 func (a *AnalogInt16CommandValue) isCommandValue() {}
 
+// AnalogFloat32CommandValue represents a Group 41 Variation 3 (single-precision
+// IEEE-754 float) analog output command value. It is the typed carrier for the
+// G41V3 path so the setpoint's exact float32 bits (including signed zero and
+// subnormals) are preserved without a float64 round-trip. NaN and ±Inf are not
+// valid setpoints and are rejected on the control path.
+type AnalogFloat32CommandValue struct {
+	Value float32
+}
+
+func (a *AnalogFloat32CommandValue) isCommandValue() {}
+
 // ControlStatus represents the status of a control command
 type ControlStatus uint8
 
@@ -238,6 +249,26 @@ func NewAnalogInt16Control(index uint16, value int16, cmdType CommandType) *Cont
 		Variation:   2,  // Variation 2 = 16-bit signed integer
 		Index:       index,
 		Value:       &AnalogInt16CommandValue{Value: value},
+		CommandType: cmdType,
+	}
+}
+
+// NewAnalogFloat32Control creates a Group 41 Variation 3 (single-precision
+// IEEE-754 float) analog output command. Per the verified independent OpenDNP3
+// 3.1.2 reference (see docs/verification/AO-001.md), G41V3 is a four-octet
+// little-endian float32 followed by one status octet. The value is carried as a
+// typed float32 so its exact bits (including signed zero and subnormals) are
+// preserved; NaN and ±Inf are not valid setpoints and are rejected on the
+// control path.
+// Supported-profile: Reject until AO-004 independent peer verification and
+// AO-005 approved supported-profile changes. AO-003 implements the
+// DirectOperate-with-response path for G41V3.
+func NewAnalogFloat32Control(index uint16, value float32, cmdType CommandType) *ControlOutput {
+	return &ControlOutput{
+		Group:       41, // Group 41 = Analog Output
+		Variation:   3,  // Variation 3 = single-precision IEEE-754 float
+		Index:       index,
+		Value:       &AnalogFloat32CommandValue{Value: value},
 		CommandType: cmdType,
 	}
 }

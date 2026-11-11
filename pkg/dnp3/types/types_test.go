@@ -1,6 +1,7 @@
 package types
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -224,6 +225,30 @@ func TestNewAnalogInt16Control(t *testing.T) {
 	}
 	if v.Value != -1234 {
 		t.Errorf("value = %d, want -1234", v.Value)
+	}
+}
+
+// TestNewAnalogFloat32Control locks the AO-003 G41V3 constructor: Group 41
+// Variation 3, a typed float32 carrier preserving the exact bits, and
+// DirectOperate.
+func TestNewAnalogFloat32Control(t *testing.T) {
+	cmd := NewAnalogFloat32Control(7, -0.5, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 3 {
+		t.Errorf("group/variation = %d/%d, want 41/3", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogFloat32CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogFloat32CommandValue", cmd.Value)
+	}
+	if math.Float32bits(v.Value) != math.Float32bits(-0.5) {
+		t.Errorf("value bits = %08X, want %08X", math.Float32bits(v.Value), math.Float32bits(-0.5))
 	}
 }
 

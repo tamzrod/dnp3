@@ -561,6 +561,28 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 			return fmt.Errorf("unsupported G41V2 analog output type: %T", value)
 		}
 		cmd.Value = &types.AnalogInt16CommandValue{Value: intVal}
+	} else if variation == 3 {
+		// G41V3 (AO-003): single-precision IEEE-754 float. The value arrives as
+		// float32 from the outstation G41V3 parser (exact bits preserved). A float64
+		// is accepted only when exactly representable as float32. NaN and ±Inf are
+		// rejected (owner-approved AO-003 float policy).
+		var f float32
+		switch v := value.(type) {
+		case float32:
+			f = v
+		case float64:
+			c := float32(v)
+			if float64(c) != v || math.IsInf(float64(c), 0) {
+				return fmt.Errorf("G41V3 analog output value %v is not exactly representable as float32", v)
+			}
+			f = c
+		default:
+			return fmt.Errorf("unsupported G41V3 analog output type: %T", value)
+		}
+		if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+			return fmt.Errorf("G41V3 analog output value must be finite")
+		}
+		cmd.Value = &types.AnalogFloat32CommandValue{Value: f}
 	} else {
 		// Out of AO-002 scope (only Variation 1 is implemented). Retain the
 		// generic float64 carrier for API continuity.
