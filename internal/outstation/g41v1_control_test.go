@@ -174,3 +174,111 @@ func TestOutstationG41V1DoesNotTouchCROB(t *testing.T) {
 		t.Fatalf("G41V1 command reached WriteBinaryOutput %d times", h.seenCROB)
 	}
 }
+
+// g41v1MutableHandler records handler calls and simulates output state so F3 can
+// prove a rejected request neither calls the handler nor mutates state.
+type g41v1MutableHandler struct {
+	DefaultDataHandler
+	analogCalls   int
+	binaryCalls   int
+	lastAnalog    interface{}
+	lastVariation uint8
+	lastIndex     uint16
+}
+
+func (h *g41v1MutableHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
+	h.analogCalls++
+	h.lastAnalog = value
+	h.lastVariation = variation
+	h.lastIndex = index
+	return nil
+}
+
+func (h *g41v1MutableHandler) WriteBinaryOutput(index uint16, crob *CROB) error {
+	h.binaryCalls++
+	return nil
+}
+
+// TestOutstationG41V1F3CountValidation verifies F3: this slice supports exactly
+// one G41V1 point per Direct Operate. count=0, count>1 (with one or two records),
+// truncated and surplus records are rejected before any side effect: no
+// WriteAnalogOutput / WriteBinaryOutput call, no state mutation, and never a
+// SUCCESS echo.
+func TestOutstationG41V1F3CountValidation(t *testing.T) {
+	// Header: group 41, var 1, qualifier 0x28, 16-bit count, 16-bit index.
+	// After the header the request carries only the 5-byte value+status (the
+	// index is part of the header), so a count != 1 with a 5-byte value is what
+	// isolates the count check from executeControl's length check.
+	hdr := func(count uint16, index uint16) []byte {
+		return []byte{0x29, 0x01, 0x28, byte(count), byte(count >> 8), byte(index), byte(index >> 8)}
+	}
+	value := []byte{0xFC, 0x08, 0x00, 0x00, 0x00} // int32 2300 LE + status
+	cases := []struct {
+		name string
+		data []byte
+	}{
+		{"count 0 with a 5-byte value", append(hdr(0, 0), value...)},
+		{"count 2 with a 5-byte value", append(hdr(2, 0), value...)},
+		{"count 2 with two records", append(hdr(2, 0), append(append([]byte{}, value...), value...)...)},
+		{"truncated value (count 1, 4 bytes)", append(hdr(1, 0), 0xFC, 0x08, 0x00, 0x00)},
+		{"surplus byte (count 1, 6 bytes)", append(hdr(1, 0), 0xFC, 0x08, 0x00, 0x00, 0x00, 0xEE)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &g41v1MutableHandler{}
+			o := NewOutstation(nil)
+			o.Initialize()
+			o.Start()
+			o.SetDataHandler(h)
+
+			resp, err := o.ProcessRequest(&al.APDU{
+				Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
+				FuncCode: al.FuncDirectOperate,
+				Data:     tc.data,
+			})
+			if err == nil {
+				t.Fatalf("expected rejection for %s, got resp=%v", tc.name, resp)
+			}
+			if resp != nil {
+				t.Fatalf("expected nil response (no SUCCESS echo), got %v", resp)
+			}
+			if h.analogCalls != 0 || h.binaryCalls != 0 {
+				t.Fatalf("side effect: analogCalls=%d binaryCalls=%d, want 0/0", h.analogCalls, h.binaryCalls)
+			}
+			if h.lastAnalog != nil {
+				t.Fatalf("state mutated: lastAnalog=%v", h.lastAnalog)
+			}
+		})
+	}
+}
+
+// TestOutstationG41V1F3ValidCountOneStillExecutes is the positive control for F3:
+// a valid single-point request (count 1, 5-byte value) still executes exactly
+// once and returns the byte-exact SUCCESS echo.
+func TestOutstationG41V1F3ValidCountOneStillExecutes(t *testing.T) {
+	h := &g41v1MutableHandler{}
+	o := NewOutstation(nil)
+	o.Initialize()
+	o.Start()
+	o.SetDataHandler(h)
+
+	req := &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
+		FuncCode: al.FuncDirectOperate,
+		Data:     []byte{0x29, 0x01, 0x28, 0x01, 0x00, 0x00, 0x00, 0xFC, 0x08, 0x00, 0x00, 0x00},
+	}
+	resp, err := o.ProcessRequest(req)
+	if err != nil {
+		t.Fatalf("valid count=1 request rejected: %v", err)
+	}
+	if h.analogCalls != 1 || h.binaryCalls != 0 {
+		t.Fatalf("analogCalls=%d binaryCalls=%d, want 1/0", h.analogCalls, h.binaryCalls)
+	}
+	if h.lastAnalog != int32(2300) {
+		t.Fatalf("executed value = %v (%T), want int32(2300)", h.lastAnalog, h.lastAnalog)
+	}
+	want := []byte{0x00, 0x00, 0x29, 0x01, 0x28, 0x01, 0x00, 0x00, 0x00, 0xFC, 0x08, 0x00, 0x00, 0x00}
+	if string(resp.Data) != string(want) {
+		t.Fatalf("echo = %X, want %X", resp.Data, want)
+	}
+}

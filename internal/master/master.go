@@ -2100,8 +2100,8 @@ func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
 	// matches the request's group/variation/index exactly; a missing, truncated,
 	// malformed or mismatched object is never success. There is deliberately no
 	// IIN-only success fallback for G41V1: a conformant response carries the object.
-	if group, variation, index, ok := controlRequestKey(req); ok && group == 41 && variation == 1 {
-		return g41v1CommandStatus(resp.Data, index)
+	if group, variation, index, value, ok := controlRequestKey(req); ok && group == 41 && variation == 1 {
+		return g41v1CommandStatus(resp.Data, index, value)
 	}
 
 	status := parseCommandStatus(resp.Data)
@@ -2120,71 +2120,70 @@ func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
 	return commandStatusFromIIN(resp.IIN)
 }
 
-// controlRequestKey extracts the group, variation and first index from a control
-// request APDU's object data (the request header built by buildControlRequest).
-func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, ok bool) {
-	if req == nil || len(req.Data) < 5 {
-		return 0, 0, 0, false
+// controlRequestKey extracts the group, variation, first index and G41V1 int32
+// value from a control request APDU's object data (the request header built by
+// buildControlRequest). Only the single-point qualifier 0x28 this slice emits is
+// recognized; any other qualifier yields ok=false, so it is never treated as a
+// matching G41V1 request. The value is meaningful only for G41V1 (four
+// little-endian octets at offset 7).
+func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, value uint32, ok bool) {
+	if req == nil || len(req.Data) < 7 {
+		return 0, 0, 0, 0, false
 	}
 	group = req.Data[0]
 	variation = req.Data[1]
 	// Qualifier 0x28 (16-bit count + 16-bit index): header(5) + index(2 LE).
-	if req.Data[2] != 0x28 || len(req.Data) < 7 {
-		return 0, 0, 0, false
+	if req.Data[2] != 0x28 {
+		return 0, 0, 0, 0, false
 	}
 	index = uint16(req.Data[5]) | uint16(req.Data[6])<<8
-	return group, variation, index, true
+	if group == 41 && variation == 1 {
+		if len(req.Data) < 11 {
+			return 0, 0, 0, 0, false
+		}
+		value = uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24
+	}
+	return group, variation, index, value, true
 }
 
 // g41v1CommandStatus returns the per-point command status from a G41V1 response
-// object, requiring the echoed group/variation/index to match the request. A
-// missing, truncated or mismatched object yields CommandStatusUnknown (never
-// success).
-func g41v1CommandStatus(data []byte, wantIndex uint16) CommandStatus {
-	offset := 0
-	for offset+4 <= len(data) {
-		group := data[offset]
-		variation := data[offset+1]
-		qualifier := data[offset+2]
-
-		if group == 41 && variation == 1 {
-			idx, status, ok := parseG41V1Record(data, offset, qualifier)
-			if !ok || idx != wantIndex {
-				return CommandStatusUnknown
-			}
-			return status
-		}
-		next, ok := skipObject(data, offset, group, variation, qualifier)
-		if !ok {
-			return CommandStatusUnknown
-		}
-		offset = next
+// object. The response is accepted only when it is structurally exactly one
+// G41V1 record using qualifier 0x28 (16-bit count = 1, 16-bit index) with no
+// surplus bytes or extra records, and the echoed index AND int32 value both
+// match the request. Any deviation yields CommandStatusUnknown (never success).
+//
+// NOTE (AO-002 F6): this does not reconcile a matching SUCCESS octet against an
+// error-indicating IIN. See TestOperateG41V1F6... — the contradiction is
+// confirmed but a fix requires separate owner authorization.
+func g41v1CommandStatus(data []byte, wantIndex uint16, wantValue uint32) CommandStatus {
+	idx, value, status, ok := parseG41V1Record(data, 0)
+	if !ok || idx != wantIndex || value != wantValue {
+		return CommandStatusUnknown
 	}
-	return CommandStatusUnknown
+	return status
 }
 
-// parseG41V1Record reads the index and command status from a G41V1 object record
-// at the given header offset. Supported qualifiers are 0x28 (16-bit count +
-// 16-bit index) and 0x00 (8-bit count + 16-bit index).
-func parseG41V1Record(data []byte, offset int, qualifier uint8) (index uint16, status CommandStatus, ok bool) {
-	switch qualifier {
-	case 0x28:
-		if offset+5+2+5 > len(data) {
-			return 0, 0, false
-		}
-		index = uint16(data[offset+5]) | uint16(data[offset+6])<<8
-		status = CommandStatus(data[offset+5+2+4])
-		return index, status, true
-	case 0x00:
-		if offset+4+2+5 > len(data) {
-			return 0, 0, false
-		}
-		index = uint16(data[offset+4]) | uint16(data[offset+5])<<8
-		status = CommandStatus(data[offset+4+2+4])
-		return index, status, true
-	default:
-		return 0, 0, false
+// parseG41V1Record reads a single G41V1 record at the given header offset. The
+// only supported qualifier is 0x28 (16-bit count + 16-bit index) with a count of
+// exactly 1; the record is exactly header(5) + index(2 LE) + int32 value(4 LE) +
+// status(1) with no surplus bytes. The legacy 0x00 branch is not accepted as a
+// valid G41V1 control record. ok is false for any other shape.
+func parseG41V1Record(data []byte, offset int) (index uint16, value uint32, status CommandStatus, ok bool) {
+	const recordLen = 5 + 2 + 4 + 1
+	if offset < 0 || offset+recordLen != len(data) {
+		return 0, 0, 0, false
 	}
+	if data[offset] != 41 || data[offset+1] != 1 || data[offset+2] != 0x28 {
+		return 0, 0, 0, false
+	}
+	count := int(data[offset+3]) | int(data[offset+4])<<8
+	if count != 1 {
+		return 0, 0, 0, false
+	}
+	index = uint16(data[offset+5]) | uint16(data[offset+6])<<8
+	value = uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24
+	status = CommandStatus(data[offset+11])
+	return index, value, status, true
 }
 
 // containsG12V1Header reports whether the object data contains a Group 12

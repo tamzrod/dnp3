@@ -1145,3 +1145,35 @@ protocol variation, no public API change.
 - `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
   `docs/verification/AO-002.md` §8.
 Next: **STOP for a new independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 corrective checkpoint — F3/F4/F5 + F6 investigation — 2026-11-11
+Owner addendum "Owner-authorized AO-002 corrective CWAL — F3/F4/F5 and F6 investigation"
+(`workflow/active_work/AO-002.md`, committed `3443f87`; audited baseline `59e671b`). CURRENT AO-002
+continuation; not a new package. No new protocol variation, no public API change, no batch commands.
+- **F3** (`internal/outstation/outstation.go`): `handleDirectOperate` now rejects any G41V1 request
+  whose count != 1 or value length != 5 before any `DataWriter` call/state mutation (`ErrInvalidRequest`
+  + ParameterError, never a SUCCESS echo). G12V1 unchanged.
+- **F4** (`internal/master/master.go`): `controlRequestKey` returns the request G41V1 int32 value;
+  `g41v1CommandStatus` requires the echoed value to equal it (plus index/variation). Wrong/zero value →
+  Unknown → ErrControlOutcomeUnknown + quarantine.
+- **F5** (`internal/master/master.go`): `parseG41V1Record` accepts only exactly one qualifier-0x28
+  record, count 1, exact length, no surplus/extra records; legacy 0x00 branch no longer a valid G41V1
+  control record. Empty/truncated/multi/surplus/wrong-qualifier/group/variation/index/value all fail
+  closed. G12V1 parsing untouched.
+- **F6** (investigation, `internal/master/master.go` `resolveOperateStatus`): **CONFIRMED** — a
+  matching G41V1 SUCCESS echo with error-indicating IIN (ParameterError/ObjectUnknown/FuncUnknown/
+  BadConfig/AlreadyExecuting/LocalControl) currently returns CommandStatusSuccess and does not
+  quarantine. Reproduction test added; **no fix applied** (not authorized). Minimal remedy documented
+  for separate owner authorization.
+- Tests: `internal/outstation/g41v1_control_test.go` (F3 count validation + positive control);
+  `internal/master/g41v1_response_structure_test.go` (F4 value match, F5 structure rejections, F6
+  characterization). Revert-proof: F3/F4/F5 tests fail against pre-fix code.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback;
+  not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §9.
+Next: **STOP for independent CHECK.** F6 confirmed but unfixed pending separate authorization.
+AO-003 not authorized; no PR/merge, no `main` push, no release.

@@ -1784,14 +1784,26 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	debugLog("handleDirectOperate: received")
 
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	value := make([]byte, len(req.Data)-dataIdx)
 	copy(value, req.Data[dataIdx:])
 
-	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
+	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, count=%d, valueLen=%d", group, variation, index, count, len(value))
+
+	// AO-002 F3: this first slice supports exactly ONE G41V1 point per Direct
+	// Operate. Validate the count and the record length before any side effect so
+	// a batch, empty or malformed request is rejected without calling the output
+	// handler and without echoing SUCCESS. parseControlObjectHeader discards the
+	// count for G12V1, whose single-point behavior is unchanged and covered by
+	// the existing CROB suite.
+	if group == 41 && variation == 1 && (count != 1 || len(value) != 5) {
+		debugLog("handleDirectOperate: rejecting G41V1 count=%d valueLen=%d", count, len(value))
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 
 	// Execute the control operation directly.
 	dh, ok := o.data.(DataWriter)
