@@ -1115,4 +1115,4 @@ G41 remains UNSUPPORTED). Baseline `199b0da`. Six markers unchanged; `scripts/cw
   response echoes object+status; CommandStatus 0–9 map.
 - Divergences D1–D7 recorded (highest: D2 G41 big-endian on both sides = silent/loopback-false-pass;
   D3 no group gate; D4 G41 response unparseable). Full contract + test matrix + AO-002 sequence in §5–§8.
-Next: **STOP for independent read-only CHECK**; AO-002 needs its own human promotion. No PR/merge/main.
+Checkpoint `d8e4400` (remote work, verified). Next: **STOP for independent read-only CHECK**; AO-002 needs its own human promotion. No PR/merge/main.
