@@ -252,6 +252,27 @@ func TestNewAnalogFloat32Control(t *testing.T) {
 	}
 }
 
+func TestNewAnalogFloat64Control(t *testing.T) {
+	cmd := NewAnalogFloat64Control(7, -0.5, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 4 {
+		t.Errorf("group/variation = %d/%d, want 41/4", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogFloat64CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogFloat64CommandValue", cmd.Value)
+	}
+	if math.Float64bits(v.Value) != math.Float64bits(-0.5) {
+		t.Errorf("value bits = %016X, want %016X", math.Float64bits(v.Value), math.Float64bits(-0.5))
+	}
+}
+
 func TestReadRequest(t *testing.T) {
 	req := NewReadRequest(
 		GroupRequest{Group: 1, Variation: 1},

@@ -101,7 +101,7 @@ func TestBuildControlRequestG41V3AcceptsExactFloat64(t *testing.T) {
 // TestBuildControlRequestG41V3Rejections verifies the master rejects, before
 // sending (nil request = definite pre-send rejection), non-finite floats,
 // float64 sources that lose precision on narrowing or overflow/underflow, and
-// non-float types, and still rejects the unimplemented G41V4.
+// non-float types, and still rejects an unimplemented variation (V5).
 func TestBuildControlRequestG41V3Rejections(t *testing.T) {
 	m := &Master{}
 	nan32 := float32(math.NaN())
@@ -126,7 +126,7 @@ func TestBuildControlRequestG41V3Rejections(t *testing.T) {
 		{"string value", 3, "1.0"},
 		{"bool value", 3, true},
 		{"nil value", 3, nil},
-		{"variation 4 (unsupported)", 4, float32(1)},
+		{"variation 5 (unsupported)", 5, float32(1)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -248,7 +248,7 @@ func TestOperateG41V3MismatchedObjectNotSuccess(t *testing.T) {
 		{"wrong index", g41v3Record(0x28, 1, 9, math.Float32bits(1.0), 0x00)},
 		{"wrong value (single low bit)", g41v3Record(0x28, 1, 0, math.Float32bits(1.0)^1, 0x00)},
 		{"unsupported variation (V2)", []byte{41, 2, 0x28, 0x01, 0x00, 0x00, 0x00, 0x2A, 0x00, 0x00}},
-		{"unsupported variation (V4)", []byte{41, 4, 0x28, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F, 0x00}},
+		{"unsupported variation (V5)", []byte{41, 5, 0x28, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F, 0x00}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

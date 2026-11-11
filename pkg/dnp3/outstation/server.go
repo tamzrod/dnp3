@@ -517,7 +517,9 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 // Converts internal value to public ControlOutput and delegates to commandHandler.
 // AO-002: Group 41 Variation 1 (int32) is carried as a typed
 // AnalogInt32CommandValue with DirectOperate semantics (the supported mode);
-// SelectThenOperate is not falsely presented.
+// SelectThenOperate is not falsely presented. AO-003 adds the typed G41V2
+// (int16), G41V3 (float32) and G41V4 (float64) carriers under the same
+// DirectOperate-with-response semantics and the owner-approved float policy.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
 	if h.commandHandler == nil {
 		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
@@ -583,6 +585,19 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 			return fmt.Errorf("G41V3 analog output value must be finite")
 		}
 		cmd.Value = &types.AnalogFloat32CommandValue{Value: f}
+	} else if variation == 4 {
+		// G41V4 (AO-003): double-precision IEEE-754 float. The value arrives as
+		// float64 from the outstation G41V4 parser (exact bits preserved). Only a
+		// float64 source is accepted; NaN and ±Inf are rejected (owner-approved
+		// AO-003 float policy).
+		f, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unsupported G41V4 analog output type: %T", value)
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("G41V4 analog output value must be finite")
+		}
+		cmd.Value = &types.AnalogFloat64CommandValue{Value: f}
 	} else {
 		// Out of AO-002 scope (only Variation 1 is implemented). Retain the
 		// generic float64 carrier for API continuity.

@@ -1611,7 +1611,7 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			}
 			dataIdx += 11
 
-		case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32), little-endian
+		case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32)/V4 (float64), little-endian
 			// G41 record: index (already consumed) then a signed little-endian
 			// value and one command-status octet.
 			width := g41ValueWidth(variation)
@@ -1629,9 +1629,17 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				value = int32(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
 			case 2:
 				value = int16(uint16(req.Data[dataIdx]) | uint16(req.Data[dataIdx+1])<<8)
-			default: // 3: float32
+			case 3: // float32
 				f := math.Float32frombits(uint32(req.Data[dataIdx]) | uint32(req.Data[dataIdx+1])<<8 | uint32(req.Data[dataIdx+2])<<16 | uint32(req.Data[dataIdx+3])<<24)
 				if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+					o.iin.ParameterError = true
+					return nil, ErrInvalidRequest
+				}
+				value = f
+			default: // 4: float64
+				f := math.Float64frombits(uint64(req.Data[dataIdx]) | uint64(req.Data[dataIdx+1])<<8 | uint64(req.Data[dataIdx+2])<<16 | uint64(req.Data[dataIdx+3])<<24 |
+					uint64(req.Data[dataIdx+4])<<32 | uint64(req.Data[dataIdx+5])<<40 | uint64(req.Data[dataIdx+6])<<48 | uint64(req.Data[dataIdx+7])<<56)
+				if math.IsNaN(f) || math.IsInf(f, 0) {
 					o.iin.ParameterError = true
 					return nil, ErrInvalidRequest
 				}
@@ -1866,7 +1874,7 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 // group(0x29) variation qualifier(0x28) count(01 00), then the 16-bit index (LE),
 // the little-endian numeric value (taken from the request record) and a SUCCESS
 // command-status octet. The value width follows the variation (V1 int32 = 4
-// octets, V2 int16 = 2 octets).
+// octets, V2 int16 = 2 octets, V3 float32 = 4 octets, V4 float64 = 8 octets).
 func buildG41EchoObject(variation uint8, index uint16, requestValue []byte) []byte {
 	width := g41ValueWidth(variation)
 	out := []byte{41, variation, 0x28, 0x01, 0x00, byte(index), byte(index >> 8)}
@@ -1876,8 +1884,8 @@ func buildG41EchoObject(variation uint8, index uint16, requestValue []byte) []by
 
 // g41ValueWidth returns the numeric value width in octets for a supported Group
 // 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
-// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets) and V3 (float32, 4
-// octets). V4 (float64) is not implemented.
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets), V3 (float32, 4 octets)
+// and V4 (float64, 8 octets).
 func g41ValueWidth(variation uint8) int {
 	switch variation {
 	case 1:
@@ -1886,6 +1894,8 @@ func g41ValueWidth(variation uint8) int {
 		return 2 // int16
 	case 3:
 		return 4 // float32
+	case 4:
+		return 8 // float64
 	default:
 		return 0
 	}
@@ -1911,7 +1921,7 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
 
-	case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32), little-endian
+	case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32)/V4 (float64), little-endian
 		// G41 object: signed little-endian value then one command-status octet.
 		// Reject any other variation and any wrong length rather than falling back
 		// to a guessed decode.
@@ -1933,13 +1943,25 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			intVal := int16(uint16(value[0]) | uint16(value[1])<<8)
 			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
 			return dh.WriteAnalogOutput(index, intVal, variation)
-		default: // 3: float32
+		case 3: // float32
 			// Reject an inbound NaN/±Inf wire value before any handler side effect
 			// (owner-approved AO-003 float policy); it must never be executed or
 			// echoed as SUCCESS.
 			f := math.Float32frombits(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
 			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
 				debugLog("executeControl: rejecting non-finite G41V3 value")
+				return ErrInvalidRequest
+			}
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, f)
+			return dh.WriteAnalogOutput(index, f, variation)
+		default: // 4: float64
+			// Reject an inbound NaN/±Inf wire value before any handler side effect
+			// (owner-approved AO-003 float policy); it must never be executed or
+			// echoed as SUCCESS.
+			f := math.Float64frombits(uint64(value[0]) | uint64(value[1])<<8 | uint64(value[2])<<16 | uint64(value[3])<<24 |
+				uint64(value[4])<<32 | uint64(value[5])<<40 | uint64(value[6])<<48 | uint64(value[7])<<56)
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				debugLog("executeControl: rejecting non-finite G41V4 value")
 				return ErrInvalidRequest
 			}
 			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, f)

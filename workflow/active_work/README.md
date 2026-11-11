@@ -1326,3 +1326,51 @@ after a passing independent CHECK on this V3 work.
 - Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
   CHECK.** No G41V4, no AO-003 closure/promotion, no PR/merge, no `main` push, no release, no
   field/NGCP/SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V4 (float64) bounded slice — 2026-11-11
+Owner authorization "Subsequent mission: G41V4" (`workflow/active_work/AO-003.md`, addendum
+"Independent G41V3 CHECK record — checkpoint a51bc2c"), preconditioned on the recorded passing
+independent source/evidence CHECK of G41V3 at `a51bc2c`; executed under a new `operation cwal`
+invocation. Bounded continuation: **G41V4 (double-precision IEEE-754 float) only**, under the same
+owner-approved float policy.
+- **Preflight:** `bash scripts/cwal-check.sh` OK (`CURRENT=AO-003 branch=work`); ancestry of
+  `46c2960`, `a51bc2c`, `f5bc63a` from HEAD/origin `work` (`ed6ca30`) verified; the six authority
+  markers unchanged.
+- **Wire contract (independent):** G41V4 = eight-octet little-endian IEEE-754 float64 + one
+  command-status octet, qualifier `0x28` (count 1). Confirmed against `docs/verification/AO-001.md`
+  §3.1/§6.1 (`123.456789 → 0B 0B EE 07 3C DD 5E 40 00`) and an independent IEEE-754 computation;
+  no reference contradiction → no PUSHBACK.
+- **Implemented (authorized V4 file set):** `internal/master/master.go` (`g41ValueWidth` +V4=8,
+  `buildControlRequest` V4 case via `math.Float64bits`, new `controlFloat64Value`, normalized G41
+  value type widened `uint32`→`uint64`), `internal/outstation/outstation.go` (`g41ValueWidth` +V4,
+  `executeControl`/`handleWrite` V4 decode with inbound NaN/±Inf rejection), `pkg/dnp3/master/client.go`
+  (gate + `rawValue` for the typed carrier), `pkg/dnp3/outstation/server.go` (variation 4 bridge),
+  `pkg/dnp3/types/commands.go` (`AnalogFloat64CommandValue` + `NewAnalogFloat64Control`).
+- **Float policy:** reject NaN/±Inf before transmission and before any outstation handler side effect
+  (no coercion to zero/SUCCESS); finite values preserve exact IEEE-754 bits incl. signed zero and
+  subnormals; only a `float64` source is accepted (the pre-existing generic `AnalogCommandValue{float64}`
+  carrier is therefore also admitted; a `float32` source is rejected to avoid silent widening);
+  echoed setpoints compared by raw bits (sign-bit flip → UNKNOWN + quarantine). Only Direct Operate
+  with response; SBO/no-response/other qualifiers/G42–G44 rejected.
+- **Tests added:** `internal/master/g41v4_control_test.go`, `internal/outstation/g41v4_control_test.go`,
+  `pkg/dnp3/master/g41v4_public_test.go`, `test/integration/g41v4_real_tcp_test.go`, plus
+  `TestNewAnalogFloat64Control` (`pkg/dnp3/types/types_test.go`), G41V4 bridge tests
+  (`pkg/dnp3/outstation/bridge_status_matrix_test.go`). Stale "V4 unsupported" assertions in the
+  G41V1/V2/V3 suites were corrected truthfully (moved to unimplemented variation 5), not weakened.
+- **Revert-proof (mutation) checks actually performed:** master V4 big-endian encode, master
+  `g41ValueWidth` V4 8→4, outstation V4 big-endian decode, outstation `g41ValueWidth` V4 8→0 and
+  public-gate V4 removal each made a new test FAIL; production files restored byte-identical
+  (`master.go` `8d524ef34e05`, `outstation.go` `9e7d8087f3c6`, `client.go` `fb82295b4043`,
+  `server.go` `ec1f084fbeed`, `commands.go` `5c2910271202`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns also match the source
+  directories; the three new in-tree `*_test.go` files were staged with `git add -f`. `.gitignore`
+  unchanged (outside the authorized allowlist).
+- Checks: `gofmt -l` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3;
+  in-repo TCP loopback, not peer proof); `git diff --check` PASS; `bash scripts/cwal-check.sh` OK.
+  Evidence: `docs/verification/AO-003.md` §10.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No AO-003 closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/SCADA or
+  physical I/O.

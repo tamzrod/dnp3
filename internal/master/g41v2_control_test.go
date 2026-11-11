@@ -90,7 +90,7 @@ func TestBuildControlRequestG41V2Rejections(t *testing.T) {
 		variation uint8
 		value     interface{}
 	}{
-		{"variation 4 (unsupported)", 4, int16(1)},
+		{"variation 5 (unsupported)", 5, int16(1)},
 		{"variation 3 with integer type", 3, int16(1)},
 		{"int32 overflow", 2, int32(32768)},
 		{"int32 underflow", 2, int32(-32769)},
@@ -307,7 +307,7 @@ func TestOperateG41V2ConflictingIIN(t *testing.T) {
 
 // TestParseG41RecordG41V2 confirms parseG41Record reads the G41V2 int16 value
 // little-endian (returned as the raw uint16 payload) and the per-point status
-// octet, and rejects an unsupported variation (V4) or a truncated record.
+// octet, and rejects an unsupported variation (V5) or a truncated record.
 func TestParseG41RecordG41V2(t *testing.T) {
 	// 42 -> value bytes 2A 00, status 0x06 (Blocked).
 	rec := g41v2Record(0x28, 1, 0x0004, 42, 0x06)
@@ -331,9 +331,9 @@ func TestParseG41RecordG41V2(t *testing.T) {
 		t.Fatalf("parseG41Record(-32768) = (%d, ok=%v), want (32768, true)", v, ok)
 	}
 
-	// Unsupported variation V4 (V3 is now supported by the G41V3 slice).
-	if _, _, _, ok := parseG41Record(g41v2Record(0x28, 1, 0, 42, 0x00), 0, 4); ok {
-		t.Fatalf("parseG41Record accepted unsupported variation 4")
+	// Unsupported variation V5 (V3 and V4 are now supported by their own slices).
+	if _, _, _, ok := parseG41Record(g41v2Record(0x28, 1, 0, 42, 0x00), 0, 5); ok {
+		t.Fatalf("parseG41Record accepted unsupported variation 5")
 	}
 
 	// Truncated (status octet missing).

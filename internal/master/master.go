@@ -2126,10 +2126,10 @@ func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
 // built by buildControlRequest). Only the single-point qualifier 0x28 this slice
 // emits is recognized; any other qualifier yields ok=false, so it is never
 // treated as a matching G41 request. The value is the raw little-endian payload
-// normalized into a uint32 and is meaningful only for the G41 variations this
-// slice emits (four octets for V1, two octets for V2); the comparison width is
-// derived from the variation, not from this field alone.
-func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, value uint32, ok bool) {
+// normalized into a uint64 and is meaningful only for the G41 variations this
+// slice emits (four octets for V1/V3, two octets for V2, eight octets for V4);
+// the comparison width is derived from the variation, not from this field alone.
+func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, value uint64, ok bool) {
 	if req == nil || len(req.Data) < 7 {
 		return 0, 0, 0, 0, false
 	}
@@ -2142,16 +2142,23 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 	index = uint16(req.Data[5]) | uint16(req.Data[6])<<8
 	if group == 41 {
 		switch g41ValueWidth(variation) {
+		case 8:
+			if len(req.Data) < 15 {
+				return 0, 0, 0, 0, false
+			}
+			for i := 0; i < 8; i++ {
+				value |= uint64(req.Data[7+i]) << (8 * uint(i))
+			}
 		case 4:
 			if len(req.Data) < 11 {
 				return 0, 0, 0, 0, false
 			}
-			value = uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24
+			value = uint64(uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24)
 		case 2:
 			if len(req.Data) < 9 {
 				return 0, 0, 0, 0, false
 			}
-			value = uint32(req.Data[7]) | uint32(req.Data[8])<<8
+			value = uint64(uint16(req.Data[7]) | uint16(req.Data[8])<<8)
 		default:
 			return 0, 0, 0, 0, false
 		}
@@ -2161,8 +2168,8 @@ func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, valu
 
 // g41ValueWidth returns the numeric value width in octets for a supported Group
 // 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
-// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets) and V3 (float32, 4
-// octets). V4 (float64) is not implemented.
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets), V3 (float32, 4 octets)
+// and V4 (float64, 8 octets).
 func g41ValueWidth(variation uint8) int {
 	switch variation {
 	case 1:
@@ -2171,6 +2178,8 @@ func g41ValueWidth(variation uint8) int {
 		return 2 // int16
 	case 3:
 		return 4 // float32
+	case 4:
+		return 8 // float64
 	default:
 		return 0
 	}
@@ -2190,7 +2199,7 @@ func g41ValueWidth(variation uint8) int {
 // BadFormat, AlreadyExecuting -> AlreadyActive, LocalControl -> Local,
 // BufferOverflow -> Unknown). A clean or non-error IIN leaves SUCCESS. An
 // explicit non-SUCCESS per-point status is never overwritten.
-func g41CommandStatus(data []byte, variation uint8, wantIndex uint16, wantValue uint32, iin al.IIN) CommandStatus {
+func g41CommandStatus(data []byte, variation uint8, wantIndex uint16, wantValue uint64, iin al.IIN) CommandStatus {
 	idx, value, status, ok := parseG41Record(data, 0, variation)
 	if !ok || idx != wantIndex || value != wantValue {
 		return CommandStatusUnknown
@@ -2207,7 +2216,7 @@ func g41CommandStatus(data []byte, variation uint8, wantIndex uint16, wantValue 
 // + value(LE, g41ValueWidth octets) + status(1) with no surplus bytes. The legacy
 // 0x00 branch is not accepted as a valid G41 control record. ok is false for any
 // other shape or an unsupported variation.
-func parseG41Record(data []byte, offset int, variation uint8) (index uint16, value uint32, status CommandStatus, ok bool) {
+func parseG41Record(data []byte, offset int, variation uint8) (index uint16, value uint64, status CommandStatus, ok bool) {
 	width := g41ValueWidth(variation)
 	if width == 0 {
 		return 0, 0, 0, false
@@ -2225,10 +2234,14 @@ func parseG41Record(data []byte, offset int, variation uint8) (index uint16, val
 	}
 	index = uint16(data[offset+5]) | uint16(data[offset+6])<<8
 	switch width {
+	case 8:
+		for i := 0; i < 8; i++ {
+			value |= uint64(data[offset+7+i]) << (8 * uint(i))
+		}
 	case 4:
-		value = uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24
+		value = uint64(uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24)
 	case 2:
-		value = uint32(data[offset+7]) | uint32(data[offset+8])<<8
+		value = uint64(uint16(data[offset+7]) | uint16(data[offset+8])<<8)
 	}
 	status = CommandStatus(data[offset+7+width])
 	return index, value, status, true
@@ -3255,6 +3268,19 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 				byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24),
 				0x00, // request object command status (SUCCESS)
 			}
+		case 4:
+			// V4 float64: reject NaN/±Inf before transmission; preserve the exact
+			// IEEE-754 bits (including signed zero and subnormals) via Float64bits.
+			f, ok := controlFloat64Value(value)
+			if !ok {
+				return nil
+			}
+			bits := math.Float64bits(f)
+			valueBytes = []byte{
+				byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24),
+				byte(bits >> 32), byte(bits >> 40), byte(bits >> 48), byte(bits >> 56),
+				0x00, // request object command status (SUCCESS)
+			}
 		default:
 			return nil
 		}
@@ -3796,6 +3822,24 @@ func controlFloat32Value(value interface{}) (float32, bool) {
 		return 0, false
 	}
 	if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+		return 0, false
+	}
+	return f, true
+}
+
+// controlFloat64Value returns the exact float64 carried by a G41V4 value. NaN
+// and ±Inf are rejected before transmission (the owner-approved AO-003 float
+// policy). Only a float64 source is accepted: unlike V3 there is no narrower
+// carrier to promote, and a float32 source is deliberately rejected so an
+// accidental width mismatch at the API boundary is not silently widened. Signed
+// zero is preserved because the value is compared by bits, not by ==. The caller
+// treats a false result as a definite pre-send rejection.
+func controlFloat64Value(value interface{}) (float64, bool) {
+	f, ok := value.(float64)
+	if !ok {
+		return 0, false
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, false
 	}
 	return f, true

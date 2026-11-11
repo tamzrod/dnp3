@@ -1,6 +1,7 @@
 package outstation
 
 import (
+	"math"
 	"testing"
 
 	"dnp3/internal/outstation"
@@ -174,6 +175,64 @@ func TestBridgeAnalogOutputG41V2RejectsWrongTypeAndRange(t *testing.T) {
 			}
 			if h.got != nil {
 				t.Fatal("handler invoked for a rejected G41V2 value")
+			}
+		})
+	}
+}
+
+// TestBridgeAnalogOutputG41V4Semantics locks the AO-003 bridge contract: a G41V4
+// analog output is carried as a typed AnalogFloat64CommandValue with DirectOperate
+// semantics and its exact bits (including signed zero) preserved.
+func TestBridgeAnalogOutputG41V4Semantics(t *testing.T) {
+	h := &aoRecordingHandler{}
+	d := &internalDataHandler{commandHandler: h}
+	if err := d.WriteAnalogOutput(9, math.Copysign(0, -1), 4); err != nil {
+		t.Fatalf("WriteAnalogOutput G41V4: %v", err)
+	}
+	if h.got == nil {
+		t.Fatal("handler not called")
+	}
+	if h.got.Group != 41 || h.got.Variation != 4 {
+		t.Fatalf("group/variation = %d/%d, want 41/4", h.got.Group, h.got.Variation)
+	}
+	if h.got.CommandType != types.DirectOperate {
+		t.Fatalf("CommandType = %v, want DirectOperate", h.got.CommandType)
+	}
+	if h.got.Index != 9 {
+		t.Fatalf("index = %d, want 9", h.got.Index)
+	}
+	v, ok := h.got.Value.(*types.AnalogFloat64CommandValue)
+	if !ok {
+		t.Fatalf("value type = %T, want *types.AnalogFloat64CommandValue", h.got.Value)
+	}
+	if math.Float64bits(v.Value) != math.Float64bits(math.Copysign(0, -1)) {
+		t.Fatalf("value bits = %016X, want %016X (sign bit lost)", math.Float64bits(v.Value), math.Float64bits(math.Copysign(0, -1)))
+	}
+}
+
+// TestBridgeAnalogOutputG41V4RejectsWrongTypeAndNonFinite asserts a G41V4 write
+// with a non-float64 value or a NaN/±Inf value is rejected before reaching the
+// handler (owner-approved AO-003 float policy; no silent widening).
+func TestBridgeAnalogOutputG41V4RejectsWrongTypeAndNonFinite(t *testing.T) {
+	cases := []struct {
+		name  string
+		value interface{}
+	}{
+		{"float32", float32(1.5)},
+		{"int32", int32(1)},
+		{"NaN", math.NaN()},
+		{"+Inf", math.Inf(1)},
+		{"-Inf", math.Inf(-1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &aoRecordingHandler{}
+			d := &internalDataHandler{commandHandler: h}
+			if err := d.WriteAnalogOutput(0, tc.value, 4); err == nil {
+				t.Fatalf("expected rejection for G41V4 value %v", tc.value)
+			}
+			if h.got != nil {
+				t.Fatal("handler invoked for a rejected G41V4 value")
 			}
 		})
 	}

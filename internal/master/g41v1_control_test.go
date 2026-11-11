@@ -53,7 +53,8 @@ func TestBuildControlRequestG41V1Golden(t *testing.T) {
 // TestBuildControlRequestG41V1Rejections verifies the master rejects unsupported
 // G41 variations and non-exactly-representable values before sending (nil
 // request = definite pre-send rejection). AO-003 enables G41V2, so the
-// variation-2 rejection case moved to the G41V2 suite; V3/V4 stay rejected.
+// variation-2 rejection case moved to the G41V2 suite; V3/V4 are covered by
+// their own suites, so an unimplemented variation (V5) is used here.
 func TestBuildControlRequestG41V1Rejections(t *testing.T) {
 	m := &Master{}
 	cases := []struct {
@@ -62,7 +63,7 @@ func TestBuildControlRequestG41V1Rejections(t *testing.T) {
 		value     interface{}
 	}{
 		{"variation 3", 3, int32(1)},
-		{"variation 4", 4, int32(1)},
+		{"variation 5", 5, int32(1)},
 		{"float64 value", 1, float64(1)},
 		{"float32 value", 1, float32(1)},
 		{"int64 overflow", 1, int64(2147483648)},

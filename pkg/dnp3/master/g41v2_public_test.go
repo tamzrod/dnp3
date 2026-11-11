@@ -157,16 +157,16 @@ func TestPublicOperateG41V2UnsupportedModesBlockedBeforeSend(t *testing.T) {
 	}
 }
 
-// TestPublicOperateGateRejectsG41V4BeforeSend asserts the public gate still
-// fails closed for the unimplemented floating variation G41V4: an
-// ErrUnsupportedOption is returned before any wire traffic. (G41V3 is now
-// implemented and covered by the G41V3 suite.)
-func TestPublicOperateGateRejectsG41V4BeforeSend(t *testing.T) {
+// TestPublicOperateGateRejectsG41V5BeforeSend asserts the public gate still
+// fails closed for the unimplemented variation G41V5: an ErrUnsupportedOption is
+// returned before any wire traffic. (G41V3 and G41V4 are now implemented and
+// covered by their own suites.)
+func TestPublicOperateGateRejectsG41V5BeforeSend(t *testing.T) {
 	cases := []struct {
 		name      string
 		variation uint8
 	}{
-		{"G41V4", 4},
+		{"G41V5", 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -2043,15 +2043,15 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 
 	// Fail-closed object gate (AO-002/AO-003): admit only the verified control
 	// objects — Group 12 Variation 1 (CROB), Group 41 Variation 1 (int32 analog
-	// output), Group 41 Variation 2 (int16 analog output) and Group 41 Variation 3
-	// (float32 analog output), DirectOperate-with-response. Any other
-	// group/variation is rejected before any wire traffic rather than encoded and
-	// sent.
+	// output), Group 41 Variation 2 (int16 analog output), Group 41 Variation 3
+	// (float32 analog output) and Group 41 Variation 4 (float64 analog output),
+	// DirectOperate-with-response. Any other group/variation is rejected before
+	// any wire traffic rather than encoded and sent.
 	switch {
 	case command.Group == 12 && command.Variation == 1:
 		// CROB (existing behavior)
-	case command.Group == 41 && (command.Variation == 1 || command.Variation == 2 || command.Variation == 3):
-		// G41V1 int32 / G41V2 int16 / G41V3 float32 analog output
+	case command.Group == 41 && (command.Variation == 1 || command.Variation == 2 || command.Variation == 3 || command.Variation == 4):
+		// G41V1 int32 / G41V2 int16 / G41V3 float32 / G41V4 float64 analog output
 	default:
 		release()
 		return nil, fmt.Errorf("%w: unsupported control object group %d variation %d", dnp3.ErrUnsupportedOption, command.Group, command.Variation)
@@ -2071,6 +2071,8 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		rawValue = v.Value // int16 (G41V2)
 	case *types.AnalogFloat32CommandValue:
 		rawValue = v.Value // float32 (G41V3)
+	case *types.AnalogFloat64CommandValue:
+		rawValue = v.Value // float64 (G41V4)
 	case *types.AnalogCommandValue:
 		rawValue = v.Value // float64
 	default:
