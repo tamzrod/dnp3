@@ -2052,3 +2052,27 @@ Owner authorization `c19e614` (bounded corrective on `work`), after Appendix S `
   **UNSUPPORTED**. Evidence: Appendix T.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no
 AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix U — capture provenance and evidence-closure (2026-11-12, authorization `fce286e`)
+
+Owner authorization `fce286e` (bounded evidence-closure on `work`), after Appendix T `800e6be`. Executed on
+clean `work`, fast-forwarded to `fce286e0e0faa6534dc62e15fe9fc65bbc81d040`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Original captures:** **`ORIGINAL_PCAP_UNAVAILABLE`** — Appendix H's ephemeral `/tmp/ao004-docker4/*`
+  captures/logs are gone; no AO-004 PCAP was ever committed; historical SHA-256 values are secondhand.
+- **New capture:** ephemeral `--network none` lab (isolation proven before traffic); eight single-shot
+  G41V1–V4 Direct-Operate cases (idx0 SUCCESS, idx1 OUT_OF_RANGE); V4 idx0 needed one benign
+  readiness-wait retry after a `FAILURE_NO_COMMS` startup race (zero wire frames, logged).
+- **Independent decode:** all link CRCs valid; idx0 echoes bit-identical (`st=00`); idx1 echoes request
+  index/value with `st=0x0C`, IIN `0x0000`; fixture wrote 0 on idx1.
+- **Artifacts:** `active_work/testdata/external/ao004-20261112/` (README, 8 `.vec`, sanitized 12 KB pcap,
+  `SHA256SUMS.txt`); pcap contains only lab traffic. Authorization's `testdata/external/` reconciled to
+  canonical `active_work/testdata/external/`.
+- **Float divergence:** Appendix H V3/V4 `-0.0`/subnormal = **`NEW_CAPTURE_NOT_RUN`**, stays historic
+  **`FAIL/DIVERGENCE`**; no production float/parser change.
+- **Coverage:** idx0/idx1 wire+unit PASS; reverse, other subnormals/NaN/Inf, malformed, timeout, concurrency
+  **NOT_RUN**.
+- **`EVIDENCE_CLOSURE_PARTIAL`.** Cleanup complete; host baseline unchanged (`docker0 eth0 lo`, no netns, no
+  :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix U.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

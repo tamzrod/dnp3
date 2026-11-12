@@ -2091,3 +2091,31 @@ OpenDNP3 3.1.2 in the isolated memory-only lab.
   (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix T.
 Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no `main`
 push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix U — capture provenance and evidence-closure (2026-11-12, authorization `fce286e`)
+
+Bounded `operation cwal` after Appendix T checkpoint `800e6be`. Closed evidence accounting/reproducibility
+gaps only; no production change, no conformance claim, no G41 support grant.
+
+- **Startup:** fetched `fce286e`; fast-forward clean from `800e6be`; six markers identical; supported-profile
+  blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged (G41 **UNSUPPORTED**); `cwal-check` OK.
+- **Original captures:** **`ORIGINAL_PCAP_UNAVAILABLE`** — Appendix H's `/tmp/ao004-docker4/cap*.pcap` and
+  `driver*.out` are gone (ephemeral workspace reset); no AO-004 PCAP was ever committed. Their historical
+  SHA-256 values remain secondhand, not re-verifiable. Committed `vec01-20261111/` (VEC-01, not AO-004) still
+  verifies (`sha256sum -c` OK).
+- **New capture (never the original):** ephemeral `--network none` lab (not privileged, no host/ports/socket);
+  isolation proven (lo-only/0 routes; two namespaces one veth, no default route, `ip_forward=0`, external
+  unreachable). Eight single-shot G41V1–V4 Direct-Operate cases (idx0 SUCCESS, idx1 OUT_OF_RANGE).
+- **Independent decode:** offline Python reader; all link CRCs valid; idx0 echoes bit-identical (`st=00`),
+  idx1 echoes request index/value with `st=0x0C` and IIN `0x0000`; fixture wrote 0 on idx1.
+- **Artifacts:** `active_work/testdata/external/ao004-20261112/` (README, 8 packet-derived `.vec`, sanitized
+  pcap 12328 B, `SHA256SUMS.txt`). Authorization's `testdata/external/` reconciled to the repo's canonical
+  `active_work/testdata/external/`; pcap inspected to contain only `10.77.0.1`↔`10.77.0.2:20000` lab traffic.
+- **Float divergence:** Appendix H V3/V4 `-0.0`/subnormal is **`NEW_CAPTURE_NOT_RUN`** (harnesses send only
+  fixed finite values; no new harness code permitted) and stays evidence-only historic **`FAIL/DIVERGENCE`**.
+- **Coverage:** idx0/idx1 wire + unit = PASS; reverse direction, other subnormals/NaN/Inf, malformed, timeout,
+  concurrency = **NOT_RUN** (future scoped proposal, not self-promoted).
+- **Result:** **`EVIDENCE_CLOSURE_PARTIAL`**. Cleanup complete; host baseline unchanged (`docker0 eth0 lo`, no
+  netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix U.
+Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
