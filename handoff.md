@@ -1642,3 +1642,45 @@ protocol execution). Concrete probes run in the actual sandbox:
   Evidence: `docs/verification/AO-004.md` (Appendix D).
 Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no
 field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker build-only G41 harness checkpoint — 2026-11-12
+Owner authorization `8251115` ("OpenHands Docker build-only G41 harness"; one bounded `operation cwal`
+microtask: real Docker build verification of the existing `lab/ao004/` G41 C++ harness in the OpenHands
+Cloud sandbox, **no DNP3 protocol execution**). Executed on `work` at HEAD
+`8251115f31bf7c84914a29b38a399effcaa87ba7` (prior checkpoint `d4908f2` confirmed in ancestry after
+`git fetch --deepen=50`; the clone is shallow, so the object was initially absent — recorded limitation).
+- **Docker.** Client 29.9.3 / Compose v5.7.0 / Buildx v0.38.1 present; daemon not running by default
+  (no `/var/run/docker.sock`) but started via passwordless `sudo dockerd` → Server 29.9.3, containerd
+  v2.4.2, runc 1.5.2, overlayfs, cgroup v2, host Debian 13 (trixie), kernel 6.8.0-1055-gke. Root-owned
+  socket ⇒ daemon commands run under `sudo`.
+- **Authorized build.** `sudo docker compose -f lab/ao004/compose.yaml build lab --progress plain`
+  completed all steps `1/13`–`13/13`. Base `debian:12-slim` resolved to digest
+  `sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc`. All five pinned SHA-256
+  gates **PASS** (`go.tgz`/`opendnp3.tar.gz`/`asio.zip`/`exe4cpp.zip`/`ser4cpp.zip` OK). CMake configure
+  (GNU 12.2.0, `FETCHCONTENT_FULLY_DISCONNECTED=ON`, no download) OK; `Built target opendnp3`;
+  `Linking CXX executable g41_peer`; `Built target g41_peer`. **0** errors; 14 warnings all
+  `-Wstringop-overflow=` inside the pinned peer (`HexLogging.h`), harness files warning-free. Image
+  `ao004-g41-peer:3.1.2` (config digest `sha256:7d087460627b59313a19edd8f8ade0bef847041593a98269ef20a11580a3dc4e`);
+  cache-served re-run exit code **0**.
+- **Result: `HARNESS_BUILD_PASS` (build only)** — resolves the earlier `COMPILE_NOT_RUN` /
+  `HARNESS_BUILD_NOT_RUN` blocker for the outstation-harness build. **Not** an isolation, interoperability
+  or readiness PASS. `NETWORK_ISOLATION_NOT_PROVEN`; `INTEROP_NOT_RUN`.
+- **No execution.** No `docker compose up`/`run`, no `g41_peer`, no DNP3 listener/socket/packet/peer/
+  control/capture, no privileged container, no host-port publishing, no physical devices; `compose.yaml`
+  `cap_add` declarative only, never exercised. Go gates **NOT_RUN** (no Go change).
+- **Cleanup (own resources only).** Removed the built image (`rmi -f`, exit 0) and pruned 1.054 GB
+  BuildKit cache; stopped the daemon this invocation started (no `dockerd`/`containerd`, no socket);
+  removed the daemon-created `docker0` via `RTM_DELLINK` (`errno=0`). `/var/lib/docker` 1.8 GB → 1.9 MB;
+  interfaces restored to only `lo` + `eth0`. No unrelated resource touched.
+- **Limitations.** `debian:12-slim` tag/APT not immutable (no invented pin); ephemeral runner ⇒ built
+  artifact and durability **NOT verified**; image never run ⇒ runtime **NOT_TESTED**.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix E).
+Next: **STOP for a fresh independent read-only CHECK**. A separate owner authorization and a verified
+runtime isolation gate are required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
