@@ -1552,3 +1552,24 @@ connection, command, capture, PR, merge, `main` push, release or AO-005 promotio
 Next: **STOP for a fresh independent read-only CHECK** of this bounded corrective. The remaining
 principal blocker is a genuine owner-provided isolated runner plus compile validation. No PR/merge, no
 `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 one-line LogLevels include corrective checkpoint — 2026-11-12
+Owner authorization `ed91f0c` (one-line pinned LogLevels include corrective following the static
+corrective `7b0f3d9` and the independent read-only audit). Applies to `lab/ao004/g41_peer.cpp` only.
+- Corrected the nonexistent pinned header `#include <opendnp3/LogLevels.h>` to the actual pinned path
+  `#include <opendnp3/logging/LogLevels.h>` (upstream commit `26b4c01e…`). `git diff --numstat` = `1 1`;
+  no other byte changed; no other path changed; no new files.
+- Preconditions (observed): old include occurred exactly once; new include absent pre-edit; `ed91f0c`
+  and `7b0f3d9` in `work` ancestry.
+- **No compilation, Docker build, source acquisition, namespace execution, DNP3 listener, peer
+  connection, packet/control exchange, Go change, PR, merge, `main` push, release or AO-005 promotion.**
+  `COMPILE_NOT_RUN`, `SOURCE_NOT_ACQUIRED`, `ISOLATED_RUNNER_UNAVAILABLE`, `INTEROP_NOT_RUN` remain.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, exact one-line diff, ancestry, `bash scripts/cwal-check.sh`.
+  Evidence: `docs/verification/AO-004.md` (Appendix C).
+Next: **STOP for a fresh independent read-only source CHECK**. No PR/merge, no `main` push, no release,
+no field/NGCP/SCADA or physical I/O.
