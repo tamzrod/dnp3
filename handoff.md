@@ -1684,3 +1684,43 @@ Cloud sandbox, **no DNP3 protocol execution**). Executed on `work` at HEAD
 Next: **STOP for a fresh independent read-only CHECK**. A separate owner authorization and a verified
 runtime isolation gate are required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main`
 push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker runtime readiness + baseline isolation checkpoint — 2026-11-12
+Owner authorization `d519243` ("AO-004 Docker readiness runtime isolation"; one bounded `operation cwal`
+microtask: rebuild and actually run the already compiler-verified OpenDNP3 3.1.2 G41 harness image in its
+no-listener readiness mode, then inspect runtime isolation/capabilities; non-DNP3 container execution
+only). Executed on clean `work`, fast-forwarded to HEAD `d519243b6ba098d5e0b194c1ee8b58d4b3670b1e`
+(ancestry includes prior checkpoint `39da9db`); markers unchanged by the authorization commit.
+- **Default path verified readiness-before-listener.** `lab/ao004/g41_peer.cpp` prints a readiness line and
+  returns 0 before any `DNP3Manager`/`AddTCPServer`/outstation; `compose.yaml` (`command: []`) and the
+  Dockerfile (`ENTRYPOINT ["/opt/ao004/g41_peer"]`) add no implicit `--listen`.
+- **Rebuild (`HARNESS_BUILD_PASS`).** `sudo docker compose -f lab/ao004/compose.yaml build lab` completed
+  steps `1/13`–`13/13`; all five pinned SHA-256 gates **PASS**; base `debian:12-slim` resolved to digest
+  `sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc`; `Built target opendnp3` +
+  `Built target g41_peer`; 0 errors; cache-served re-run exit **0**; image `ao004-g41-peer:3.1.2`
+  (content ID `38d5f156349a…`).
+- **Readiness run (`READINESS_RUNTIME_PASS`).** `sudo docker compose -f lab/ao004/compose.yaml run --rm
+  --no-deps lab` (no `--listen`) → exit **0**; stdout exactly the readiness line; no listener/socket/
+  packet/master/outstation/control created.
+- **Baseline isolation/capabilities (`CONTAINER_NETWORK_NONE_OBSERVED`, `CAPABILITY_BITS_OBSERVED`).**
+  Effective `docker inspect`: `NetworkMode=none`, `Privileged=false`, no published ports, no devices, no
+  binds, own PID ns. In-container: only `lo`, **empty** IPv4/IPv6 route tables, own netns, no docker socket
+  or host device mounts. `CapEff=CapBnd=CapPrm=00000000a82435fb` → **NET_ADMIN, NET_RAW, SYS_ADMIN actually
+  granted** (SYS_MODULE/SYS_RAWIO absent). `cap_add` is thus not merely declarative.
+- **`TWO_NAMESPACE_TOPOLOGY_NOT_TESTED`; `INTEROP_NOT_RUN`.** Baseline `network_mode: none` only; no
+  `ip netns`/`unshare`/veth, no `--listen`, no DNP3 listener/packet/peer/control/capture, no privileged
+  mode, no host networking, no ports.
+- **Cleanup (own resources only).** Removed created container + built image (exit 0); pruned 1.054 GB
+  BuildKit cache; stopped the daemon this invocation started; removed daemon-created `docker0` via
+  `RTM_DELLINK` (`errno=0`). `/var/lib/docker` ≈ 2.6 MB; interfaces restored to `lo` + `eth0`. Residual:
+  two defunct `containerd-shim` processes reparented to PID 1 (`ZN`), not reaped by this shell — recorded.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix F).
+Next: **STOP for a fresh independent read-only CHECK**. A separately verified two-namespace topology plus
+a **new owner-authorized protocol-execution task** are required before any OpenDNP3 G41 protocol exchange.
+No PR/merge, no `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
