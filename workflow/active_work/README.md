@@ -1888,3 +1888,27 @@ fast-forwarded to HEAD `c7deb8af68b7dda627dd98880bc00b491b53fedc`; markers + pro
   `docs/verification/AO-004.md` (Appendix L).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse Go fixture and isolated topology readiness — 2026-11-12
+Owner authorization `ff3fb7d` (bounded preparation microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `ff3fb7d69e5a586fc7c898ab21ddaad17872453a`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Feasibility (source-verified):** the Go outstation **already implements** G41V1–V4 Direct Operate
+  (`internal/outstation` `handleDirectOperate`/`executeControl`; public `WriteAnalogOutput` →
+  `HandleAnalogCommand` with typed carriers). **No** `GO_OUTSTATION_G41_VARIATION_UNSUPPORTED` gap; no
+  `internal/`/`pkg/` change needed or made.
+- **Go fixture:** new memory-only `lab/ao004/go-outstation/{main.go,main_test.go}` on the public API
+  (outstation=4, master=3, index 0 only, `ControlOutOfRange` on other indices, binary rejected, non-finite
+  rejected). Default = offline readiness only; `--listen` fails closed to `10.77.0.2:20000`.
+- **C++ `--value` fix:** removed the advertised `--value` from `g41_master` help (fixed typed defaults).
+- **Gates:** `gofmt` clean; `go vet` OK; fixture tests 11/11 PASS; `go build ./...` OK; `go test ./...` 25
+  pkgs ok; readiness exits 0 with no listening socket; C++ rebuild exit 0 (both targets), corrected help
+  confirmed, `--run` fail-closed.
+- **Topology:** `ISOLATED_RUNNER_UNAVAILABLE` / `TOPOLOGY_NOT_RUN` — routed JR pod prohibited as a lab; no
+  config-only isolation claim.
+- **Dispositions:** `GO_FIXTURE_BUILD_PASS`; `REVERSE_HARNESS_COMPILE_PASS`; `REVERSE_G41_INTEROP_NOT_RUN`.
+  G41 stays **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix M).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

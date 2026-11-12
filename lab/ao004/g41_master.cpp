@@ -75,7 +75,8 @@ void PrintReadiness()
               << kCommandIndex << "\n"
                  "  variations    : V1 int32, V2 int16, V3 float32, V4 float64\n"
                  "  mode          : Direct Operate WITH RESPONSE only (no SBO, no NoResponse, no retry)\n"
-                 "  run mode      : '--run --variation <1|2|3|4> [--value <v>]' (NOT authorized here)\n"
+                 "  run mode      : '--run --variation <1|2|3|4> [--timeout <s>]' (NOT authorized here)\n"
+                 "  values        : fixed typed defaults per variation (no --value option)\n"
               << std::endl;
 }
 

@@ -1881,3 +1881,21 @@ fast-forwarded to HEAD `c7deb8af68b7dda627dd98880bc00b491b53fedc`; markers + pro
   **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix L).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse Go fixture and isolated topology readiness — 2026-11-12
+Owner authorization `ff3fb7d` (bounded preparation microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `ff3fb7d69e5a586fc7c898ab21ddaad17872453a`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Feasibility (source-verified):** Go outstation **already implements** G41V1–V4 Direct Operate; no
+  `GO_OUTSTATION_G41_VARIATION_UNSUPPORTED` gap; no `internal/`/`pkg/` change.
+- **Go fixture (lab/ao004/go-outstation/, memory-only):** outstation=4, master=3, index 0 only; default
+  readiness only; `--listen` fails closed to `10.77.0.2:20000`. C++ `--value` help corrected.
+- **Gates:** `gofmt`/`go vet` clean; fixture tests 11/11 PASS; `go test ./...` 25 pkgs ok; readiness no
+  listening socket; C++ rebuild exit 0 (both targets), `--run` fail-closed.
+- **Topology:** `ISOLATED_RUNNER_UNAVAILABLE` / `TOPOLOGY_NOT_RUN` (routed JR pod prohibited).
+- **`GO_FIXTURE_BUILD_PASS`** + `REVERSE_HARNESS_COMPILE_PASS`; `REVERSE_G41_INTEROP_NOT_RUN`. G41 stays
+  **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix M).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
