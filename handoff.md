@@ -1953,3 +1953,23 @@ profile blob unchanged; `cwal-check` OK.
   `docs/verification/AO-004.md` (Appendix P).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 func-4 outstation corrective + isolated reverse retest — 2026-11-12
+Owner authorization `8ae3981` (bounded corrective microtask on `work`), after Appendix P `dc92400`.
+Executed on clean `work`, fast-forwarded to HEAD `8ae398161a3ce3d2407b1fafa5005cf8ef3dd101`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Fix:** `internal/outstation/outstation.go` `reassembleMessage` accepts primary func 3 **or** func 4
+  addressed to the outstation; comment corrected; nothing else changed. New
+  `internal/outstation/func4_userdata_test.go` (fails pre-fix, passes post-fix).
+- **Go gates:** gofmt clean; vet OK; `go test ./...` all ok; `-race` OK; build OK.
+- **Retest (isolated ephemeral Docker lab):** fixture **accepts** V1–V4 (correct values; float bits
+  `0x3fc00000`, `0x3ff8000000000000`) and now **responds**. Master still
+  `FAILURE_RESPONSE_TIMEOUT` + `Unknown SecToPri FUNCTION: INVALID`.
+- **Residual root cause (2nd, pre-existing, out of scope):** outstation responses use control `0x04`
+  (PRM=0, func=4) — secondary framing; DNP3 needs primary user data both directions. Not repaired.
+- **`REVERSE_G41_INTEROP_FAIL`** (0/4); authorized fix verified. Cleanup complete; host baseline
+  unchanged. G41 stays **UNSUPPORTED**. Evidence: Appendix Q.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

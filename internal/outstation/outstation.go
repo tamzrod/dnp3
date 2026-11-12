@@ -898,9 +898,13 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 			continue
 		}
 
-		// Skip non-user-data frames (primary station function codes)
-		// For Master→Outstation, only FuncConfirmedUserData (4) carries user data
-		if !dllFrame.Control.PRM || dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
+		// Skip non-user-data frames. Only primary user-data frames carry an
+		// application fragment: confirmed (wire 3) and unconfirmed (wire 4) user
+		// data are both valid from a master; all other primary function codes are
+		// link-control frames already handled above or unsupported.
+		if !dllFrame.Control.PRM ||
+			(dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
+				dllFrame.Control.FuncCode != frame.FuncUnconfirmedUserData) {
 			continue
 		}
 

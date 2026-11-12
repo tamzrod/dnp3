@@ -1973,3 +1973,29 @@ checkpoint `9e5fc2f`. Executed on clean `work`, fast-forwarded to HEAD
   unchanged. G41 stays **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix P).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 func-4 outstation corrective + isolated reverse retest — 2026-11-12
+Owner authorization `8ae3981` (bounded corrective microtask on `work`), after Appendix P checkpoint
+`dc92400`. Executed on clean `work`, fast-forwarded to HEAD
+`8ae398161a3ce3d2407b1fafa5005cf8ef3dd101`; markers + profile blob unchanged; `cwal-check` OK.
+- **Fix (scope-limited):** `internal/outstation/outstation.go` `reassembleMessage` user-data gate now
+  accepts primary func 3 **or** func 4 addressed to the outstation; false comment corrected; no other
+  behavior touched.
+- **Regressions:** new `internal/outstation/func4_userdata_test.go` (func3+func4 accepted; wrong func /
+  secondary / wrong dest / malformed / short rejected; no spurious ACK; reset+link-status preserved).
+  Core test **fails pre-fix, passes post-fix**.
+- **Go gates:** gofmt clean; `go vet ./...` OK; `go test ./...` all ok; `-race` OK; build OK.
+- **Isolated retest (ephemeral Docker lab, Appendix O/P technique):** fixture now **accepts** V1–V4
+  (int32:2300, int16:12345, float32:1.5 bits=0x3fc00000, float64:1.5 bits=0x3ff8000000000000) and now
+  **emits responses**. Master still times out: `FAILURE_RESPONSE_TIMEOUT`, `Unknown SecToPri FUNCTION:
+  INVALID`.
+- **Residual root cause (2nd, pre-existing, out of scope):** outstation frames responses with control
+  `0x04` (DIR=0, **PRM=0**, func=4) — a secondary frame; DNP3 requires user-data frames primary in both
+  directions and OpenDNP3 accepts only ACK/NACK/LINK_STATUS/NOT_SUPPORTED for PRM=0. Not repaired
+  (authorization forbids changing response generation).
+- **Result:** authorized receive fix **verified**; end-to-end **`REVERSE_G41_INTEROP_FAIL`** (0/4).
+  Cleanup complete; host baseline unchanged. G41 stays **UNSUPPORTED**. Evidence: Appendix Q.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
