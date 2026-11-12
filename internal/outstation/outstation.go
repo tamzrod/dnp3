@@ -77,6 +77,42 @@ var (
 	ErrSelectMismatch  = errors.New("operate does not match select")
 )
 
+// ControlStatusError carries a non-success IEEE 1815 command status (the CTRL-01
+// per-point status octet) alongside an error. A DataWriter returns it to signal
+// that a control was refused for a specific, wire-encodable reason (for example
+// OUT_OF_RANGE) so the outstation can echo the object with that status instead of
+// a generic error response. The wrapped error preserves the existing fail-closed
+// classification; Status is the authoritative wire value.
+type ControlStatusError struct {
+	Status uint8
+	Err    error
+}
+
+func (e ControlStatusError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("control refused with status %d", e.Status)
+	}
+	return e.Err.Error()
+}
+
+func (e ControlStatusError) Unwrap() error { return e.Err }
+
+// NewControlStatusError builds a ControlStatusError. status is the IEEE 1815
+// command-status octet value (for example 12 = OUT_OF_RANGE).
+func NewControlStatusError(status uint8, err error) ControlStatusError {
+	return ControlStatusError{Status: status, Err: err}
+}
+
+// AsControlStatusError reports whether err (or anything it wraps) is a
+// ControlStatusError, returning the carried status.
+func AsControlStatusError(err error) (ControlStatusError, bool) {
+	var cse ControlStatusError
+	if errors.As(err, &cse) {
+		return cse, true
+	}
+	return ControlStatusError{}, false
+}
+
 // Freeze errors
 var (
 	ErrFreezeNotSupported = errors.New("freeze not supported for this point")
@@ -792,12 +828,14 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 		if resp != nil {
 			respData := o.buildTransportFragments(resp)
 			for _, frag := range respData {
-				// Wrap in DLL frame
+				// Wrap in DLL frame. A solicited application response is user
+				// data and must be a primary frame (PRM=1) in both directions;
+				// unconfirmed user data carries no FCB/FCV.
 				dllFrame := &frame.Frame{
 					Control: frame.Control{
 						DIR:      false, // Outstation-to-Master
-						PRM:      false, // Secondary station
-						FuncCode: frame.FuncConfirmedUserDataR,
+						PRM:      true,  // Primary: carries user data
+						FuncCode: frame.FuncUnconfirmedUserData,
 					},
 					DestAddr: o.config.MasterAddress,
 					SrcAddr:  o.config.OutstationAddress,
@@ -835,11 +873,12 @@ func (o *Outstation) sendConfirmation(seq uint8) {
 	fragments := o.buildTransportFragments(confirm)
 
 	for _, frag := range fragments {
+		// An application confirmation is user data; frame it primary too.
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
 				DIR:      false, // Outstation-to-Master
-				PRM:      false, // Secondary station
-				FuncCode: frame.FuncConfirmedUserDataR,
+				PRM:      true,  // Primary: carries user data
+				FuncCode: frame.FuncUnconfirmedUserData,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,
@@ -898,9 +937,13 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 			continue
 		}
 
-		// Skip non-user-data frames (primary station function codes)
-		// For Master→Outstation, only FuncConfirmedUserData (4) carries user data
-		if !dllFrame.Control.PRM || dllFrame.Control.FuncCode != frame.FuncConfirmedUserData {
+		// Skip non-user-data frames. Only primary user-data frames carry an
+		// application fragment: confirmed (wire 3) and unconfirmed (wire 4) user
+		// data are both valid from a master; all other primary function codes are
+		// link-control frames already handled above or unsupported.
+		if !dllFrame.Control.PRM ||
+			(dllFrame.Control.FuncCode != frame.FuncConfirmedUserData &&
+				dllFrame.Control.FuncCode != frame.FuncUnconfirmedUserData) {
 			continue
 		}
 
@@ -1812,6 +1855,29 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	}
 	debugLog("handleDirectOperate: calling executeControl")
 	if err := o.executeControl(dh, group, variation, index, value); err != nil {
+		// AO-004 Appendix T: when the handler refuses with a specific,
+		// wire-encodable command status (for example OUT_OF_RANGE), echo the
+		// object with that status so the master reads a definite per-point
+		// non-success instead of a generic error response. A malformed,
+		// unsupported or otherwise unclassifiable request still fails closed
+		// with an error response (no echo) — refusal is never turned into
+		// success.
+		if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
+			if cse, ok := AsControlStatusError(err); ok {
+				debugLog("handleDirectOperate: echoing G41 object with command status %d", cse.Status)
+				return &al.APDU{
+					Control: al.AppControl{
+						FIR: true,
+						FIN: true,
+						CON: false,
+						UNS: false,
+						Seq: o.appSeq,
+					},
+					FuncCode: al.FuncResponse,
+					Data:     buildG41EchoObject(variation, index, value, cse.Status),
+				}, nil
+			}
+		}
 		o.iin.ParameterError = true
 		debugLog("handleDirectOperate: executeControl error: %v", err)
 		return nil, err
@@ -1830,24 +1896,28 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	}
 	// G41 (AO-002 V1 / AO-003 V2): echo the object with the index, the numeric
 	// value and a command-status octet (SUCCESS here — the handler accepted the
-	// value). A handler refusal returns an error above, which yields an error
-	// response the master classifies as a failure (never success), not an echo.
+	// value). A handler refusal that carries a wire-encodable status is echoed
+	// above with that status; any other refusal yields an error response the
+	// master classifies as a failure (never success), not an echo.
 	if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
-		resp.Data = buildG41EchoObject(variation, index, value)
+		resp.Data = buildG41EchoObject(variation, index, value, 0x00)
 	}
 	return resp, nil
 }
 
 // buildG41EchoObject builds the G41 response object echoed for a Direct Operate:
 // group(0x29) variation qualifier(0x28) count(01 00), then the 16-bit index (LE),
-// the little-endian numeric value (taken from the request record) and a SUCCESS
+// the little-endian numeric value (taken from the request record) and a
 // command-status octet. The value width follows the variation (V1 int32 = 4
 // octets, V2 int16 = 2 octets, V3 float32 = 4 octets, V4 float64 = 8 octets).
-func buildG41EchoObject(variation uint8, index uint16, requestValue []byte) []byte {
+// status is the IEEE 1815 command-status octet (0x00 = SUCCESS; 0x0C =
+// OUT_OF_RANGE), supplied by the caller so a handler refusal is echoed with its
+// actual status rather than a fabricated success.
+func buildG41EchoObject(variation uint8, index uint16, requestValue []byte, status uint8) []byte {
 	width := g41ValueWidth(variation)
 	out := []byte{41, variation, 0x28, 0x01, 0x00, byte(index), byte(index >> 8)}
 	out = append(out, requestValue[:width]...)
-	return append(out, 0x00) // command status = SUCCESS
+	return append(out, status)
 }
 
 // g41ValueWidth returns the numeric value width in octets for a supported Group
@@ -2149,12 +2219,12 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 
 	fragments := o.buildTransportFragments(resp)
 	for _, frag := range fragments {
-		// Wrap in DLL frame
+		// Wrap in DLL frame. An error response is user data; frame it primary.
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
 				DIR:      false,
-				PRM:      false,
-				FuncCode: frame.FuncConfirmedUserDataR,
+				PRM:      true,
+				FuncCode: frame.FuncUnconfirmedUserData,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,

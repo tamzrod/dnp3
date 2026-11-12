@@ -513,6 +513,46 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 	return nil
 }
 
+// wireCommandStatus maps a public ControlStatus to its IEEE 1815 command-status
+// octet (the CTRL-01 per-point status byte). Only statuses with a verified,
+// unambiguous wire encoding are mapped: public values 0..10 correspond 1:1 to
+// IEEE 1815 command-status codes 0..10 (the internal master parses the wire byte
+// directly into that enumeration), and ControlOutOfRange maps to wire 12 (0x0C,
+// OUT_OF_RANGE in the pinned OpenDNP3 3.1.2 reference). The public synch values
+// 11/12 are deliberately not mapped (they would collide with the distinct wire
+// meanings 11 IN_SYNCH / 12 OUT_OF_RANGE); ok is false for them so the bridge
+// fails closed with a generic error rather than guessing a wire status.
+func wireCommandStatus(s types.ControlStatus) (uint8, bool) {
+	switch s {
+	case types.ControlSuccess:
+		return 0, true
+	case types.ControlTimeout:
+		return 1, true
+	case types.ControlNoSelect:
+		return 2, true
+	case types.ControlBadFormat:
+		return 3, true
+	case types.ControlNotSupported:
+		return 4, true
+	case types.ControlAlreadyActive:
+		return 5, true
+	case types.ControlHardwareError:
+		return 6, true
+	case types.ControlLocal:
+		return 7, true
+	case types.ControlTooMany:
+		return 8, true
+	case types.ControlNotAuthorized:
+		return 9, true
+	case types.ControlAutonomous:
+		return 10, true
+	case types.ControlOutOfRange:
+		return 12, true
+	default:
+		return 0, false
+	}
+}
+
 // WriteAnalogOutput handles writing an analog output from the master.
 // Converts internal value to public ControlOutput and delegates to commandHandler.
 // AO-002: Group 41 Variation 1 (int32) is carried as a typed
@@ -624,7 +664,20 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 	debugLog("WriteAnalogOutput: index=%d, variation=%d", index, variation)
 
 	status, err := h.commandHandler.HandleAnalogCommand(cmd)
+	// AO-004 Appendix T: fail closed, but preserve a handler's definite non-success
+	// command status so the outstation can echo the G41 object with the actual
+	// status octet (for example OUT_OF_RANGE) rather than a generic error response.
+	// A nil status or a refusal without a wire-encodable status still returns an
+	// error (an error response, never a SUCCESS echo). The returned error always
+	// wraps the handler error (or a synthetic one) so existing fail-closed
+	// classification is unchanged; the carried status is authoritative on the wire.
 	if err != nil {
+		if status != nil && *status != types.ControlSuccess {
+			if ws, ok := wireCommandStatus(*status); ok {
+				debugLog("WriteAnalogOutput ERROR: %v (wire status %d)", err, ws)
+				return outstation.NewControlStatusError(ws, err)
+			}
+		}
 		debugLog("WriteAnalogOutput ERROR: %v", err)
 		return err
 	}
@@ -638,8 +691,13 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 	}
 	if *status != types.ControlSuccess {
 		// MEXT-024: a handler that signals a non-success status with no error
-		// must NOT surface as ControlSuccess.
+		// must NOT surface as ControlSuccess. AO-004 Appendix T: carry the status
+		// to the outstation so the refusal is echoed with the actual wire status
+		// when one is defined; otherwise fail closed with a generic error.
 		debugLog("WriteAnalogOutput: non-success status %d -> failure", *status)
+		if ws, ok := wireCommandStatus(*status); ok {
+			return outstation.NewControlStatusError(ws, fmt.Errorf("command rejected by handler: status %d", *status))
+		}
 		return fmt.Errorf("command rejected by handler: status %d", *status)
 	}
 	debugLog("WriteAnalogOutput result: status=%d", *status)

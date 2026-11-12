@@ -3391,6 +3391,10 @@ const (
 	CommandStatusNotAuthorized CommandStatus = 9
 	// CommandStatusAutonomous indicates autonomous operation.
 	CommandStatusAutonomous CommandStatus = 10
+	// CommandStatusOutOfRange indicates the requested point/index is outside the
+	// outstation's supported range (IEEE 1815 command status 12). The pinned
+	// OpenDNP3 3.1.2 reference names code 12 OUT_OF_RANGE.
+	CommandStatusOutOfRange CommandStatus = 12
 	// CommandStatusUnknown is the default when no parseable status is present.
 	CommandStatusUnknown CommandStatus = 0xFF
 )

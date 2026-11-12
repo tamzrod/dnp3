@@ -1,0 +1,43 @@
+id: ao004-u-20261112-g41v1-idx1-out_of_range
+title: AO-004 isolated G41V1 Direct Operate, index 1 (out_of_range)
+source: OpenDNP3 3.1.2 (tag 3.1.2 = 523f7d2d6c65aa671f594fc63c3adcd74e81407d) master vs work Go outstation
+capture: isolated --network none lab, 2026-11-12, veth-o on vec01-outstation
+role: master
+master-addr: 3
+outstation-addr: 4
+pcap: ao004-20261112-isolated-g41v1-v4.pcap
+notes: packet-derived; TCP 10.77.0.1:38351 -> 10.77.0.2:20000; link CRCs verified
+
+@ M->O link
+05 64 14 C4 04 00 03 00 C7 17 C0 C0 05 29 01 28
+01 00 01 00 FC 08 00 00 00 38 AA
+
+@ O->M link
+05 64 16 44 03 00 04 00 0F 01 C0 C0 81 00 00 29
+01 28 01 00 01 00 FC 08 00 00 A6 F2 0C 0E D9
+
+@ M->O link
+05 64 11 C4 04 00 03 00 4E EF C1 C1 15 3C 02 06
+3C 03 06 3C 04 06 73 AF
+
+@ O->M link
+05 64 0A 44 03 00 04 00 7C AE C0 C1 81 00 80 C8
+8C
+
+@ M->O link
+05 64 14 C4 04 00 03 00 C7 17 C2 C2 01 3C 02 06
+3C 03 06 3C 04 06 3C 01 06 5A F0
+
+@ O->M link
+05 64 21 44 03 00 04 00 72 56 C0 C2 81 00 00 01
+01 07 01 01 1E 01 07 01 01 00 27 78 00 00 00 14
+01 07 01 01 00 00 00 00 1A 2A
+
+@ M->O link
+05 64 11 C4 04 00 03 00 4E EF C3 C3 14 3C 02 06
+3C 03 06 3C 04 06 BA D5
+
+@ O->M link
+05 64 0A 44 03 00 04 00 7C AE C0 C3 81 00 80 61
+44
+

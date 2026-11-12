@@ -2174,6 +2174,8 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 		return types.ControlNotAuthorized
 	case master.CommandStatusAutonomous:
 		return types.ControlAutonomous
+	case master.CommandStatusOutOfRange:
+		return types.ControlOutOfRange
 	default:
 		// CommandStatusUnknown or any out-of-range value: never success.
 		return types.ControlTimeout
