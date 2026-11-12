@@ -792,12 +792,14 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 		if resp != nil {
 			respData := o.buildTransportFragments(resp)
 			for _, frag := range respData {
-				// Wrap in DLL frame
+				// Wrap in DLL frame. A solicited application response is user
+				// data and must be a primary frame (PRM=1) in both directions;
+				// unconfirmed user data carries no FCB/FCV.
 				dllFrame := &frame.Frame{
 					Control: frame.Control{
 						DIR:      false, // Outstation-to-Master
-						PRM:      false, // Secondary station
-						FuncCode: frame.FuncConfirmedUserDataR,
+						PRM:      true,  // Primary: carries user data
+						FuncCode: frame.FuncUnconfirmedUserData,
 					},
 					DestAddr: o.config.MasterAddress,
 					SrcAddr:  o.config.OutstationAddress,
@@ -835,11 +837,12 @@ func (o *Outstation) sendConfirmation(seq uint8) {
 	fragments := o.buildTransportFragments(confirm)
 
 	for _, frag := range fragments {
+		// An application confirmation is user data; frame it primary too.
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
 				DIR:      false, // Outstation-to-Master
-				PRM:      false, // Secondary station
-				FuncCode: frame.FuncConfirmedUserDataR,
+				PRM:      true,  // Primary: carries user data
+				FuncCode: frame.FuncUnconfirmedUserData,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,
@@ -2153,12 +2156,12 @@ func (o *Outstation) sendErrorResponse(seq uint8, err error) {
 
 	fragments := o.buildTransportFragments(resp)
 	for _, frag := range fragments {
-		// Wrap in DLL frame
+		// Wrap in DLL frame. An error response is user data; frame it primary.
 		dllFrame := &frame.Frame{
 			Control: frame.Control{
 				DIR:      false,
-				PRM:      false,
-				FuncCode: frame.FuncConfirmedUserDataR,
+				PRM:      true,
+				FuncCode: frame.FuncUnconfirmedUserData,
 			},
 			DestAddr: o.config.MasterAddress,
 			SrcAddr:  o.config.OutstationAddress,

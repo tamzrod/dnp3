@@ -1999,3 +1999,34 @@ Owner authorization `8ae3981` (bounded corrective microtask on `work`), after Ap
   Cleanup complete; host baseline unchanged. G41 stays **UNSUPPORTED**. Evidence: Appendix Q.
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 response PRM framing corrective + isolated reverse retest — 2026-11-12
+Owner authorization `ee98d72` (bounded corrective microtask on `work`), after Appendix Q checkpoint
+`473ceb9`. Executed on clean `work`, fast-forwarded to HEAD
+`ee98d726908dfbfff8bdddcd89fe1fe6dfbe1c2d`; markers + profile blob unchanged; `cwal-check` OK.
+- **Fix (scope-limited):** `internal/outstation/outstation.go` — the three outstation-originating
+  **user-data** constructors (solicited response, application confirmation, error response) now emit
+  valid **primary** frames `DIR=false, PRM=true, FuncCode=FuncUnconfirmedUserData` (wire `0x44`) instead
+  of secondary `0x04` (PRM=0). Secondary link-control responses (Reset→ACK, Link Status Request→
+  LINK_STATUS) deliberately retain `PRM=false`. No change to CRC/encoding, addressing, receive gate,
+  reassembly, sequencing, payload/status, retry policy or public API.
+- **Regressions:** new `internal/outstation/response_framing_test.go` (solicited response / confirmation /
+  error response all primary func 4; Reset ACK + Link Status stay secondary; malformed/mis-directed fail
+  closed). Three user-data tests **fail pre-fix, pass post-fix**. Appendix Q func-4 receive regressions
+  preserved. Pre-existing gofmt misalignment in `func4_userdata_test.go` fixed (whitespace only).
+- **Go gates:** gofmt clean; `go vet ./...` OK; `go test ./...` 25 packages ok; `-race` OK; build OK;
+  `git diff --check` OK.
+- **Isolated retest (ephemeral Docker lab, Appendix O/P/Q technique):** isolation verified before traffic
+  (`--network none`, `lo` only, 0 routes/ns; then master 10.77.0.1/24 ↔ outstation 10.77.0.2/24 via one
+  veth, no default routes, `ip_forward=0`). **4/4 variations PASS** — master
+  `completed=yes summary=SUCCESS point[index=0 state=SUCCESS status=SUCCESS]`, exit 0; fixture accepted
+  int32:2300, int16:12345, float32:1.5 bits=0x3fc00000, float64:1.5 bits=0x3ff8000000000000.
+- **Wire evidence:** every outstation→master response is `ctrl=0x44` (DIR=0, **PRM=1**, func 4) carrying
+  application RESPONSE (`0x81`); Direct Operate response IIN=0x0000. The Appendix Q `Unknown SecToPri
+  FUNCTION: INVALID` is gone.
+- **Result:** **`REVERSE_G41_INTEROP_PASS`** (4/4). Cleanup complete; host baseline unchanged
+  (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix R.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

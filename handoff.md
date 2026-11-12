@@ -1973,3 +1973,29 @@ profile blob unchanged; `cwal-check` OK.
   unchanged. G41 stays **UNSUPPORTED**. Evidence: Appendix Q.
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 response PRM framing corrective + isolated reverse retest — 2026-11-12
+Owner authorization `ee98d72` (bounded corrective microtask on `work`), after Appendix Q `473ceb9`.
+Executed on clean `work`, fast-forwarded to HEAD `ee98d726908dfbfff8bdddcd89fe1fe6dfbe1c2d`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Fix:** `internal/outstation/outstation.go` — the three outstation-originating **user-data** constructors
+  (solicited response, application confirmation, error response) now emit valid **primary** frames
+  `DIR=false, PRM=true, FuncCode=FuncUnconfirmedUserData` (wire `0x44`) instead of secondary `0x04`
+  (PRM=0). Secondary link-control (Reset→ACK, Link Status→LINK_STATUS) deliberately keep `PRM=false`. No
+  other behavior changed.
+- **Regressions:** new `internal/outstation/response_framing_test.go` (solicited/confirmation/error
+  responses primary func 4; ACK + Link Status secondary; malformed/mis-directed fail closed); three
+  user-data tests fail pre-fix, pass post-fix; Appendix Q receive regressions preserved; whitespace-only
+  gofmt fix in `func4_userdata_test.go`.
+- **Go gates:** gofmt clean; vet OK; `go test ./...` 25 packages ok; `-race` OK; build OK; diff-check OK.
+- **Retest (isolated ephemeral Docker lab):** isolation verified pre-traffic; **4/4 PASS** — master
+  `completed=yes summary=SUCCESS point[index=0 state=SUCCESS status=SUCCESS]` exit 0; fixture accepted
+  int32:2300, int16:12345, float32:1.5 bits=0x3fc00000, float64:1.5 bits=0x3ff8000000000000.
+- **Wire evidence:** outstation→master responses `ctrl=0x44` (DIR=0, **PRM=1**, func 4), application
+  RESPONSE (0x81), Direct Operate IIN=0x0000; Appendix Q `Unknown SecToPri FUNCTION: INVALID` gone.
+- **`REVERSE_G41_INTEROP_PASS`** (4/4). Cleanup complete; host baseline unchanged (`docker0 eth0 lo`, no
+  netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix R.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

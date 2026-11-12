@@ -156,9 +156,9 @@ func TestReassembleRejectsMalformedAndShortFrames(t *testing.T) {
 	valid := linkFrame(t, frame.Control{DIR: true, PRM: true, FuncCode: frame.FuncUnconfirmedUserData}, 4, 3, readAPDU())
 
 	cases := map[string][]byte{
-		"empty":         {},
-		"single_byte":   {0x05},
-		"sync_only":     {0x05, 0x64},
+		"empty":          {},
+		"single_byte":    {0x05},
+		"sync_only":      {0x05, 0x64},
 		"bad_header_crc": func() []byte { b := append([]byte(nil), valid...); b[8] ^= 0xFF; return b }(),
 		"bad_payload_crc": func() []byte {
 			b := append([]byte(nil), valid...)
