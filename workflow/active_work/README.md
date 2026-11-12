@@ -1807,3 +1807,36 @@ clean `work`, fast-forwarded to HEAD `8ab00ef1cd5bce6ea8e5d79b82dd106774c38ea6` 
 Next: **STOP for a fresh independent read-only CHECK**. Any production status-mapping change or protocol
 execution requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OUT_OF_RANGE status mapping correction — 2026-11-12
+Owner authorization `0fc8876` (one bounded human-promoted `operation cwal` **corrective implementation**
+microtask; production status-mapping fix + minimal tests). Executed on clean `work`, fast-forwarded to HEAD
+`0fc887696170c81ad23d13263239f229c0b16850` (ancestry includes `8ea3494`).
+- **Change (production write allowlist):** `internal/master/master.go` adds `CommandStatusOutOfRange = 12`
+  (wire `0x0C`); `pkg/dnp3/types/commands.go` adds public `ControlOutOfRange = 13` (new unused value;
+  `ControlSynchBlocked` stays 12) + `String()` → `"out_of_range"`; `pkg/dnp3/master/client.go`
+  `mapCommandStatus` maps `CommandStatusOutOfRange → ControlOutOfRange` so a definite `0x0C` rejection is
+  no longer mislabeled `ControlTimeout`. No interface/flow/decode/echo/retry/quarantine/status-0–10
+  changes; `default` stays fail-closed.
+- **Tests (test write allowlist):** `internal/master/g41_out_of_range_status_test.go` (all four G41
+  variations, index=1, `0x0C` → definite `CommandStatusOutOfRange`, no error, **no quarantine**; plus
+  `parseG41Record`/`g41CommandStatus` unit checks); `pkg/dnp3/master/out_of_range_status_test.go` (public
+  `Operate` → `ControlOutOfRange`, not timeout/success; `mapCommandStatus` pin);
+  `pkg/dnp3/types/types_test.go` extended (`ControlOutOfRange == 13`, `String()`, all pre-existing values
+  pinned).
+- **`GO_TOOLCHAIN_UNAVAILABLE` — verification NOT_RUN.** No Go toolchain on this runner (`go`/`gofmt`/
+  `gccgo`/`tinygo` all absent; no GOROOT/module cache; `.openhands/setup.sh` reports "MISSING: Go on
+  PATH"); installation/downloads/Docker are **not authorized**. `gofmt`, targeted `go test`, `go test
+  ./...`, `go vet ./...` were **not run** and are reported NOT_RUN, not PASS. Change is **UNVERIFIED**.
+  Only manual inspection + `git diff --check` were performed.
+- **Hygiene note:** pre-existing `.gitignore` pattern `master` (line 71) ignores the `internal/master/` and
+  `pkg/dnp3/master/` dirs; the two new test files needed `git add -f`. `.gitignore` not modified.
+- **`IMPLEMENTATION_COMPLETE / VERIFICATION_BLOCKED`.** G41 stays **UNSUPPORTED**. Profile blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; markers unchanged (`Package/CURRENT: AO-004`,
+  `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed): `git diff --check` PASS; `bash scripts/cwal-check.sh` PASS; allowlist/markers/profile
+  PASS. Evidence: `docs/verification/AO-004.md` (Appendix J).
+Next: **STOP for an independent read-only CHECK** (must include the blocked Go gates). No PR/merge, no
+`main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
