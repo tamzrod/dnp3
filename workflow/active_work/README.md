@@ -1573,3 +1573,32 @@ corrective `7b0f3d9` and the independent read-only audit). Applies to `lab/ao004
   Evidence: `docs/verification/AO-004.md` (Appendix C).
 Next: **STOP for a fresh independent read-only source CHECK**. No PR/merge, no `main` push, no release,
 no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker Compose capability smoke checkpoint — 2026-11-12
+Owner authorization `6c838c8` (bounded, non-DNP3 Docker Compose capability smoke in the OpenHands Cloud
+sandbox; discovery only — overrides `ISOLATED_RUNNER_UNAVAILABLE` for discovery, not for AO-004 peer/
+protocol execution). Concrete probes run in the actual sandbox:
+- **Probe 1 — `DOCKER_AVAILABLE`.** Client 29.9.3 + compose v5.7.0 + buildx v0.38.1 preinstalled; daemon
+  **not running** by default (`/var/run/docker.sock` absent, `DOCKER_HOST` unset, no rootless socket) but
+  **startable** via passwordless `sudo dockerd` → Server 29.9.3, containerd v2.4.2, runc 1.5.2.
+- **Probe 2 — `COMPOSE_VALID`.** `docker compose -f lab/ao004/compose.yaml config --quiet` and
+  `-f lab/vec01/compose.yaml config --quiet` both exit 0.
+- **Probe 3 — `COMPOSE_SMOKE_NOT_RUN` / `NO_LOCAL_IMAGE`.** Zero local images and no offline-loadable
+  archives; per authorization no image was pulled, so no container ran.
+- **Probe 4.** `NETWORK_ISOLATION_NOT_PROVEN` (no container ran); `NET_ADMIN`/`SYS_ADMIN` grant
+  `NOT_TESTED`. Non-rootless daemon, overlayfs, cgroup v2, seccomp+cgroupns.
+- Sandbox restored: discovery daemon stopped and the daemon-created `docker0` removed via netlink
+  (`err=0`); final state only `lo` + `eth0`, no daemon/socket; tree clean.
+- **No DNP3 build, compile, listener, peer connection, packet/control exchange, external source fetch,
+  Go change, PR, merge, `main` push, release or AO-005 promotion.** `COMPILE_NOT_RUN`,
+  `SOURCE_NOT_ACQUIRED`, `INTEROP_NOT_RUN` remain; `ISOLATED_RUNNER_UNAVAILABLE` superseded for
+  discovery only. No DNP3 isolation or interoperability PASS claimed.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix D).
+Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no
+field/NGCP/SCADA or physical I/O.
