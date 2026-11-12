@@ -1508,3 +1508,30 @@ release, force push, rebase, live network, lab peer exchange or field command.
 Next: **STOP for a separate independent read-only CHECK**. A distinct later `operation cwal` may resume
 AO-004 isolated lab readiness only after CHECK acceptance. No PR/merge, no `main` push, no release, no
 AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolation/readiness preflight checkpoint — 2026-11-12
+Owner authorization `ca304c0` (records independent PR #27 CHECK acceptance; authorizes the AO-004
+isolation/readiness-first preflight, documentation-only). No DNP3 packet, peer connection, control
+request, harness build, Go/test/script/profile/roadmap/governance change, PR, merge, `main` push,
+release or field command.
+- **Result: `NOT_READY` / fail-closed.** Neither AO-004 entry-gate prerequisite is met in the reported
+  environment.
+- **Isolation FAIL:** `/proc/net/route` default route via `169.254.1.1` dev `eth0`; `ip_forward=1`;
+  `/proc/net/tcp` shows `ESTABLISHED` egress to `:443` and DNS `10.3.0.10` (routed k8s pod); wildcard
+  `LISTEN 0.0.0.0:60000`/`60001`; `unshare --net` denied (`CapEff=0`, no `CAP_NET_ADMIN`). No physical
+  I/O (PASS); no DNP3 lab listener. Isolation cannot be proven → no listener/packet attempted.
+- **Peer/harness NOT_READY:** no pinned OpenDNP3 3.1.2 source/tarball/harness present; stock/patched peer
+  analog handler returns `NOT_SUPPORTED` for all G41 (`AnalogOutputInt16/Int32/Float32/Double64`). G41
+  support needs separately authorized acquisition + memory-only analog harness allowlist.
+- **Design-only plan** recorded (variation/direction matrix + PCAP/.vec derivation procedure); nothing run.
+- **No new support:** `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 **UNSUPPORTED**; AO-005 not authorized. Markers
+  unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): markers, ancestry, `git diff --check`, `bash scripts/cwal-check.sh`. Isolation
+  gates FAIL; peer readiness NOT_READY; Go gates and protocol exchange NOT_RUN (documentation-only).
+  Evidence: `docs/verification/AO-004.md`.
+Next: **STOP for independent read-only CHECK**. A later bounded invocation may proceed only after
+isolation + peer/harness readiness PASS and a separate owner harness/code allowlist. No PR/merge, no
+`main` push, no release, no field/NGCP/SCADA or physical I/O.
