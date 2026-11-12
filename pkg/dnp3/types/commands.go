@@ -144,6 +144,11 @@ const (
 	ControlSynchTimeout ControlStatus = 11
 	// ControlSynchBlocked indicates synchronization is blocked
 	ControlSynchBlocked ControlStatus = 12
+	// ControlOutOfRange indicates the requested point/index is outside the
+	// outstation's supported range (IEEE 1815 command status 12, OUT_OF_RANGE).
+	// It uses the distinct public numeric value 13 because public value 12 is
+	// already ControlSynchBlocked.
+	ControlOutOfRange ControlStatus = 13
 )
 
 // String returns a human-readable description of the control status
@@ -175,6 +180,8 @@ func (s ControlStatus) String() string {
 		return "synch_timeout"
 	case ControlSynchBlocked:
 		return "synch_blocked"
+	case ControlOutOfRange:
+		return "out_of_range"
 	default:
 		return "unknown"
 	}

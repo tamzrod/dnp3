@@ -325,3 +325,44 @@ func TestControlHardwareErrorAlias(t *testing.T) {
 		t.Fatalf("ControlHardwareError must not alias ControlSuccess")
 	}
 }
+
+// TestControlOutOfRange pins the AO-004 Appendix I addition: ControlOutOfRange
+// uses the distinct public numeric value 13, leaves ControlSynchBlocked at 12,
+// and renders the human-readable string "out_of_range".
+func TestControlOutOfRange(t *testing.T) {
+	if ControlOutOfRange != 13 {
+		t.Fatalf("ControlOutOfRange = %d, want 13", ControlOutOfRange)
+	}
+	if ControlSynchBlocked != 12 {
+		t.Fatalf("ControlSynchBlocked = %d, want 12 (must be preserved)", ControlSynchBlocked)
+	}
+	if ControlOutOfRange == ControlSynchBlocked {
+		t.Fatalf("ControlOutOfRange must not collide with ControlSynchBlocked")
+	}
+	if ControlOutOfRange == ControlSuccess {
+		t.Fatalf("ControlOutOfRange must not alias ControlSuccess")
+	}
+	if got := ControlOutOfRange.String(); got != "out_of_range" {
+		t.Fatalf("ControlOutOfRange.String() = %q, want %q", got, "out_of_range")
+	}
+}
+
+// TestControlStatusValuesUnchanged pins every pre-existing public numeric value
+// so the OUT_OF_RANGE addition cannot silently shift an existing status.
+func TestControlStatusValuesUnchanged(t *testing.T) {
+	cases := []struct {
+		status ControlStatus
+		want   uint8
+	}{
+		{ControlSuccess, 0}, {ControlTimeout, 1}, {ControlNoSelect, 2},
+		{ControlBadFormat, 3}, {ControlNotSupported, 4}, {ControlAlreadyActive, 5},
+		{ControlHardwareError, 6}, {ControlLocal, 7}, {ControlTooMany, 8},
+		{ControlNotAuthorized, 9}, {ControlAutonomous, 10},
+		{ControlSynchTimeout, 11}, {ControlSynchBlocked, 12},
+	}
+	for _, tc := range cases {
+		if uint8(tc.status) != tc.want {
+			t.Fatalf("%s = %d, want %d", tc.status, uint8(tc.status), tc.want)
+		}
+	}
+}
