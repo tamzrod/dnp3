@@ -1434,3 +1434,37 @@ execution, no lab network, no live control, no PR/merge/release, no supported-pr
 Next: **STOP for independent CHECK** of this corrective. A distinct later `operation cwal` may resume the
 original AO-004 isolation/readiness-first plan only after that CHECK. No PR/merge, no `main` push, no
 release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 PR #27 post-merge governance reconciliation checkpoint — 2026-11-12
+Owner addendum "Owner-authorized PR #27 governance reconciliation — documentation-only (2026-11-12)"
+(`workflow/active_work/AO-004.md`, committed `fd831cf`, by `tamzrod`). Single documentation-only
+reconciliation invocation. No Go/tests/CI/scripts/governance-rule change, new PR, further merge,
+release, force push, rebase, live network, lab peer exchange or field command.
+- **Draft-only authorization vs actual merge.** The owner authorized **creation of a draft PR only**;
+  the later recorded GitHub merge is a **fact to reconcile**, not evidence a merge was authorized. No
+  intent, operator identity or merge authority is inferred; the already-merged PR is not reverted.
+- **Verified facts (live readback).** PR #27 `draft(dnp3): G41V1–V4 analog direct-operate …` — created
+  as draft `2026-11-11T23:58:26Z`, `ready_for_review` `2026-11-12T00:01:57Z`, **merged into `main`**
+  `2026-11-12T00:02:01Z` (state `closed`, `merged=true`, `draft=false`); head
+  `38c6df0a43e7093613ae4ab70dbd4750a04e1a35`; pre-merge base `f55278cb1f91fb7e66e82a89458f6de9d777302a`;
+  GitHub merge commit `2ff2ffca05c66ba73d8c08a561e1227d301348a1` with those two parents; 32 commits, 41
+  changed files. Live refs: `main=2ff2ffc`, `work=fd831cf`. PR-head CI run #244 (`43123823490`,
+  `pull_request`, **`success`**); job logs NOT independently inspected.
+- **Discrepancy (honest).** The authorization stated "no separately verified merge-commit CI →
+  `NOT_VERIFIED`". Independent readback **found** merge-commit CI run #245 (`43124269983`, event `push`,
+  branch `main`, head `2ff2ffc…`, **`success`**). Recorded as observed; conclusion verifies workflow-level
+  result only, job logs not inspected; not AO-004 interoperability evidence. Flagged for maintainer
+  resolution.
+- **No new support.** `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`) on `main` and `work`: Group 41 remains **UNSUPPORTED**.
+  Merged implementation is **not** AO-004 independent-peer evidence; original PCAP + packet-derived
+  `.vec` G41 verification **NOT RUN**; AO-005 **not** authorized. Merge ≠ AO-004 closure/promotion/release.
+- **Markers unchanged** on both branches: `Repository: tamzrod/dnp3`, `Package: AO-004`, `Branch: work`,
+  `CURRENT: AO-004`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Checks (observed PASS): `git diff --check`; `bash scripts/cwal-check.sh` OK. Go build/test/vet/race
+  **NOT_RUN** (documentation-only). Evidence: `docs/verification/AO-004-PR27-GOVERNANCE-RECON.md`.
+Next: **STOP for a separate independent read-only CHECK**. A distinct later `operation cwal` may resume
+AO-004 isolated lab readiness only after CHECK acceptance. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
