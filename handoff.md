@@ -1797,3 +1797,30 @@ new protocol execution, source edit, Docker build/daemon, namespace start or exp
 Next: **STOP for a fresh independent read-only CHECK**. Any further protocol execution or harness change
 requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005 promotion, no
 field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 Appendix H count correction + invalid-index timeout analysis — 2026-11-12
+Owner authorization `8ab00ef` (one bounded human-promoted `operation cwal` microtask, **documentation/
+evidence analysis ONLY**; no rerun, network, source change or parser fix). Executed on clean `work`,
+fast-forwarded to HEAD `8ab00ef1cd5bce6ea8e5d79b82dd106774c38ea6` (ancestry includes `9e57c62`).
+- **`RAW_PCAP_UNAVAILABLE`.** `/tmp/ao004-docker4/{driver.out,cap.pcap,driver2.out,cap2.pcap}` are gone
+  (sandbox `/tmp` reset; no `*.pcap`/`driver*.out`/`*ao004*`). No rerun/synthetic evidence. Wire content
+  is **secondhand** (Appendix H); Go findings **firsthand** source.
+- **Count correction.** Appendix H's "21 bit-identical successes" **superseded**: 26 transmitted = **18
+  bit-identical successes** (V1=5,V2=5,V3=4,V4=4) + **4 float echo mismatches** (V3/V4 `-0.0`+subnormal)
+  + **4 invalid-index** (`0x0C`); 18+4+4=26. 6 non-finite + 2 mode rejections pre-send (outside 26).
+- **Invalid-index root cause (source).** Internal `CommandStatus` has **no `0x0C`/12** constant; the echo
+  status `CommandStatus(12)` is returned verbatim (`(12, nil)`, no quarantine); public `mapCommandStatus`
+  has **no case for 12** → `default` → **`types.ControlTimeout`** (`err == nil`). A **definite remote
+  rejection** (`OUT_OF_RANGE`) is mislabeled as timeout. Not a harness bug; not lost/mis-sequenced.
+- **Recommendation (NOT executed).** Later owner-approved **production** change: add a distinct
+  OUT_OF_RANGE status (mind the public enum's numeric-12 `ControlSynchBlocked`) + map + negative tests.
+- **`EVIDENCE_ANALYSIS_PASS` (documentation/source-only).** G41 stays **UNSUPPORTED**. No new execution;
+  Go gates **NOT_RUN** (no Go change). Profile blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged;
+  markers unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact append-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix I).
+Next: **STOP for a fresh independent read-only CHECK**. Any production status-mapping change or protocol
+execution requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

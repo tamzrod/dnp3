@@ -1769,3 +1769,41 @@ HEAD `137cd0c77687785ed34446ce354b33e83d021a12` (ancestry includes the prior int
 Next: **STOP for a fresh independent read-only CHECK**. Any further protocol execution or harness change
 requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005 promotion, no
 field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 Appendix H count correction + invalid-index timeout analysis — 2026-11-12
+Owner authorization `8ab00ef` (one bounded human-promoted `operation cwal` microtask, **documentation/
+evidence analysis ONLY**: reconcile Appendix H aggregate counts and investigate why the public Go master
+reported `ControlTimeout` on invalid-index G41 requests while the existing PCAP reportedly carried
+per-point `0x0C` OUT_OF_RANGE responses; **no** rerun, network, source change or parser fix). Executed on
+clean `work`, fast-forwarded to HEAD `8ab00ef1cd5bce6ea8e5d79b82dd106774c38ea6` (ancestry includes
+`9e57c62`).
+- **`RAW_PCAP_UNAVAILABLE`.** The prior run's artifacts (`/tmp/ao004-docker4/{driver.out,cap.pcap,
+  driver2.out,cap2.pcap}`) are **gone** — the sandbox `/tmp` was reset (no `*.pcap`/`driver*.out`/
+  `*ao004*` found). No rerun/synthetic evidence. Wire content below is **secondhand** (committed
+  Appendix H); all Go findings are **firsthand** source.
+- **Count correction (authorized).** Appendix H's "21 bit-identical successes" is **superseded**: the 26
+  transmitted requests classify as **18 bit-identical successes** (V1=5, V2=5, V3=4, V4=4) + **4 float
+  echo-bit mismatches** (V3/V4 `-0.0`+smallest-subnormal) + **4 invalid-index** responses (`0x0C`);
+  18+4+4=26. The 6 non-finite + 2 mode rejections are pre-send (outside 26). Appendix H not rewritten.
+- **Invalid-index root cause (source).** Internal `CommandStatus` defines only `0…10` and `0xFF` — **no
+  constant for `0x0C`/12**. `parseG41Record`/`g41CommandStatus` return the echoed status verbatim
+  (`CommandStatus(12)`) since index/value match; `sendControlOnce` returns `(12, nil)` (definite outcome,
+  no quarantine). Public `mapCommandStatus` has **no case for 12**, so its `default` returns
+  **`types.ControlTimeout`** with `err == nil`. A **definite remote rejection** (`OUT_OF_RANGE`) is thus
+  **mislabeled as a timeout**; not a harness bug, not a lost/mis-sequenced response.
+- **Recommendation (NOT executed).** A later owner-approved **production** change: add a distinct
+  OUT_OF_RANGE status (careful with the public enum's existing numeric-12 `ControlSynchBlocked`) and map
+  it, so an explicit rejection is not reported as timeout; add negative tests. No change made now.
+- **`EVIDENCE_ANALYSIS_PASS` (documentation/source-only).** G41 stays **UNSUPPORTED**. No new execution;
+  no Docker/daemon/namespaces/source edits/retry/quarantine reset/external probe. Go gates **NOT_RUN**
+  (no Go change).
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`). Markers unchanged (`Package/CURRENT: AO-004`,
+  `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact append-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix I).
+Next: **STOP for a fresh independent read-only CHECK**. Any production status-mapping change or protocol
+execution requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
