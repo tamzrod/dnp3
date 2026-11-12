@@ -164,10 +164,34 @@ func (h *fixtureCommandHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*
 	h.seen = true
 	h.last = rec
 	h.count++
+	count := h.count
 	h.mu.Unlock()
+
+	// Bounded, memory-only observability for the authorized interop microtask: one
+	// line per accepted command. It records the variation, index and the typed
+	// value, and for floats the exact IEEE-754 bit pattern, so an independent
+	// observer can confirm the fixture-side effect without any OS I/O.
+	fmt.Printf("ao004-go-outstation: accepted group=%d variation=%d index=%d value=%s count=%d\n",
+		rec.Group, rec.Variation, rec.Index, formatValue(rec), count)
 
 	status := types.ControlSuccess
 	return &status, nil
+}
+
+// formatValue renders a stored command's typed value for the acceptance log,
+// preserving exact float bits.
+func formatValue(rec receivedCommand) string {
+	switch rec.Variation {
+	case 1:
+		return fmt.Sprintf("int32:%d", rec.Int32)
+	case 2:
+		return fmt.Sprintf("int16:%d", rec.Int16)
+	case 3:
+		return fmt.Sprintf("float32:%g bits=0x%08x", rec.Float32, math.Float32bits(rec.Float32))
+	case 4:
+		return fmt.Sprintf("float64:%g bits=0x%016x", rec.Float64, math.Float64bits(rec.Float64))
+	}
+	return "unknown"
 }
 
 // fixtureDataHandler provides the MVP static input points. No OS I/O.

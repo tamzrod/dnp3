@@ -1951,3 +1951,25 @@ Appendix N `TOPOLOGY_NOT_RUN` blocker. Executed on clean `work`, fast-forwarded 
   Evidence: `docs/verification/AO-004.md` (Appendix O).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated reverse G41 interop execution — 2026-11-12
+Owner authorization `7681cf7` (bounded interop-execution microtask on `work`), following Appendix O
+checkpoint `9e5fc2f`. Executed on clean `work`, fast-forwarded to HEAD
+`7681cf7ea8fc745aa103c0e12eea4ed661f4e9b9`; markers + profile blob unchanged; `cwal-check` OK.
+- **Lab:** ephemeral Docker lab (Appendix O technique) isolated `--network none`; two namespaces
+  `vec01-master` 10.77.0.1/24 ↔ `vec01-outstation` 10.77.0.2/24 via one paired veth; no default routes;
+  `ip_forward=0`; only `lo`+veth; no NAT. Go fixture = static build, fresh process per variation.
+- **Matrix (1 Direct Operate with response each):** V1/V2/V3/V4 all → master
+  `FAILURE_RESPONSE_TIMEOUT`, point index=0 state=INIT status=UNDEFINED; fixture logged **no** accepted
+  command; wire shows master's well-formed G41 frames reaching the outstation with **0 DNP3 bytes** back.
+- **Root cause (proven):** OpenDNP3 3.1.2 master sends link function **4** (UNCONFIRMED_USER_DATA); Go
+  outstation `reassembleMessage` accepts only function **3** (`FuncConfirmedUserData`) and silently drops
+  the rest. In-lab control on one connection: reply to func-0 reset (ACK) and func-3 read, **none** to
+  func-4. Production-code gap; NOT repaired (out of scope).
+- **Result:** **`REVERSE_G41_INTEROP_FAIL`** (0/4). Permitted test-only observability line added to
+  `lab/ao004/go-outstation/main.go` (gofmt/vet clean; 11/11 tests PASS). Cleanup complete; host baseline
+  unchanged. G41 stays **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix P).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

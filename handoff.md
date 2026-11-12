@@ -1933,3 +1933,23 @@ Owner **corrective** authorization `22d2c36` (bounded topology-only microtask on
   `docs/verification/AO-004.md` (Appendix O).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated reverse G41 interop execution — 2026-11-12
+Owner authorization `7681cf7` (bounded interop-execution microtask on `work`), after Appendix O `9e5fc2f`.
+Executed on clean `work`, fast-forwarded to HEAD `7681cf7ea8fc745aa103c0e12eea4ed661f4e9b9`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Lab:** ephemeral isolated Docker lab (`--network none`); `vec01-master` 10.77.0.1/24 ↔
+  `vec01-outstation` 10.77.0.2/24 via one veth; no default routes; `ip_forward=0`; no NAT; static Go
+  fixture, fresh process per variation.
+- **Matrix:** V1–V4 all `FAILURE_RESPONSE_TIMEOUT` (state=INIT, status=UNDEFINED); no fixture acceptance;
+  wire = master's well-formed G41 frames with **0** bytes returned.
+- **Root cause:** master uses link function **4** (UNCONFIRMED_USER_DATA); Go outstation accepts only
+  function **3** and silently drops function 4. Control proved it (func-0/func-3 replied; func-4 not).
+  Production gap; not repaired.
+- **`REVERSE_G41_INTEROP_FAIL`** (0/4). Test-only observability line in `lab/ao004/go-outstation/main.go`
+  (11/11 tests PASS). Cleanup complete; host baseline unchanged. G41 stays **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-004.md` (Appendix P).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
