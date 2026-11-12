@@ -1,11 +1,12 @@
-# AO-004 isolated OpenDNP3 3.1.2 G41 peer harness (readiness scaffolding).
+# AO-004 isolated OpenDNP3 3.1.2 G41 peer + master harness.
 #
-# Defines exactly ONE lab container with NO network of its own. The container
-# runs with network_mode: none. The default command is a readiness echo only and
-# starts NO listener and NO DNP3 traffic.
+# Defines lab containers with NO network of their own. Each runs with
+# network_mode: none. The default command is a readiness echo only and starts NO
+# listener and NO DNP3 traffic.
 #
 #   docker compose -f lab/ao004/compose.yaml build
-#   docker compose -f lab/ao004/compose.yaml run --rm lab        # readiness echo
+#   docker compose -f lab/ao004/compose.yaml run --rm lab      # peer readiness echo
+#   docker compose -f lab/ao004/compose.yaml run --rm master   # master readiness echo
 #
 # NETWORK TOPOLOGY — two distinct things, not one:
 #   * network_mode: none is the safe container BASELINE: only loopback exists.
@@ -20,7 +21,8 @@
 # demonstrate namespace isolation and is not a NETWORK_ISOLATION_PASS claim.
 #
 # A later, separately authorized protocol-execution microtask may start the peer
-# listener explicitly after that topology exists; that is NOT authorized here.
+# listener (or the master's live `--run` path) explicitly after that topology
+# exists; that is NOT authorized here.
 #
 # The build context is the repository root so the Dockerfile can COPY the
 # existing (unmodified) lab/vec01/acquire-pinned.sh, lab-netns.sh, preflight.sh
@@ -44,4 +46,18 @@ services:
     restart: "no"
     stop_grace_period: 10s
     # Default: readiness echo only (no listener, no DNP3 traffic).
+    command: []
+  # Independent OpenDNP3 3.1.2 G41 master harness (compile-only preparation).
+  # Shares the peer image and the same offline baseline; its default command is
+  # the no-argument readiness print (no channel, no session, no command). The
+  # live "--run" path is NOT authorized by this microtask.
+  master:
+    build:
+      context: ../..
+      dockerfile: lab/ao004/Dockerfile
+    image: ao004-g41-master:3.1.2
+    network_mode: none
+    restart: "no"
+    stop_grace_period: 10s
+    entrypoint: ["/opt/ao004/g41_master"]
     command: []

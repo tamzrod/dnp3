@@ -1864,3 +1864,27 @@ Owner authorization `b9c0fbd` (one bounded human-promoted `operation cwal` **ver
   **UNSUPPORTED**; markers unchanged. Evidence: `docs/verification/AO-004.md` (Appendix K).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse C++ master harness compile-only preparation — 2026-11-12
+Owner authorization `c7deb8a` (bounded compile-only microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `c7deb8af68b7dda627dd98880bc00b491b53fedc`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Goal:** independent OpenDNP3 3.1.2 C++ **master** harness (`g41_master`) able to later, under a separate
+  authorization, send G41V1–V4 single-point Direct Operate with response to our Go outstation.
+- **API:** verified from the sha256-pinned OpenDNP3 3.1.2 source (`DNP3Manager`/`IChannel::AddMaster`,
+  `MasterStackConfig`, `DirectOperate(CommandSet&&, callback)`, `AnalogOutput*`, `CommandStatus`).
+- **Sources:** new `lab/ao004/G41MasterCommandCallback.h/.cpp` + `g41_master.cpp`; minimal edits to
+  `CMakeLists.txt`, `Dockerfile`, `compose.yaml`, `README.md`. `g41_peer.cpp`/handler and all `lab/vec01/`
+  scripts unmodified; no production Go change.
+- **Build (compile-only):** build-only Docker container; `lab/vec01/acquire-pinned.sh` sha256-verified all
+  five inputs (`acquire-pinned: OK`); `FETCHCONTENT_FULLY_DISCONNECTED=ON`; g++ 12.2.0. One missing-include
+  defect in the new harness fixed minimally; **both** `g41_master` and `g41_peer` then compiled+linked.
+- **Readiness:** no-argument master mode under `--network none` exits 0 with **no listening sockets**;
+  non-lab host and invalid variation are refused (exit 2) before any channel is created.
+- **`REVERSE_HARNESS_COMPILE_PASS`**; reverse interop itself is
+  `C++_MASTER_TO_GO_OUTSTATION_INTEROP_NOT_RUN`. G41 stays **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-004.md` (Appendix L).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

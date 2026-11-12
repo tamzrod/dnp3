@@ -1,9 +1,10 @@
-# AO-004 isolated OpenDNP3 3.1.2 G41 peer harness image (readiness scaffolding).
+# AO-004 isolated OpenDNP3 3.1.2 G41 peer + master harness image (compile-only preparation).
 #
 # PURPOSE: a single, self-contained lab container hosting the independently
-# implemented OpenDNP3 3.1.2 G41 outstation harness. It starts NO protocol
-# traffic by itself: compose.yaml runs it with network_mode: none and the default
-# command is a readiness echo only.
+# implemented OpenDNP3 3.1.2 G41 outstation harness (`g41_peer`) and master
+# harness (`g41_master`). It starts NO protocol traffic by itself: compose.yaml
+# runs it with network_mode: none and the default commands are readiness echoes
+# only.
 #
 # Build-time network is used ONLY to acquire the pinned, checksum-verified
 # toolchain and peer sources via the existing (unmodified) lab/vec01/
@@ -50,6 +51,9 @@ RUN chmod +x /opt/vec01/lab-netns.sh /opt/vec01/preflight.sh
 COPY lab/ao004/G41MemoryCommandHandler.h  /opt/ao004/
 COPY lab/ao004/G41MemoryCommandHandler.cpp /opt/ao004/
 COPY lab/ao004/g41_peer.cpp               /opt/ao004/
+COPY lab/ao004/G41MasterCommandCallback.h  /opt/ao004/
+COPY lab/ao004/G41MasterCommandCallback.cpp /opt/ao004/
+COPY lab/ao004/g41_master.cpp             /opt/ao004/
 COPY lab/ao004/CMakeLists.txt             /opt/ao004/
 
 # Compile the harness against the pinned peer (build time only). The pinned
@@ -60,13 +64,15 @@ RUN cmake -S /opt/ao004 -B /opt/ao004/build -DCMAKE_BUILD_TYPE=Release \
       -DOPENDNP3_ROOT=/opt/vec01/src/opendnp3-3.1.2 \
       -DDEPS_ROOT=/opt/vec01/deps \
  && cmake --build /opt/ao004/build -j"$(nproc)" \
- && cp /opt/ao004/build/g41_peer /opt/ao004/g41_peer
+ && cp /opt/ao004/build/g41_peer /opt/ao004/g41_peer \
+ && cp /opt/ao004/build/g41_master /opt/ao004/g41_master
 
 ENV PATH=/opt/go/bin:$PATH
 WORKDIR /opt/ao004
 
-# Default: readiness echo only (no listener, no DNP3 traffic). The harness starts
-# a listener only when explicitly invoked as `/opt/ao004/g41_peer --listen`, and
-# only after a later, separately authorized isolated-runner setup builds the
-# private namespace topology.
+# Default: readiness echo only (no listener, no DNP3 traffic). The peer harness
+# starts a listener only when explicitly invoked as `/opt/ao004/g41_peer
+# --listen`, and the master harness opens a channel only as `/opt/ao004/g41_master
+# --run`, and only after a later, separately authorized isolated-runner setup
+# builds the private namespace topology.
 ENTRYPOINT ["/opt/ao004/g41_peer"]

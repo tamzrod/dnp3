@@ -58,3 +58,12 @@ add_executable(g41_peer
     G41MemoryCommandHandler.cpp
 )
 target_link_libraries(g41_peer PRIVATE opendnp3)
+
+# Independent OpenDNP3 3.1.2 G41 master harness (compile-only preparation). It
+# shares the same pinned source/deps as the peer. Default invocation is offline
+# readiness only; the live "--run" path is NOT authorized by this microtask.
+add_executable(g41_master
+    g41_master.cpp
+    G41MasterCommandCallback.cpp
+)
+target_link_libraries(g41_master PRIVATE opendnp3)

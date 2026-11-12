@@ -1863,3 +1863,21 @@ unchanged; `cwal-check` OK.
   Evidence: `docs/verification/AO-004.md` (Appendix K).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse C++ master harness compile-only preparation — 2026-11-12
+Owner authorization `c7deb8a` (bounded compile-only microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `c7deb8af68b7dda627dd98880bc00b491b53fedc`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Sources (lab/ao004/ only):** new `G41MasterCommandCallback.h/.cpp`, `g41_master.cpp`; minimal edits to
+  `CMakeLists.txt`, `Dockerfile`, `compose.yaml`, `README.md`. No production Go change; `lab/vec01/` intact.
+- **Build (compile-only):** build-only Docker container; five pinned inputs sha256-verified
+  (`acquire-pinned: OK`); `FETCHCONTENT_FULLY_DISCONNECTED=ON`; g++ 12.2.0. One missing-include fixed
+  minimally; **both** `g41_master` and `g41_peer` compiled+linked against pinned OpenDNP3 3.1.2.
+- **Readiness:** no-argument master mode under `--network none` exits 0, no listening sockets; non-lab host
+  and invalid variation refused before any channel is created.
+- **`REVERSE_HARNESS_COMPILE_PASS`**; `C++_MASTER_TO_GO_OUTSTATION_INTEROP_NOT_RUN`. G41 stays
+  **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix L).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

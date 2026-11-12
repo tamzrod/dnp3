@@ -1,19 +1,20 @@
-# AO-004 isolated OpenDNP3 3.1.2 G41 memory-only peer harness (scaffolding)
+# AO-004 isolated OpenDNP3 3.1.2 G41 memory-only peer + master harness
 
-Bounded, owner-authorized (AO-004 authorization `3b0afec`) **readiness-construction** scaffolding for
-an independent OpenDNP3 3.1.2 outstation that can later serve the Go master's Group 41 (Analog Output)
-Direct-Operate-with-response subset: **G41V1 int32, G41V2 int16, G41V3 float32, G41V4 float64**.
+Bounded, owner-authorized (AO-004 authorizations `3b0afec`, `c7deb8a`) scaffolding for an independent
+OpenDNP3 3.1.2 outstation **and master** that can later serve/exercise the Go master's Group 41 (Analog
+Output) Direct-Operate-with-response subset: **G41V1 int32, G41V2 int16, G41V3 float32, G41V4 float64**.
 
-This directory is **static scaffolding only**. It is **NOT_BUILT** and **NOT_RUN** in the environment
-where it was authored (no Docker daemon, no pinned peer source, no CMake). It starts **no** listener, no
-DNP3 traffic and no control. Readiness is **not** interoperability acceptance.
+This directory is a **test harness only** and starts **no** DNP3 traffic by default. Both C++ executables
+are compiled against the sha256-pinned OpenDNP3 3.1.2 in a build-only container (see Status below), but no
+protocol exchange has been run: readiness is **not** interoperability acceptance.
 
 ## Scope and hard boundaries
 
 - Source modification is limited to this independent OpenDNP3 **test harness** — never the Go DNP3
   implementation. Exact file allowlist (this directory only):
   `README.md`, `Dockerfile`, `compose.yaml`, `G41MemoryCommandHandler.h`, `G41MemoryCommandHandler.cpp`,
-  `g41_peer.cpp`, `CMakeLists.txt`.
+  `g41_peer.cpp`, `G41MasterCommandCallback.h`, `G41MasterCommandCallback.cpp`, `g41_master.cpp`,
+  `CMakeLists.txt`.
 - Handler is **memory-only**: explicit fixed index 0, no real output, no OS I/O, no NGCP/SCADA mapping,
   no dynamic points. Only **Direct Operate with response** is enabled; SELECT/OPERATE/SBO and
   DirectOperateNoResponse are rejected.
@@ -57,15 +58,40 @@ unresolved limitation (no digest invented).
 The handler/peer were corrected against the pinned OpenDNP3 3.1.2 public API: `ICommandHandler` declares
 ten pure virtual hooks (CROB + four analog types), all implemented here; `CommandStatus` lives in
 `namespace opendnp3`; the endpoint header is `opendnp3/channel/IPEndpoint.h`; and `levels::NORMAL` is
-`opendnp3::levels::NORMAL`. Exact header/enum names are still to be re-verified against the pinned
-source on an authorized build runner before any compile.
+`opendnp3::levels::NORMAL`. The master harness uses the same pinned API: `DNP3Manager::AddTCPClient` →
+`IChannel::AddMaster` with `MasterStackConfig{master, link}`, `IMasterOperations::DirectOperate(CommandSet&&,
+callback, config)` with `CommandSet`/`WithIndex`, the four `AnalogOutput*` command types, and
+`CommandStatus`/`CommandPointState`/`TaskCompletion`. Exact header/enum names were re-verified against the
+sha256-pinned source and confirmed by a successful compile+link of both executables.
+
+## C++ master harness (`g41_master`) — compile-only preparation
+
+`g41_master` is the independently implemented OpenDNP3 3.1.2 **master** counterpart to the Go outstation.
+It is intended to later, under a **separate** owner authorization, issue single-point G41 Direct Operate
+**with response** commands (V1 int32, V2 int16, V3 float32, V4 float64) at index 0 to our Go outstation.
+
+- Link addresses (master): `LocalAddr=3`, `RemoteAddr=4`; target `10.77.0.2:20000`, reachable only inside
+  the future isolated `vec01-master` ↔ `vec01-outstation` topology. Only **Direct Operate with response** is
+  used — no SelectAndOperate, no DirectOperateNoResponse, no implicit retry.
+- Per-point observability comes from `CommandResultCallbackT`: the task `TaskCompletion` summary and every
+  `CommandPointResult` (index/state/status) are recorded; the live path waits a bounded time for the
+  callback.
+- **Default (no arguments) is offline readiness only**: it constructs no channel, opens no socket, starts
+  no master session, sends no command, and exits 0 after a bounded feature print. The live `--run` mode
+  exists in source but is **NOT authorized** by the microtask that authored it; it refuses any host other
+  than `10.77.0.2:20000` and any variation outside 1–4, and requires an explicit `--variation`.
+- The Go outstation executable is **never** started by this harness.
 
 ## Status (this microtask)
 
 - **ISOLATION:** `ISOLATED_RUNNER_UNAVAILABLE` — no owner-provided isolated Docker host/runner is
   reachable; the routed JR Kubernetes pod is explicitly prohibited as a lab.
-- **HARNESS_BUILD:** `NOT_BUILT` — no CMake and no pinned peer source in the authoring environment.
-- **INTEROP:** `NOT_RUN` — no protocol execution authorized.
+- **HARNESS_BUILD:** `REVERSE_HARNESS_COMPILE_PASS` — both `g41_peer` and `g41_master` were compiled and
+  linked against the sha256-pinned OpenDNP3 3.1.2 in a build-only Docker container (Debian 12, g++ 12.2.0);
+  the master's no-argument readiness mode was run under `--network none` with no sockets/ports and exits 0.
+- **INTEROP:** `C++_MASTER_TO_GO_OUTSTATION_INTEROP_NOT_RUN` — no protocol execution authorized; no
+  success/error claim is made for G41 wire traffic, float signed-zero/subnormal handling, command statuses,
+  connect/reconnect or Go outstation runtime.
 
 See `docs/verification/AO-004.md` for the full evidence record.
 
@@ -78,8 +104,13 @@ docker compose -f lab/ao004/compose.yaml build
 # Default: readiness echo only (no listener, no DNP3 traffic)
 docker compose -f lab/ao004/compose.yaml run --rm lab
 
+# Master readiness echo (no channel, no session, no command)
+docker compose -f lab/ao004/compose.yaml run --rm master
+
 # Later, separately authorized protocol step (NOT authorized now):
 # docker compose -f lab/ao004/compose.yaml run --rm lab /opt/ao004/g41_peer
+# docker compose -f lab/ao004/compose.yaml run --rm master \
+#     /opt/ao004/g41_master --run --variation 1
 ```
 
 ## Non-claims
