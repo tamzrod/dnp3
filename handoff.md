@@ -1724,3 +1724,45 @@ only). Executed on clean `work`, fast-forwarded to HEAD `d519243b6ba098d5e0b194c
 Next: **STOP for a fresh independent read-only CHECK**. A separately verified two-namespace topology plus
 a **new owner-authorized protocol-execution task** are required before any OpenDNP3 G41 protocol exchange.
 No PR/merge, no `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated two-namespace Docker topology checkpoint — 2026-11-12
+Owner authorization `71f110a` ("AO-004 two-namespace Docker topology execution"; one bounded `operation
+cwal` microtask: execute the existing VEC-01 two-namespace topology inside one isolated non-privileged
+OpenHands Cloud Docker lab container, verify real veth connectivity/isolation/forwarding and effective
+NET_ADMIN/SYS_ADMIN, then clean up; container-internal namespaces + non-DNP3 lab-local tests only).
+Executed on clean `work` fast-forwarded to HEAD `71f110a6aa5c6fd4a0796cdf2c8ceaf8e44b6fdf` (ancestry
+includes `8c5ae26`); markers unchanged by the authorization commit.
+- **`HARNESS_BUILD_PASS`.** `sudo docker compose -f lab/ao004/compose.yaml build lab`: 5/5 pinned SHA-256
+  gates PASS; base `debian:12-slim@sha256:734a72b3…`; `Built target opendnp3` + `g41_peer`; 0 errors;
+  cache-served re-run exit 0; image `ao004-g41-peer:3.1.2`.
+- **`CONTAINER_NETWORK_NONE_OBSERVED`.** One temporary **non-privileged** container from the built image
+  with `--network none`, `--cap-add NET_ADMIN/SYS_ADMIN/NET_RAW`, `--entrypoint /bin/sh` (test script via
+  stdin, no host mounts; no `--privileged`/host-net/host-pid/socket/devices/ports). Before-state: only
+  `lo`, empty IPv4/IPv6 routes, main netns `net:[4026532640]`, `/proc/sys` read-only.
+- **`CAPABILITY_FUNCTIONAL_PASS`.** Unmodified `/opt/vec01/lab-netns.sh up` exited 0 — the granted
+  capabilities actually permitted `ip netns add`, veth creation/cross-namespace moves, addressing and the
+  container-local `/proc/sys` remount + `sysctl`.
+- **`TWO_NAMESPACE_TOPOLOGY_PASS`.** `vec01-master` (`net:[4026532712]`, `10.77.0.1/24` on `veth-m` UP)
+  and `vec01-outstation` (`net:[4026532783]`, `10.77.0.2/24` on `veth-o` UP), distinct namespace IDs;
+  only link-scope `10.77.0.0/24` routes (no default) in each; base container ns still `lo` only.
+- **`LAB_LOCAL_ICMP_PASS`.** `ping -c1 -W2 10.77.0.2` from master → 0% loss; reverse → 0% loss.
+  **`FORWARDING_OFF_PASS`.** `net.ipv4.ip_forward=0` verified in both namespaces; no NAT/bridge/external
+  reachability; no listener opened; no public DNS/Internet probe.
+- **`CLEANUP_PASS`.** In-container `lab-netns.sh down` → torn down (netns/veth gone, only `lo`, routes
+  empty). `--rm` container removed; host `/var/run/netns` absent; host `eth0`/routes unchanged. Host
+  cleanup (own resources only): image removed, 1.054 GB cache pruned, daemon this invocation started
+  stopped, daemon-created `docker0` removed (`RTM_DELLINK` errno 0). Final: only `lo` + `eth0`;
+  `/var/lib/docker` ≈ 3.3 MB; no zombies this invocation.
+- **`INTEROP_NOT_RUN`.** No `g41_peer`, no DNP3 listener/master/outstation/peer/command/packet/capture;
+  `lab/vec01/preflight.sh` treated read-only and not executed (external DNS + temporary TCP listener
+  outside scope).
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix G).
+Next: **STOP for a fresh independent read-only CHECK**. A **new owner-authorized protocol-execution task**
+remains required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
