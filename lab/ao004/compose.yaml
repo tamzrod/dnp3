@@ -1,0 +1,36 @@
+# AO-004 isolated OpenDNP3 3.1.2 G41 peer harness (readiness scaffolding).
+#
+# Defines exactly ONE lab container with NO network of its own. The container
+# runs with network_mode: none. The default command is a readiness echo only and
+# starts NO listener and NO DNP3 traffic.
+#
+#   docker compose -f lab/ao004/compose.yaml build
+#   docker compose -f lab/ao004/compose.yaml run --rm lab        # readiness echo
+#
+# A later, separately authorized protocol-execution microtask may start the peer
+# listener explicitly; that is NOT authorized by this scaffolding.
+#
+# The build context is the repository root so the Dockerfile can COPY the
+# existing (unmodified) lab/vec01/acquire-pinned.sh and the allowlisted harness
+# sources under lab/ao004/.
+services:
+  lab:
+    build:
+      context: ../..
+      dockerfile: lab/ao004/Dockerfile
+    image: ao004-g41-peer:3.1.2
+    # Network isolation by construction: no ports, no host networking, no
+    # default bridge. Only loopback exists until a later authorized step builds a
+    # private netns/veth topology (mirroring lab/vec01).
+    network_mode: none
+    # Least-required privileges, NOT privileged: no host devices, no host PID
+    # namespace, no docker socket. (Only needed by a later authorized step that
+    # creates the private veth topology; the readiness echo needs none.)
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - NET_RAW
+    restart: "no"
+    stop_grace_period: 10s
+    # Default: readiness echo only (no listener, no DNP3 traffic).
+    command: []

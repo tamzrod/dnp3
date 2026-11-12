@@ -1495,3 +1495,31 @@ release or field command.
 Next: **STOP for independent read-only CHECK**. A later bounded invocation may proceed only after
 isolation + peer/harness readiness PASS and a separate owner harness/code allowlist. No PR/merge, no
 `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolation + harness readiness corrective checkpoint — 2026-11-12
+Owner authorization `3b0afec` (accepts the `c94b79a` NOT_READY CHECK; authorizes ONE bounded
+readiness-construction microtask: source-pin + statically assess a memory-only OpenDNP3 3.1.2 G41 peer
+harness and an isolated lab). No DNP3 packet, peer connection, command, PR, merge, `main` push, release
+or production use. G41 stays **UNSUPPORTED**.
+- **Hard gate `ISOLATED_RUNNER_UNAVAILABLE`:** no Docker daemon (`/var/run/docker.sock` absent,
+  `docker info` cannot connect); the routed JR pod is prohibited as a lab; no owner-provided isolated
+  runner is reachable. No isolation probe was attempted on the routed pod; no protocol probe performed.
+- **`SOURCE_NOT_ACQUIRED`:** pinned acquisition over the routed pod is prohibited; the sha256-verified
+  URLs/hashes (OpenDNP3 3.1.2, Go 1.22.12, asio/exe4cpp/ser4cpp) are recorded but nothing was downloaded.
+- **`HARNESS_BUILD_NOT_RUN`:** authored static scaffolding only — 7 allowlisted files under `lab/ao004/`
+  (`README.md`, `Dockerfile`, `compose.yaml`, `G41MemoryCommandHandler.h/.cpp`, `g41_peer.cpp`,
+  `CMakeLists.txt`). Memory-only handler: G41V1–V4, fixed index 0, DirectOperate-with-response only;
+  rejects index ≠ 0 and NaN/±Inf before mutation. `compose.yaml` uses `network_mode: none`, no `ports`,
+  not `privileged`, no socket. No build (no CMake/pinned source), no listener, no traffic.
+- **`INTEROP_NOT_RUN`.** No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); AO-005 not authorized. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): markers, ancestry, `git diff --check`, `bash scripts/cwal-check.sh`, static
+  compose/brace sanity. Go gates NOT_RUN (no Go change); harness build NOT_RUN.
+  Evidence: `docs/verification/AO-004.md` (Appendix A).
+Next: **STOP for independent read-only CHECK**. A later bounded invocation may proceed only after an
+owner-provided isolated runner (`NETWORK_ISOLATION_PASS`), authorized sha256-verified acquisition/build,
+and a new explicit owner-authorized protocol-execution microtask. No PR/merge, no `main` push, no release,
+no field/NGCP/SCADA or physical I/O.
