@@ -2030,3 +2030,34 @@ Owner authorization `ee98d72` (bounded corrective microtask on `work`), after Ap
   (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix R.
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated invalid-index G41V1–V4 negative interoperability — 2026-11-12
+Owner authorization `b6fe5d5` (bounded lab-only microtask on `work`), after Appendix R checkpoint
+`0b9cb26`. Executed on clean `work`, fast-forwarded to HEAD
+`b6fe5d51792e698abba1abe85ee1b2bc58a885e5`; markers + profile blob unchanged; `cwal-check` OK.
+- **Harness extension (`lab/ao004/g41_master.cpp` only):** hardcoded index replaced by bounded `--index`
+  accepting **0 or 1** (default 0), rejected before any channel; strict bounded numeric parsing (no
+  `std::stoi`) rejects negative/overflowing/junk values and unknown options with exit 2. Endpoint
+  `10.77.0.2:20000`, link 3→4, pinned OpenDNP3 3.1.2, fixed values, variations 1–4, Direct Operate with
+  response and single-command behavior preserved. Callback files unmodified.
+- **Isolation preflight:** `--network none`, not privileged, caps NET_ADMIN/NET_RAW/SYS_ADMIN; `lo` only/0
+  routes pre-topology; topology `10.77.0.1/24` ↔ `10.77.0.2/24` one veth, no default route,
+  `ip_forward=0`, no DNS/route; host baseline unchanged.
+- **Negative matrix (index 1, one per variation):** master task summary `SUCCESS` but per-point
+  `state=INIT status=UNDEFINED` (**no `OUT_OF_RANGE`**); outstation responds with a generic error RESPONSE
+  (IIN **FuncUnknown** `0x0080`, **no** command-status object); fixture `count=0`, state unchanged
+  (fail-closed, zero memory writes). Task completion/exit 0 alone is **not** a pass.
+- **Root cause (observed, not repaired — out of scope):** the fixture returns `ControlOutOfRange`, but the
+  public bridge (`WriteAnalogOutput`) discards the status and returns only the error, so the outstation
+  emits an error response instead of an `OUT_OF_RANGE` command status — a status-propagation gap.
+- **Positive control (index 0):** 4/4 PASS — master point `SUCCESS`, response echo idx=0 command-status
+  `0x00`, fixture accepted correct typed values (int32:2300, int16:12345, float32:1.5 bits=0x3fc00000,
+  float64:1.5 bits=0x3ff8000000000000). No regression.
+- **Go gates:** gofmt N/A (no Go change); outstation + fixture tests ok; `go test ./...` 25 packages ok;
+  vet OK; build OK; `-race` OK; `git diff --check` OK.
+- **Result:** **`INVALID_INDEX_NEGATIVE_PARTIAL`**. Cleanup complete; host baseline unchanged
+  (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix S.
+Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no
+`main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
