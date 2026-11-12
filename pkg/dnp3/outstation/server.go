@@ -32,6 +32,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -514,55 +515,134 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 
 // WriteAnalogOutput handles writing an analog output from the master.
 // Converts internal value to public ControlOutput and delegates to commandHandler.
+// AO-002: Group 41 Variation 1 (int32) is carried as a typed
+// AnalogInt32CommandValue with DirectOperate semantics (the supported mode);
+// SelectThenOperate is not falsely presented. AO-003 adds the typed G41V2
+// (int16), G41V3 (float32) and G41V4 (float64) carriers under the same
+// DirectOperate-with-response semantics and the owner-approved float policy.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
 	if h.commandHandler == nil {
 		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert interface{} to float64
-	var floatValue float64
-	switch v := value.(type) {
-	case int16:
-		floatValue = float64(v)
-	case uint16:
-		floatValue = float64(v)
-	case int32:
-		floatValue = float64(v)
-	case uint32:
-		floatValue = float64(v)
-	case float32:
-		floatValue = float64(v)
-	case float64:
-		floatValue = v
-	default:
-		floatValue = 0
-	}
-
-	debugLog("WriteAnalogOutput: index=%d, value=%v, variation=%d", index, floatValue, variation)
-
 	cmd := &types.ControlOutput{
 		Group:       41, // Analog Output
 		Variation:   variation,
 		Index:       index,
-		Value:       &types.AnalogCommandValue{Value: floatValue},
-		CommandType: types.SelectThenOperate,
+		CommandType: types.DirectOperate,
 	}
+
+	if variation == 1 {
+		// G41V1: signed int32. The value arrives as int32 from the outstation
+		// G41V1 parser; int16 is also accepted for direct bridge callers.
+		var intVal int32
+		switch v := value.(type) {
+		case int32:
+			intVal = v
+		case int16:
+			intVal = int32(v)
+		default:
+			return fmt.Errorf("unsupported G41V1 analog output type: %T", value)
+		}
+		cmd.Value = &types.AnalogInt32CommandValue{Value: intVal}
+	} else if variation == 2 {
+		// G41V2 (AO-003): signed int16. The value arrives as int16 from the
+		// outstation G41V2 parser; an in-range int32 is also accepted for direct
+		// bridge callers (an out-of-range int32 is rejected, not narrowed).
+		var intVal int16
+		switch v := value.(type) {
+		case int16:
+			intVal = v
+		case int32:
+			if v < math.MinInt16 || v > math.MaxInt16 {
+				return fmt.Errorf("G41V2 analog output value %d out of int16 range", v)
+			}
+			intVal = int16(v)
+		default:
+			return fmt.Errorf("unsupported G41V2 analog output type: %T", value)
+		}
+		cmd.Value = &types.AnalogInt16CommandValue{Value: intVal}
+	} else if variation == 3 {
+		// G41V3 (AO-003): single-precision IEEE-754 float. The value arrives as
+		// float32 from the outstation G41V3 parser (exact bits preserved). A float64
+		// is accepted only when exactly representable as float32. NaN and ±Inf are
+		// rejected (owner-approved AO-003 float policy).
+		var f float32
+		switch v := value.(type) {
+		case float32:
+			f = v
+		case float64:
+			c := float32(v)
+			if float64(c) != v || math.IsInf(float64(c), 0) {
+				return fmt.Errorf("G41V3 analog output value %v is not exactly representable as float32", v)
+			}
+			f = c
+		default:
+			return fmt.Errorf("unsupported G41V3 analog output type: %T", value)
+		}
+		if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+			return fmt.Errorf("G41V3 analog output value must be finite")
+		}
+		cmd.Value = &types.AnalogFloat32CommandValue{Value: f}
+	} else if variation == 4 {
+		// G41V4 (AO-003): double-precision IEEE-754 float. The value arrives as
+		// float64 from the outstation G41V4 parser (exact bits preserved). Only a
+		// float64 source is accepted; NaN and ±Inf are rejected (owner-approved
+		// AO-003 float policy).
+		f, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unsupported G41V4 analog output type: %T", value)
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("G41V4 analog output value must be finite")
+		}
+		cmd.Value = &types.AnalogFloat64CommandValue{Value: f}
+	} else {
+		// Out of AO-002 scope (only Variation 1 is implemented). Retain the
+		// generic float64 carrier for API continuity.
+		var floatValue float64
+		switch v := value.(type) {
+		case int16:
+			floatValue = float64(v)
+		case uint16:
+			floatValue = float64(v)
+		case int32:
+			floatValue = float64(v)
+		case uint32:
+			floatValue = float64(v)
+		case float32:
+			floatValue = float64(v)
+		case float64:
+			floatValue = v
+		default:
+			floatValue = 0
+		}
+		cmd.Value = &types.AnalogCommandValue{Value: floatValue}
+	}
+
+	debugLog("WriteAnalogOutput: index=%d, variation=%d", index, variation)
 
 	status, err := h.commandHandler.HandleAnalogCommand(cmd)
 	if err != nil {
 		debugLog("WriteAnalogOutput ERROR: %v", err)
 		return err
 	}
-	if status != nil && *status != types.ControlSuccess {
-		// MEXT-024: see WriteBinaryOutput — a non-success status with no error
-		// must not surface as ControlSuccess.
+	// AO-002 F2: fail closed. Only an explicit ControlSuccess is success. A nil
+	// status (handler returned (nil, nil)) or any non-success status must not be
+	// coerced into success — otherwise the outstation echoes a SUCCESS command
+	// status for a command the handler did not actually accept.
+	if status == nil {
+		debugLog("WriteAnalogOutput: nil status -> failure (not success)")
+		return fmt.Errorf("command handler returned no status")
+	}
+	if *status != types.ControlSuccess {
+		// MEXT-024: a handler that signals a non-success status with no error
+		// must NOT surface as ControlSuccess.
 		debugLog("WriteAnalogOutput: non-success status %d -> failure", *status)
 		return fmt.Errorf("command rejected by handler: status %d", *status)
 	}
-	if status != nil {
-		debugLog("WriteAnalogOutput result: status=%d", *status)
-	}
+	debugLog("WriteAnalogOutput result: status=%d", *status)
 	return nil
 }
 

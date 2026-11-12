@@ -67,6 +67,10 @@ var (
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrBufferFull      = errors.New("event buffer full")
 	ErrTransportNotSet = errors.New("transport not configured")
+	// ErrNotSupported: the request cannot be executed because the configured
+	// data handler does not support the required operation. Fail-closed: a
+	// non-success response is returned rather than a false success (AO-002 F1).
+	ErrNotSupported = errors.New("operation not supported by data handler")
 	// SBO errors
 	ErrSelectTimeout   = errors.New("select timeout - no operate received")
 	ErrNoSelectPending = errors.New("no select pending for this point")
@@ -1560,8 +1564,8 @@ func parseControlObjectHeader(data []byte) (group, variation uint8, count int, i
 
 // handleWrite handles WRITE requests.
 func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
-	// Parse write request header (group, variation, qualifier, count, index).
-	group, variation, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
+	// Parse write request header (group, qualifier, count, index).
+	group, _, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		o.iin.ParameterError = true
 		return nil, ErrInvalidRequest
@@ -1607,67 +1611,16 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 			}
 			dataIdx += 11
 
-		case 41, 42, 43, 44: // Analog outputs
-			// Parse analog value based on variation
-			var value interface{}
-			switch variation {
-			case 1, 5: // 16-bit signed
-				if dataIdx+2 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = int16(req.Data[dataIdx])<<8 | int16(req.Data[dataIdx+1])
-				dataIdx += 2
-			case 2, 6: // 16-bit unsigned
-				if dataIdx+2 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = uint16(req.Data[dataIdx])<<8 | uint16(req.Data[dataIdx+1])
-				dataIdx += 2
-			case 3, 7: // 32-bit signed
-				if dataIdx+4 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = int32(req.Data[dataIdx])<<24 | int32(req.Data[dataIdx+1])<<16 | int32(req.Data[dataIdx+2])<<8 | int32(req.Data[dataIdx+3])
-				dataIdx += 4
-			case 4, 8: // 32-bit unsigned
-				if dataIdx+4 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				value = uint32(req.Data[dataIdx])<<24 | uint32(req.Data[dataIdx+1])<<16 | uint32(req.Data[dataIdx+2])<<8 | uint32(req.Data[dataIdx+3])
-				dataIdx += 4
-			case 9, 10: // 32-bit float
-				if dataIdx+4 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				bits := uint32(req.Data[dataIdx])<<24 | uint32(req.Data[dataIdx+1])<<16 | uint32(req.Data[dataIdx+2])<<8 | uint32(req.Data[dataIdx+3])
-				value = math.Float32frombits(bits)
-				dataIdx += 4
-			case 13, 14: // 64-bit double
-				if dataIdx+8 > len(req.Data) {
-					o.iin.ParameterError = true
-					return nil, ErrInvalidRequest
-				}
-				bits := uint64(req.Data[dataIdx])<<56 | uint64(req.Data[dataIdx+1])<<48 | uint64(req.Data[dataIdx+2])<<40 | uint64(req.Data[dataIdx+3])<<32 |
-					uint64(req.Data[dataIdx+4])<<24 | uint64(req.Data[dataIdx+5])<<16 | uint64(req.Data[dataIdx+6])<<8 | uint64(req.Data[dataIdx+7])
-				value = math.Float64frombits(bits)
-				dataIdx += 8
-			default:
-				o.iin.ParameterError = true
-				return nil, fmt.Errorf("unsupported analog variation: %d", variation)
-			}
+		case 41: // Analog Output (Group 41)
+			// Fail closed (AO-004 pre-PR corrective F2): the approved G41 command
+			// profile permits only FuncDirectOperate WITH RESPONSE. An application
+			// WRITE carrying any G41 object must not invoke a host analog command
+			// handler or mutate state, and must not be acknowledged as success.
+			// The G41 value is never decoded here; the request is rejected before
+			// any side effect regardless of variation or record shape.
+			o.iin.ParameterError = true
+			return nil, fmt.Errorf("G41 analog output is not supported via WRITE; use DirectOperate with response")
 
-			// Call the data handler to process the analog output
-			if dh, ok := o.data.(DataWriter); ok {
-				if err := dh.WriteAnalogOutput(index, value, variation); err != nil {
-					o.iin.ParameterError = true
-					return nil, err
-				}
-			}
 		default:
 			o.iin.ParameterError = true
 			return nil, fmt.Errorf("unsupported write group: %d", group)
@@ -1821,26 +1774,47 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	debugLog("handleDirectOperate: received")
 
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	value := make([]byte, len(req.Data)-dataIdx)
 	copy(value, req.Data[dataIdx:])
 
-	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
+	debugLog("handleDirectOperate: group=%d, variation=%d, index=%d, count=%d, valueLen=%d", group, variation, index, count, len(value))
 
-	// Execute the control operation directly
-	if dh, ok := o.data.(DataWriter); ok {
-		debugLog("handleDirectOperate: calling executeControl")
-		err := o.executeControl(dh, group, variation, index, value)
-		if err != nil {
+	// AO-002 F3 / AO-003: this slice supports exactly ONE G41 point per Direct
+	// Operate. Validate the variation, count and record length before any side
+	// effect so a batch, empty, wrong-variation or malformed request is rejected
+	// without calling the output handler and without echoing SUCCESS.
+	// parseControlObjectHeader discards the count for G12V1, whose single-point
+	// behavior is unchanged and covered by the existing CROB suite.
+	if group == 41 {
+		width := g41ValueWidth(variation)
+		if width == 0 || count != 1 || len(value) != width+1 {
+			debugLog("handleDirectOperate: rejecting G41 variation=%d count=%d valueLen=%d", variation, count, len(value))
 			o.iin.ParameterError = true
-			debugLog("handleDirectOperate: executeControl error: %v", err)
-			return nil, err
+			return nil, ErrInvalidRequest
 		}
-	} else {
-		debugLog("handleDirectOperate: data handler does not implement DataWriter!")
+	}
+
+	// Execute the control operation directly.
+	dh, ok := o.data.(DataWriter)
+	if !ok {
+		// AO-002 F1: fail closed. Without a DataWriter the control cannot be
+		// executed, so a success response must never be constructed. For G41V1
+		// the master reads the echoed object's command-status octet, so emitting
+		// a SUCCESS echo here would be reported as a false success despite no
+		// execution. No handler is called and no output state is mutated.
+		debugLog("handleDirectOperate: data handler does not implement DataWriter; failing closed")
+		o.iin.ParameterError = true
+		return nil, ErrNotSupported
+	}
+	debugLog("handleDirectOperate: calling executeControl")
+	if err := o.executeControl(dh, group, variation, index, value); err != nil {
+		o.iin.ParameterError = true
+		debugLog("handleDirectOperate: executeControl error: %v", err)
+		return nil, err
 	}
 
 	resp := &al.APDU{
@@ -1854,7 +1828,45 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil,
 	}
+	// G41 (AO-002 V1 / AO-003 V2): echo the object with the index, the numeric
+	// value and a command-status octet (SUCCESS here — the handler accepted the
+	// value). A handler refusal returns an error above, which yields an error
+	// response the master classifies as a failure (never success), not an echo.
+	if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
+		resp.Data = buildG41EchoObject(variation, index, value)
+	}
 	return resp, nil
+}
+
+// buildG41EchoObject builds the G41 response object echoed for a Direct Operate:
+// group(0x29) variation qualifier(0x28) count(01 00), then the 16-bit index (LE),
+// the little-endian numeric value (taken from the request record) and a SUCCESS
+// command-status octet. The value width follows the variation (V1 int32 = 4
+// octets, V2 int16 = 2 octets, V3 float32 = 4 octets, V4 float64 = 8 octets).
+func buildG41EchoObject(variation uint8, index uint16, requestValue []byte) []byte {
+	width := g41ValueWidth(variation)
+	out := []byte{41, variation, 0x28, 0x01, 0x00, byte(index), byte(index >> 8)}
+	out = append(out, requestValue[:width]...)
+	return append(out, 0x00) // command status = SUCCESS
+}
+
+// g41ValueWidth returns the numeric value width in octets for a supported Group
+// 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets), V3 (float32, 4 octets)
+// and V4 (float64, 8 octets).
+func g41ValueWidth(variation uint8) int {
+	switch variation {
+	case 1:
+		return 4 // int32
+	case 2:
+		return 2 // int16
+	case 3:
+		return 4 // float32
+	case 4:
+		return 8 // float64
+	default:
+		return 0
+	}
 }
 
 // executeControl executes a control operation by parsing the value and calling the DataWriter.
@@ -1877,52 +1889,52 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
 
-	case 41, 42, 43, 44: // Analog outputs
-		// Parse analog value based on variation
-		var val interface{}
-		switch variation {
-		case 1, 5: // 16-bit signed
-			if len(value) < 2 {
-				debugLog("executeControl: AO value too short for signed16, need 2 got %d", len(value))
-				return ErrInvalidRequest
-			}
-			val = int16(value[0])<<8 | int16(value[1])
-		case 2, 6: // 16-bit unsigned
-			if len(value) < 2 {
-				debugLog("executeControl: AO value too short for unsigned16, need 2 got %d", len(value))
-				return ErrInvalidRequest
-			}
-			val = uint16(value[0])<<8 | uint16(value[1])
-		case 3, 7: // 32-bit signed
-			if len(value) < 4 {
-				debugLog("executeControl: AO value too short for signed32, need 4 got %d", len(value))
-				return ErrInvalidRequest
-			}
-			val = int32(value[0])<<24 | int32(value[1])<<16 | int32(value[2])<<8 | int32(value[3])
-		case 4, 8: // 32-bit unsigned
-			if len(value) < 4 {
-				debugLog("executeControl: AO value too short for unsigned32, need 4 got %d", len(value))
-				return ErrInvalidRequest
-			}
-			val = uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
-		case 9, 10: // 32-bit float
-			if len(value) < 4 {
-				debugLog("executeControl: AO value too short for float32, need 4 got %d", len(value))
-				return ErrInvalidRequest
-			}
-			bits := uint32(value[0])<<24 | uint32(value[1])<<16 | uint32(value[2])<<8 | uint32(value[3])
-			val = float64(math.Float32frombits(bits))
-		default:
-			// Try 16-bit unsigned as default
-			if len(value) >= 2 {
-				val = uint16(value[0])<<8 | uint16(value[1])
-			} else {
-				debugLog("executeControl: AO value too short for default, need 2 got %d", len(value))
-				return ErrInvalidRequest
-			}
+	case 41: // Analog Output — AO-002 V1 (int32), AO-003 V2 (int16)/V3 (float32)/V4 (float64), little-endian
+		// G41 object: signed little-endian value then one command-status octet.
+		// Reject any other variation and any wrong length rather than falling back
+		// to a guessed decode.
+		width := g41ValueWidth(variation)
+		if width == 0 {
+			debugLog("executeControl: unsupported G41 variation %d", variation)
+			return ErrInvalidRequest
 		}
-		debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, val)
-		return dh.WriteAnalogOutput(index, val, variation)
+		if len(value) != width+1 {
+			debugLog("executeControl: G41 variation %d value must be %d bytes, got %d", variation, width+1, len(value))
+			return ErrInvalidRequest
+		}
+		switch variation {
+		case 1:
+			intVal := int32(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
+			return dh.WriteAnalogOutput(index, intVal, variation)
+		case 2:
+			intVal := int16(uint16(value[0]) | uint16(value[1])<<8)
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, intVal)
+			return dh.WriteAnalogOutput(index, intVal, variation)
+		case 3: // float32
+			// Reject an inbound NaN/±Inf wire value before any handler side effect
+			// (owner-approved AO-003 float policy); it must never be executed or
+			// echoed as SUCCESS.
+			f := math.Float32frombits(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
+			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+				debugLog("executeControl: rejecting non-finite G41V3 value")
+				return ErrInvalidRequest
+			}
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, f)
+			return dh.WriteAnalogOutput(index, f, variation)
+		default: // 4: float64
+			// Reject an inbound NaN/±Inf wire value before any handler side effect
+			// (owner-approved AO-003 float policy); it must never be executed or
+			// echoed as SUCCESS.
+			f := math.Float64frombits(uint64(value[0]) | uint64(value[1])<<8 | uint64(value[2])<<16 | uint64(value[3])<<24 |
+				uint64(value[4])<<32 | uint64(value[5])<<40 | uint64(value[6])<<48 | uint64(value[7])<<56)
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				debugLog("executeControl: rejecting non-finite G41V4 value")
+				return ErrInvalidRequest
+			}
+			debugLog("executeControl: calling WriteAnalogOutput index=%d value=%v", index, f)
+			return dh.WriteAnalogOutput(index, f, variation)
+		}
 
 	default:
 		debugLog("executeControl: unknown group %d", group)

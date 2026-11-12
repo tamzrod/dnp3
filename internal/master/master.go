@@ -2068,7 +2068,7 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 		m.quarantineOutstation(outstationID)
 		return CommandStatusUnknown, fmt.Errorf("%w: %w", ErrControlOutcomeUnknown, err)
 	}
-	status := resolveOperateStatus(apdu)
+	status := resolveOperateStatus(req, apdu)
 	if status == CommandStatusUnknown {
 		// The response was a valid APDU but carried no parseable command
 		// status: the remote outcome cannot be positively established.
@@ -2094,7 +2094,17 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 // A non-zero status byte is surfaced as-is (never success). An IIN-only
 // response with error IIN is a failure (never success). A truncated G12V1
 // object is a failure (CommandStatusUnknown), never success.
-func resolveOperateStatus(resp *al.Response) CommandStatus {
+func resolveOperateStatus(req *al.APDU, resp *al.Response) CommandStatus {
+	// G41 (AO-002 V1, AO-003 V2): the outstation echoes the object with index, the
+	// numeric value and a command-status octet. The status is accepted only when the
+	// echoed object matches the request's group/variation/index exactly; a missing,
+	// truncated, malformed or mismatched object is never success. There is
+	// deliberately no IIN-only success fallback for G41: a conformant response
+	// carries the object.
+	if group, variation, index, value, ok := controlRequestKey(req); ok && group == 41 && g41ValueWidth(variation) != 0 {
+		return g41CommandStatus(resp.Data, variation, index, value, resp.IIN)
+	}
+
 	status := parseCommandStatus(resp.Data)
 	if status != CommandStatusUnknown {
 		return status
@@ -2111,6 +2121,132 @@ func resolveOperateStatus(resp *al.Response) CommandStatus {
 	return commandStatusFromIIN(resp.IIN)
 }
 
+// controlRequestKey extracts the group, variation, first index and the G41
+// numeric value from a control request APDU's object data (the request header
+// built by buildControlRequest). Only the single-point qualifier 0x28 this slice
+// emits is recognized; any other qualifier yields ok=false, so it is never
+// treated as a matching G41 request. The value is the raw little-endian payload
+// normalized into a uint64 and is meaningful only for the G41 variations this
+// slice emits (four octets for V1/V3, two octets for V2, eight octets for V4);
+// the comparison width is derived from the variation, not from this field alone.
+func controlRequestKey(req *al.APDU) (group, variation uint8, index uint16, value uint64, ok bool) {
+	if req == nil || len(req.Data) < 7 {
+		return 0, 0, 0, 0, false
+	}
+	group = req.Data[0]
+	variation = req.Data[1]
+	// Qualifier 0x28 (16-bit count + 16-bit index): header(5) + index(2 LE).
+	if req.Data[2] != 0x28 {
+		return 0, 0, 0, 0, false
+	}
+	index = uint16(req.Data[5]) | uint16(req.Data[6])<<8
+	if group == 41 {
+		switch g41ValueWidth(variation) {
+		case 8:
+			if len(req.Data) < 15 {
+				return 0, 0, 0, 0, false
+			}
+			for i := 0; i < 8; i++ {
+				value |= uint64(req.Data[7+i]) << (8 * uint(i))
+			}
+		case 4:
+			if len(req.Data) < 11 {
+				return 0, 0, 0, 0, false
+			}
+			value = uint64(uint32(req.Data[7]) | uint32(req.Data[8])<<8 | uint32(req.Data[9])<<16 | uint32(req.Data[10])<<24)
+		case 2:
+			if len(req.Data) < 9 {
+				return 0, 0, 0, 0, false
+			}
+			value = uint64(uint16(req.Data[7]) | uint16(req.Data[8])<<8)
+		default:
+			return 0, 0, 0, 0, false
+		}
+	}
+	return group, variation, index, value, true
+}
+
+// g41ValueWidth returns the numeric value width in octets for a supported Group
+// 41 command variation, or 0 if the variation is not supported. AO-002 covers V1
+// (int32, 4 octets); AO-003 adds V2 (int16, 2 octets), V3 (float32, 4 octets)
+// and V4 (float64, 8 octets).
+func g41ValueWidth(variation uint8) int {
+	switch variation {
+	case 1:
+		return 4 // int32
+	case 2:
+		return 2 // int16
+	case 3:
+		return 4 // float32
+	case 4:
+		return 8 // float64
+	default:
+		return 0
+	}
+}
+
+// g41CommandStatus returns the per-point command status from a G41 response
+// object. The response is accepted only when it is structurally exactly one G41
+// record of the requested variation using qualifier 0x28 (16-bit count = 1,
+// 16-bit index) with no surplus bytes or extra records, and the echoed index AND
+// numeric value both match the request. Any deviation yields
+// CommandStatusUnknown (never success).
+//
+// AO-002 F6: when the echoed per-point status is SUCCESS, it is reconciled
+// against the response IIN before SUCCESS is returned. An error-indicating IIN
+// contradicts a SUCCESS echo, so the IIN's implied failure status wins
+// (FuncUnknown/ObjectUnknown -> NotSupported, ParameterError/BadConfig ->
+// BadFormat, AlreadyExecuting -> AlreadyActive, LocalControl -> Local,
+// BufferOverflow -> Unknown). A clean or non-error IIN leaves SUCCESS. An
+// explicit non-SUCCESS per-point status is never overwritten.
+func g41CommandStatus(data []byte, variation uint8, wantIndex uint16, wantValue uint64, iin al.IIN) CommandStatus {
+	idx, value, status, ok := parseG41Record(data, 0, variation)
+	if !ok || idx != wantIndex || value != wantValue {
+		return CommandStatusUnknown
+	}
+	if status == CommandStatusSuccess {
+		return commandStatusFromIIN(iin)
+	}
+	return status
+}
+
+// parseG41Record reads a single G41 record of the given variation at the given
+// header offset. The only supported qualifier is 0x28 (16-bit count + 16-bit
+// index) with a count of exactly 1; the record is exactly header(5) + index(2 LE)
+// + value(LE, g41ValueWidth octets) + status(1) with no surplus bytes. The legacy
+// 0x00 branch is not accepted as a valid G41 control record. ok is false for any
+// other shape or an unsupported variation.
+func parseG41Record(data []byte, offset int, variation uint8) (index uint16, value uint64, status CommandStatus, ok bool) {
+	width := g41ValueWidth(variation)
+	if width == 0 {
+		return 0, 0, 0, false
+	}
+	recordLen := 5 + 2 + width + 1
+	if offset < 0 || offset+recordLen != len(data) {
+		return 0, 0, 0, false
+	}
+	if data[offset] != 41 || data[offset+1] != variation || data[offset+2] != 0x28 {
+		return 0, 0, 0, false
+	}
+	count := int(data[offset+3]) | int(data[offset+4])<<8
+	if count != 1 {
+		return 0, 0, 0, false
+	}
+	index = uint16(data[offset+5]) | uint16(data[offset+6])<<8
+	switch width {
+	case 8:
+		for i := 0; i < 8; i++ {
+			value |= uint64(data[offset+7+i]) << (8 * uint(i))
+		}
+	case 4:
+		value = uint64(uint32(data[offset+7]) | uint32(data[offset+8])<<8 | uint32(data[offset+9])<<16 | uint32(data[offset+10])<<24)
+	case 2:
+		value = uint64(uint16(data[offset+7]) | uint16(data[offset+8])<<8)
+	}
+	status = CommandStatus(data[offset+7+width])
+	return index, value, status, true
+}
+
 // containsG12V1Header reports whether the object data contains a Group 12
 // Variation 1 object header. It distinguishes an IIN-only response (no
 // object at all) from a truncated G12V1 response (header present but status
@@ -2118,7 +2254,7 @@ func resolveOperateStatus(resp *al.Response) CommandStatus {
 func containsG12V1Header(data []byte) bool {
 	offset := 0
 	for offset+4 <= len(data) {
-		if data[offset] == 12 && data[offset+1] == 1 {
+		if isControlObject(data[offset], data[offset+1]) {
 			return true
 		}
 		next, ok := skipObject(data, offset, data[offset], data[offset+1], data[offset+2])
@@ -3093,99 +3229,58 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			return nil
 		}
 
-	case 41, 42, 43, 44:
-		// Analog Output - encoding must match variation
+	case 41:
+		// Group 41 (Analog Output). AO-002 implements Variation 1 (32-bit signed
+		// integer); AO-003 adds Variation 2 (16-bit signed integer) and Variation 3
+		// (single-precision IEEE-754 float). Per the verified independent OpenDNP3
+		// 3.1.2 reference (docs/verification/AO-001.md), a G41 object is a value
+		// serialized little-endian followed by one command-status octet. Any other
+		// Group 41 variation, a wrong value type, a non-integral float, an
+		// out-of-range integer, or a NaN/±Inf float is rejected before sending.
 		switch variation {
-		case 1, 5: // 16-bit signed int
-			var intVal int16
-			switch v := value.(type) {
-			case float64:
-				intVal = int16(v)
-			case float32:
-				intVal = int16(v)
-			case int16:
-				intVal = v
-			case int32:
-				intVal = int16(v)
-			case int64:
-				intVal = int16(v)
-			default:
-				return nil
-			}
-			valueBytes = []byte{byte(intVal >> 8), byte(intVal)}
-
-		case 2, 6: // 16-bit unsigned int
-			var uintVal uint16
-			switch v := value.(type) {
-			case float64:
-				uintVal = uint16(v)
-			case float32:
-				uintVal = uint16(v)
-			case uint16:
-				uintVal = v
-			case uint32:
-				uintVal = uint16(v)
-			case int16:
-				uintVal = uint16(v)
-			default:
-				return nil
-			}
-			valueBytes = []byte{byte(uintVal >> 8), byte(uintVal)}
-
-		case 3, 7: // 32-bit signed int
-			var intVal int32
-			switch v := value.(type) {
-			case float64:
-				intVal = int32(v)
-			case float32:
-				intVal = int32(v)
-			case int32:
-				intVal = v
-			case int16:
-				intVal = int32(v)
-			default:
+		case 1:
+			intVal, ok := controlInt32Value(value)
+			if !ok {
 				return nil
 			}
 			valueBytes = []byte{
-				byte(intVal >> 24), byte(intVal >> 16),
-				byte(intVal >> 8), byte(intVal),
+				byte(intVal), byte(intVal >> 8), byte(intVal >> 16), byte(intVal >> 24),
+				0x00, // request object command status (SUCCESS)
 			}
-
-		case 4, 8: // 32-bit unsigned int
-			var uintVal uint32
-			switch v := value.(type) {
-			case float64:
-				uintVal = uint32(v)
-			case float32:
-				uintVal = uint32(v)
-			case uint32:
-				uintVal = v
-			case uint16:
-				uintVal = uint32(v)
-			default:
+		case 2:
+			intVal, ok := controlInt16Value(value)
+			if !ok {
 				return nil
 			}
 			valueBytes = []byte{
-				byte(uintVal >> 24), byte(uintVal >> 16),
-				byte(uintVal >> 8), byte(uintVal),
+				byte(intVal), byte(intVal >> 8),
+				0x00, // request object command status (SUCCESS)
 			}
-
-		case 9, 10: // 32-bit float
-			var floatVal float32
-			switch v := value.(type) {
-			case float64:
-				floatVal = float32(v)
-			case float32:
-				floatVal = v
-			default:
+		case 3:
+			// V3 float32: reject NaN/±Inf before transmission; preserve the exact
+			// IEEE-754 bits (including signed zero and subnormals) via Float32bits.
+			f, ok := controlFloat32Value(value)
+			if !ok {
 				return nil
 			}
-			bits := float32ToUint32Bits(floatVal)
+			bits := math.Float32bits(f)
 			valueBytes = []byte{
-				byte(bits >> 24), byte(bits >> 16),
-				byte(bits >> 8), byte(bits),
+				byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24),
+				0x00, // request object command status (SUCCESS)
 			}
-
+		case 4:
+			// V4 float64: reject NaN/±Inf before transmission; preserve the exact
+			// IEEE-754 bits (including signed zero and subnormals) via Float64bits.
+			f, ok := controlFloat64Value(value)
+			if !ok {
+				return nil
+			}
+			bits := math.Float64bits(f)
+			valueBytes = []byte{
+				byte(bits), byte(bits >> 8), byte(bits >> 16), byte(bits >> 24),
+				byte(bits >> 32), byte(bits >> 40), byte(bits >> 48), byte(bits >> 56),
+				0x00, // request object command status (SUCCESS)
+			}
 		default:
 			return nil
 		}
@@ -3281,8 +3376,13 @@ const (
 	CommandStatusNotSupported CommandStatus = 4
 	// CommandStatusAlreadyActive indicates the output is already in that state.
 	CommandStatusAlreadyActive CommandStatus = 5
-	// CommandStatusBlocked indicates the output is blocked from operation.
-	CommandStatusBlocked CommandStatus = 6
+	// CommandStatusHardwareError indicates something is stopping the command,
+	// often a local/remote interlock (IEEE 1815 command status 6). The pinned
+	// OpenDNP3 3.1.2 reference names code 6 HARDWARE_ERROR.
+	CommandStatusHardwareError CommandStatus = 6
+	// CommandStatusBlocked is a deprecated alias for CommandStatusHardwareError.
+	// Code 6 is HARDWARE_ERROR in the reference; the wire value is unchanged.
+	CommandStatusBlocked = CommandStatusHardwareError
 	// CommandStatusLocal indicates the output is in local control mode.
 	CommandStatusLocal CommandStatus = 7
 	// CommandStatusTooMany indicates too many commands are queued.
@@ -3309,8 +3409,8 @@ func parseCommandStatus(data []byte) CommandStatus {
 		variation := data[offset+1]
 		qualifier := data[offset+2]
 
-		if group == 12 && variation == 1 {
-			return commandStatusForQualifier(data, offset, qualifier)
+		if isControlObject(group, variation) {
+			return commandStatusForQualifier(data, offset, group, variation, qualifier)
 		}
 		// Skip this object header + its data to continue scanning.
 		next, ok := skipObject(data, offset, group, variation, qualifier)
@@ -3322,29 +3422,58 @@ func parseCommandStatus(data []byte) CommandStatus {
 	return CommandStatusUnknown
 }
 
-// commandStatusForQualifier reads the per-point command status byte from a G12V1
-// object at the given header offset for the given qualifier. The response CROB
-// layout mirrors the request: code(1), count(1), onTime(4), offTime(4),
-// status(1) — the status byte is the command status. For the index-only
-// qualifier (0x00) the per-point index (2 octets) precedes the CROB value.
-func commandStatusForQualifier(data []byte, offset int, qualifier uint8) CommandStatus {
+// isControlObject reports whether group/variation is a control object whose
+// response echoes a per-point command status. AO-002 covers Group 12 Variation 1
+// (CROB) and Group 41 Variation 1 (32-bit signed analog output); AO-003 adds
+// Group 41 Variation 2 (16-bit signed analog output).
+func isControlObject(group, variation uint8) bool {
+	return (group == 12 && variation == 1) || (group == 41 && g41ValueWidth(variation) != 0)
+}
+
+// controlPointValueSize returns the per-point value size in octets (value plus
+// the trailing command-status octet) for a control object, or 0 if unknown.
+func controlPointValueSize(group, variation uint8) int {
+	switch {
+	case group == 12 && variation == 1:
+		return 11 // code(1)+count(1)+onTime(4)+offTime(4)+status(1)
+	case group == 41:
+		if w := g41ValueWidth(variation); w != 0 {
+			return w + 1 // numeric value(w)+status(1)
+		}
+	}
+	return 0
+}
+
+// commandStatusForQualifier reads the per-point command status byte from a
+// control object (G12V1 CROB or G41V1 analog output) at the given header offset
+// for the given qualifier. The response object echoes the request: for CROB
+// code(1), count(1), onTime(4), offTime(4), status(1); for G41V1 an int32
+// value(4) then status(1) — the last octet is the command status. For the
+// index-only qualifier (0x00) and the 16-bit count+index qualifier (0x28) the
+// per-point index (2 octets) precedes the value.
+func commandStatusForQualifier(data []byte, offset int, group, variation, qualifier uint8) CommandStatus {
+	pointSize := controlPointValueSize(group, variation)
+	if pointSize == 0 {
+		return CommandStatusUnknown
+	}
+	statusInPoint := pointSize - 1
 	switch qualifier {
-	case 0x00: // index-only: header(4) + index(2) + CROB(11)
-		statusIdx := offset + 4 + 2 + 10
+	case 0x00: // index-only: header(4) + index(2) + point
+		statusIdx := offset + 4 + 2 + statusInPoint
 		if statusIdx < len(data) {
 			return CommandStatus(data[statusIdx])
 		}
-	case 0x28: // 16-bit count + 16-bit index: header(5) + index(2) + CROB(11)
-		statusIdx := offset + 5 + 2 + 10
+	case 0x28: // 16-bit count + 16-bit index: header(5) + index(2) + point
+		statusIdx := offset + 5 + 2 + statusInPoint
 		if statusIdx < len(data) {
 			return CommandStatus(data[statusIdx])
 		}
-	case 0x07, 0x27: // count8/count16: header(4) [+count16(2)] + CROB(11)
+	case 0x07, 0x27: // count8/count16: header(4) [+count16(2)] + point (no index prefix)
 		hdrLen := 4
 		if qualifier == 0x27 {
 			hdrLen = 5
 		}
-		statusIdx := offset + hdrLen + 10
+		statusIdx := offset + hdrLen + statusInPoint
 		if statusIdx < len(data) {
 			return CommandStatus(data[statusIdx])
 		}
@@ -3388,7 +3517,7 @@ func skipObject(data []byte, offset int, group, variation, qualifier uint8) (int
 		count := int(data[offset+3]) | int(data[offset+4])<<8
 		return offset + 5 + count*pointSize, true
 	case 0x28:
-		if group == 12 && variation == 1 {
+		if isControlObject(group, variation) {
 			// 16-bit count + 16-bit index (control): header(5) then
 			// count * (index(2) + point payload).
 			if offset+5 > len(data) {
@@ -3418,9 +3547,12 @@ func objectLayout(group, variation, qualifier uint8) (pointSize int, hasIndexPre
 	switch {
 	case group == 12 && variation == 1:
 		return 11, qualifier == 0x00 || qualifier == 0x28, 2 // CROB; count+index uses a 2-octet index
-	default:
-		return 0, false, 0
+	case group == 41:
+		if w := g41ValueWidth(variation); w != 0 {
+			return w + 1, qualifier == 0x00 || qualifier == 0x28, 2 // G41 numeric value + status
+		}
 	}
+	return 0, false, 0
 }
 
 // WriteBinaryOutput writes a binary output (CROB) to an outstation.
@@ -3618,6 +3750,104 @@ func reflectValue(v interface{}) int64 {
 	default:
 		return 0
 	}
+}
+
+// controlInt32Value converts a control value to a signed 32-bit integer for the
+// Group 41 Variation 1 analog-output path. It rejects (ok=false) any value that
+// is not an exactly-representable, in-range int32: a float (even an integral
+// one) is rejected rather than silently truncated or rounded, and an int/int64
+// outside the int32 range is rejected rather than wrapped. The caller treats a
+// false result as a definite pre-send rejection.
+func controlInt32Value(value interface{}) (int32, bool) {
+	switch v := value.(type) {
+	case int32:
+		return v, true
+	case int:
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, false
+		}
+		return int32(v), true
+	case int64:
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, false
+		}
+		return int32(v), true
+	default:
+		return 0, false
+	}
+}
+
+// controlInt16Value returns the exact int16 carried by a G41V2 value, rejecting
+// any source that is not an exactly-representable, in-range integer (an out-of-
+// range value is rejected rather than wrapped/truncated). The caller treats a
+// false result as a definite pre-send rejection.
+func controlInt16Value(value interface{}) (int16, bool) {
+	switch v := value.(type) {
+	case int16:
+		return v, true
+	case int32:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
+	case int:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
+	case int64:
+		if v < math.MinInt16 || v > math.MaxInt16 {
+			return 0, false
+		}
+		return int16(v), true
+	default:
+		return 0, false
+	}
+}
+
+// controlFloat32Value returns the exact float32 carried by a G41V3 value. NaN
+// and ±Inf are rejected before transmission (the owner-approved AO-003 float
+// policy), as is any source type that is not exactly representable as a float32:
+// a float64 is accepted only when converting to float32 and back is bit-exact
+// (rejecting precision loss, overflow to ±Inf and subnormal underflow to zero).
+// Signed zero is preserved because the value is compared by bits, not by ==. The
+// caller treats a false result as a definite pre-send rejection.
+func controlFloat32Value(value interface{}) (float32, bool) {
+	var f float32
+	switch v := value.(type) {
+	case float32:
+		f = v
+	case float64:
+		c := float32(v)
+		if float64(c) != v || math.IsInf(float64(c), 0) {
+			return 0, false
+		}
+		f = c
+	default:
+		return 0, false
+	}
+	if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+		return 0, false
+	}
+	return f, true
+}
+
+// controlFloat64Value returns the exact float64 carried by a G41V4 value. NaN
+// and ±Inf are rejected before transmission (the owner-approved AO-003 float
+// policy). Only a float64 source is accepted: unlike V3 there is no narrower
+// carrier to promote, and a float32 source is deliberately rejected so an
+// accidental width mismatch at the API boundary is not silently widened. Signed
+// zero is preserved because the value is compared by bits, not by ==. The caller
+// treats a false result as a definite pre-send rejection.
+func controlFloat64Value(value interface{}) (float64, bool) {
+	f, ok := value.(float64)
+	if !ok {
+		return 0, false
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
 }
 
 // =============================================================================

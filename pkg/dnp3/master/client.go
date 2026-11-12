@@ -2041,6 +2041,22 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, fmt.Errorf("%w: unknown command type %d", dnp3.ErrUnsupportedOption, command.CommandType)
 	}
 
+	// Fail-closed object gate (AO-002/AO-003): admit only the verified control
+	// objects — Group 12 Variation 1 (CROB), Group 41 Variation 1 (int32 analog
+	// output), Group 41 Variation 2 (int16 analog output), Group 41 Variation 3
+	// (float32 analog output) and Group 41 Variation 4 (float64 analog output),
+	// DirectOperate-with-response. Any other group/variation is rejected before
+	// any wire traffic rather than encoded and sent.
+	switch {
+	case command.Group == 12 && command.Variation == 1:
+		// CROB (existing behavior)
+	case command.Group == 41 && (command.Variation == 1 || command.Variation == 2 || command.Variation == 3 || command.Variation == 4):
+		// G41V1 int32 / G41V2 int16 / G41V3 float32 / G41V4 float64 analog output
+	default:
+		release()
+		return nil, fmt.Errorf("%w: unsupported control object group %d variation %d", dnp3.ErrUnsupportedOption, command.Group, command.Variation)
+	}
+
 	// Translate command
 	selectThenOperate := false // DirectOperate only in v0
 
@@ -2049,6 +2065,14 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	switch v := command.Value.(type) {
 	case *types.BinaryCommandValue:
 		rawValue = v.Value // bool
+	case *types.AnalogInt32CommandValue:
+		rawValue = v.Value // int32 (G41V1)
+	case *types.AnalogInt16CommandValue:
+		rawValue = v.Value // int16 (G41V2)
+	case *types.AnalogFloat32CommandValue:
+		rawValue = v.Value // float32 (G41V3)
+	case *types.AnalogFloat64CommandValue:
+		rawValue = v.Value // float64 (G41V4)
 	case *types.AnalogCommandValue:
 		rawValue = v.Value // float64
 	default:
@@ -2140,8 +2164,8 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 		return types.ControlNotSupported
 	case master.CommandStatusAlreadyActive:
 		return types.ControlAlreadyActive
-	case master.CommandStatusBlocked:
-		return types.ControlBlocked
+	case master.CommandStatusHardwareError:
+		return types.ControlHardwareError
 	case master.CommandStatusLocal:
 		return types.ControlLocal
 	case master.CommandStatusTooMany:

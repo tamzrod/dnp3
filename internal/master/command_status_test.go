@@ -78,7 +78,7 @@ func TestParseCommandStatusVectors(t *testing.T) {
 		{"bad_format", 3, CommandStatusBadFormat},
 		{"not_supported", 4, CommandStatusNotSupported},
 		{"already_active", 5, CommandStatusAlreadyActive},
-		{"blocked", 6, CommandStatusBlocked},
+		{"hardware_error", 6, CommandStatusHardwareError},
 		{"local", 7, CommandStatusLocal},
 		{"too_many", 8, CommandStatusTooMany},
 		{"not_authorized", 9, CommandStatusNotAuthorized},
@@ -137,7 +137,7 @@ func TestOperateWithStatusSuccessRejected(t *testing.T) {
 	}{
 		{"success", 0, CommandStatusSuccess},
 		{"rejected_not_supported", 4, CommandStatusNotSupported},
-		{"rejected_blocked", 6, CommandStatusBlocked},
+		{"rejected_hardware_error", 6, CommandStatusHardwareError},
 		{"rejected_no_select", 2, CommandStatusNoSelect},
 	}
 	for _, tc := range cases {

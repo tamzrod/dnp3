@@ -1,6 +1,7 @@
 package types
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -181,6 +182,97 @@ func TestNewAnalogControl(t *testing.T) {
 	}
 }
 
+// TestNewAnalogInt32Control locks the AO-002 G41V1 constructor: Group 41
+// Variation 1, a typed int32 carrier, and DirectOperate.
+func TestNewAnalogInt32Control(t *testing.T) {
+	cmd := NewAnalogInt32Control(7, -1234, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 1 {
+		t.Errorf("group/variation = %d/%d, want 41/1", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogInt32CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogInt32CommandValue", cmd.Value)
+	}
+	if v.Value != -1234 {
+		t.Errorf("value = %d, want -1234", v.Value)
+	}
+}
+
+// TestNewAnalogInt16Control locks the AO-003 G41V2 constructor: Group 41
+// Variation 2, a typed int16 carrier, and DirectOperate.
+func TestNewAnalogInt16Control(t *testing.T) {
+	cmd := NewAnalogInt16Control(7, -1234, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 2 {
+		t.Errorf("group/variation = %d/%d, want 41/2", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogInt16CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogInt16CommandValue", cmd.Value)
+	}
+	if v.Value != -1234 {
+		t.Errorf("value = %d, want -1234", v.Value)
+	}
+}
+
+// TestNewAnalogFloat32Control locks the AO-003 G41V3 constructor: Group 41
+// Variation 3, a typed float32 carrier preserving the exact bits, and
+// DirectOperate.
+func TestNewAnalogFloat32Control(t *testing.T) {
+	cmd := NewAnalogFloat32Control(7, -0.5, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 3 {
+		t.Errorf("group/variation = %d/%d, want 41/3", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogFloat32CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogFloat32CommandValue", cmd.Value)
+	}
+	if math.Float32bits(v.Value) != math.Float32bits(-0.5) {
+		t.Errorf("value bits = %08X, want %08X", math.Float32bits(v.Value), math.Float32bits(-0.5))
+	}
+}
+
+func TestNewAnalogFloat64Control(t *testing.T) {
+	cmd := NewAnalogFloat64Control(7, -0.5, DirectOperate)
+
+	if cmd.Group != 41 || cmd.Variation != 4 {
+		t.Errorf("group/variation = %d/%d, want 41/4", cmd.Group, cmd.Variation)
+	}
+	if cmd.Index != 7 {
+		t.Errorf("Index = %d, want 7", cmd.Index)
+	}
+	if cmd.CommandType != DirectOperate {
+		t.Errorf("CommandType = %v, want DirectOperate", cmd.CommandType)
+	}
+	v, ok := cmd.Value.(*AnalogFloat64CommandValue)
+	if !ok {
+		t.Fatalf("Value type = %T, want *AnalogFloat64CommandValue", cmd.Value)
+	}
+	if math.Float64bits(v.Value) != math.Float64bits(-0.5) {
+		t.Errorf("value bits = %016X, want %016X", math.Float64bits(v.Value), math.Float64bits(-0.5))
+	}
+}
+
 func TestReadRequest(t *testing.T) {
 	req := NewReadRequest(
 		GroupRequest{Group: 1, Variation: 1},
@@ -203,7 +295,7 @@ func TestControlStatus(t *testing.T) {
 		{ControlSuccess, "success"},
 		{ControlTimeout, "timeout"},
 		{ControlNotSupported, "not_supported"},
-		{ControlBlocked, "blocked"},
+		{ControlHardwareError, "hardware_error"},
 		{ControlSuccess + 99, "unknown"},
 	}
 
@@ -213,5 +305,23 @@ func TestControlStatus(t *testing.T) {
 				t.Errorf("ControlStatus.String() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+// TestControlHardwareErrorAlias pins the corrected public status name for wire
+// code 6 (HARDWARE_ERROR per the pinned OpenDNP3 3.1.2 reference) and confirms
+// the deprecated ControlBlocked alias keeps the same numeric value.
+func TestControlHardwareErrorAlias(t *testing.T) {
+	if ControlHardwareError != 6 {
+		t.Fatalf("ControlHardwareError = %d, want 6", ControlHardwareError)
+	}
+	if ControlBlocked != ControlHardwareError {
+		t.Fatalf("deprecated ControlBlocked = %d, want %d (ControlHardwareError)", ControlBlocked, ControlHardwareError)
+	}
+	if ControlHardwareError.String() != "hardware_error" {
+		t.Fatalf("ControlHardwareError.String() = %q, want %q", ControlHardwareError.String(), "hardware_error")
+	}
+	if ControlHardwareError == ControlSuccess {
+		t.Fatalf("ControlHardwareError must not alias ControlSuccess")
 	}
 }

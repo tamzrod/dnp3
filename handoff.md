@@ -1,11 +1,11 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: VEC-01-LAB-EXEC-001
+Package: AO-004
 Branch: work
-CURRENT: VEC-01-LAB-EXEC-001
+CURRENT: AO-004
 QUEUED: NONE
-Status: TASK_BLOCKED
+Status: TASK_IN_PROGRESS
 
 
 
@@ -1096,3 +1096,381 @@ Authorization: owner-approved scoped VEC-01 acceptance / R4 documentation-closur
 
 Next: **STOP for independent read-only review** before any PR/merge/release. `TASK_BLOCKED` retained;
 `main`/CI/release separate; no CURRENT archival or promotion.
+
+---
+
+### SCV analog-output mission activated — 2026-11-11
+Owner accepted scoped VEC-01 v0 evidence and completed pre-PR review; original full CURRENT archived unchanged as `archive/active-work/VEC-01-LAB-EXEC-001.md` (historical `TASK_BLOCKED` markers belong to its past state). PR #26 is OPEN, not merged; this roadmap transition is not a PR/merge/release approval. New CURRENT `AO-001` is a **design-and-golden-contract microtask**, not G41 implementation approval. Read `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md` and `workflow/active_work/AO-001.md`. G41 remains UNSUPPORTED until independently verified; NGCP point list/SBO requirements unknown. JR command: `operation cwal`.
+
+---
+
+### AO-001 checkpoint — G41 contract inventory + authoritative reference (2026-11-11)
+Read-only design microtask. Deliverable `docs/verification/AO-001.md` (no Go/test/profile change;
+G41 remains UNSUPPORTED). Baseline `199b0da`. Six markers unchanged; `scripts/cwal-check.sh` OK.
+- Inventory: G41 master encode `buildControlRequest` (reachable via public `Operate`, **no group gate**);
+  outstation `executeControl`/`handleWrite`; public bridge `server.go` WriteAnalogOutput; internal
+  placeholder `buildAnalogOutputRequest`.
+- Authoritative peer ref (hash-verified OpenDNP3 3.1.2, sha256 `183cc292…a36ff2`): **V1=int32, V2=int16,
+  V3=float32, V4=float64**; value **little-endian** + 1 status octet; qualifiers `0x28`/`0x17`;
+  response echoes object+status; CommandStatus 0–9 map.
+- Divergences D1–D7 recorded (highest: D2 G41 big-endian on both sides = silent/loopback-false-pass;
+  D3 no group gate; D4 G41 response unparseable). Full contract + test matrix + AO-002 sequence in §5–§8.
+Checkpoint `d8e4400` (remote work, verified). Next: **STOP for independent read-only CHECK**; AO-002 needs its own human promotion. No PR/merge/main.
+
+---
+
+### AO-001 closure / AO-002 activation checkpoint — 2026-11-11 (owner-approved transition)
+Owner addendum (`archive/active-work/AO-001.md`, "Owner-approved closure and AO-002 promotion addendum"):
+"Owner authorizes formal AO-001 closure and AO-002 promotion." Independent read-only CHECK accepted
+AO-001 as a read-only technical contract after documentation corrections at `fab31e3` (int32 exactly
+representable by float64; group/variation/qualifier notation corrected in the golden header example).
+- **AO-001 → CLOSED / TASK_CHECKPOINTED.** Original task archived unchanged at
+  `archive/active-work/AO-001.md` (original requirements + owner authorization preserved). Accepted
+  contract: `docs/verification/AO-001.md` (corrected through `fab31e3`).
+- **AO-002 → CURRENT / TASK_IN_PROGRESS** (owner-approved promotion, not a generic auto-promotion).
+  Staged task `workflow/active_work/AO-002.md` — G41V1 signed int32 Direct-Operate-with-response,
+  first bounded slice. **NOT yet executed in this invocation.**
+- G41 remains **UNSUPPORTED** in `active_work/supported-profile.md` until AO-004 independent peer
+  verification and AO-005 approved profile changes.
+- Transition checks: `git diff --check` PASS, `bash scripts/cwal-check.sh` OK; Go build/tests and
+  protocol execution **NOT_RUN** (documentation-only closure).
+Next: **STOP after this transition checkpoint.** AO-002 implementation begins only on a *separate*
+subsequent `operation cwal` invocation. No PR/merge/`main` push.
+
+---
+
+### AO-002 implementation checkpoint — 2026-11-11 (G41V1 int32 Direct Operate, first slice)
+Executed on a separate `operation cwal` invocation after the owner-approved transition. Six markers
+read `Package: AO-002`, `Branch: work`, `CURRENT: AO-002`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`
+at baseline `1e4a0af`. Scope: **Group 41 Variation 1 (signed int32) Direct Operate with response
+only**; V2–V4, SBO, Direct-Operate-No-Response and G42–G44 are **not** implemented or advertised.
+- Master encoder now emits conformant G41V1 (`29 01 28 01 00` + index LE + int32 LE + `00`) and
+  rejects other G41 variations and non-exact/out-of-range values before sending. Independent
+  literals verified: `2300`@0 = `29 01 28 01 00 00 00 FC 08 00 00 00`; `-1` = `29 01 28 01 00 00 00 FF FF FF FF 00`.
+- Master status parser is group-aware (G12V1 + G41V1) and requires the echoed group/variation/index
+  to match; absent, truncated, malformed, mismatched or non-SUCCESS statuses are never success.
+- Outstation parses G41V1 with exact bounded length, rejects unsupported variations/qualifiers and
+  malformed records **without calling the host handler**, and echoes the object with a status octet.
+- Public bridge carries a typed `AnalogInt32CommandValue` with `DirectOperate` semantics; public
+  master gate fails closed (only G12V1 + G41V1 admitted) before any wire traffic.
+- Tests added: master golden/rejection/status-matrix, outstation decode/rejection/echo, public gate
+  and status surface, bridge semantics, typed constructor. G12V1 regression suite unchanged.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` on touched packages PASS, `git diff --check` PASS.
+  `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback tiers; not independent peer proof).
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED** pending AO-004
+  independent verification and AO-005 approved profile changes. Evidence: `docs/verification/AO-002.md`.
+Next: **STOP for independent CHECK.** No AO-003 promotion, no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 corrective checkpoint — F1/F2 fail-closed fixes — 2026-11-11
+Owner addendum "Owner-authorized corrective AO-002 CWAL — F1/F2" (`workflow/active_work/AO-002.md`,
+committed `5ad4391`; baseline `b42e694`). CURRENT AO-002 corrective scope; not a new task. No new
+protocol variation, no public API change.
+- **F1** (`internal/outstation/outstation.go`): `handleDirectOperate` no longer constructs a success
+  response when the data handler is not a `DataWriter`. It fails closed with `ErrNotSupported`
+  (added), sets `ParameterError`, calls no handler and mutates no output state — never a SUCCESS
+  echo. Shared fix for all control objects; verified G12V1 success path unchanged.
+- **F2** (`pkg/dnp3/outstation/server.go`): `WriteAnalogOutput` now requires an explicit
+  `status != nil && *status == ControlSuccess && err == nil`. Nil status, an error, or any
+  non-SUCCESS status fails closed (no synthesized/coerced success).
+- Tests: `internal/outstation/g41v1_f1_failclosed_test.go` (no-DataWriter G41V1+G12V1 negatives,
+  DataWriter positive control with byte-exact SUCCESS echo); `pkg/dnp3/outstation/analog_status_failclosed_test.go`
+  (status matrix + bounded end-to-end false-success propagation). Revert-proof: both suites fail
+  against the pre-fix code.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP
+  loopback; not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §8.
+Next: **STOP for a new independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 corrective checkpoint — F3/F4/F5 + F6 investigation — 2026-11-11
+Owner addendum "Owner-authorized AO-002 corrective CWAL — F3/F4/F5 and F6 investigation"
+(`workflow/active_work/AO-002.md`, committed `3443f87`; audited baseline `59e671b`). CURRENT AO-002
+continuation; not a new package. No new protocol variation, no public API change, no batch commands.
+- **F3** (`internal/outstation/outstation.go`): `handleDirectOperate` now rejects any G41V1 request
+  whose count != 1 or value length != 5 before any `DataWriter` call/state mutation (`ErrInvalidRequest`
+  + ParameterError, never a SUCCESS echo). G12V1 unchanged.
+- **F4** (`internal/master/master.go`): `controlRequestKey` returns the request G41V1 int32 value;
+  `g41v1CommandStatus` requires the echoed value to equal it (plus index/variation). Wrong/zero value →
+  Unknown → ErrControlOutcomeUnknown + quarantine.
+- **F5** (`internal/master/master.go`): `parseG41V1Record` accepts only exactly one qualifier-0x28
+  record, count 1, exact length, no surplus/extra records; legacy 0x00 branch no longer a valid G41V1
+  control record. Empty/truncated/multi/surplus/wrong-qualifier/group/variation/index/value all fail
+  closed. G12V1 parsing untouched.
+- **F6** (investigation, `internal/master/master.go` `resolveOperateStatus`): **CONFIRMED** — a
+  matching G41V1 SUCCESS echo with error-indicating IIN (ParameterError/ObjectUnknown/FuncUnknown/
+  BadConfig/AlreadyExecuting/LocalControl) currently returns CommandStatusSuccess and does not
+  quarantine. Reproduction test added; **no fix applied** (not authorized). Minimal remedy documented
+  for separate owner authorization.
+- Tests: `internal/outstation/g41v1_control_test.go` (F3 count validation + positive control);
+  `internal/master/g41v1_response_structure_test.go` (F4 value match, F5 structure rejections, F6
+  characterization). Revert-proof: F3/F4/F5 tests fail against pre-fix code.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback;
+  not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §9.
+Next: **STOP for independent CHECK.** F6 confirmed but unfixed pending separate authorization.
+AO-003 not authorized; no PR/merge, no `main` push, no release.
+
+---
+
+### AO-002 F6 correction checkpoint — 2026-11-11
+Owner addendum "Owner-authorized AO-002 F6 Correction CWAL" (`workflow/active_work/AO-002.md`,
+committed `9d03f88`; pre-correction baseline `1ebcc59`). CURRENT AO-002 continuation; not closure,
+AO-003, supported-profile change, or new operation mode.
+- **F6** (`internal/master/master.go`, `g41v1CommandStatus`): a structurally valid G41V1 echo whose
+  per-point status is SUCCESS is now reconciled against the response IIN before returning SUCCESS,
+  reusing `commandStatusFromIIN`: FuncUnknown/ObjectUnknown → NotSupported; ParameterError/BadConfig →
+  BadFormat; AlreadyExecuting → AlreadyActive; LocalControl → Local; BufferOverflow (unclassifiable) →
+  Unknown + ErrControlOutcomeUnknown + quarantine. Clean/non-error IIN keeps SUCCESS. An explicit
+  non-SUCCESS per-point status is never overwritten. No new numeric command-status values; G12V1 IIN
+  policy and F1–F5 guards unchanged.
+- Tests: `internal/master/g41v1_response_structure_test.go` — `TestOperateG41V1F6IINContradictsSuccessEcho`
+  rewritten from defect-characterization to desired fail-closed assertions (clear/non-error IIN success;
+  six mapped failures; BufferOverflow ambiguity → Unknown + quarantine);
+  `TestOperateG41V1F6ExplicitNonSuccessStatusPreserved` added. Revert-proof: F6 tests fail against
+  pre-fix `master.go`.
+- Checks: `gofmt` clean, `go build ./...` PASS, `go vet ./...` PASS, `go test ./... -count=1` PASS,
+  `go test -race` (affected pkgs) PASS, `./scripts/verify-external-mvp.sh` PASS (in-repo TCP loopback;
+  not independent peer proof), `git diff --check` PASS, `bash scripts/cwal-check.sh` OK.
+- `active_work/supported-profile.md` **unchanged**: G41 remains **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-002.md` §9.
+Next: **STOP for independent CHECK.** AO-003 not authorized; no PR/merge, no `main` push, no release,
+no task closure.
+
+---
+
+### AO-002 closure → AO-003 promotion transition checkpoint — 2026-11-11
+Owner addendum "Owner-authorized AO-002 closure → AO-003 promotion (documentation-only,
+2026-11-11)" (`archive/active-work/AO-002.md`, committed `1488382`). Independent AO-002 F1–F6 CHECK
+accepted at `8d75292`. Documentation-only transition; no Go/test/CI/protocol changes.
+- **AO-002 CLOSED / TASK_CHECKPOINTED.** Task file (with all owner addenda) archived unchanged by
+  pure rename `workflow/active_work/AO-002.md` → `archive/active-work/AO-002.md` (byte-identical to
+  the pre-rename blob). Verified baseline `8d75292`. Closure evidence: `docs/verification/AO-002.md`
+  §10.
+- **AO-003 CURRENT** (`workflow/active_work/AO-003.md`, header activated to `CURRENT: AO-003`,
+  `Status: TASK_IN_PROGRESS`). Bounded G41 additional-variation implementation and regressions;
+  **implementation not started** — a separate subsequent `operation cwal` is required. No concurrent
+  AO-002/AO-003 CURRENT.
+- Both authority marker blocks changed consistently: `Package: AO-003`, `CURRENT: AO-003`,
+  `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Roadmap `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md`: `AO-002 DONE` (bounded G41V1 + F1–F6 internal
+  verification), `AO-003 CURRENT` (implementation not started); AO-004/AO-005 remain deferred.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains
+  **UNSUPPORTED**; no generalized compliance or production claim.
+- Checks: `git diff --check` PASS; `bash scripts/cwal-check.sh` OK; Go build/tests **NOT_RUN**
+  (documentation-only transition).
+Next: **STOP after remote-verified transition.** Do not execute AO-003 implementation in this
+invocation. No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V2 (int16) bounded slice — 2026-11-11
+Executed under `operation cwal` on the separate invocation the AO-003 task requires. Promotion gate
+verified first: HEAD == `origin/work` == `44429d7`, both marker blocks `Package: AO-003` /
+`CURRENT: AO-003` / `QUEUED: NONE` / `Status: TASK_IN_PROGRESS`, `cwal-check.sh` OK.
+- **One bounded variation delivered: G41V2 (signed int16) Direct Operate with response.** V1
+  (int32) and AO-002 F1–F6 fail-closed behavior preserved. Additive public API
+  (`AnalogInt16CommandValue`, `NewAnalogInt16Control`); master object gate admits G41V2; outstation
+  bridge maps a typed `*types.AnalogInt16CommandValue` with `DirectOperate` semantics.
+- Edit allowlist honored: `internal/master/master.go`, `internal/outstation/outstation.go`,
+  `pkg/dnp3/{master/client.go,outstation/server.go,types/commands.go}`, targeted `*_test.go` in those
+  directories, one `test/integration/g41v2_real_tcp_test.go`, and `docs/verification/AO-003.md` plus
+  these factual checkpoints. `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648…dac1bd5f`) — Group 41 remains **UNSUPPORTED**.
+- Checks: `gofmt` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3);
+  `git diff --check` PASS; `cwal-check.sh` OK.
+- **Blocker/PUSHBACK:** G41V3/V4 (IEEE-754 float) require an owner-approved NaN/Inf/float policy
+  (AO-001 §5.3/§7.4) that is not granted; not implemented rather than guessed.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No PR/merge, no `main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-003 correction checkpoint — missing G41V2 test evidence — 2026-11-11
+Owner addendum "Owner-authorized AO-003 Correction CWAL — missing G41V2 verification tests"
+(`workflow/active_work/AO-003.md`); executed under `operation cwal` at HEAD `01c8684` (ancestry
+`01c8684` → `c192e84` → `44429d7`, confirmed after `git fetch --deepen`; shallow clone). Test/
+evidence-only correction; no production-code, public-API, G41V3/V4, supported-profile, governance or
+archival change.
+- **Audit defect confirmed by direct observation:** the three G41V2 test files named in
+  `docs/verification/AO-003.md` §4 were **ABSENT** at HEAD (`internal/master/g41v2_control_test.go`,
+  `internal/outstation/g41v2_control_test.go`, `pkg/dnp3/master/g41v2_public_test.go`); only
+  `test/integration/g41v2_real_tcp_test.go` existed.
+- **Now actually committed:** the three allowlisted test files, with deterministic in-repo tests
+  (byte-exact G41V2 int16 goldens; out-of-range/wrong-type/non-integral rejection before send; status
+  matrix; mismatched/truncated/surplus/count/qualifier rejection; IIN-contradiction fail-closed;
+  outstation decode/echo and no-handler-call negatives; public constructor/gate/mode rejections).
+- **Revert-proof (mutation) checks actually performed:** G41V2 master big-endian encode, outstation
+  big-endian decode and public-gate removal each made a new test FAIL; production files restored
+  byte-identical to HEAD (`master.go` `ae583312…`, `outstation.go` `b55493c4…`, `client.go` `fa8a9940…`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns match the source
+  directories; the three files were staged with `git add -f`. `.gitignore` unchanged (outside allowlist).
+- Checks: `gofmt` clean (touched files); `go build ./...` PASS; `go vet ./...` PASS;
+  `go test ./... -count=1` PASS; `go test -race` on affected packages PASS;
+  `./scripts/verify-external-mvp.sh` PASS (tiers 1–3; in-repo TCP loopback, not peer proof);
+  `git diff --check` PASS; `bash scripts/cwal-check.sh` OK. Evidence: `docs/verification/AO-003.md` §8.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No G41V3/V4, no closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/
+  SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V3 (float32) bounded slice — 2026-11-11
+Owner authorization "Owner-approved AO-003 IEEE-754 float policy and bounded continuation — V3 then
+V4" (`workflow/active_work/AO-003.md`, commit `f5bc63a`, read back from `origin/work`); executed
+under `operation cwal`. Bounded continuation: **G41V3 (single-precision IEEE-754 float) only**,
+under the owner-approved float policy. G41V4 (float64) is deferred to a separate later invocation
+after a passing independent CHECK on this V3 work.
+- **Preflight:** `bash scripts/cwal-check.sh` OK (`CURRENT=AO-003 branch=work`); local fast-forwarded
+  (non-force) to `origin/work` `f5bc63a`; the six authority markers unchanged.
+- **Wire contract (independent):** G41V3 = four-octet little-endian IEEE-754 float32 + one
+  command-status octet, qualifier `0x28` (count 1). Confirmed against `docs/verification/AO-001.md`
+  §3.1/§6.1 and an independent IEEE-754 computation; no reference contradiction → no PUSHBACK.
+- **Implemented (authorized V3 file set):** `internal/master/master.go` (`g41ValueWidth` +V3=4,
+  `buildControlRequest` V3 case via `math.Float32bits`, new `controlFloat32Value`),
+  `internal/outstation/outstation.go` (`g41ValueWidth` +V3, `executeControl`/`handleWrite` V3 decode
+  with inbound NaN/±Inf rejection), `pkg/dnp3/master/client.go` (gate + `rawValue` for the typed
+  carrier), `pkg/dnp3/outstation/server.go` (variation 3 bridge), `pkg/dnp3/types/commands.go`
+  (`AnalogFloat32CommandValue` + `NewAnalogFloat32Control`).
+- **Float policy:** reject NaN/±Inf before transmission and before any outstation handler side effect
+  (no coercion to zero/SUCCESS); finite values preserve exact IEEE-754 bits incl. signed zero and
+  subnormals; a float64 source is accepted only when exactly representable as float32 (no silent
+  narrowing/overflow/underflow); echoed setpoints compared by raw bits (sign-bit flip → UNKNOWN +
+  quarantine). Only Direct Operate with response; G41V4/SBO/no-response/other qualifiers rejected.
+- **Tests added:** `internal/master/g41v3_control_test.go`, `internal/outstation/g41v3_control_test.go`,
+  `pkg/dnp3/master/g41v3_public_test.go`, `test/integration/g41v3_real_tcp_test.go`, plus
+  `TestNewAnalogFloat32Control` in `pkg/dnp3/types/types_test.go`. Stale "V3 unsupported" assertions
+  in the G41V1/V2 suites were corrected truthfully (G41V4 still rejected; the old 10-octet V3 records
+  relabelled "wrong length"), not weakened.
+- **Revert-proof (mutation) checks actually performed:** master V3 big-endian encode, outstation
+  inbound non-finite rejection removal, outstation V3 big-endian decode and public-gate removal each
+  made a new test FAIL; production files restored byte-identical (`master.go` `c05e07dd587f`,
+  `outstation.go` `2347bffd9016`, `client.go` `fc584a8df971`, `server.go` `a0d89518693b`,
+  `commands.go` `dc5902993a8f`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns also match the source
+  directories; the three new in-tree `*_test.go` files were staged with `git add -f`. `.gitignore`
+  unchanged (outside the authorized allowlist).
+- Checks: `gofmt -l` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3;
+  in-repo TCP loopback, not peer proof); `git diff --check` PASS; `bash scripts/cwal-check.sh` OK.
+  Evidence: `docs/verification/AO-003.md` §9.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No G41V4, no AO-003 closure/promotion, no PR/merge, no `main` push, no release, no
+  field/NGCP/SCADA or physical I/O.
+
+### AO-003 implementation checkpoint — G41V4 (float64) bounded slice — 2026-11-11
+Owner authorization "Subsequent mission: G41V4" (`workflow/active_work/AO-003.md`, addendum
+"Independent G41V3 CHECK record — checkpoint a51bc2c"), preconditioned on the recorded passing
+independent source/evidence CHECK of G41V3 at `a51bc2c`; executed under a new `operation cwal`
+invocation. Bounded continuation: **G41V4 (double-precision IEEE-754 float) only**, under the same
+owner-approved float policy.
+- **Preflight:** `bash scripts/cwal-check.sh` OK (`CURRENT=AO-003 branch=work`); ancestry of
+  `46c2960`, `a51bc2c`, `f5bc63a` from HEAD/origin `work` (`ed6ca30`) verified; the six authority
+  markers unchanged.
+- **Wire contract (independent):** G41V4 = eight-octet little-endian IEEE-754 float64 + one
+  command-status octet, qualifier `0x28` (count 1). Confirmed against `docs/verification/AO-001.md`
+  §3.1/§6.1 (`123.456789 → 0B 0B EE 07 3C DD 5E 40 00`) and an independent IEEE-754 computation;
+  no reference contradiction → no PUSHBACK.
+- **Implemented (authorized V4 file set):** `internal/master/master.go` (`g41ValueWidth` +V4=8,
+  `buildControlRequest` V4 case via `math.Float64bits`, new `controlFloat64Value`, normalized G41
+  value type widened `uint32`→`uint64`), `internal/outstation/outstation.go` (`g41ValueWidth` +V4,
+  `executeControl`/`handleWrite` V4 decode with inbound NaN/±Inf rejection), `pkg/dnp3/master/client.go`
+  (gate + `rawValue` for the typed carrier), `pkg/dnp3/outstation/server.go` (variation 4 bridge),
+  `pkg/dnp3/types/commands.go` (`AnalogFloat64CommandValue` + `NewAnalogFloat64Control`).
+- **Float policy:** reject NaN/±Inf before transmission and before any outstation handler side effect
+  (no coercion to zero/SUCCESS); finite values preserve exact IEEE-754 bits incl. signed zero and
+  subnormals; only a `float64` source is accepted (the pre-existing generic `AnalogCommandValue{float64}`
+  carrier is therefore also admitted; a `float32` source is rejected to avoid silent widening);
+  echoed setpoints compared by raw bits (sign-bit flip → UNKNOWN + quarantine). Only Direct Operate
+  with response; SBO/no-response/other qualifiers/G42–G44 rejected.
+- **Tests added:** `internal/master/g41v4_control_test.go`, `internal/outstation/g41v4_control_test.go`,
+  `pkg/dnp3/master/g41v4_public_test.go`, `test/integration/g41v4_real_tcp_test.go`, plus
+  `TestNewAnalogFloat64Control` (`pkg/dnp3/types/types_test.go`), G41V4 bridge tests
+  (`pkg/dnp3/outstation/bridge_status_matrix_test.go`). Stale "V4 unsupported" assertions in the
+  G41V1/V2/V3 suites were corrected truthfully (moved to unimplemented variation 5), not weakened.
+- **Revert-proof (mutation) checks actually performed:** master V4 big-endian encode, master
+  `g41ValueWidth` V4 8→4, outstation V4 big-endian decode, outstation `g41ValueWidth` V4 8→0 and
+  public-gate V4 removal each made a new test FAIL; production files restored byte-identical
+  (`master.go` `8d524ef34e05`, `outstation.go` `9e7d8087f3c6`, `client.go` `fb82295b4043`,
+  `server.go` `ec1f084fbeed`, `commands.go` `5c2910271202`).
+- **Observation (not fixed):** `.gitignore` bare `master`/`outstation` patterns also match the source
+  directories; the three new in-tree `*_test.go` files were staged with `git add -f`. `.gitignore`
+  unchanged (outside the authorized allowlist).
+- Checks: `gofmt -l` clean; `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS;
+  `go test -race` on affected packages PASS; `./scripts/verify-external-mvp.sh` PASS (tiers 1–3;
+  in-repo TCP loopback, not peer proof); `git diff --check` PASS; `bash scripts/cwal-check.sh` OK.
+  Evidence: `docs/verification/AO-003.md` §10.
+- `active_work/supported-profile.md` **byte-identical** (sha256
+  `caef4648dac4d0f580f40f5b27e6c7dc483a2fe40ba5537668f2b225dac1bd5f`): Group 41 remains **UNSUPPORTED**.
+- Marker state unchanged (`CURRENT: AO-003`, `Status: TASK_IN_PROGRESS`). Next: **STOP for independent
+  CHECK.** No AO-003 closure/promotion, no PR/merge, no `main` push, no release, no field/NGCP/SCADA or
+  physical I/O.
+
+---
+
+### AO-003 closure → AO-004 promotion transition checkpoint — 2026-11-12
+Owner addendum "Owner-authorized AO-003 closure → AO-004 promotion (documentation-only, 2026-11-12)"
+(`workflow/active_work/AO-003.md`, committed `c4859cb`). Documentation-only transition; no Go/test/CI/
+protocol/simulator/lab execution.
+- **AO-003 CLOSED / TASK_CHECKPOINTED.** Task file archived by **pure rename**
+  `workflow/active_work/AO-003.md` → `archive/active-work/AO-003.md`, byte-identical (blob
+  `08e39dcf9caee9e7e6abc99a90712356c058c94b`). Baseline `c4859cb` descends from V4 `217c02f` and the
+  independent G41V4 CHECK record `1035b16`.
+- **AO-004 CURRENT** (`workflow/active_work/AO-004.md`, header-only activation: `CURRENT: AO-004`,
+  `Status: TASK_IN_PROGRESS`). Independent isolated OpenDNP3 G41 peer validation — **NOT RUN**; a
+  fresh later `operation cwal` after transition independent CHECK is required to start the isolated
+  lab-preparation microtask.
+- Both authority marker blocks changed consistently: `Package: AO-004`, `CURRENT: AO-004`,
+  `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Roadmap `active_work/SCV_ANALOG_OUTPUT_ROADMAP.md`: `AO-003 DONE` (G41V2/V3/V4 source/evidence
+  checked; V1 done in AO-002), `AO-004 CURRENT` (independent peer validation NOT RUN), AO-005
+  deferred.
+- `active_work/supported-profile.md` **byte-identical** (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`): Group 41 remains **UNSUPPORTED**; no generalized
+  compliance, interoperability or production claim.
+- Checks: `git diff --check` PASS; `bash scripts/cwal-check.sh` OK; Go build/tests **NOT_RUN**
+  (documentation-only transition). Evidence: `docs/verification/AO-003.md` §11.
+Next: **STOP for independent CHECK** of the transition. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 pre-PR corrective checkpoint — command status 6 and G41 `FuncWrite` boundary — 2026-11-12
+Owner addendum "Owner-authorized Pre-PR corrective CWAL" (`workflow/active_work/AO-004.md`, committed
+`45d699a`). Single bounded corrective microtask routed by `operation cwal`. No independent-peer/PCAP
+execution, no lab network, no live control, no PR/merge/release, no supported-profile expansion.
+- **F1 (status octet 6).** Independently re-checked pinned OpenDNP3 3.1.2 `CommandStatus.h`
+  (`cpp/lib/include/opendnp3/gen/CommandStatus.h`, commit `26b4c01e4839bbbda8866655e086471c4917ee53`,
+  SHA-256 `69d02051a0e17756a967dff7617af75e4eb4def772042ec1c10e2fca59829885`): code **6 = `HARDWARE_ERROR`**,
+  code **15 = `BLOCKED`**. Confirmed the prior in-repo `Blocked = 6` was a naming defect. Introduced
+  canonical `CommandStatusHardwareError = 6` (internal) and `ControlHardwareError = 6` (public) with
+  `String()` → `"hardware_error"`; retained deprecated aliases `CommandStatusBlocked`/`ControlBlocked`
+  at the **same numeric value** (non-breaking); updated `pkg/dnp3/master/client.go` mapping. Wire value 6
+  unchanged; no other codes renumbered; status remains a non-success explicit failure (not UNKNOWN).
+- **F2 (G41 `FuncWrite`).** Traced the reachable incoming path `ProcessRequest` → `handleWrite` → G41
+  `case 41` → `DataWriter.WriteAnalogOutput` → `CommandHandler.HandleAnalogCommand`. `internal/outstation/outstation.go`
+  `handleWrite` `case 41:` now **fails closed** before any decode/handler call/state mutation with
+  `ParameterError` IIN and no success acknowledgement. Valid G41 `FuncDirectOperate` (one-point `0x28`)
+  and non-G41 `FuncWrite` (G12/CROB) are unchanged; `FuncSelect`/`FuncOperate`/`FuncDirectOperateNoResp`
+  were not newly enabled.
+- Tests: stale G41V4 WRITE success test replaced with an honest rejection test; new
+  `internal/outstation/g41_write_rejection_test.go` (V1–V4 + malformed/multi-point zero-side-effect +
+  CROB regression) and `internal/master/command_status_hardware_error_test.go` (wire-6 → HardwareError,
+  non-success). Affected status matrix/label tests updated to preferred `HardwareError`.
+- Checks (observed PASS): `gofmt`, `go build ./...`, `go vet ./...`, `go test ./... -count=1`,
+  `go test -race` (affected packages), `./scripts/verify-external-mvp.sh`, `git diff --check`. Revert-proof
+  mutation probes confirmed both new test sets fail on the old behavior. Go `go1.22.0` used.
+- `active_work/supported-profile.md` **byte-identical** (blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06`):
+  Group 41 remains **UNSUPPORTED**. Evidence: `docs/verification/AO-004-PREPR-CORRECTIVE.md`.
+Next: **STOP for independent CHECK** of this corrective. A distinct later `operation cwal` may resume the
+original AO-004 isolation/readiness-first plan only after that CHECK. No PR/merge, no `main` push, no
+release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
