@@ -1912,3 +1912,21 @@ fast-forwarded to HEAD `ff3fb7d69e5a586fc7c898ab21ddaad17872453a`; markers + pro
   G41 stays **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix M).
 Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated reverse topology configuration-only gate — 2026-11-12
+Owner authorization `ec521fc` (bounded topology-only verification microtask on `work`). Executed on clean
+`work`, fast-forwarded to HEAD `ec521fcbd7254493fdac823d30b8d7186d558466`; markers + profile blob
+unchanged; `cwal-check` OK.
+- **Runner identity FIRST (read-only, no mutations):** executor is the routed JR Kubernetes pod
+  (`/etc/hosts` "Kubernetes-managed hosts file", pod IP 10.2.81.6, `KUBERNETES_SERVICE_HOST=10.3.0.1`),
+  with `eth0` holding a **default route** plus a `docker0` bridge; `CapEff=0x0` (no `NET_ADMIN`/
+  `SYS_ADMIN`/`NET_RAW`); `ip` absent; no `/var/run/netns`; no separate lab runner provided.
+- **Fail-closed STOP:** `ISOLATED_RUNNER_UNAVAILABLE` / **`TOPOLOGY_NOT_RUN`** — did NOT repurpose the pod,
+  did NOT run `lab-netns.sh` (up/down) or `preflight.sh`, and sent no network probes (no ping/ICMP, DNS,
+  curl, TCP connect/listen), no DNP3 traffic.
+- **`REVERSE_G41_INTEROP_NOT_RUN`.** C++/Go evidence from Appendices L/M undisturbed; G41 stays
+  **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix N).
+Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
