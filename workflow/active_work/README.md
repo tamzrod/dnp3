@@ -1840,3 +1840,27 @@ microtask; production status-mapping fix + minimal tests). Executed on clean `wo
   PASS. Evidence: `docs/verification/AO-004.md` (Appendix J).
 Next: **STOP for an independent read-only CHECK** (must include the blocked Go gates). No PR/merge, no
 `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 pinned-Go verification of the OUT_OF_RANGE correction — 2026-11-12
+Owner authorization `b9c0fbd` (one bounded human-promoted `operation cwal` **verification** microtask on
+`work` for checkpoint `811c6f5`). Executed on clean `work`, fast-forwarded to HEAD
+`b9c0fbdf04ff1ca83d425826b0af4908a6ef5cef`; markers and profile blob unchanged; `cwal-check` OK.
+- **Toolchain:** acquired the repository-pinned **Go 1.22.12** (`lab/vec01/acquire-pinned.sh`) from
+  `go.dev/dl/`, SHA-256 `4fa4f869…b34d43` verified **before** extraction, installed to isolated
+  `/tmp/ao004-go-verify/go` (per-invocation `PATH` only; no system/global/repo change). `go version` =
+  `go1.22.12 linux/amd64`.
+- **Deps:** only repository-declared modules at exact versions (`x/sys v0.11.0`+`v0.30.0`, `x/term v0.11.0`);
+  `go.mod`/`go.sum` and `cmd/workbench/go.*` byte-identical to HEAD; no `go get`/`tidy`/`edit`.
+- **Gates (all observed PASS):** `gofmt -l` on the six `811c6f5` files (empty); targeted G41
+  internal/public/types OUT_OF_RANGE tests; `go test ./... -count=1`; `go vet ./...`; targeted
+  `go test -race`; `git diff --check`; `cwal-check`.
+- **Contract checks:** wire `0x0C` → internal `CommandStatusOutOfRange` and public `ControlOutOfRange=13`
+  (not timeout/success) for all four G41 variations; `ControlSynchBlocked` stays `12`; no quarantine on a
+  definite rejection; pre-existing fail-closed/mismatch/IIN/signed-zero tests still PASS.
+- **Corrections:** none required (no failure attributable to `811c6f5`); no source line changed.
+- **`GO_VERIFICATION_PASS`** — the Appendix J `GO_TOOLCHAIN_UNAVAILABLE` blocker is cleared. G41 stays
+  **UNSUPPORTED**; markers unchanged. Evidence: `docs/verification/AO-004.md` (Appendix K).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

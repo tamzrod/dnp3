@@ -1846,3 +1846,20 @@ fast-forwarded to HEAD `0fc887696170c81ad23d13263239f229c0b16850` (ancestry incl
   (Appendix J).
 Next: **STOP for an independent read-only CHECK** (must include the blocked Go gates). No PR/merge, no
 `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 pinned-Go verification of the OUT_OF_RANGE correction — 2026-11-12
+Owner authorization `b9c0fbd` (bounded verification microtask on `work` for checkpoint `811c6f5`). Executed
+on clean `work`, fast-forwarded to HEAD `b9c0fbdf04ff1ca83d425826b0af4908a6ef5cef`; markers + profile blob
+unchanged; `cwal-check` OK.
+- **Toolchain:** repository-pinned **Go 1.22.12** (`lab/vec01/acquire-pinned.sh`), SHA-256
+  `4fa4f869…b34d43` verified before extraction, isolated install `/tmp/ao004-go-verify/go` (PATH only).
+- **Deps:** only declared modules at exact versions; `go.mod`/`go.sum` unchanged.
+- **Gates (observed PASS):** `gofmt -l` (six files, empty); targeted G41 internal/public/types tests;
+  `go test ./... -count=1`; `go vet ./...`; targeted `go test -race`; `git diff --check`; `cwal-check`.
+- **Corrections:** none; no source line changed.
+- **`GO_VERIFICATION_PASS`** — Appendix J `GO_TOOLCHAIN_UNAVAILABLE` cleared. G41 stays **UNSUPPORTED**.
+  Evidence: `docs/verification/AO-004.md` (Appendix K).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
