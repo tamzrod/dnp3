@@ -2076,3 +2076,20 @@ clean `work`, fast-forwarded to `fce286e0e0faa6534dc62e15fe9fc65bbc81d040`; six 
   :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix U.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix V — evidence-path variance reconciliation (2026-11-13, authorization `d3a6b5f`)
+
+Owner authorization `d3a6b5f` (documentation-only corrective on `work`), after Appendix U `99d05e7`.
+Fast-forwarded to `d3a6b5ff91bc568f8ad6ba2128ac90c2b840c9fb`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Variance:** original `fce286e` allowlist `testdata/external/ao004/` vs actual `99d05e7` path
+  `active_work/testdata/external/ao004-20261112/` — a historical, noncompliant-at-time-of-write deviation;
+  `d3a6b5f` grants prospective retention approval only, no backdating.
+- **Verification (read-only):** 9/9 `sha256sum -c` PASS against committed bytes; PCAP header-valid/12328 B/
+  lab-only; all 64 `.vec` link frames CRC-consistent; echo idx0 `0x00`, idx1 `0x0C`.
+- **Unchanged:** `ORIGINAL_PCAP_UNAVAILABLE`; new capture ≠ original; float `FAIL/DIVERGENCE`; malformed/
+  timeout/concurrency `NOT_RUN`; `EVIDENCE_CLOSURE_PARTIAL`.
+- **`EVIDENCE_CLOSURE_PARTIAL`.** Only the three documentation paths changed; artifacts preserved
+  byte-for-byte and read-only. G41 stays **UNSUPPORTED**. Evidence: Appendix V.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

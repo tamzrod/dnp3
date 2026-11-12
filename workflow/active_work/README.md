@@ -2119,3 +2119,24 @@ gaps only; no production change, no conformance claim, no G41 support grant.
   netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix U.
 Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no `main`
 push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix V — evidence-path variance reconciliation (2026-11-13, authorization `d3a6b5f`)
+
+Documentation-only corrective after Appendix U checkpoint `99d05e7`; no new traffic, no artifact/source rewrite.
+- **Startup:** fetched `d3a6b5f`; fast-forward clean from `99d05e7`; six markers identical; supported-profile
+  blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged (G41 **UNSUPPORTED**); `cwal-check` OK.
+- **Variance (disclosed, not backdated):** original `fce286e` allowlist was `testdata/external/ao004/`; the
+  `99d05e7` implementation committed to `active_work/testdata/external/ao004-20261112/` without prior
+  permission — a **historical, noncompliant-at-time-of-write variance**. Later owner commit `d3a6b5f` grants
+  **prospective retention approval** only; it does not retroactively make `99d05e7` compliant.
+- **Hash verification (read-only, committed bytes via `git archive`):** exactly 1 PCAP + 8 `.vec` + README +
+  `SHA256SUMS.txt`; `sha256sum -c SHA256SUMS.txt` → **9/9 PASS**, no missing/extra entry.
+- **PCAP inspection:** header-valid, 12328 B, 128 packets, lab-only `10.77.0.1`↔`10.77.0.2:20000`, no non-lab
+  payload/credential/field data. **Offline CRC:** all **64** committed `.vec` link frames CRC-consistent;
+  echo re-decode idx0 `status=0x00`, idx1 `status=0x0C`.
+- **Unchanged:** historical originals `ORIGINAL_PCAP_UNAVAILABLE`; Appendix U capture is a new capture (not an
+  original); float signed-zero/subnormal historic `FAIL/DIVERGENCE`; malformed/timeout/concurrency `NOT_RUN`.
+- **Result:** **`EVIDENCE_CLOSURE_PARTIAL` (unchanged)**. Only the three documentation paths changed; evidence
+  read-only and preserved byte-for-byte. G41 stays **UNSUPPORTED**. Evidence: Appendix V.
+Next: **STOP for a separate independent read-only CHECK** (irrespective of outcome). No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
