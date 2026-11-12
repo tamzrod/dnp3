@@ -2110,3 +2110,19 @@ to `807644e528447b20e73c9c71599eacd4a12d5e28`; six markers + profile blob `8a968
 - **`NEGATIVE_TIMEOUT_COVERAGE_PARTIAL`.** G41 stays **UNSUPPORTED**. Evidence: Appendix W.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix X — one-pass pre-PR branch reconciliation (2026-11-13, authorization `b205abc`)
+
+Read-only, docs-only bounded `operation cwal` on `work` after CHECKED Appendix W `8945a51`. `work`=`b205abc`,
+`main`=`2ff2ffc`, merge base `38c6df0`; six markers + profile blob `8a968199…` unchanged; `cwal-check` OK.
+- **Key finding:** `main`'s tree == merge-base tree `8e5993a7…`; the two `main`-only commits are content-empty
+  merges (PR#26 `f55278c`, PR#27 `2ff2ffc`); PR#26 tip `c81fa5d` is an ancestor of `work`. `work` contains all
+  `main` content (0 deletions); no content conflict.
+- **Minimal PR scope:** 12 source/test files (Func4 accept / primary-user-data framing / `OUT_OF_RANGE`
+  propagation) + optionally `lab/ao004/*` + 2 evidence dirs; exclude 6 governance/history docs.
+- **Safe route (validated read-only):** new branch off current `main`, apply `git diff 38c6df0 b205abc -- <paths>`;
+  `git apply --check` CLEAN; patched-`main` `go vet`/`go test ./...` PASS.
+- **Gates:** gofmt clean; vet/build/test OK; `git diff --check`/`cwal-check` OK.
+- **Decision: GO** (bounded new-branch-off-`main` route) / **NO-GO** (full `work`→`main`). G41 **UNSUPPORTED**;
+  AO-004 CURRENT. Evidence: Appendix X.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005.

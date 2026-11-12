@@ -2164,3 +2164,23 @@ production or public-API change.
 - **Result:** **`NEGATIVE_TIMEOUT_COVERAGE_PARTIAL`**. G41 stays **UNSUPPORTED**. Evidence: Appendix W.
 Next: **STOP for a separate independent read-only CHECK** (irrespective of result). No PR/merge, no `main`
 push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix X — one-pass pre-PR branch reconciliation (2026-11-13, authorization `b205abc`)
+
+One bounded, read-only, documentation-only `operation cwal` after the CHECKED Appendix W checkpoint `8945a51`.
+- **Startup:** `work`=`b205abc`, `main`=`2ff2ffc`; merge base `38c6df0` (after `--deepen=200`); six markers
+  identical; profile blob `8a968199…` unchanged (G41 **UNSUPPORTED**); `cwal-check` OK.
+- **Key finding:** `main`'s tree is **byte-identical** to the merge-base tree (`8e5993a7…`) — the two
+  `main`-only commits (`f55278c` PR#26, `2ff2ffc` PR#27) are **content-empty merges**; PR#26's branch tip
+  `c81fa5d` is an ancestor of `work`. So `work` already contains **all** `main` content (0 deletions); the
+  "2 behind" is topology only, no content conflict.
+- **Minimal PR scope:** 12 source/test files (Func4 accept, primary-user-data framing, `OUT_OF_RANGE` status
+  propagation) + optionally `lab/ao004/*` (12) and the two evidence dirs (31). Exclude the 6 append-only
+  governance/history docs.
+- **Safe route (proven read-only):** new branch off current `main` + `git diff 38c6df0 b205abc -- <paths>`;
+  `git apply --check` **APPLIES CLEANLY** in a temp worktree; patched `main` `go vet`/`go test ./...` **PASS**.
+- **Verification:** gofmt clean; `go vet`/`go build`/`go test ./... -count=1` **PASS**; `git diff --check` and
+  `cwal-check` OK; no new peer experiments (`NOT_RUN`, not authorized).
+- **Decision:** **GO** for the bounded new-branch-off-`main` route; **NO-GO** for full `work`→`main` as-is.
+  G41 stays **UNSUPPORTED**; AO-004 CURRENT. Evidence: Appendix X.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005.
