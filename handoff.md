@@ -1766,3 +1766,34 @@ includes `8c5ae26`); markers unchanged by the authorization commit.
 Next: **STOP for a fresh independent read-only CHECK**. A **new owner-authorized protocol-execution task**
 remains required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main` push, no release, no
 AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 read-only V3 negative-zero PCAP evidence analysis — 2026-11-12
+Owner authorization `137cd0c` (one bounded `operation cwal` invocation, **read-only**: recover and analyze
+the EXISTING artifacts of the earlier isolated Go-master → OpenDNP3 3.1.2 C++-outstation interop run; **no**
+new protocol execution, source edit, Docker build/daemon, namespace start or experiment). Executed on clean
+`work`, fast-forwarded to HEAD `137cd0c77687785ed34446ce354b33e83d021a12` (ancestry includes `723984d`).
+- **Same-session artifacts recovered (no rerun).** `/tmp/ao004-docker4/`: `driver.out` (40852 B,
+  `799c2f39…8994`), `cap.pcap` (8676 B, `dd0021ee…fe03`), `driver2.out` (100703 B, `3cf9cffe…2080`),
+  `cap2.pcap` (47846 B, `9d44bde4…582ff`). Raw captures kept out of Git; original bytes unaltered.
+- **Offline decode.** All **214** link frames CRC-valid (0 bad); **26** requests ↔ **26** responses
+  (transport seq `0xC0..0xD9`); master=3, outstation=4; Direct Operate `0x05` → Response `0x81`;
+  IIN `0x90 0x00`; qualifier `0x28` count 1.
+- **Root cause.** G41V3 `negzero`: master sent `-0.0` (`0x80000000`) but the peer echoed `+0.0`
+  (`0x00000000`), status `0x00`; likewise subnormal `0x00000001`→`0x00000000` (and the G41V4 analogs). The
+  peer's ser4cpp `SingleFloat`/`DoubleFloat` codec collapses `-0.0`→`+0.0` and flushes subnormals
+  (reproduced offline against the pinned header). The Go master's strict raw-bit echo check correctly
+  fails closed (`ErrControlOutcomeUnknown: no parseable command status`); no Go defect; not lost/mis-sequenced.
+- **Matrix.** V1 (5) / V2 (5) / V3 finite non-zero (4) / V4 finite non-zero (4): packet-proven **PASS**.
+  V3/V4 `-0.0` + smallest subnormal: **FAIL (peer-side)**. Invalid index 1: response `status=0x0C`
+  OUT_OF_RANGE, fail-closed **PASS**. Non-finite + SBO/DirectOpNoResponse: pre-send, **0** wire frames.
+- **`EVIDENCE_ANALYSIS_PASS` (read-only).** G41 stays **UNSUPPORTED**. No new execution; no Docker/daemon/
+  namespaces/source edits/retry/quarantine reset/external probe. Go gates **NOT_RUN** (no Go change).
+- No new support: `active_work/supported-profile.md` blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06`
+  unchanged. Markers unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact append-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix H).
+Next: **STOP for a fresh independent read-only CHECK**. Any further protocol execution or harness change
+requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005 promotion, no
+field/NGCP/SCADA or physical I/O.
