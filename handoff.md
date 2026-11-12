@@ -1915,3 +1915,21 @@ unchanged; `cwal-check` OK.
   (Appendix N).
 Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated Docker lab topology configuration gate — 2026-11-12
+Owner **corrective** authorization `22d2c36` (bounded topology-only microtask on `work`), after Appendix N
+`TOPOLOGY_NOT_RUN`. Executed on clean `work`, fast-forwarded to HEAD
+`22d2c36240cf7718b1468b69012a14d7f404ff25`; markers + profile blob unchanged; `cwal-check` OK.
+- **Ephemeral Docker lab** provisioned (same technique as Appendices L/M); lab container isolated:
+  `--network none`, `Privileged=false`, own PID ns, no ports/host-net/host-PID/docker-sock/binds; inside:
+  only `lo`, no routes, 0 pre-existing namespaces.
+- **`lab-netns.sh up`** (unmodified) inside the lab: exactly `vec01-master` 10.77.0.1/24 ↔
+  `vec01-outstation` 10.77.0.2/24 via one paired veth; loopbacks up; connected-only routes; no default
+  route; `ip_forward=0`; no extra ifaces/NAT. `lab-netns.sh down` → 0 namespaces; container+image removed;
+  daemon stopped; host baseline unchanged. `preflight.sh` not run; no probes; no DNP3 traffic.
+- **`ISOLATED_TOPOLOGY_CONFIG_PASS`**; `REVERSE_G41_INTEROP_NOT_RUN`. G41 stays **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-004.md` (Appendix O).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

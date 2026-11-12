@@ -1930,3 +1930,24 @@ unchanged; `cwal-check` OK.
   **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix N).
 Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated Docker lab topology configuration gate — 2026-11-12
+Owner **corrective** authorization `22d2c36` (bounded topology-only microtask on `work`), following the
+Appendix N `TOPOLOGY_NOT_RUN` blocker. Executed on clean `work`, fast-forwarded to HEAD
+`22d2c36240cf7718b1468b69012a14d7f404ff25`; markers + profile blob unchanged; `cwal-check` OK.
+- **Corrected executor gate:** the owner authorized JR to prepare/launch an **ephemeral** Docker lab using
+  executor capabilities (same technique as Appendices L/M); the lab container's own boundary is decisive.
+- **Lab boundary (verified before mutation):** `--network none`, `Privileged=false`, own PID ns, no
+  published ports, no host net/PID, no Docker socket, no host binds; inside: only `lo`, **no routes**,
+  0 pre-existing namespaces; caps NET_ADMIN/SYS_ADMIN/NET_RAW only.
+- **Topology (config-only):** `lab-netns.sh up` (unmodified) inside the lab → exactly two namespaces
+  (`vec01-master` 10.77.0.1/24, `vec01-outstation` 10.77.0.2/24) joined by one paired veth, both loopbacks
+  up, connected-only /24 routes, **no** default route, `ip_forward=0` both, no extra interfaces/NAT.
+- **Teardown:** `lab-netns.sh down` → `ns_count=0`, only `lo`, no routes; container+image removed; daemon
+  stopped; host baseline identical pre/post. `preflight.sh` NOT run; no probes; no DNP3 traffic.
+- **`ISOLATED_TOPOLOGY_CONFIG_PASS`**; **`REVERSE_G41_INTEROP_NOT_RUN`**. G41 stays **UNSUPPORTED**.
+  Evidence: `docs/verification/AO-004.md` (Appendix O).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
