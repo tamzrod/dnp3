@@ -2093,3 +2093,20 @@ Fast-forwarded to `d3a6b5ff91bc568f8ad6ba2128ac90c2b840c9fb`; six markers + prof
   byte-for-byte and read-only. G41 stays **UNSUPPORTED**. Evidence: Appendix V.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix W — bounded negative/timeout/quarantine coverage (2026-11-13, authorization `807644e`)
+
+Owner authorization `807644e` (bounded coverage on `work`), after CHECKED Appendix V `01a2d3b`. Fast-forwarded
+to `807644e528447b20e73c9c71599eacd4a12d5e28`; six markers + profile blob `8a968199...` unchanged; `cwal-check` OK.
+- **Independent-wire PASS:** pinned OpenDNP3 3.1.2 master → Go outstation: G41V1–V4 idx0 `SUCCESS` (1 write),
+  idx1 `OUT_OF_RANGE` (`st=0x0C`, 0 writes); peer-unavailable `FAILURE_NO_COMMS` with zero DNP3 frames.
+- **`NOT_RUN` (independent-wire):** malformed G41 (public master API can't emit malformed; injection
+  disallowed) and mid-command response-loss/disconnect (no single-shot fault injector) → covered `UNIT_ONLY`
+  by existing `TestOutstationG41*` / `TestControl*` (PASS).
+- **Artifacts:** `active_work/testdata/external/ao004-negative-20261113/` (README, 9 pcaps, 9 `.vec`,
+  `SHA256SUMS.txt`); prior evidence read-only and byte-for-byte preserved.
+- **Gates:** `gofmt`/`go vet`/`go build`/`go test ./...` OK; `git diff --check`/`cwal-check` OK; cleanup
+  complete; host baseline restored.
+- **`NEGATIVE_TIMEOUT_COVERAGE_PARTIAL`.** G41 stays **UNSUPPORTED**. Evidence: Appendix W.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.

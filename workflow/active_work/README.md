@@ -2140,3 +2140,27 @@ Documentation-only corrective after Appendix U checkpoint `99d05e7`; no new traf
   read-only and preserved byte-for-byte. G41 stays **UNSUPPORTED**. Evidence: Appendix V.
 Next: **STOP for a separate independent read-only CHECK** (irrespective of outcome). No PR/merge, no `main`
 push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix W — bounded negative/timeout/quarantine coverage (2026-11-13, authorization `807644e`)
+
+One bounded `operation cwal` after the CHECKED Appendix V checkpoint `01a2d3b`; coverage/evidence only, no
+production or public-API change.
+- **Startup:** fetched `807644e`; fast-forward clean from `01a2d3b`; six markers identical; supported-profile
+  blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged (G41 **UNSUPPORTED**); `cwal-check` OK.
+- **Isolation:** ephemeral `--network none` lab (not privileged, no ports/host mounts); isolation proven before
+  any packet (lo-only/0 routes; veth `10.77.0.1`↔`10.77.0.2`; 0 default routes; `ip_forward=0`; external
+  unreachable). Pinned OpenDNP3 3.1.2 master; Go fixture from `807644e`.
+- **Independent-wire PASS:** G41V1–V4 idx0 `SUCCESS` (1 write each), idx1 `OUT_OF_RANGE` (`st=0x0C`, 0 writes),
+  all echoes CRC-valid with IIN `0000`. Peer-unavailable → `FAILURE_NO_COMMS` with **zero** DNP3 frames
+  (SYN → RST/ACK only) and zero writes.
+- **`NOT_RUN` (independent-wire):** malformed G41 (pinned public master API cannot emit malformed objects;
+  injection disallowed) and mid-command response-loss/disconnect (no deterministic single-shot fault injector).
+  Covered by existing Go unit suites as **`UNIT_ONLY`** (`internal/outstation` `TestOutstationG41*`,
+  `internal/master` `TestControl*` — PASS).
+- **Artifacts:** new `active_work/testdata/external/ao004-negative-20261113/` (README, 9 lab-only pcaps, 9
+  packet-derived `.vec`, `SHA256SUMS.txt`). Prior `ao004-20261112/`, Appendices U/V read-only, byte-for-byte.
+- **Gates:** `gofmt` clean; `go vet`/`go build`/`go test ./... -count=1` OK; `git diff --check`/`cwal-check` OK.
+  Cleanup complete; host baseline restored (`lo eth0 docker0`, no netns, no :20000 listener).
+- **Result:** **`NEGATIVE_TIMEOUT_COVERAGE_PARTIAL`**. G41 stays **UNSUPPORTED**. Evidence: Appendix W.
+Next: **STOP for a separate independent read-only CHECK** (irrespective of result). No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.

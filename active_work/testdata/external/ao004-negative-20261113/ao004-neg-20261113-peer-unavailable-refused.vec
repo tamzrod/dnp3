@@ -1,0 +1,10 @@
+id: ao004-neg-20261113-peer-unavailable-refused
+title: AO-004 isolated negative-coverage Direct Operate with no listener (connection refused; zero command frames)
+source: OpenDNP3 3.1.2 (tag 3.1.2 = 523f7d2d6c65aa671f594fc63c3adcd74e81407d) master vs work Go outstation
+capture: isolated --network none lab, 2026-11-13, veth-o on vec01-outstation
+role: master
+master-addr: 3
+outstation-addr: 4
+pcap: ao004-negative-20261113-refused.pcap
+notes: packet-derived; all link CRCs verified
+
