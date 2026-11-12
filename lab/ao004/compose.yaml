@@ -7,21 +7,32 @@
 #   docker compose -f lab/ao004/compose.yaml build
 #   docker compose -f lab/ao004/compose.yaml run --rm lab        # readiness echo
 #
+# NETWORK TOPOLOGY — two distinct things, not one:
+#   * network_mode: none is the safe container BASELINE: only loopback exists.
+#     It does NOT create the lab address 10.77.0.2, so `--listen` cannot bind
+#     until a topology is built.
+#   * The functional two-namespace topology (veth pair, 10.77.0.1 <-> 10.77.0.2,
+#     forwarding forced off, no default route) is created by the EXISTING,
+#     UNMODIFIED lab/vec01/lab-netns.sh (checked by lab/vec01/preflight.sh).
+#     Building that topology is a later, explicitly authorized, isolated-runner-
+#     only setup step; it is NOT run by this default command.
+# Static YAML alone proves NO isolation: network_mode: none does not by itself
+# demonstrate namespace isolation and is not a NETWORK_ISOLATION_PASS claim.
+#
 # A later, separately authorized protocol-execution microtask may start the peer
-# listener explicitly; that is NOT authorized by this scaffolding.
+# listener explicitly after that topology exists; that is NOT authorized here.
 #
 # The build context is the repository root so the Dockerfile can COPY the
-# existing (unmodified) lab/vec01/acquire-pinned.sh and the allowlisted harness
-# sources under lab/ao004/.
+# existing (unmodified) lab/vec01/acquire-pinned.sh, lab-netns.sh, preflight.sh
+# and the allowlisted harness sources under lab/ao004/.
 services:
   lab:
     build:
       context: ../..
       dockerfile: lab/ao004/Dockerfile
     image: ao004-g41-peer:3.1.2
-    # Network isolation by construction: no ports, no host networking, no
-    # default bridge. Only loopback exists until a later authorized step builds a
-    # private netns/veth topology (mirroring lab/vec01).
+    # Safe baseline: no ports, no host networking, no default bridge. Only
+    # loopback exists until a later authorized step builds the private topology.
     network_mode: none
     # Least-required privileges, NOT privileged: no host devices, no host PID
     # namespace, no docker socket. (Only needed by a later authorized step that

@@ -1523,3 +1523,32 @@ Next: **STOP for independent read-only CHECK**. A later bounded invocation may p
 owner-provided isolated runner (`NETWORK_ISOLATION_PASS`), authorized sha256-verified acquisition/build,
 and a new explicit owner-authorized protocol-execution microtask. No PR/merge, no `main` push, no release,
 no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 C++ harness corrective checkpoint — 2026-11-12
+Owner authorization `b49c66a` (bounded corrective of the `lab/ao004/` harness's confirmed C++ interface
+and offline build/scaffolding defects against pinned OpenDNP3 3.1.2). No Go change, DNP3 listener, peer
+connection, command, capture, PR, merge, `main` push, release or AO-005 promotion. G41 stays
+**UNSUPPORTED**. Appendices §A (`ISOLATED_RUNNER_UNAVAILABLE`, `SOURCE_NOT_ACQUIRED`,
+`HARNESS_BUILD_NOT_RUN`, `INTEROP_NOT_RUN`) preserved.
+- Corrected exactly **6 existing paths** in `lab/ao004/`: (1) `G41MemoryCommandHandler.h` — qualified
+  `opendnp3::CommandStatus` and added the missing CROB G12V1 `Select`/`Operate` (`NOT_SUPPORTED`, no
+  mutation) so all 10 pinned `ICommandHandler` hooks are implemented; (2) `g41_peer.cpp` — corrected
+  endpoint header to `opendnp3/channel/IPEndpoint.h` and `opendnp3::levels::NORMAL`; (3) `CMakeLists.txt`
+  — bound `FETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}` to the verified `/opt/vec01/deps` dirs,
+  `FETCHCONTENT_FULLY_DISCONNECTED=ON`, fail-closed `FATAL_ERROR` if missing (no implicit download);
+  (4) `Dockerfile` — declared `BASE_IMAGE_UNPINNED` and aligned offline CMake; (5) `compose.yaml` and
+  (6) `README.md` — distinguished `network_mode: none` baseline from the two-namespace topology built by
+  the existing **unmodified** `lab/vec01/lab-netns.sh`. No new paths; `G41MemoryCommandHandler.cpp`
+  unchanged (read-only per allowlist).
+- **`COMPILE_NOT_RUN`**, **`SOURCE_NOT_ACQUIRED`**, **`ISOLATED_RUNNER_UNAVAILABLE`**, **`INTEROP_NOT_RUN`**.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); AO-005 not authorized. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, brace/paren balance, compose minimal sanity, all 10 hooks
+  present, `CommandStatus` fully qualified, exact allowlist (6 paths). Go gates NOT_RUN (no Go change);
+  compile NOT_RUN. Evidence: `docs/verification/AO-004.md` (Appendix B).
+Next: **STOP for a fresh independent read-only CHECK** of this bounded corrective. The remaining
+principal blocker is a genuine owner-provided isolated runner plus compile validation. No PR/merge, no
+`main` push, no release, no field/NGCP/SCADA or physical I/O.

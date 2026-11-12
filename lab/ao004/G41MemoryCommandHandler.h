@@ -18,6 +18,7 @@
 #include <opendnp3/outstation/ICommandHandler.h>
 #include <opendnp3/outstation/IUpdateHandler.h>
 #include <opendnp3/app/AnalogOutput.h>
+#include <opendnp3/app/ControlRelayOutputBlock.h>
 
 namespace ao004
 {
@@ -29,7 +30,7 @@ struct G41Observed
     bool seen = false;
     uint16_t index = 0;
     uint8_t variation = 0;      // 1..4 (V1 int32, V2 int16, V3 float32, V4 float64)
-    CommandStatus status = CommandStatus::SUCCESS;
+    opendnp3::CommandStatus status = opendnp3::CommandStatus::SUCCESS;
 
     // Exact value/bits captured for evidence (little-endian wire is produced by
     // the OpenDNP3 serializer from these typed values).
@@ -46,6 +47,22 @@ public:
 
     void Begin() override {}
     void End() override {}
+
+    // --- G12V1 CROB --------------------------------------------------------
+    // The v0 control subset uses G12V1 CROB, not G41 analog output. This harness
+    // is G41-only, so both CROB hooks reject explicitly with NO mutation.
+    opendnp3::CommandStatus Select(const opendnp3::ControlRelayOutputBlock&, uint16_t) override
+    {
+        return opendnp3::CommandStatus::NOT_SUPPORTED;
+    }
+
+    opendnp3::CommandStatus Operate(const opendnp3::ControlRelayOutputBlock&,
+                                    uint16_t,
+                                    opendnp3::IUpdateHandler& /*handler*/,
+                                    opendnp3::OperateType) override
+    {
+        return opendnp3::CommandStatus::NOT_SUPPORTED;
+    }
 
     // --- G41V2 int16 -------------------------------------------------------
     opendnp3::CommandStatus Select(const opendnp3::AnalogOutputInt16&, uint16_t) override

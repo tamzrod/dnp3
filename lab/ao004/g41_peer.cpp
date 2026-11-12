@@ -17,14 +17,15 @@
 
 #include <opendnp3/ConsoleLogger.h>
 #include <opendnp3/DNP3Manager.h>
+#include <opendnp3/LogLevels.h>
 #include <opendnp3/channel/IChannel.h>
+#include <opendnp3/channel/IPEndpoint.h>
 #include <opendnp3/channel/PrintingChannelListener.h>
 #include <opendnp3/gen/ServerAcceptMode.h>
 #include <opendnp3/outstation/DefaultOutstationApplication.h>
 #include <opendnp3/outstation/OutstationStackConfig.h>
 #include <opendnp3/outstation/IOutstation.h>
 #include <opendnp3/outstation/UpdateBuilder.h>
-#include <opendnp3/app/IPEndpoint.h>
 
 #include "G41MemoryCommandHandler.h"
 
@@ -56,7 +57,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    auto logLevels = levels::NORMAL;
+    auto logLevels = opendnp3::levels::NORMAL;
     opendnp3::DNP3Manager manager(1, opendnp3::ConsoleLogger::Create());
 
     auto handler = std::make_shared<ao004::G41MemoryCommandHandler>();
