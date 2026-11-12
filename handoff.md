@@ -2023,3 +2023,32 @@ profile blob unchanged; `cwal-check` OK.
   **UNSUPPORTED**. Evidence: Appendix S.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no
 AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix T — G41 OUT_OF_RANGE status propagation corrective (2026-11-12, authorization `c19e614`)
+
+Owner authorization `c19e614` (bounded corrective on `work`), after Appendix S `7fd16ea`
+(`INVALID_INDEX_NEGATIVE_PARTIAL`). Executed on clean `work`, fast-forwarded from `7fd16ea` to
+`c19e614e4fd2393c9283d1a2b1ea5f516a8db131`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Root cause:** the public bridge discarded a handler's definite `ControlOutOfRange` on an error; the
+  outstation then emitted a generic error RESPONSE (FuncUnknown, no command-status object). Public
+  `ControlOutOfRange` is `13` but the IEEE 1815 wire octet is `12` (`0x0C`), so a mapping was required.
+- **Corrective:** `internal/outstation/outstation.go` adds a `ControlStatusError` carrier; `handleDirectOperate`
+  echoes a well-formed single-point G41 refusal with the carried status and `buildG41EchoObject` takes an
+  explicit status. `pkg/dnp3/outstation/server.go` `WriteAnalogOutput` maps public→wire status
+  (`ControlOutOfRange`→`0x0C`) and returns a status-carrying error; unmapped/nil statuses still fail closed.
+  No public signature changed; `pkg/dnp3/types` untouched.
+- **Tests:** new `internal/outstation/g41_out_of_range_echo_test.go` and
+  `pkg/dnp3/outstation/bridge_out_of_range_test.go` fail pre-fix, pass post-fix.
+- **Go gates:** gofmt clean; `go test ./...` 25 pkgs ok; vet OK; build OK; `-race` OK; diff-check OK.
+- **Isolation:** `--network none`, not privileged; `lo` only/0 routes pre-topology; two-ns one-veth topology,
+  no default route, `ip_forward=0`, no DNS/route; host baseline unchanged.
+- **Negative matrix (index 1):** all four variations now master point `state=SUCCESS status=OUT_OF_RANGE`; wire
+  G41 echo carries original index/variation/value and command-status `0x0C` with IIN `0x0000`; fixture count=0
+  (no write). Pre-fix: generic error RESPONSE, point `status=UNDEFINED`.
+- **Positive control (index 0):** 4/4 PASS — point SUCCESS, echo idx=0 status=0x00, correct typed values and
+  float bits. No regression.
+- **`OUT_OF_RANGE_STATUS_PROPAGATION_PASS`.** Cleanup complete; host baseline unchanged. G41 stays
+  **UNSUPPORTED**. Evidence: Appendix T.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.

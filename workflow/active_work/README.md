@@ -2061,3 +2061,33 @@ Owner authorization `b6fe5d5` (bounded lab-only microtask on `work`), after Appe
   (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix S.
 Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no
 `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix T — G41 OUT_OF_RANGE status propagation corrective (2026-11-12, authorization `c19e614`)
+
+Bounded `operation cwal` after Appendix S checkpoint `7fd16ea` (`INVALID_INDEX_NEGATIVE_PARTIAL`). Repaired
+only the verified G41 Direct Operate command-status propagation gap and retested G41V1–V4 against pinned
+OpenDNP3 3.1.2 in the isolated memory-only lab.
+
+- **Startup:** fetched `c19e614`; fast-forward clean from `7fd16ea`; six top authority markers identical;
+  supported-profile blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged (G41 **UNSUPPORTED**);
+  `bash scripts/cwal-check.sh` OK.
+- **Corrective:** `internal/outstation/outstation.go` now carries a handler's definite non-success status via
+  a `ControlStatusError` and echoes the G41 object with it; `pkg/dnp3/outstation/server.go`
+  `WriteAnalogOutput` maps the public status to its wire octet (`ControlOutOfRange` → `0x0C`) and returns a
+  status-carrying error, failing closed for unmapped/nil statuses. No public signature changed; `pkg/dnp3/types`
+  untouched.
+- **Tests:** new `internal/outstation/g41_out_of_range_echo_test.go` and
+  `pkg/dnp3/outstation/bridge_out_of_range_test.go` fail pre-fix and pass post-fix; existing suites green.
+- **Go gates:** gofmt clean; `go test ./...` 25 packages ok; vet OK; build OK; `-race` OK; `git diff --check` OK.
+- **Isolated lab:** ephemeral `--network none` container (not privileged, no host/ports/socket), two
+  namespaces `10.77.0.1/24` ↔ `10.77.0.2/24` over one veth, no default route, `ip_forward=0`, external
+  unreachable — isolation proven before traffic.
+- **Negative (invalid index 1):** all four variations now yield master per-point `status=OUT_OF_RANGE`; wire
+  echo carries the original index/variation/value and command-status `0x0C` with clean IIN `0x0000`; fixture
+  accepted **count=0** (no memory write). Pre-fix this was a generic FuncUnknown response with
+  `status=UNDEFINED`.
+- **Positive (index 0):** 4/4 PASS, exact float bits preserved (`0x3fc00000`, `0x3ff8000000000000`).
+- **Result:** **`OUT_OF_RANGE_STATUS_PROPAGATION_PASS`**. Cleanup complete; host baseline unchanged
+  (`docker0 eth0 lo`, no netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix T.
+Next: **STOP for a separate independent read-only CHECK** (irrespective of pass/fail). No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
