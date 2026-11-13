@@ -8,6 +8,16 @@ QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
 
+## CURRENT owner handoff — 2026-11-13 — OpenHands PPR-001 continuation
+
+**Execute with `operation cwal` only.** The owner authorized **PPR-001 corrective work within existing CURRENT EVT-001** in `workflow/active_work/EVT-001.md` (section `Owner-approved corrective addendum — PPR-001 / OpenHands continuation`). This handoff and its section are the entry point; historical Gate B and earlier VEC checkpoints farther below are background, not today's CURRENT.
+
+Remote reference when authorized: `c012feb20dc715e2fd8342f535860563100d9b4b` plus this documentation checkpoint. The **user's local** `/home/sysadmin/apps/dnp3` has unknown dirty state after Grok/Qwen: untracked `internal/outstation/event_batch_test.go` from Grok, possibly malformed `internal/outstation/event_report.go` after Qwen and unauthorized nested `dnp3/` edits. **Do not assume local HEAD or cleanliness from remote GitHub.** Inspect status/diffs/untracked/submodules/stashes, preserve lossless outside-repo copies with manifest **before** any source recovery or fast-forward. Do not reset, clean, force checkout/push/rebase or discard the Grok test. If no access to that exact workspace, STOP and report missing local recovery access; do not proceed pretending the remote tree contains the untracked test.
+
+PPR-001 target: `encodeEventList` silently loses the whole same-variation run for 256+ items because qualifier 0x17 is limited to 255. Reproduce with existing test, make the smallest standards-correct bounded batching/fragmentation correction **without event loss**, then test 254/255/256/333 and mixed Group 2/22/32, send/confirm/retry/reconnect negatives, full Go suite, and isolated pinned OpenDNP3 3.1.2 **both-direction 256+ interoperability** with PCAP. Keep supported profile unchanged; do not edit nested `dnp3/`, AO-005, or SA. Verify gates, document evidence, non-force push a scoped checkpoint on `work` only. Leave `EVT-001 / TASK_IN_PROGRESS` and no PR/archive/merge. Detailed acceptance, allowed paths and negative cases are authoritative in the CURRENT addendum.
+
+
+
 
 
 
