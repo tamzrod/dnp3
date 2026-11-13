@@ -1,9 +1,9 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: AO-004
+Package: EVT-001
 Branch: work
-CURRENT: AO-004
+CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
@@ -2184,3 +2184,7 @@ One bounded, read-only, documentation-only `operation cwal` after the CHECKED Ap
 - **Decision:** **GO** for the bounded new-branch-off-`main` route; **NO-GO** for full `work`→`main` as-is.
   G41 stays **UNSUPPORTED**; AO-004 CURRENT. Evidence: Appendix X.
 Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005.
+
+## AO-004 closed — EVT-001 promoted (2026-11-13)
+
+Owner decision recorded in the archived AO-004 task. PR #28 is merged. `origin/main` was merged into `work` with the protocol tree unchanged (`97a08a6d201c116b5d620f3f69e690543b79cf41` before and after). AO-004 is archived at `archive/active-work/AO-004.md`. CURRENT is EVT-001. G41 stays **UNSUPPORTED**. AO-005 is not promoted. Signed-zero/subnormal divergence and untested independent-wire negatives remain as already recorded. The MEXT-019 IIN bitmap freeze is not lifted. `active_work/supported-profile.md` is unchanged.
