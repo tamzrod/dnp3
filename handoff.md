@@ -7,6 +7,15 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — PPR-001 pre-PR F1/F2/F3 corrective iteration
+
+**Run `operation cwal` in OpenHands Cloud.** The latest owner authorization is in the existing CURRENT `workflow/active_work/EVT-001.md`, section `Owner-authorized pre-PR corrective iteration — PPR-001-F1/F2/F3 (2026-11-14)`. This supersedes the previous “PPR-001 verified” conclusion for PR readiness: independent read-only audit of `c319050ee828290022f5af61a8822fabeed74292` issued **PUSHBACK** on three findings. Continue autonomously; this handoff is a route to the approved CURRENT, not separate authority to expand work.
+
+**F1:** `internal/outstation/outstation.go` removes class/direct READ event IDs while preparing a response, *before* later link/transport sends that can fail or partially complete. Reproduce and fix silent event loss, retain accurate queue/IIN/reconnect semantics. **F2:** `splitObjectData` may preserve a single nonindexed block larger than `MaxFragmentSize`; `responseFragments` can then return an oversized original APDU. Prove and correct via valid splitting or explicit fail-closed behavior. **F3:** `internal/master/master.go` `confirmPendingAppFragments` ignores `sendApplicationConfirm` failure while advancing `done`. Reproduce/propagate send error, keep per-fragment sequence and bounded/deadline behavior, do not silently complete.
+
+Use the cloud-clean `origin/work` per prior authorization (do not touch or claim recovered the owner's local Grok/Qwen files). Required: targeted negative tests for each finding, full Go/CWAL checks, pinned isolated OpenDNP3 3.1.2 both directions with 256+ event batches and relevant fault probes; record hashes/PCAP and honest result in PPR-001 evidence. Restrict edits to relevant CURRENT allowlist. **Never edit `main`, nested `dnp3/`, `internal/sa`, KDE governance, or published supported profile.** No PR, merge, archive, release, or promotion. On verified PASS checkpoint non-force to `work`; final report only `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`. Markers remain `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
+
+
 ## Cloud continuation progress — 2026-11-13 — PPR-001
 
 OpenHands Cloud executed PPR-001 from a verified clean `origin/work` checkout. Starting `HEAD` was `768e1f984455184bc3fe04baad836f3a0370e0de` (markers already `EVT-001 / TASK_IN_PROGRESS`). The owner's laptop workspace `/home/sysadmin/apps/dnp3` is **UNAVAILABLE / NOT RECOVERED / NOT TOUCHED**; Grok's untracked test and Qwen's edits were not accessed. `internal/outstation/event_batch_test.go` was newly authored from the live source, not restored.
