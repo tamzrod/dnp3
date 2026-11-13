@@ -178,6 +178,27 @@ func TestDecodeRejectsShortEvent(t *testing.T) {
 	}
 }
 
+// TestAppendIndexedEventsCountBoundary pins the 8-bit qualifier-0x17 limit: 255
+// objects are accepted in one header and 256 are rejected, so callers must
+// split larger runs instead of relying on the encoder to truncate them.
+func TestAppendIndexedEventsCountBoundary(t *testing.T) {
+	objs := make([][]byte, 255)
+	for i := range objs {
+		objs[i] = []byte{byte(i), 0x81}
+	}
+	ok, err := AppendIndexedEvents(nil, 2, 2, objs)
+	if err != nil {
+		t.Fatalf("255 objects rejected: %v", err)
+	}
+	if len(ok) < 4 || ok[2] != QualIndex8 || ok[3] != 0xFF {
+		t.Fatalf("255-object header = % X", ok[:4])
+	}
+	objs = append(objs, []byte{0x00, 0x81})
+	if _, err := AppendIndexedEvents(nil, 2, 2, objs); err == nil {
+		t.Fatal("256 objects must be rejected by the 8-bit qualifier")
+	}
+}
+
 // TestDecodeEventQualifier16 pins OpenDNP3 3.1.2's event layout: qualifier
 // 0x28 is a 16-bit count followed by a 16-bit index on each object.
 func TestDecodeEventQualifier16(t *testing.T) {

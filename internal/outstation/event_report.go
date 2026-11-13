@@ -190,6 +190,76 @@ type encodedObj struct {
 	body      []byte
 }
 
+// encodeEventListBounded is like encodeEventList but stops adding objects once
+// the encoded payload would exceed maxData octets. It is used for unsolicited
+// responses, which must fit the peer's transport receive buffer as a single
+// application fragment. Always encodes at least one object so a caller cannot
+// stall; the remaining events stay queued.
+func encodeEventListBounded(evs []Event, maxData int) ([]byte, []uint64) {
+	if maxData < 8 {
+		maxData = 8
+	}
+	var objs []encodedObj
+	for _, ev := range evs {
+		obj, ok := encodeOne(ev, 0)
+		if !ok {
+			continue
+		}
+		objs = append(objs, obj)
+	}
+	if len(objs) == 0 {
+		return nil, nil
+	}
+	var dst []byte
+	var ids []uint64
+	i := 0
+	for i < len(objs) {
+		j := i + 1
+		for j < len(objs) && objs[j].group == objs[i].group && objs[j].variation == objs[i].variation {
+			j++
+		}
+		start := i
+		for start < j {
+			per := len(objs[start].body)
+			avail := maxData - len(dst) - appFragmentOverhead
+			n := avail / per
+			if n < 1 {
+				if len(dst) == 0 {
+					// Guarantee forward progress with a single object.
+					n = 1
+				} else {
+					return dst, ids
+				}
+			}
+			if n > j-start {
+				n = j - start
+			}
+			if n > maxObjectsPerHeader {
+				n = maxObjectsPerHeader
+			}
+			bodies := make([][]byte, 0, n)
+			for _, obj := range objs[start : start+n] {
+				bodies = append(bodies, obj.body)
+			}
+			var err error
+			dst, err = al.AppendIndexedEvents(dst, objs[i].group, objs[i].variation, bodies)
+			if err != nil {
+				return dst, ids
+			}
+			for _, obj := range objs[start : start+n] {
+				ids = append(ids, obj.id)
+			}
+			start += n
+		}
+		i = j
+	}
+	return dst, ids
+}
+
+// maxObjectsPerHeader is the largest object count an 8-bit qualifier (0x17)
+// can carry in one object header (IEEE 1815 UINT8_CNT_UINT8_INDEX).
+const maxObjectsPerHeader = 255
+
 func encodeEventList(evs []Event, forceVar uint8) ([]byte, []uint64) {
 	var objs []encodedObj
 	for _, ev := range evs {
@@ -210,15 +280,29 @@ func encodeEventList(evs []Event, forceVar uint8) ([]byte, []uint64) {
 		for j < len(objs) && objs[j].group == objs[i].group && objs[j].variation == objs[i].variation {
 			j++
 		}
-		var bodies [][]byte
-		for _, obj := range objs[i:j] {
-			bodies = append(bodies, obj.body)
-			ids = append(ids, obj.id)
-		}
-		var err error
-		dst, err = al.AppendIndexedEvents(dst, objs[i].group, objs[i].variation, bodies)
-		if err != nil {
-			return nil, nil
+		// A same-variation run may exceed the 255-object limit of one
+		// qualifier-0x17 header. Emit it as consecutive headers rather than
+		// dropping the run. The transport layer fragments the resulting APDU
+		// into link frames, so the header split is the only bound needed here.
+		for start := i; start < j; start += maxObjectsPerHeader {
+			end := start + maxObjectsPerHeader
+			if end > j {
+				end = j
+			}
+			bodies := make([][]byte, 0, end-start)
+			for _, obj := range objs[start:end] {
+				bodies = append(bodies, obj.body)
+			}
+			var err error
+			dst, err = al.AppendIndexedEvents(dst, objs[i].group, objs[i].variation, bodies)
+			if err != nil {
+				// Return what was already encoded. The caller removes only
+				// those ids, so no undelivered event is dropped or acknowledged.
+				return dst, ids
+			}
+			for _, obj := range objs[start:end] {
+				ids = append(ids, obj.id)
+			}
 		}
 		i = j
 	}
@@ -406,7 +490,15 @@ func (o *Outstation) prepareUnsolicitedLocked() ([][]byte, uint64) {
 		return nil, 0
 	}
 	sortEvents(batch)
-	payload, ids := encodeEventList(batch, 0)
+	// An unsolicited response is a single application fragment: the peer's
+	// transport receive buffer bounds it (OpenDNP3 3.1.2 default 2048). Encode
+	// only as many events as fit; the rest stay queued and are sent after this
+	// fragment is confirmed, mirroring OpenDNP3's per-fragment event loading.
+	budget := o.maxAppFragment
+	if budget <= appFragmentOverhead {
+		budget = defaultMaxAppFragment
+	}
+	payload, ids := encodeEventListBounded(batch, budget-appFragmentOverhead)
 	if len(payload) == 0 {
 		return nil, 0
 	}

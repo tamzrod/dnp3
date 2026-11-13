@@ -377,6 +377,13 @@ var (
 	ErrConfirmSeqMismatch  = errors.New("confirmation sequence mismatch")
 	ErrResponseSeqMismatch = errors.New("response sequence mismatch")
 
+	// errIncompleteResponse reports that the bytes received so far are a valid
+	// prefix of a transport message that has not finished arriving. A solicited
+	// response may span multiple transport fragments delivered across separate
+	// Receive() calls, so the response wait keeps reading rather than treating a
+	// partial message as a failure.
+	errIncompleteResponse = errors.New("incomplete response")
+
 	// ErrIllegalStateTransition indicates a lifecycle method attempted an
 	// undefined state transition (DNP3-039). Surfaced rather than silently
 	// overwriting the state.
@@ -1474,6 +1481,12 @@ func (m *Master) resetForReconnect() {
 // OpenDNP3 3.1.2 transmits a null unsolicited response as soon as the TCP
 // session is up, and that primary frame can arrive before the secondary ACK.
 const maxHandshakePeerFrames = 4
+
+// maxResponseBytes bounds the reassembly of one solicited response. The
+// transport fragments a single application message into 249-byte payloads, and
+// the APDU cap for this stack is far below this bound; the limit only stops an
+// endless stream of fragments from growing the buffer without limit.
+const maxResponseBytes = 64 * 1024
 
 // peerPrimaryUserData reports a primary user-data frame addressed from the
 // outstation to this master. It is not a secondary handshake response.
@@ -2907,6 +2920,14 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) 
 	// bounded by this single deadline so that a peer emitting repeated bare
 	// link-layer ACKs cannot extend the wait indefinitely.
 	deadline := time.Now().Add(stepTimeout)
+	// A solicited response may span several transport fragments, and the
+	// transport delivers one data-link frame per Receive(). Accumulate the raw
+	// frames of the in-progress message and re-run the DLL+TL path over the whole
+	// buffer each time; errIncompleteResponse means more fragments are needed.
+	var acc []byte
+	// appConfirmed counts the non-final application fragments already confirmed on
+	// this response, so a re-parse of the growing buffer does not confirm twice.
+	appConfirmed := 0
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -2924,20 +2945,63 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) 
 		}
 		// A conformant outstation ACKs confirmed user data at the link layer
 		// (a bare secondary ACK carrying no transport fragment) before sending
-		// its solicited application response. Consume that ACK and keep waiting
-		// within the same bounded deadline rather than treating it as the
-		// response or triggering a blind retry. NACKs are surfaced earlier by
+		// its solicited application response. Skip it only when the whole receive
+		// is exactly that one bare frame, so a segment that also carries a
+		// transport fragment is not dropped. NACKs are surfaced earlier by
 		// processReceivedBytes, so only ACK is skipped here.
-		if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
-			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
+		if len(data) == frame.EncodedSize(0) {
+			if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
+				f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
+				continue
+			}
+		}
+		acc = append(acc, data...)
+		if len(acc) > maxResponseBytes {
+			return nil, fmt.Errorf("%w: response exceeds %d bytes", ErrInvalidResponse, maxResponseBytes)
+		}
+		// An unsolicited fragment has its own application sequence. Confirm it
+		// when it is in order and keep waiting for the solicited response.
+		app, aerr := m.processReceivedBytes(acc)
+		if errors.Is(aerr, errIncompleteResponse) {
+			// A multi-fragment solicited response requires an application-layer
+			// confirmation per fragment: OpenDNP3's outstation sets CON on every
+			// fragment and will not send the next until the current one is
+			// confirmed. Confirm each complete fragment once.
+			m.confirmPendingAppFragments(acc, peer, &appConfirmed)
 			continue
 		}
-		// An unsolicited fragment has its own application sequence. Confirm
-		// it when it is in order and keep waiting for the solicited response.
-		if app, aerr := m.processReceivedBytes(data); aerr == nil && m.consumeUnsolicited(app, peer) {
+		if aerr == nil && m.consumeUnsolicited(app, peer) {
+			acc = acc[:0]
+			appConfirmed = 0
 			continue
 		}
-		return data, nil
+		// The solicited response is complete. Confirm every CON fragment not yet
+		// confirmed, including the final one: OpenDNP3 sets CON on the last
+		// fragment of a multi-fragment solicited response too and stays in the
+		// confirm-wait state until it is confirmed.
+		m.confirmPendingAppFragments(acc, peer, &appConfirmed)
+		return acc, nil
+	}
+}
+
+// confirmPendingAppFragments sends a solicited application confirmation for
+// every complete application fragment in data that carries CON and has not yet
+// been confirmed. done counts the fragments already handled; it advances past
+// each fragment so a re-parse of the growing buffer does not confirm twice.
+//
+// Each fragment is confirmed with its own sequence: OpenDNP3 advances the
+// solicited sequence per fragment and requires the matching confirmation before
+// sending the next.
+func (m *Master) confirmPendingAppFragments(data []byte, peer uint16, done *int) {
+	frags, err := m.parseAppFragments(data)
+	if err != nil || len(frags) == 0 {
+		return
+	}
+	for i := *done; i < len(frags); i++ {
+		if frag, derr := al.Decode(frags[i]); derr == nil && frag.Control.CON {
+			_ = m.sendApplicationConfirm(frag.Control.Seq, peer, false)
+		}
+		*done = i + 1
 	}
 }
 
@@ -3013,6 +3077,7 @@ func (m *Master) PollUnsolicited(peer uint16, wait time.Duration) error {
 	defer m.transport.SetTimeout(m.config.Timeout)
 
 	deadline := time.Now().Add(wait)
+	var acc []byte
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -3027,7 +3092,17 @@ func (m *Master) PollUnsolicited(peer uint16, wait time.Duration) error {
 			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
 			continue
 		}
-		app, err := m.processReceivedBytes(data)
+		// A single unsolicited response may span several transport fragments, one
+		// data-link frame per Receive(). Accumulate raw frames and retry until the
+		// message is complete.
+		acc = append(acc, data...)
+		if len(acc) > maxResponseBytes {
+			return fmt.Errorf("%w: unsolicited response exceeds %d bytes", ErrInvalidResponse, maxResponseBytes)
+		}
+		app, err := m.processReceivedBytes(acc)
+		if errors.Is(err, errIncompleteResponse) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -3088,16 +3163,12 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
-	// DNP3-054: if the outstation's response requested an application-layer
-	// confirmation (CON=1), the master must send a confirm APDU — same sequence,
-	// FuncCode 0 (Confirm), CON=0 — before processing the response data. The
-	// confirm is sent as unconfirmed user data so it does not require a
-	// link-layer ACK and cannot desync the ping-pong request/response path.
-	if resp.Header.Control.CON {
-		if err := m.sendApplicationConfirm(resp.Header.Control.Seq, outstationID, false); err != nil {
-			return nil, fmt.Errorf("send application confirm: %w", err)
-		}
-	}
+	// DNP3-054: an application-layer confirmation (CON=1) is sent from the
+	// response receive path (waitForResponseTimeout), where each application
+	// fragment's own sequence is available. A multi-fragment response carries a
+	// distinct sequence per fragment, so confirming from the joined APDU (which
+	// keeps the first fragment's sequence for the DNP3-010 check) would send the
+	// wrong sequence.
 
 	// DNP3-013: react to critical IIN bits.
 	m.reactToIIN(outstationID, resp.IIN, o)
@@ -3187,20 +3258,42 @@ func (m *Master) reactToIIN(outstationID uint16, iin al.IIN, o *Outstation) {
 //   - a secondary NACK frame (PRM=0, FuncNack) is surfaced as ErrLinkNACK
 //     (the link is alive but rejected the frame; retryable).
 func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
-	// Reset reassembler for new response
+	frags, err := m.parseAppFragments(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(frags) == 0 {
+		return nil, errIncompleteResponse
+	}
+	// The run is complete only once the final application fragment (FIN=1) has
+	// arrived; until then the caller keeps reading.
+	if last, lerr := al.Decode(frags[len(frags)-1]); lerr == nil && !last.Control.FIN {
+		return nil, errIncompleteResponse
+	}
+	if len(frags) == 1 {
+		return frags[0], nil
+	}
+	return joinAppFragments(frags), nil
+}
+
+// parseAppFragments decodes all complete transport messages in data, in order.
+// Each FIN-terminated transport message is one application fragment; the
+// reassembler is reset between messages so consecutive application fragments of
+// one response are not conflated. It surfaces the same link-layer error classes
+// as the receive path (ErrCRCError, ErrLinkNACK).
+func (m *Master) parseAppFragments(data []byte) ([][]byte, error) {
 	m.reassembler.Reset()
 
-	var completeData []byte
-
-	// Parse all DLL frames in the received data
+	var frags [][]byte
 	offset := 0
 	for offset < len(data) {
 		// Decode DLL frame
 		dllFrame, err := frame.Decode(data[offset:])
 		if err != nil {
-			// If we got complete data, return it
-			if len(completeData) > 0 {
-				return completeData, nil
+			// If fragments were already parsed, return them; trailing bytes may be a
+			// partial frame that a later read completes.
+			if len(frags) > 0 {
+				return frags, nil
 			}
 
 			// DNP3-034: surface CRC validation failures as a distinct,
@@ -3245,24 +3338,45 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue // Skip malformed fragments
 		}
 
-		// Push fragment to reassembler - returns complete message when FIN received
+		// Push fragment to reassembler - returns one complete application fragment
+		// when FIN is received.
 		result, err := m.reassembler.Push(tlFrag)
 		if err != nil {
 			return nil, fmt.Errorf("reassembly error: %w", err)
 		}
 
 		if result != nil {
-			completeData = result
+			frags = append(frags, result)
+			// A FIN ends this transport message; the next fragment (if any) starts a
+			// new application fragment with its own FIR.
+			m.reassembler.Reset()
 		}
 
 	}
 
-	// Check if we have complete application data
-	if len(completeData) == 0 {
-		return nil, fmt.Errorf("no complete response received")
-	}
+	return frags, nil
+}
 
-	return completeData, nil
+// joinAppFragments concatenates the object data of consecutive application
+// fragments into one APDU. The first fragment's control byte, function code, and
+// IIN are authoritative; each fragment repeats them, so only the object data
+// (octets after the 4-octet header) of every later fragment is appended.
+func joinAppFragments(frags [][]byte) []byte {
+	first, err := al.Decode(frags[0])
+	if err != nil {
+		return frags[0]
+	}
+	out := make([]byte, 0, 4096)
+	out = append(out, first.Control.Header(), first.FuncCode)
+	out = append(out, first.Data...)
+	for _, f := range frags[1:] {
+		frag, derr := al.Decode(f)
+		if derr != nil || len(frag.Data) < 2 {
+			continue
+		}
+		out = append(out, frag.Data[2:]...)
+	}
+	return out
 }
 
 // isCRCError reports whether a frame.Decode error is a CRC validation failure

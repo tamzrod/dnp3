@@ -153,6 +153,10 @@ type Config struct {
 	MaxEventBuffers   int    // Maximum event buffer size
 	Unsolicited       bool   // Enable unsolicited responses
 	SBOTimeout        int    // Select-before-operate timeout in milliseconds (default 10000)
+	// MaxFragmentSize bounds one application-layer response fragment. A peer
+	// discards an application fragment larger than its receive buffer (OpenDNP3
+	// 3.1.2 default 2048), so a larger response is split across fragments.
+	MaxFragmentSize int
 }
 
 // DefaultConfig returns default outstation configuration.
@@ -164,6 +168,7 @@ func DefaultConfig() *Config {
 		MaxEventBuffers:   1000,
 		Unsolicited:       false,
 		SBOTimeout:        10000, // 10 seconds default for SBO timeout
+		MaxFragmentSize:   defaultMaxAppFragment,
 	}
 }
 
@@ -570,6 +575,10 @@ type Outstation struct {
 	unsolSendAfter   bool
 	fragmenter       *tl.Fragmenter
 	reassembler      *tl.Reassembler
+	// maxAppFragment bounds one application-layer fragment. OpenDNP3 3.1.2
+	// sizes its transport receive buffer at maxRxFragSize = 2048, so an
+	// application fragment larger than that is rejected before FIN.
+	maxAppFragment int
 	// SBO state tracking
 	pendingSelects map[uint16]*PendingSelect // Index -> PendingSelect
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
@@ -589,6 +598,7 @@ func NewOutstation(config *Config) *Outstation {
 		appSeq:         0,
 		fragmenter:     tl.NewFragmenter(),
 		reassembler:    tl.NewReassembler(),
+		maxAppFragment: maxAppFragmentSize(config),
 		pendingSelects: make(map[uint16]*PendingSelect),
 		eventQueue:     NewEventQueue(config.MaxEventBuffers),
 	}
@@ -884,29 +894,33 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 			continue
 		}
 
-		// Send response with DLL framing
+		// Send response with DLL framing. A response whose object data exceeds
+		// the application-fragment budget is split into several fragments, each
+		// carried in its own transport-message/DLL-frame run.
 		if resp != nil {
-			respData := o.buildTransportFragments(resp)
-			for _, frag := range respData {
-				// Wrap in DLL frame. A solicited application response is user
-				// data and must be a primary frame (PRM=1) in both directions;
-				// unconfirmed user data carries no FCB/FCV.
-				dllFrame := &frame.Frame{
-					Control: frame.Control{
-						DIR:      false, // Outstation-to-Master
-						PRM:      true,  // Primary: carries user data
-						FuncCode: frame.FuncUnconfirmedUserData,
-					},
-					DestAddr: o.config.MasterAddress,
-					SrcAddr:  o.config.OutstationAddress,
-					Data:     frag,
-				}
-				dllEncoded, err := frame.Encode(dllFrame)
-				if err != nil {
-					continue
-				}
-				if err := transport.Send(dllEncoded); err != nil {
-					continue
+			for _, appFrag := range o.responseFragments(resp) {
+				respData := o.buildTransportFragments(appFrag)
+				for _, frag := range respData {
+					// Wrap in DLL frame. A solicited application response is user
+					// data and must be a primary frame (PRM=1) in both directions;
+					// unconfirmed user data carries no FCB/FCV.
+					dllFrame := &frame.Frame{
+						Control: frame.Control{
+							DIR:      false, // Outstation-to-Master
+							PRM:      true,  // Primary: carries user data
+							FuncCode: frame.FuncUnconfirmedUserData,
+						},
+						DestAddr: o.config.MasterAddress,
+						SrcAddr:  o.config.OutstationAddress,
+						Data:     frag,
+					}
+					dllEncoded, err := frame.Encode(dllFrame)
+					if err != nil {
+						continue
+					}
+					if err := transport.Send(dllEncoded); err != nil {
+						continue
+					}
 				}
 			}
 		}
@@ -1031,6 +1045,215 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 	}
 
 	return nil, nil
+}
+
+// maxAppFragmentSize returns the configured application-fragment budget. The
+// zero value and any value too small to carry object data fall back to the
+// OpenDNP3-compatible default.
+func maxAppFragmentSize(cfg *Config) int {
+	if cfg != nil && cfg.MaxFragmentSize > appFragmentOverhead+1 {
+		return cfg.MaxFragmentSize
+	}
+	return defaultMaxAppFragment
+}
+
+// appFragmentOverhead is the octet count preceding the object data on every
+// application fragment: application control, function code, and two IIN octets.
+const appFragmentOverhead = 4
+
+// maxObjectsPerAppFragmentFallback bounds one application-layer response
+// fragment when no configured budget is available. OpenDNP3 3.1.2 sizes its
+// transport receive buffer at 2048 octets, so a larger fragment is discarded
+// before FIN.
+const defaultMaxAppFragment = 2048
+
+// responseFragments splits a solicited response into consecutive application
+// fragments, each at most the configured budget. A response that already fits
+// is returned as a single FIR|FIN fragment. The first fragment keeps the
+// request sequence; each later fragment advances it by one, so a conformant
+// peer accepts the run. Non-final fragments clear FIN and leave CON clear:
+// IEEE 1815 permits a solicited multi-fragment response without an
+// inter-fragment confirmation, and OpenDNP3's master accepts it (it advances
+// its solicited sequence and stays in WAIT_FOR_RESPONSE).
+//
+// Only qualifier-0x17 indexed runs are split below a header: their objects are
+// re-emitted under fresh count-bounded headers, each fragment repeating the IIN.
+// Sequential blocks (qualifier 0x07, implicit indexes) stay whole so no point
+// index is renumbered.
+func (o *Outstation) responseFragments(resp *al.APDU) []*al.APDU {
+	budget := o.maxAppFragment
+	if budget <= appFragmentOverhead+1 {
+		budget = defaultMaxAppFragment
+	}
+	// resp.Data carries a two-octet IIN prefix ahead of the object data. The
+	// budget covers the whole fragment body (IIN + objects), so the object
+	// payload gets budget-4 octets per fragment.
+	maxData := budget - appFragmentOverhead
+	if len(resp.Data) <= maxData+2 {
+		return []*al.APDU{resp}
+	}
+	chunks := splitObjectData(resp.Data[2:], maxData)
+	if len(chunks) <= 1 {
+		return []*al.APDU{resp}
+	}
+	out := make([]*al.APDU, len(chunks))
+	iin := append([]byte(nil), resp.Data[:2]...)
+	for i, c := range chunks {
+		body := make([]byte, 0, 2+len(c))
+		body = append(body, iin...)
+		body = append(body, c...)
+		out[i] = &al.APDU{
+			Control: al.AppControl{
+				FIR: i == 0,
+				FIN: i == len(chunks)-1,
+				CON: false,
+				UNS: resp.Control.UNS,
+				Seq: (resp.Control.Seq + uint8(i)) % al.AppSeqMod,
+			},
+			FuncCode: resp.FuncCode,
+			Data:     body,
+		}
+	}
+	return out
+}
+
+// splitObjectData partitions encoded object data (everything after the two IIN
+// octets) into payloads of at most maxData octets. It splits only at object
+// boundaries inside a qualifier-0x17 indexed run; any other block is kept
+// whole.
+func splitObjectData(data []byte, maxData int) [][]byte {
+	if maxData < 8 {
+		maxData = 8
+	}
+	var frags [][]byte
+	var cur []byte
+	flush := func() {
+		if len(cur) > 0 {
+			frags = append(frags, cur)
+			cur = nil
+		}
+	}
+	off := 0
+	for off < len(data) {
+		span, indexed, perObject, count, ok := indexedBlock(data, off)
+		if !ok || span <= 0 || off+span > len(data) {
+			if len(cur) > 0 {
+				flush()
+			}
+			frags = append(frags, append([]byte(nil), data[off:]...))
+			return frags
+		}
+		if !indexed {
+			if len(cur)+span > maxData && len(cur) > 0 {
+				flush()
+			}
+			cur = append(cur, data[off:off+span]...)
+			off += span
+			continue
+		}
+		group, variation := data[off], data[off+1]
+		objects := data[off+appFragmentOverhead : off+span]
+		i := 0
+		for i < count {
+			avail := maxData - len(cur) - appFragmentOverhead
+			if avail < perObject {
+				flush()
+				avail = maxData - appFragmentOverhead
+			}
+			n := avail / perObject
+			if n < 1 {
+				n = 1
+			}
+			if n > count-i {
+				n = count - i
+			}
+			sub := make([]byte, 0, appFragmentOverhead+n*perObject)
+			sub = append(sub, group, variation, al.QualIndex8, byte(n))
+			sub = append(sub, objects[i*perObject:(i+n)*perObject]...)
+			if len(cur)+len(sub) > maxData && len(cur) > 0 {
+				flush()
+			}
+			cur = append(cur, sub...)
+			i += n
+		}
+		off += span
+	}
+	flush()
+	return frags
+}
+
+// indexedBlock describes the object block at off. indexed is true only for a
+// qualifier-0x17 header whose events carry an explicit 1-octet index prefix;
+// perObject is the total octets of one such object. ok is false when the block
+// cannot be parsed.
+func indexedBlock(data []byte, off int) (span int, indexed bool, perObject, count int, ok bool) {
+	if off+3 > len(data) {
+		return 0, false, 0, 0, false
+	}
+	group, variation, qual := data[off], data[off+1], data[off+2]
+	if qual != al.QualIndex8 || off+4 > len(data) {
+		return blockSpan(data, off)
+	}
+	valueSize, known := eventValueSize(group, variation)
+	if !known {
+		return blockSpan(data, off)
+	}
+	count = int(data[off+3])
+	perObject = 1 + valueSize
+	span = appFragmentOverhead + count*perObject
+	return span, true, perObject, count, true
+}
+
+// blockSpan returns the octet span of a non-indexed object block, which is kept
+// whole. A count-qualified sequential block (0x07) has no derivable length
+// without the group layout, so the remainder of the buffer is attributed to it.
+func blockSpan(data []byte, off int) (span int, indexed bool, perObject, count int, ok bool) {
+	if off+3 > len(data) {
+		return 0, false, 0, 0, false
+	}
+	switch data[off+2] {
+	case al.QualAllObjects:
+		return 3, false, 0, 0, true
+	case al.QualCount8:
+		return len(data) - off, false, 0, 0, true
+	case al.QualStartStop8:
+		return 5, false, 0, 0, true
+	case al.QualCount16:
+		return 5, false, 0, 0, true
+	case al.QualRange16:
+		return 7, false, 0, 0, true
+	default:
+		return len(data) - off, false, 0, 0, true
+	}
+}
+
+// eventValueSize returns the octets of one event object's value (flags plus any
+// value and absolute time) excluding its 1-octet index prefix.
+func eventValueSize(group, variation uint8) (int, bool) {
+	switch group {
+	case 2:
+		switch variation {
+		case 1:
+			return 1, true
+		case 2:
+			return 7, true
+		}
+	case 22:
+		switch variation {
+		case 1:
+			return 5, true
+		case 5:
+			return 11, true
+		}
+	case 32:
+		switch variation {
+		case 1:
+			return 5, true
+		case 3:
+			return 11, true
+		}
+	}
+	return 0, false
 }
 
 // buildTransportFragments builds transport fragments from an APDU.

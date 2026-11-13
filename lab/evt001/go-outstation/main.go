@@ -95,6 +95,31 @@ func main() {
 				}
 			}
 			fmt.Printf("FILL accepted=%d rejected=%d\n", n-full, full)
+		case "fillpt":
+			// fillpt <index> <n>: publish n events on one point index so a run
+			// can exceed 256 events without exceeding the 8-bit index range.
+			if len(fields) != 3 {
+				fmt.Println("ERR fillpt args")
+				continue
+			}
+			index, err := strconv.ParseUint(fields[1], 10, 16)
+			if err != nil {
+				fmt.Println("ERR", err)
+				continue
+			}
+			n, err := strconv.Atoi(fields[2])
+			if err != nil {
+				fmt.Println("ERR", err)
+				continue
+			}
+			full := 0
+			for i := 0; i < n; i++ {
+				err := server.PublishBinaryEvent(uint16(index), i%2 == 0, al.BinEventOnline, outstation.EventClass1, time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC))
+				if err != nil {
+					full++
+				}
+			}
+			fmt.Printf("FILLPT accepted=%d rejected=%d\n", n-full, full)
 		default:
 			fmt.Println("ERR unknown")
 		}

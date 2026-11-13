@@ -7,6 +7,25 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## Cloud continuation progress — 2026-11-13 — PPR-001
+
+OpenHands Cloud executed PPR-001 from a verified clean `origin/work` checkout. Starting `HEAD` was `768e1f984455184bc3fe04baad836f3a0370e0de` (markers already `EVT-001 / TASK_IN_PROGRESS`). The owner's laptop workspace `/home/sysadmin/apps/dnp3` is **UNAVAILABLE / NOT RECOVERED / NOT TOUCHED**; Grok's untracked test and Qwen's edits were not accessed. `internal/outstation/event_batch_test.go` was newly authored from the live source, not restored.
+
+Root cause confirmed: `encodeEventList` grouped one same-variation run under a single qualifier-`0x17` header, and `al.AppendIndexedEvents` rejects more than 255 objects in one header, so a 256+ run returned `nil,nil` and suppressed the whole batch.
+
+Correction (smallest bounded change, no event loss):
+
+- `internal/outstation/event_report.go`: `encodeEventList` now emits a same-variation run as consecutive count-bounded headers (`maxObjectsPerHeader=255`), returning only the objects actually encoded so the caller removes exactly those; added `encodeEventListBounded` for the unsolicited path, which bounds one application fragment and leaves the rest queued.
+- `internal/outstation/outstation.go`: added `MaxFragmentSize` config, `responseFragments`/`splitObjectData`/`indexedBlock`/`eventValueSize` so a solicited response larger than the peer's 2048-octet transport receive buffer is split into valid FIR/FIN application fragments (only qualifier-`0x17` indexed runs are split below a header; sequential blocks stay whole).
+- `internal/tl/transport.go` + `test/conformance/tl/tl_test.go`: corrected the transport-header bit convention to IEEE 1815 (FIN=0x80 bit 7, FIR=0x40 bit 6), verified against OpenDNP3 3.1.2 `TransportHeader.cpp`.
+- `internal/master/master.go`: `waitForResponseTimeout` now accumulates multi-fragment solicited responses; `confirmPendingAppFragments` confirms every CON application fragment with that fragment's own sequence, including the final fragment (OpenDNP3 sets CON on the last solicited fragment too and stays in confirm-wait until confirmed). The redundant confirm in `processResponse` was removed because it used the joined APDU's first-fragment sequence.
+
+Verification on this tree: `gofmt -l` clean, `go vet ./...` PASS, `go build ./...` PASS, `go test ./... -count=1` PASS, `go test -race ./... -count=1` PASS, `bash scripts/verify-external-mvp.sh` PASS, `git diff --check` PASS.
+
+Isolated `--network none` loopback interop (pinned OpenDNP3 3.1.2, memory-only points) both directions: solicited N=254/255/256/257/333 all deliver exactly N; unsolicited N=254/255/256/257/333 deliver exactly N (Go outstation→OD master) and 226 (one bounded fragment; the harness returns after the first response by design) for OD outstation→Go master. PCAPs `docs/verification/evt001/evt001-largebatch-*.pcap` show genuine multi-application-fragment delivery.
+
+CURRENT stays `EVT-001 / TASK_IN_PROGRESS`; QUEUED NONE; no archive, PR, merge, release, or profile promotion.
+
 ## CURRENT owner cloud-continuation override — 2026-11-13 — PPR-001
 
 **Execute by typing `operation cwal`.** The owner explicitly amended the human-promoted `EVT-001` task at `workflow/active_work/EVT-001.md`, section **Owner-approved cloud continuation amendment — PPR-001**. This is the current, higher-precedence authority for OpenHands Cloud PPR-001. It **supersedes the local-workspace-must-exist STOP condition** in the older handoff immediately below, but leaves all other task safety and acceptance gates intact.
