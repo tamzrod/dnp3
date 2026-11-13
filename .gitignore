@@ -67,6 +67,6 @@ __pycache__/
 .kde/runtime/logs/
 .gobin/
 workbench
-# compiled example binaries (e.g. from `go build ./examples/...`)
-master
-outstation
+# compiled example binaries at the repo root (e.g. `go build -o master`)
+/master
+/outstation

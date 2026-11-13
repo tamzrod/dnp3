@@ -31,10 +31,12 @@ package outstation
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"math"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +45,36 @@ import (
 	"dnp3/pkg/dnp3/types"
 	"dnp3/pkg/transport"
 )
+
+// sessionTCP turns a dead TCP read into ErrSessionClosed so the outstation
+// loop releases the single connection slot. Timeouts and resync errors are
+// returned unchanged.
+type sessionTCP struct {
+	*transport.TCPTransport
+}
+
+func (s *sessionTCP) Receive() ([]byte, error) {
+	data, err := s.TCPTransport.Receive()
+	if err == nil || !sessionDead(err) {
+		return data, err
+	}
+	return nil, fmt.Errorf("%w: %v", outstation.ErrSessionClosed, err)
+}
+
+func sessionDead(err error) bool {
+	if transport.IsDisconnect(err) || errors.Is(err, transport.ErrNotConnected) {
+		return true
+	}
+	if errors.Is(err, transport.ErrTimeout) || errors.Is(err, transport.ErrInvalidFrame) {
+		return false
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "TCP receive failed") || strings.Contains(msg, "connection reset") || strings.Contains(msg, "broken pipe")
+}
 
 // debugControls enables debug logging. Set DNP3_DEBUG=1 environment variable to enable.
 var debugControls = os.Getenv("DNP3_DEBUG") == "1"
@@ -74,9 +106,32 @@ type Server interface {
 	// SetUnsolicitedHandler sets the handler for enabling/disabling unsolicited
 	SetUnsolicitedHandler(handler UnsolicitedHandler)
 
+	// PublishBinaryEvent queues a binary input event. The host does not build
+	// a DNP3 frame. quality is the Group 2 flag octet without the state bit.
+	// A zero time selects the variation without a timestamp.
+	PublishBinaryEvent(index uint16, value bool, quality uint8, class EventClass, at time.Time) error
+
+	// PublishAnalogEvent queues an analog input event as Group 32 signed int32.
+	PublishAnalogEvent(index uint16, value int32, quality uint8, class EventClass, at time.Time) error
+
+	// PublishCounterEvent queues a counter event as Group 22 unsigned int32.
+	PublishCounterEvent(index uint16, value uint32, quality uint8, class EventClass, at time.Time) error
+
 	// Close gracefully shuts down the server
 	Close() error
 }
+
+// EventClass is the DNP3 event class assigned to a published event.
+type EventClass int
+
+const (
+	// EventClass1 is DNP3 Class 1.
+	EventClass1 EventClass = iota
+	// EventClass2 is DNP3 Class 2.
+	EventClass2
+	// EventClass3 is DNP3 Class 3.
+	EventClass3
+)
 
 // ServerState represents the state of an outstation server
 type ServerState int
@@ -773,6 +828,7 @@ type server struct {
 	connections   map[uint64]*outstationInstance
 	connCounter   uint64
 	connectionsMu sync.RWMutex
+	eventQueue    *outstation.EventQueue
 
 	// Context for graceful shutdown. DNP3-085: derived from the caller's
 	// Start(ctx) context so cancelling that ctx produces a clean stop.
@@ -798,6 +854,10 @@ func NewServer(config *Config) (Server, error) {
 		return nil, err
 	}
 
+	maxEvents := config.MaxEventBuffers
+	if maxEvents < 3 {
+		maxEvents = 1000
+	}
 	return &server{
 		config:             config,
 		state:              ServerStateDown,
@@ -805,6 +865,7 @@ func NewServer(config *Config) (Server, error) {
 		commandHandler:     nil,
 		unsolicitedHandler: nil,
 		connections:        make(map[uint64]*outstationInstance),
+		eventQueue:         outstation.NewEventQueue(maxEvents),
 	}, nil
 }
 
@@ -960,6 +1021,7 @@ func (s *server) handleConnection(conn net.Conn) {
 	t := transport.NewTCPTransport(tcpConfig)
 	// Set the connection directly
 	t.SetConn(conn)
+	link := &sessionTCP{TCPTransport: t}
 
 	// Create new outstation for this connection
 	internalConfig := &outstation.Config{
@@ -970,7 +1032,8 @@ func (s *server) handleConnection(conn net.Conn) {
 		Unsolicited:       s.config.UnsolicitedMode,
 	}
 	inst := outstation.NewOutstation(internalConfig)
-	inst.SetTransport(t)
+	inst.SetTransport(link)
+	inst.UseEventQueue(s.eventQueue)
 	inst.Initialize()
 	inst.SetDataHandler(&internalDataHandler{
 		publicHandler:  s.dataHandler,
@@ -1087,6 +1150,78 @@ func (s *server) SetUnsolicitedHandler(handler UnsolicitedHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.unsolicitedHandler = handler
+}
+
+func (s *server) publish(ev outstation.Event) error {
+	if err := outstation.ValidateEvent(ev); err != nil {
+		return err
+	}
+	s.connectionsMu.RLock()
+	var target *outstation.Outstation
+	for _, inst := range s.connections {
+		target = inst.outstation
+		break
+	}
+	s.connectionsMu.RUnlock()
+	if target != nil {
+		return target.PublishEvent(ev)
+	}
+	if !s.eventQueue.Add(ev) {
+		return outstation.ErrEventBufferFull
+	}
+	return nil
+}
+
+func (s *server) newEvent(class EventClass, index uint16, quality uint8, at time.Time) (outstation.Event, error) {
+	if class != EventClass1 && class != EventClass2 && class != EventClass3 {
+		return outstation.Event{}, outstation.ErrEventClass
+	}
+	ev := outstation.Event{
+		Class:   outstation.EventClass(class),
+		Index:   index,
+		Quality: quality,
+	}
+	if !at.IsZero() {
+		ev.HasTime = true
+		ev.Time = at
+	}
+	return ev, nil
+}
+
+// PublishBinaryEvent implements Server.PublishBinaryEvent.
+func (s *server) PublishBinaryEvent(index uint16, value bool, quality uint8, class EventClass, at time.Time) error {
+	ev, err := s.newEvent(class, index, quality, at)
+	if err != nil {
+		return err
+	}
+	ev.Kind = outstation.EventKindBinary
+	ev.Group = 2
+	ev.BinaryValue = value
+	return s.publish(ev)
+}
+
+// PublishAnalogEvent implements Server.PublishAnalogEvent.
+func (s *server) PublishAnalogEvent(index uint16, value int32, quality uint8, class EventClass, at time.Time) error {
+	ev, err := s.newEvent(class, index, quality, at)
+	if err != nil {
+		return err
+	}
+	ev.Kind = outstation.EventKindAnalog
+	ev.Group = 32
+	ev.AnalogValue = value
+	return s.publish(ev)
+}
+
+// PublishCounterEvent implements Server.PublishCounterEvent.
+func (s *server) PublishCounterEvent(index uint16, value uint32, quality uint8, class EventClass, at time.Time) error {
+	ev, err := s.newEvent(class, index, quality, at)
+	if err != nil {
+		return err
+	}
+	ev.Kind = outstation.EventKindCounter
+	ev.Group = 22
+	ev.CounterValue = value
+	return s.publish(ev)
 }
 
 // Close implements Server.Close.

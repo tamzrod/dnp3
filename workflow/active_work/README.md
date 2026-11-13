@@ -2188,3 +2188,7 @@ Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main
 ## AO-004 closed — EVT-001 promoted (2026-11-13)
 
 Owner decision recorded in the archived AO-004 task. PR #28 is merged. `origin/main` was merged into `work` with the protocol tree unchanged (`97a08a6d201c116b5d620f3f69e690543b79cf41` before and after). AO-004 is archived at `archive/active-work/AO-004.md`. CURRENT is EVT-001. G41 stays **UNSUPPORTED**. AO-005 is not promoted. Signed-zero/subnormal divergence and untested independent-wire negatives remain as already recorded. The MEXT-019 IIN bitmap freeze is not lifted. `active_work/supported-profile.md` is unchanged.
+
+## EVT-001 checkpoint (2026-11-13)
+
+Timestamped Group 2/22/32 events and Class 1/2/3 unsolicited reporting are implemented on `work`. Internal unit and 127.0.0.1 TCP tests passed, including `go test -race ./...`. Independent OpenDNP3 interop was **NOT_RUN**. The published supported profile was not changed and does not advertise this behavior. Secure Authentication stays **BLOCKED**. The MEXT-019 IIN bitmap freeze is not lifted. Details and labels are in `workflow/active_work/EVT-001.md`.

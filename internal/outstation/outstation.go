@@ -21,6 +21,20 @@ import (
 	"dnp3/internal/tl"
 )
 
+var (
+	// ErrEventBufferFull is returned when the newest event is discarded
+	// because that class buffer is already at its cap.
+	ErrEventBufferFull = errors.New("event buffer full")
+	// ErrEventIndex is returned when an event index does not fit the 8-bit
+	// indexed qualifier used for event reports.
+	ErrEventIndex = errors.New("event index exceeds 8-bit prefix")
+	// ErrEventClass is returned when the event class is not 1, 2, or 3.
+	ErrEventClass = errors.New("event class must be 1, 2, or 3")
+	// ErrSessionClosed ends RunWithContext when the link is gone. Idle
+	// timeouts are not this error. The event buffer is left intact.
+	ErrSessionClosed = errors.New("session closed")
+)
+
 // debugControls enables debug logging for control operations (group 12, 41-44).
 // Set DNP3_DEBUG=1 environment variable to enable.
 var debugControls = os.Getenv("DNP3_DEBUG") == "1"
@@ -229,14 +243,28 @@ const (
 	Class3
 )
 
+// Event kind values stored on Event.Kind.
+const (
+	EventKindNone uint8 = iota
+	EventKindBinary
+	EventKindAnalog
+	EventKindCounter
+)
+
 // Event represents a DNP3 event.
 type Event struct {
-	Class   EventClass
-	Group   uint8
-	Index   uint16
-	Value   []byte
-	Quality uint8
-	Time    time.Time
+	Class        EventClass
+	Group        uint8
+	Index        uint16
+	Value        []byte
+	Quality      uint8
+	Time         time.Time
+	Seq          uint64
+	Kind         uint8
+	HasTime      bool
+	BinaryValue  bool
+	AnalogValue  int32
+	CounterValue uint32
 }
 
 // EventQueue manages event buffers for outstation.
@@ -244,6 +272,7 @@ type EventQueue struct {
 	mu      sync.Mutex
 	buffers map[EventClass][]Event
 	maxSize int
+	nextSeq uint64
 }
 
 // NewEventQueue creates a new event queue with the specified maximum size.
@@ -268,6 +297,8 @@ func (q *EventQueue) Add(event Event) bool {
 		return false // Buffer full for this class
 	}
 
+	event.Seq = q.nextSeq
+	q.nextSeq++
 	q.buffers[event.Class] = append(classEvents, event)
 	return true
 }
@@ -526,8 +557,19 @@ type Outstation struct {
 	appSeq      uint8  // Application sequence number
 	unsolicited bool   // Unsolicited responses enabled
 	iin         al.IIN // Internal Indication
-	fragmenter  *tl.Fragmenter
-	reassembler *tl.Reassembler
+	// Unsolicited Class 1/2/3 enables, separate from the solicited sequence.
+	unsolClass       [3]bool
+	unsolSeq         uint8
+	unsolAwait       bool
+	unsolRetries     int
+	unsolFrames      [][]byte
+	unsolIDs         []uint64
+	unsolGen         uint64
+	unsolTimer       *time.Timer
+	unsolConfirmWait time.Duration
+	unsolSendAfter   bool
+	fragmenter       *tl.Fragmenter
+	reassembler      *tl.Reassembler
 	// SBO state tracking
 	pendingSelects map[uint16]*PendingSelect // Index -> PendingSelect
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
@@ -614,6 +656,7 @@ func (o *Outstation) Start() error {
 
 // Stop halts outstation operation.
 func (o *Outstation) Stop() error {
+	o.StopUnsolicitedTimer()
 	o.SetState(StateDown)
 	// Clear all pending selects on shutdown
 	o.selectMu.Lock()
@@ -718,17 +761,28 @@ func (o *Outstation) GenerateEvent(class EventClass, group uint8, index uint16, 
 		Value:   value,
 		Quality: quality,
 		Time:    time.Now(),
+		HasTime: true,
+	}
+	switch group {
+	case 2:
+		event.Kind = EventKindBinary
+		event.BinaryValue = len(value) > 0 && value[0] != 0
+	case 32:
+		event.Kind = EventKindAnalog
+		if len(value) >= 4 {
+			event.AnalogValue = int32(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
+		}
+	case 22:
+		event.Kind = EventKindCounter
+		if len(value) >= 4 {
+			event.CounterValue = uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24
+		}
 	}
 
 	added := o.eventQueue.Add(event)
-
-	// Update IIN if buffer is full
-	if o.eventQueue.IsFull() {
-		o.mu.Lock()
-		o.iin.BufferOverflow = true
-		o.mu.Unlock()
-	}
-
+	o.mu.Lock()
+	o.refreshEventIINLocked()
+	o.mu.Unlock()
 	return added
 }
 
@@ -741,7 +795,7 @@ func (o *Outstation) EventCount() int {
 func (o *Outstation) ClearEvents() {
 	o.eventQueue.Clear()
 	o.mu.Lock()
-	o.iin.BufferOverflow = false
+	o.refreshEventIINLocked()
 	o.mu.Unlock()
 }
 
@@ -787,9 +841,15 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 			return nil
 		}
 
-		// Receive data from transport
+		// Receive data from transport. A closed link ends this session so the
+		// server can accept a new master. Timeouts and bad frames stay in the
+		// loop. StopUnsolicitedTimer drops the confirm wait and keeps events.
 		data, err := transport.Receive()
 		if err != nil {
+			if errors.Is(err, ErrSessionClosed) {
+				o.StopUnsolicitedTimer()
+				return err
+			}
 			continue
 		}
 
@@ -855,6 +915,7 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 		if needsConfirm {
 			o.sendConfirmation(req.Control.Seq)
 		}
+		o.flushPendingUnsolicited()
 	}
 }
 
@@ -990,6 +1051,13 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
+	// Confirm is not a solicited request. Accept or ignore it without
+	// consuming the solicited application sequence and without a response.
+	if req.FuncCode == al.FuncConfirm {
+		o.acceptConfirmLocked(req.Control.Seq)
+		return nil, nil
+	}
+
 	// Increment sequence number
 	o.appSeq = (o.appSeq + 1) % 16
 
@@ -1122,18 +1190,17 @@ func requestObjectHeaderSize(data []byte, offset int) int {
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
 
-	// If no specific data requested, return all static data
-	if len(requestData) < 4 {
+	// A Group 60 Variation 2/3/4 header is 3 octets (qualifier 0x06 has no
+	// range byte). Shorter than that is not a parsed object header.
+	if len(requestData) < 3 {
 		result = o.buildAllStaticData()
+		o.refreshEventIINLocked()
 		return result
 	}
 
-	// classEventsRequested is true when the master asked for Class 1/2/3 event
-	// data (G60 V2/V3/V4). The v0 outstation has an empty event buffer stub
-	// (DNP3-088): such a poll deterministically returns no event objects. It
-	// must NOT fall back to "all static data" — an empty event-class response
-	// is the correct, protocol-valid reply.
-	classEventsRequested := false
+	// explicitEvent is true when the master asked for event data. An empty
+	// event response must not fall back to static points.
+	explicitEvent := false
 
 	// Parse object headers. Each header's size depends on its qualifier
 	// (IEEE 1815): all-objects (0x06) is 3 octets; start/stop (0x00) is 5 octets
@@ -1149,17 +1216,23 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildAllStaticData()...)
 		case 1: // Binary Input (static - no timestamp)
 			result = append(result, o.buildBinaryInputData(normalizeStaticVariation(group, variation))...)
-		case 2: // Binary Input Event (with timestamp)
-			result = append(result, o.buildBinaryInputEventData(variation)...)
+		case 2, 22, 32: // Binary, counter, and analog input events from the queue
+			explicitEvent = true
+			encoded, ids := o.encodeDirectRead(group, variation, requestData[offset:])
+			result = append(result, encoded...)
+			if len(ids) > 0 {
+				o.eventQueue.RemoveSeqs(ids)
+				o.cancelInFlightLocked(ids)
+			}
 		case 10: // Binary Output (static - no timestamp)
 			result = append(result, o.buildBinaryOutputData(normalizeStaticVariation(group, variation))...)
 		case 20: // Counter (static - no timestamp)
 			result = append(result, o.buildCounterData(normalizeStaticVariation(group, variation))...)
-		case 21: // Counter Event (with timestamp)
+		case 21: // Frozen counter. Not a Group 22 event read.
 			result = append(result, o.buildCounterEventData(variation)...)
 		case 30: // Analog Input (static - no timestamp)
 			result = append(result, o.buildAnalogInputData(normalizeStaticVariation(group, variation))...)
-		case 31: // Analog Input Event (with timestamp)
+		case 31: // Frozen analog. Not a Group 32 event read.
 			result = append(result, o.buildAnalogInputEventData(variation)...)
 		case 40: // Analog Output (static - no timestamp)
 			result = append(result, o.buildAnalogOutputData(normalizeStaticVariation(group, variation))...)
@@ -1167,8 +1240,14 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			switch variation {
 			case 1: // Class 0 (integrity) — all static data
 				result = append(result, o.buildAllStaticData()...)
-			case 2, 3, 4: // Class 1/2/3 events — empty stub (DNP3-088)
-				classEventsRequested = true
+			case 2, 3, 4: // Class 1/2/3 events
+				explicitEvent = true
+				encoded, ids := o.encodeClassRead(EventClass(variation - 2))
+				result = append(result, encoded...)
+				if len(ids) > 0 {
+					o.eventQueue.RemoveSeqs(ids)
+					o.cancelInFlightLocked(ids)
+				}
 			default:
 				// Unknown class variation — treat as Class 0.
 				result = append(result, o.buildAllStaticData()...)
@@ -1183,12 +1262,12 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	}
 
 	// Only fall back to "all static data" when nothing was recognized AND the
-	// master did not explicitly request an event class. An explicit event-class
-	// poll with an empty buffer returns an empty (object-less) response.
-	if len(result) == 0 && !classEventsRequested {
+	// master did not explicitly request event data. An explicit event read
+	// with an empty buffer returns an empty (object-less) response.
+	if len(result) == 0 && !explicitEvent {
 		result = o.buildAllStaticData()
 	}
-
+	o.refreshEventIINLocked()
 	return result
 }
 
@@ -2020,29 +2099,22 @@ func (o *Outstation) handleDirectOperateNoResp(req *al.APDU) (*al.APDU, error) {
 
 // handleEnableUnsolicited handles ENABLE UNSOLICITED requests.
 // Note: Called while holding lock from ProcessRequest.
+// Empty data enables Class 1, 2, and 3. Object headers enable only the
+// listed Group 60 variations.
 func (o *Outstation) handleEnableUnsolicited(req *al.APDU) (*al.APDU, error) {
-	o.unsolicited = true
-
-	resp := &al.APDU{
-		Control: al.AppControl{
-			FIR: true,
-			FIN: true,
-			CON: false,
-			UNS: false,
-			Seq: o.appSeq,
-		},
-		FuncCode: al.FuncResponse,
-		Data:     nil,
-	}
-	return resp, nil
+	o.applyUnsolicitedMask(req.Data, true)
+	return o.emptyResponse(), nil
 }
 
 // handleDisableUnsolicited handles DISABLE UNSOLICITED requests.
 // Note: Called while holding lock from ProcessRequest.
 func (o *Outstation) handleDisableUnsolicited(req *al.APDU) (*al.APDU, error) {
-	o.unsolicited = false
+	o.applyUnsolicitedMask(req.Data, false)
+	return o.emptyResponse(), nil
+}
 
-	resp := &al.APDU{
+func (o *Outstation) emptyResponse() *al.APDU {
+	return &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
 			FIN: true,
@@ -2053,7 +2125,6 @@ func (o *Outstation) handleDisableUnsolicited(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil,
 	}
-	return resp, nil
 }
 
 // handleFreeze handles FREEZE requests.

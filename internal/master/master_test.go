@@ -1140,7 +1140,7 @@ func TestWaitForResponseSkipsBareLinkACK(t *testing.T) {
 	}}
 	m.SetTransport(tr)
 
-	data, err := m.waitForResponseTimeout(time.Second)
+	data, err := m.waitForResponseTimeout(time.Second, 0)
 	if err != nil {
 		t.Fatalf("waitForResponseTimeout: %v", err)
 	}
@@ -1166,7 +1166,7 @@ func TestWaitForResponseACKSpamBounded(t *testing.T) {
 	m.SetTransport(tr)
 
 	start := time.Now()
-	_, err := m.waitForResponseTimeout(80 * time.Millisecond)
+	_, err := m.waitForResponseTimeout(80*time.Millisecond, 0)
 	if err == nil {
 		t.Fatal("expected a timeout error once the deadline elapsed")
 	}

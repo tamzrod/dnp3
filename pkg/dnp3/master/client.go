@@ -29,10 +29,12 @@
 //   - Operate                      — Target for DirectOperate G12V1 CROB;
 //     Reject for SelectThenOperate / DirectOperateNoResponse
 //   - LastIIN                      — Target
-//   - EnableUnsolicited / DisableUnsolicited / SetUnsolicitedHandler — Reject
+//   - EnableUnsolicited / DisableUnsolicited / ReadEvents / WatchUnsolicited —
+//     implemented for EVT-001. The published supported profile is unchanged
+//     and does not advertise this path.
 //
 // Explicitly unsupported in v0 (rejected by the public API): TLS, serial
-// transport, unsolicited responses and event delivery, secure authentication,
+// transport, secure authentication,
 // time synchronization and time objects, file transfer, device attributes,
 // restart/delay-measurement/freeze operations, select-before-operate, and any
 // object group/variation not listed above.
@@ -117,16 +119,27 @@ type Client interface {
 	// Reject for SelectThenOperate and DirectOperateNoResponse (DNP3-030).
 	Operate(ctx context.Context, command *types.ControlOutput) (*OperateResponse, error)
 
-	// EnableUnsolicited enables unsolicited responses from the outstation.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
+	// EnableUnsolicited asks the outstation to enable Class 1, 2, and 3
+	// unsolicited reporting. The published supported profile is unchanged
+	// and still does not advertise this behavior.
 	EnableUnsolicited(ctx context.Context) error
 
-	// DisableUnsolicited disables unsolicited responses.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
+	// DisableUnsolicited asks the outstation to disable Class 1, 2, and 3
+	// unsolicited reporting.
 	DisableUnsolicited(ctx context.Context) error
 
+	// ReadEvents reads queued Class 1, 2, and 3 events with Group 60
+	// Variations 2, 3, and 4. This is a solicited read. It is not a
+	// substitute for unsolicited delivery.
+	ReadEvents(ctx context.Context) (*UnsolicitedResponse, error)
+
+	// WatchUnsolicited receives unsolicited fragments until ctx is canceled.
+	// It must not be called concurrently with Read, ReadEvents, Operate, or
+	// EnableUnsolicited on the same client. The handler must not call back
+	// into the client.
+	WatchUnsolicited(ctx context.Context) error
+
 	// SetUnsolicitedHandler sets the handler for unsolicited responses.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
 	SetUnsolicitedHandler(handler UnsolicitedHandler)
 
 	// Close gracefully shuts down the client.
@@ -583,14 +596,16 @@ func NewClient(config *Config) (Client, error) {
 		internal.SetDiagnosticHook(diagAdapter(config.Logger))
 	}
 
-	return &client{
+	c := &client{
 		config:         config,
 		state:          dnp3.StateDisconnected,
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
 		logger:         config.Logger,
-	}, nil
+	}
+	internal.SetUnsolicitedCallback(c.deliverUnsolicitedApp)
+	return c, nil
 }
 
 // NewClientWithTransport creates a Master client that uses a caller-supplied
@@ -621,14 +636,16 @@ func NewClientWithTransport(config *Config, t transport.Handler) (Client, error)
 		internal.SetDiagnosticHook(diagAdapter(config.Logger))
 	}
 
-	return &client{
+	c := &client{
 		config:         config,
 		state:          dnp3.StateDisconnected,
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
 		logger:         config.Logger,
-	}, nil
+	}
+	internal.SetUnsolicitedCallback(c.deliverUnsolicitedApp)
+	return c, nil
 }
 
 // Connect implements Client.Connect
@@ -750,6 +767,7 @@ func (c *client) Connect(ctx context.Context) error {
 			c.state = dnp3.StateError
 		} else {
 			c.state = dnp3.StateActive
+			c.internalMaster.ResetUnsolicitedSession()
 		}
 		c.mu.Unlock()
 		if res.err != nil {
@@ -2182,14 +2200,14 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 	}
 }
 
-// EnableUnsolicited implements Client.EnableUnsolicited
+// EnableUnsolicited implements Client.EnableUnsolicited.
 func (c *client) EnableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
+	return c.sendClassFunction(ctx, al.FuncEnableUnsolicited)
 }
 
-// DisableUnsolicited implements Client.DisableUnsolicited
+// DisableUnsolicited implements Client.DisableUnsolicited.
 func (c *client) DisableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
+	return c.sendClassFunction(ctx, al.FuncDisableUnsolicited)
 }
 
 // SetUnsolicitedHandler implements Client.SetUnsolicitedHandler

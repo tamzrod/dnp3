@@ -2,11 +2,13 @@ package master
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
+
+	"dnp3/pkg/dnp3"
 )
 
-func TestUnsolicitedOperationsAreExplicitlyUnsupported(t *testing.T) {
+func TestUnsolicitedOperationsRequireConnection(t *testing.T) {
 	c, err := NewClient(NewConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -14,11 +16,16 @@ func TestUnsolicitedOperationsAreExplicitlyUnsupported(t *testing.T) {
 	for name, call := range map[string]func(context.Context) error{
 		"enable":  c.EnableUnsolicited,
 		"disable": c.DisableUnsolicited,
+		"watch":   c.WatchUnsolicited,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := call(context.Background()); err == nil || !strings.Contains(err.Error(), "unsupported") {
-				t.Fatalf("error = %v", err)
+			err := call(context.Background())
+			if !errors.Is(err, dnp3.ErrNotConnected) {
+				t.Fatalf("error = %v, want ErrNotConnected", err)
 			}
 		})
+	}
+	if _, err := c.ReadEvents(context.Background()); !errors.Is(err, dnp3.ErrNotConnected) {
+		t.Fatalf("ReadEvents error = %v, want ErrNotConnected", err)
 	}
 }

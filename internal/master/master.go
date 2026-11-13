@@ -667,6 +667,15 @@ type Master struct {
 	// link is request/response; concurrent requests are safely queued.
 	reqMu sync.Mutex
 
+	// Unsolicited delivery state. The sequence and callback are guarded by
+	// unsolMu and must not call back into a method that takes reqMu.
+	// The peer address is a parameter of each wait, so concurrent requests
+	// do not share one slot.
+	unsolMu       sync.Mutex
+	unsolInit     bool
+	unsolLast     uint8
+	onUnsolicited func([]byte)
+
 	// outstanding tracks per-outstation in-flight requests so a concurrent
 	// request to the SAME outstation is rejected with ErrRequestOutstanding
 	// instead of blocking behind reqMu indefinitely (DNP3-040). Different
@@ -2043,7 +2052,7 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 	}
 
 	// Wait for the response (single wait, single attempt).
-	resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+	resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 	if err != nil {
 		wrapped, _ := m.markDisconnected(err)
 		m.quarantineOutstation(outstationID)
@@ -2412,7 +2421,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		}
 
 		// Wait for response
-		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
 			m.diag(DiagWarn, "receive", seq, "response failed", err)
@@ -2580,7 +2589,7 @@ func (m *Master) performRequest(req *al.APDU, outstationID uint16, deadline time
 		}
 
 		// Wait for response.
-		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
 			m.diag(DiagWarn, "receive", seq, "response failed", err)
@@ -2815,12 +2824,14 @@ func (m *Master) waitForConfirmationTimeout(stepTimeout time.Duration, expectedS
 // unchanged so the caller's markDisconnected wraps it with ErrTransportDisconnected
 // (unchanged behavior).
 func (m *Master) waitForResponse() ([]byte, error) {
-	return m.waitForResponseTimeout(time.Duration(m.config.Timeout) * time.Millisecond)
+	return m.waitForResponseTimeout(time.Duration(m.config.Timeout)*time.Millisecond, 0)
 }
 
 // waitForResponseTimeout waits for a response with stepTimeout already capped to
-// the operation's remaining budget (VEC-01 B4 F2).
-func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, error) {
+// the operation's remaining budget (VEC-01 B4 F2). peer is the outstation the
+// solicited request was sent to, and is used only to confirm an unsolicited
+// fragment that arrives during the wait.
+func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) ([]byte, error) {
 	// VEC-01 B4 F2: stepTimeout is the response timeout capped to the
 	// operation's remaining wall-clock budget by the caller. The overall wait is
 	// bounded by this single deadline so that a peer emitting repeated bare
@@ -2851,7 +2862,109 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, erro
 			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
 			continue
 		}
+		// An unsolicited fragment has its own application sequence. Confirm
+		// it when it is in order and keep waiting for the solicited response.
+		if app, aerr := m.processReceivedBytes(data); aerr == nil && m.consumeUnsolicited(app, peer) {
+			continue
+		}
 		return data, nil
+	}
+}
+
+// SetUnsolicitedCallback registers the handler for an accepted unsolicited
+// application fragment. The callback runs without reqMu and must not start
+// another request on this master.
+func (m *Master) SetUnsolicitedCallback(fn func([]byte)) {
+	m.unsolMu.Lock()
+	m.onUnsolicited = fn
+	m.unsolMu.Unlock()
+}
+
+// ResetUnsolicitedSession accepts the next unsolicited sequence as the first
+// sequence of a new connection.
+func (m *Master) ResetUnsolicitedSession() {
+	m.unsolMu.Lock()
+	m.unsolInit = false
+	m.unsolMu.Unlock()
+}
+
+// consumeUnsolicited reports whether app is an unsolicited fragment.
+// In-order fragments are delivered once and confirmed. A duplicate of the
+// last accepted sequence is confirmed and not delivered. Any other sequence
+// is neither confirmed nor delivered.
+func (m *Master) consumeUnsolicited(app []byte, peer uint16) bool {
+	resp, err := al.DecodeResponse(app)
+	if err != nil {
+		return false
+	}
+	if resp.Header.FuncCode != al.FuncUnsolicitedResponse && !resp.Header.Control.UNS {
+		return false
+	}
+	seq := resp.Header.Control.Seq
+	m.unsolMu.Lock()
+	deliver := false
+	confirm := false
+	switch {
+	case !m.unsolInit:
+		m.unsolInit = true
+		m.unsolLast = seq
+		deliver = true
+		confirm = true
+	case seq == m.unsolLast:
+		confirm = true
+	case seq == (m.unsolLast+1)%16:
+		m.unsolLast = seq
+		deliver = true
+		confirm = true
+	}
+	cb := m.onUnsolicited
+	m.unsolMu.Unlock()
+	if deliver && cb != nil {
+		cb(app)
+	}
+	if confirm && resp.Header.Control.CON {
+		_ = m.sendApplicationConfirm(seq, peer)
+	}
+	return true
+}
+
+// PollUnsolicited waits for one unsolicited fragment. It holds the request
+// lock only for this receive, so it does not run beside a solicited read.
+func (m *Master) PollUnsolicited(peer uint16, wait time.Duration) error {
+	if !m.isLinkUp() {
+		return ErrNotConnected
+	}
+	if wait <= 0 {
+		wait = 200 * time.Millisecond
+	}
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+	m.transport.SetTimeout(int((wait + time.Millisecond - 1) / time.Millisecond))
+	defer m.transport.SetTimeout(m.config.Timeout)
+
+	deadline := time.Now().Add(wait)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("%w: no unsolicited response within %v", ErrTimeout, wait)
+		}
+		m.transport.SetTimeout(int((remaining + time.Millisecond - 1) / time.Millisecond))
+		data, err := m.transport.Receive()
+		if err != nil {
+			return err
+		}
+		if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
+			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
+			continue
+		}
+		app, err := m.processReceivedBytes(data)
+		if err != nil {
+			return err
+		}
+		if !m.consumeUnsolicited(app, peer) {
+			return fmt.Errorf("%w: received a solicited frame while waiting for unsolicited data", ErrInvalidResponse)
+		}
+		return nil
 	}
 }
 
