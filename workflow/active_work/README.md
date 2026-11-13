@@ -7,6 +7,15 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner cloud-continuation override — 2026-11-13 — PPR-001
+
+**Execute by typing `operation cwal`.** The owner explicitly amended the human-promoted `EVT-001` task at `workflow/active_work/EVT-001.md`, section **Owner-approved cloud continuation amendment — PPR-001**. This is the current, higher-precedence authority for OpenHands Cloud PPR-001. It **supersedes the local-workspace-must-exist STOP condition** in the older handoff immediately below, but leaves all other task safety and acceptance gates intact.
+
+Cloud may work from a verified clean `origin/work` checkout without access to `/home/sysadmin/apps/dnp3`. The owner's laptop files, Grok's untracked test, and Qwen's partial edits are **UNAVAILABLE, NOT RECOVERED, NOT TOUCHED** and must not be modified or claimed as preserved. Create a **new** `internal/outstation/event_batch_test.go` regression from the live source, not a purported restoration. Authorize bounded official/checksum-verified Go toolchain setup and pinned OpenDNP3 **3.1.2** lab/dependencies in the cloud sandbox; downloads only during setup, then `--network none` loopback-only simulated isolated interoperability. No weakening lab isolation. If tools or isolation cannot be established, report truthful `TASK_BLOCKED` / `NOT_RUN`, not PASS. Existing 254/255/256/333 boundary tests, mixed Group 2/22/32, confirm/retry/retention, full Go gates, independent both-direction 256+ PCAP evidence remain mandatory.
+
+Continue bounded implementation and independent checks autonomously. Do not edit the supported profile, nested `dnp3/` submodule, security authentication, KDE governance, `main`, or real field systems. Never create PR/merge/release/archive/promote; non-force checkpoint on `work` only after genuine verification. Keep all six markers unchanged: CURRENT EVT-001, QUEUED NONE, Status TASK_IN_PROGRESS. See CURRENT task for exact authorized source paths and acceptance.
+
+
 
 ## CURRENT owner handoff — 2026-11-13 — OpenHands PPR-001 continuation
 
