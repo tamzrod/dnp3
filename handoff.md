@@ -22,7 +22,9 @@ Correction (smallest bounded change, no event loss):
 
 Verification on this tree: `gofmt -l` clean, `go vet ./...` PASS, `go build ./...` PASS, `go test ./... -count=1` PASS, `go test -race ./... -count=1` PASS, `bash scripts/verify-external-mvp.sh` PASS, `git diff --check` PASS.
 
-Isolated `--network none` loopback interop (pinned OpenDNP3 3.1.2, memory-only points) both directions: solicited N=254/255/256/257/333 all deliver exactly N; unsolicited N=254/255/256/257/333 deliver exactly N (Go outstation→OD master) and 226 (one bounded fragment; the harness returns after the first response by design) for OD outstation→Go master. PCAPs `docs/verification/evt001/evt001-largebatch-*.pcap` show genuine multi-application-fragment delivery.
+Isolated `--network none` loopback interop (pinned OpenDNP3 3.1.2, memory-only points) both directions: solicited N=254/255/256/257/333 all deliver exactly N; unsolicited N=254/255/256/257/333 deliver exactly N (Go outstation→OD master). For OD outstation→Go master, `unsol` mode returns after the first fragment (226 events, one bounded fragment, by harness design), so a `drain` mode was added to the go-master harness and delivers all N (verified N=333) with no wrong-sequence warning. PCAPs `docs/verification/evt001/evt001-largebatch-*.pcap` show genuine multi-application-fragment delivery.
+
+Also fixed in this checkpoint: OpenDNP3's outstation sets CON on every fragment of a multi-fragment solicited response, including the final one. The master now confirms each fragment with that fragment's own sequence; before the fix the peer stayed in confirm-wait and the next read observed leftover events (`solicited confirm with wrong seq: 1, expected: 2`).
 
 CURRENT stays `EVT-001 / TASK_IN_PROGRESS`; QUEUED NONE; no archive, PR, merge, release, or profile promotion.
 

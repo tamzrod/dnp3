@@ -63,6 +63,8 @@ func main() {
 		printEvents("EVENT", mustEvents(ctx, client))
 	case "unsol":
 		waitUnsolicited(ctx, client, time.Duration(seconds)*time.Second, true)
+	case "drain":
+		waitUnsolicitedDrain(ctx, client, time.Duration(seconds)*time.Second)
 	case "negative":
 		waitUnsolicited(ctx, client, time.Duration(seconds)*time.Second, false)
 		printEvents("EVENT", mustEvents(ctx, client))
@@ -151,6 +153,45 @@ func waitUnsolicited(ctx context.Context, client master.Client, wait time.Durati
 				watchCancel()
 				return
 			}
+		case <-timer.C:
+			fmt.Println("WAIT done")
+			watchCancel()
+			return
+		case err := <-watchErr:
+			if watchCtx.Err() != nil {
+				return
+			}
+			fmt.Println("ERROR watch", err)
+			os.Exit(1)
+		}
+	}
+}
+
+// waitUnsolicitedDrain enables unsolicited reporting and collects every
+// unsolicited fragment delivered within the wait window, across successive
+// confirm cycles. Unlike waitUnsolicited it does not return after the first
+// response, so it can prove the master drains a batch larger than one fragment.
+func waitUnsolicitedDrain(ctx context.Context, client master.Client, wait time.Duration) {
+	got := make(chan *master.UnsolicitedResponse, 64)
+	client.SetUnsolicitedHandler(func(resp *master.UnsolicitedResponse) {
+		got <- resp
+	})
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
+	watchErr := make(chan error, 1)
+	go func() { watchErr <- client.WatchUnsolicited(watchCtx) }()
+	time.Sleep(200 * time.Millisecond)
+	if err := client.EnableUnsolicited(ctx); err != nil {
+		fmt.Println("ERROR enable", err)
+		os.Exit(1)
+	}
+	fmt.Println("ENABLED")
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for {
+		select {
+		case resp := <-got:
+			printEvents("UNSOL", resp)
 		case <-timer.C:
 			fmt.Println("WAIT done")
 			watchCancel()
