@@ -22,7 +22,7 @@ This is a current-status addendum; historical task reports below are retained as
 
 ## EVT-001 note — 2026-11-13
 
-The 2026-11-08 addendum above is unchanged. EVT-001 later ran an isolated OpenDNP3 3.1.2 event exchange, recorded in `docs/verification/EVT-001-OPENDNP3.md`. The published profile still lists unsolicited responses and event delivery as unsupported. Root `handoff.md` is the current CWAL handoff.
+The 2026-11-08 addendum above is unchanged. EVT-001 later ran an isolated OpenDNP3 3.1.2 event exchange, including duplicate-confirm and withheld-confirm cases, recorded in `docs/verification/EVT-001-OPENDNP3.md`. The published profile still lists unsolicited responses and event delivery as unsupported. Root `handoff.md` is the current CWAL handoff.
 
 ---
 

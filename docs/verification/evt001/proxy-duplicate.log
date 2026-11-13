@@ -1,0 +1,10 @@
+PROXY mode=duplicate listen=20010 upstream=20000
+INJECTION stock=OpenDNP3 writes one application CONFIRM
+INJECTION action=hold that link frame, then write the same bytes to the outstation twice
+PROXY LISTENING
+PROXY CONNECTED
+UNSOL n=1 seq=0 ctrl=f0 sha=0e20f0c36484f73470f587b682269498219f5972ba47386344641350211400f0
+HELD_CONFIRM seq=0 ctrl=d0 func=00 bytes=056408c4000401009a19c1d000a350
+UNSOL n=2 seq=1 ctrl=f1 sha=b8a9001754f7d2118e06cb0c8ea99d4f18bacfee067bd61e1a1707fc2527a7cf
+DUP_SENT n=2 seq=0 identical=1
+PROXY_END mode=duplicate unsol=2 dropped_confirm=0 dup_sent=1

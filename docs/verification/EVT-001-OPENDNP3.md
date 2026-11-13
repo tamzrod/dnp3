@@ -1,7 +1,8 @@
 # EVT-001 independent OpenDNP3 3.1.2 evidence
 
-Recorded 2026-11-13 on branch `work`. This file describes one isolated run.
-Internal Go tests are not this evidence.
+Recorded 2026-11-13 on branch `work`. This file describes two isolated runs.
+The first is the positive exchange. The second is the duplicate-confirm and
+withheld-confirm exchange. Internal Go tests are not this evidence.
 
 ## Peer and isolation
 
@@ -121,20 +122,119 @@ is octet 1 mask `0x02`. Event-buffer overflow is octet 2 mask `0x08`. The
 direction-A class-0 line `lsb=02 msb=08` is the wire observation of those
 two bits together.
 
-## Not executed against this peer
+## Not executed on the positive run
 
 OpenDNP3 confirms a fragment that requests confirmation, and it does so
-once. The run did not make that master emit a duplicate confirm, and it did
-not make that master withhold confirm. The Go tests cover a duplicate
-confirm, a wrong sequence, and three identical unsolicited sends. Those
-results are `UNIT_VERIFIED` only.
+once. The positive run did not make that master emit a duplicate confirm,
+and it did not make that master withhold confirm. The negative run below
+keeps that master in the exchange and injects only at the TCP proxy.
+A Go test still covers the same confirm rule in process. That test is not
+this independent result.
 
 Relative time, Group 52, float event variations, and Secure Authentication
-were not part of this run.
+were not part of either run.
 
-## Go gates
+## Negative run — duplicate confirm and withheld confirm
 
-On this tree, before the checkpoint commit: `gofmt -l` printed nothing, `go vet ./...` passed, `go build ./...` passed, `go test ./... -count=1` passed, `go test -race ./... -count=1` passed, `bash scripts/verify-external-mvp.sh` passed, and `git diff --check` passed.
+The same image, pin, and `--network none` gate were used. `ip -4 route`
+wrote no lines (`docs/verification/evt001/negative-routes.txt` is empty),
+so no default route was present. The TCP connect to `1.1.1.1:443` failed.
+The script printed `RESULT ISOLATION PASS` and `RESULT EVT001_NEGATIVE PASS`.
+
+`lab/evt001/confirm_proxy.py` listened on `127.0.0.1:20010` and connected to
+the Go outstation on `127.0.0.1:20000`. The OpenDNP3 master connected only to
+the proxy. Stock OpenDNP3 created every application CONFIRM. The proxy does
+not build a confirm.
+
+Duplicate mode held the first CONFIRM whose sequence matched the unsolicited
+fragment just forwarded. After a second event was queued, the proxy wrote
+that same link frame to port 20000 twice. The recorded frame was
+`056408c4000401009a19c1d000a350`: link control `c4`, destination 1024,
+source 1, application control `d0` (FIR, FIN, UNS, sequence 0), function
+`0x00`. Later confirms were forwarded once. The second write is the
+injection. The application octets are the ones OpenDNP3 sent.
+
+Withhold mode did not write CONFIRM frames toward port 20000. The three
+confirms stayed on the master-to-proxy leg. After the initial unsolicited
+fragment and two retries, the proxy and master exited and a new OpenDNP3
+master read port 20000 directly.
+
+`check_negative.py` is the leg-aware decision. `derive_pcap.py` counts both
+TCP legs, so its CONFIRM and UNSOLICITED totals are higher than the
+outstation-leg totals below.
+
+| File | SHA-256 |
+| --- | --- |
+| `docs/verification/evt001/evt001-duplicate.pcap` | `0a1de37d96c9902705067b7848040174a42f904ef601ee6e8369595254952257` |
+| `docs/verification/evt001/evt001-withhold.pcap` | `2bffd6efef5752d8c2bc7fa44e9f9665a54ce51d6a588ccaba54065b92b234c0` |
+| `docs/verification/evt001/negative-run.log` | `3f556dbb78f23bc33c8534d59291df10b21bb3ba54ebacde3a28789191137306` |
+| `docs/verification/evt001/negative-derived.txt` | `df8302f295e8482f5f847de5beb3310c9e0c9096626c56f2a978906e086f8bf6` |
+| `docs/verification/evt001/proxy-duplicate.log` | `b292ae99ccfdee53c05256900a45c639abf9cb65b9fbdd1c38a468b186ffcbd8` |
+| `docs/verification/evt001/proxy-withhold.log` | `65169dba0b55cf8e8ef441fb7dcac37016d0106114400bcfa47aa05440611564` |
+| `docs/verification/evt001/negative-a-unsol.log` | `48826c717423f63a0ef341cf8cabe15fefee48f71aa7f6fe1ddcac57fb66a54f` |
+| `docs/verification/evt001/negative-a-gone.log` | `c7a999ba1960819f75a8b5b7891ae11e74e753ce0b337f6631aadfe5ab656dd3` |
+| `docs/verification/evt001/negative-a-operational.log` | `7a5459ac2fa2135eb673dfd57620ca876d321bf79dd04912b658f3e3aaad402f` |
+| `docs/verification/evt001/negative-b-unsol.log` | `124fcfa2c173f98d434713954ab3303991409d0beef70564edd8d764478724a8` |
+| `docs/verification/evt001/negative-b-recover.log` | `d9245d9d6fc17415d0663ea4207ed5264575a78f32e9c64c765e12636895bcce` |
+
+The positive capture `evt001.pcap` is unchanged, sha256
+`4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98`.
+
+### Duplicate confirm
+
+The OpenDNP3 master logged index 9 once (`value=0`, flags `01`, time count
+`699685567008`, `unsol=1`) and index 13 once (`value=1`, flags `81`, time
+count `676368550000`, `unsol=1`). The proxy logged one held confirm and
+`DUP_SENT n=2 seq=0`.
+
+The duplicate capture shows one unsolicited fragment for index 9 at
+application sequence 0, two identical CONFIRM frames for sequence 0 on TCP
+port 20000, and one later unsolicited fragment at sequence 1 that carries
+index 13 and not index 9. One stock confirm for sequence 1 was forwarded.
+The following class read returned no events. A new index 14 event was then
+read, so the outstation was still serving. `check_negative.py` printed
+`PCAP_CHECK duplicate PASS confirms=2 seq=0 next=1 operational=1`.
+
+### Withheld confirm, retry limit, retention
+
+The outstation sent three identical unsolicited fragments for index 15
+(`value=0`, flags `01`, time count `699685567008`, application sequence 0).
+The gaps were 2.001s and 2.001s. There was no fourth fragment. The OpenDNP3
+master logged that event three times with `unsol=1` and left class-1 IIN
+`02` set. The proxy dropped three CONFIRM frames (`ctrl=d0`, function
+`0x00`). None of those confirms arrived on TCP port 20000. Three confirms
+are present toward port 20010.
+
+The later class read returned the same index 15, flags, and time count with
+`unsol=0`, then IIN `00 00`. The event was not removed by the missing
+confirms and was not lost. `check_negative.py` printed
+`PCAP_CHECK withhold PASS retries=3 gaps=2.001,2.001 master_confirms=3 delivered_confirms=0`.
+
+## Verification status
+
+Both directions of the positive run remain `INDEPENDENT_PEER_VERIFIED`.
+Duplicate confirm, the two-retry limit, and event retention with a later
+class read are `INDEPENDENT_PEER_VERIFIED` on the captures above.
+
+`active_work/supported-profile.md` blob remains
+`3e592e77ad6e31d5492c609c5fdd62382505904b`. Events and unsolicited reporting
+stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`.
+This package is not archived. Secure Authentication stays **BLOCKED**.
+AO-005 was not started. No PR, no merge to `main`, and no release.
+
+The in-process regression `TestDuplicateConfirmLeavesOtherQueuedEvent` checks
+the same confirm rule. It is not a substitute for the captures above.
+
+On this tree, before the verification commit: `gofmt -l` printed nothing,
+`go vet ./...` passed, `go build ./...` passed, `go test ./... -count=1`
+passed, `go test -race ./... -count=1` passed, and
+`bash scripts/verify-external-mvp.sh` passed. The script's required tiers
+passed. Its third-party capture note stayed advisory. `git diff --check`
+passed.
+
+## Go gates for the positive checkpoint
+
+On this tree, before that checkpoint commit: `gofmt -l` printed nothing, `go vet ./...` passed, `go build ./...` passed, `go test ./... -count=1` passed, `go test -race ./... -count=1` passed, `bash scripts/verify-external-mvp.sh` passed, and `git diff --check` passed.
 
 ## Profile
 

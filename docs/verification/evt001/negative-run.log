@@ -1,0 +1,47 @@
+=== isolation ===
+RESULT ISOLATION PASS no default route and external connect failed
+=== A duplicate application confirm ===
+RESULT GO_OUTSTATION READY
+RESULT PCAP capture /out/evt001-duplicate.pcap
+PROXY mode=duplicate listen=20010 upstream=20000
+INJECTION stock=OpenDNP3 writes one application CONFIRM
+INJECTION action=hold that link frame, then write the same bytes to the outstation twice
+PROXY LISTENING
+PROXY CONNECTED
+UNSOL n=1 seq=0 ctrl=f0 sha=0e20f0c36484f73470f587b682269498219f5972ba47386344641350211400f0
+HELD_CONFIRM seq=0 ctrl=d0 func=00 bytes=056408c4000401009a19c1d000a350
+UNSOL n=2 seq=1 ctrl=f1 sha=b8a9001754f7d2118e06cb0c8ea99d4f18bacfee067bd61e1a1707fc2527a7cf
+DUP_SENT n=2 seq=0 identical=1
+PROXY_END mode=duplicate unsol=2 dropped_confirm=0 dup_sent=1
+RESULT A_FIRST_EVENT PASS
+RESULT A_SECOND_EVENT PASS
+RESULT A_UNSOL_FLAG PASS
+RESULT A_BOTH_REMOVED_ONCE PASS
+RESULT A_OPERATIONAL PASS
+=== B withheld application confirm ===
+RESULT GO_OUTSTATION READY
+RESULT PCAP capture /out/evt001-withhold.pcap
+PROXY mode=withhold listen=20010 upstream=20000
+INJECTION stock=OpenDNP3 writes an application CONFIRM for each unsolicited fragment
+INJECTION action=do not write CONFIRM frames toward the outstation until passthrough
+PROXY LISTENING
+PROXY CONNECTED
+UNSOL n=1 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+UNSOL n=2 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+UNSOL n=3 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+PROXY_END mode=withhold unsol=3 dropped_confirm=3 dup_sent=0
+RESULT B_RETRY_COUNT PASS
+RESULT B_RETRY_IDENTICAL PASS
+RESULT B_CONFIRM_WITHHELD PASS dropped=3
+RESULT B_RECOVERY PASS
+=== pcap check ===
+pcap packets=57 dnp_app=19
+PCAP_CHECK duplicate PASS confirms=2 seq=0 next=1 operational=1
+RESULT A_PCAP PASS
+pcap packets=46 dnp_app=17
+PCAP_CHECK withhold PASS retries=3 gaps=2.001,2.001 master_confirms=3 delivered_confirms=0
+RESULT B_PCAP PASS
+RESULT EVT001_NEGATIVE PASS

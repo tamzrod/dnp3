@@ -1,0 +1,12 @@
+PROXY mode=withhold listen=20010 upstream=20000
+INJECTION stock=OpenDNP3 writes an application CONFIRM for each unsolicited fragment
+INJECTION action=do not write CONFIRM frames toward the outstation until passthrough
+PROXY LISTENING
+PROXY CONNECTED
+UNSOL n=1 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+UNSOL n=2 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+UNSOL n=3 seq=0 ctrl=f0 sha=6f33a2ac9e63c81a63380f2cb49b35d5955252d1fed479a549846aeb96ecab4b
+DROPPED_CONFIRM seq=0 ctrl=d0 func=00
+PROXY_END mode=withhold unsol=3 dropped_confirm=3 dup_sent=0

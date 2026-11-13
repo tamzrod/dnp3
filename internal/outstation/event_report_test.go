@@ -237,6 +237,74 @@ func TestUnsolicitedConfirmRetryAndReconnectQueue(t *testing.T) {
 	ost.StopUnsolicitedTimer()
 }
 
+// TestDuplicateConfirmLeavesOtherQueuedEvent is the in-process regression for
+// the duplicate-confirm rule. The first matching confirm removes only the
+// fragment that was in flight. A second copy of that confirm must not remove
+// an event that was queued later, and it must not advance the sequence again.
+func TestDuplicateConfirmLeavesOtherQueuedEvent(t *testing.T) {
+	ost := NewOutstation(&Config{OutstationAddress: 1024, MasterAddress: 1, MaxEventBuffers: 30})
+	ost.Initialize()
+	tr := &captureTransport{}
+	ost.SetTransport(tr)
+	ost.unsolConfirmWait = time.Hour
+	stamp := time.Date(2022, 3, 4, 5, 6, 7, 8_000_000, time.UTC)
+	if err := ost.PublishEvent(testEvent(Class1, 9, false, stamp)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ost.ProcessRequest(&al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
+		FuncCode: al.FuncEnableUnsolicited,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ost.flushPendingUnsolicited()
+	if len(tr.frames()) != 1 {
+		t.Fatalf("initial sends = %d", len(tr.frames()))
+	}
+	if err := ost.PublishEvent(testEvent(Class1, 13, true, time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC))); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.frames()) != 1 {
+		t.Fatal("second event was sent while the first confirm was outstanding")
+	}
+	confirm := &al.APDU{
+		FuncCode: al.FuncConfirm,
+		Control:  al.AppControl{FIR: true, FIN: true, UNS: true, Seq: 0},
+	}
+	if _, err := ost.ProcessRequest(confirm); err != nil {
+		t.Fatal(err)
+	}
+	if ost.EventCount() != 1 || ost.unsolSeq != 1 || ost.unsolAwait {
+		t.Fatalf("after first confirm count=%d seq=%d await=%v", ost.EventCount(), ost.unsolSeq, ost.unsolAwait)
+	}
+	if _, err := ost.ProcessRequest(confirm); err != nil {
+		t.Fatal(err)
+	}
+	if ost.EventCount() != 1 || ost.unsolSeq != 1 {
+		t.Fatalf("duplicate confirm count=%d seq=%d", ost.EventCount(), ost.unsolSeq)
+	}
+	resp, err := ost.ProcessRequest(&al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 2},
+		FuncCode: al.FuncRead,
+		Data:     []byte{60, 2, 0x06},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := al.DecodeEventObjects(resp.Data[2:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStamp := time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC)
+	if len(evs) != 1 || evs[0].Index != 13 || evs[0].Flags != 0x81 || !evs[0].Time.Equal(wantStamp) {
+		t.Fatalf("retained event = %+v", evs)
+	}
+	if ost.EventCount() != 0 {
+		t.Fatalf("events after recovery read = %d", ost.EventCount())
+	}
+	ost.StopUnsolicitedTimer()
+}
+
 func TestMultipleEventsSamePointAndOverflow(t *testing.T) {
 	ost := NewOutstation(&Config{MaxEventBuffers: 9})
 	ost.Initialize()

@@ -46,19 +46,42 @@ Addresses are master 1 and outstation 1024. Ports are 20000 and 20001 on
 IEEE millisecond count since 2000-01-01, because that library writes the
 stored count as a raw 48-bit field.
 
-## What the run checks
+## What the positive run checks
 
-Direction A is the Go outstation and the OpenDNP3 master: class 1/2/3
-events, absolute timestamps, an empty second read, unsolicited disabled,
-unsolicited enabled, confirm removal, and a bounded overflow with class and
-overflow IIN bits.
+`run-isolated.sh` is the positive exchange. Direction A is the Go outstation
+and the OpenDNP3 master: class 1/2/3 events, absolute timestamps, an empty
+second read, unsolicited disabled, unsolicited enabled, confirm removal, and
+a bounded overflow with class and overflow IIN bits.
 
 Direction B is the OpenDNP3 outstation and the Go master: class read,
 timestamp preservation, a second empty read, unsolicited disabled, then
 enabled, and confirm removal.
 
-OpenDNP3 confirms every fragment that asks for confirmation. The harness
-cannot make that master send a duplicate confirm or withhold confirm. Those
-two branches stay unit-tested in Go and are not an independent PASS.
+OpenDNP3 confirms every fragment that asks for confirmation, and it does so
+once. `run-isolated.sh` does not inject a second confirm or drop one. The
+positive capture stays `docs/verification/evt001/evt001.pcap`.
 
-Evidence from the passing run is in `docs/verification/EVT-001-OPENDNP3.md`.
+## Negative run
+
+`run-negative.sh` uses the same image, isolation gate, addresses, and
+OpenDNP3 master. `confirm_proxy.py` is a loopback TCP proxy. The master
+connects to the proxy. The proxy connects to the Go outstation.
+
+Stock OpenDNP3 still creates each application CONFIRM. The proxy does not
+build one.
+
+Duplicate mode holds the first confirm whose application sequence matches
+the unsolicited fragment just forwarded. When `/tmp/evt-proxy-release`
+appears, it writes that same link frame to the outstation twice. Later
+confirms are forwarded once. The second write is the injection.
+
+Withhold mode does not write application CONFIRM frames toward the
+outstation. Those frames stay on the master-to-proxy leg. After the
+outstation has sent the original fragment and two identical retries, a new
+OpenDNP3 master reads the retained event on the outstation port.
+
+`check_negative.py` is the pass/fail read of those captures. It separates
+the master-to-proxy leg from the proxy-to-outstation leg by TCP port.
+`derive_pcap.py` counts both legs together and is not that decision.
+
+Evidence is in `docs/verification/EVT-001-OPENDNP3.md`.

@@ -1,0 +1,4 @@
+STATE OPEN
+IIN lsb=00 msb=00
+END open=1
+STATE CLOSED

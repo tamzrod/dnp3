@@ -2202,3 +2202,13 @@ The MEXT-019 IIN map now uses the pinned OpenDNP3 LSB bit positions. `DecodeDNPT
 `active_work/supported-profile.md` blob is `3e592e77ad6e31d5492c609c5fdd62382505904b`. Only the MEXT-019 row changed. Events and unsolicited reporting stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
 
 Go gates before this checkpoint: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` all passed. `git diff --check` passed.
+
+## EVT-001 verification checkpoint (2026-11-13)
+
+Duplicate application confirm and withheld application confirm were run against the pinned OpenDNP3 3.1.2 master in `--network none`. The master created each CONFIRM. `lab/evt001/confirm_proxy.py` replayed one of those link frames twice, and on the other run did not forward CONFIRM frames to the outstation. The duplicate run left the unrelated event in place, advanced the application sequence once, and the outstation still answered a later read. The withheld run sent three identical fragments at about 2.001s spacing, stopped, and a later class read returned the retained event.
+
+Captures: `docs/verification/evt001/evt001-duplicate.pcap` (sha256 `0a1de37d96c9902705067b7848040174a42f904ef601ee6e8369595254952257`) and `docs/verification/evt001/evt001-withhold.pcap` (sha256 `2bffd6efef5752d8c2bc7fa44e9f9665a54ce51d6a588ccaba54065b92b234c0`). The positive capture is unchanged. The record is `docs/verification/EVT-001-OPENDNP3.md`. The negative script printed `RESULT EVT001_NEGATIVE PASS`.
+
+Profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` is unchanged. Events stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. This package is not archived. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release. EVT-001 verification is complete for owner review.
+
+Go gates before this verification commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.
