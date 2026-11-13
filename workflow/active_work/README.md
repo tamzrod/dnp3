@@ -2192,3 +2192,13 @@ Owner decision recorded in the archived AO-004 task. PR #28 is merged. `origin/m
 ## EVT-001 checkpoint (2026-11-13)
 
 Timestamped Group 2/22/32 events and Class 1/2/3 unsolicited reporting are implemented on `work`. Internal unit and 127.0.0.1 TCP tests passed, including `go test -race ./...`. Independent OpenDNP3 interop was **NOT_RUN**. The published supported profile was not changed and does not advertise this behavior. Secure Authentication stays **BLOCKED**. The MEXT-019 IIN bitmap freeze is not lifted. Details and labels are in `workflow/active_work/EVT-001.md`.
+
+## EVT-001 completion checkpoint (2026-11-13)
+
+Independent OpenDNP3 3.1.2 interoperability for the EVT-001 event scenarios was run in an isolated container (`--network none`, loopback only, memory points). Both directions passed. The capture is `docs/verification/evt001/evt001.pcap` (sha256 `4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98`). The result record is `docs/verification/EVT-001-OPENDNP3.md`.
+
+The MEXT-019 IIN map now uses the pinned OpenDNP3 LSB bit positions. `DecodeDNPTime` no longer converts the 48-bit millisecond count through `time.Duration`. The Go master skips a bounded run of outstation-primary frames while waiting for the secondary handshake response and confirms a null unsolicited fragment with UNS set. Duplicate-confirm and withheld-confirm behavior against OpenDNP3 is `NOT_RUN`, because that master confirms once. Those branches remain unit-tested.
+
+`active_work/supported-profile.md` blob is `3e592e77ad6e31d5492c609c5fdd62382505904b`. Only the MEXT-019 row changed. Events and unsolicited reporting stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
+
+Go gates before this checkpoint: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` all passed. `git diff --check` passed.

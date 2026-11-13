@@ -109,6 +109,9 @@ func TestCountZeroEventReadDoesNotDumpStatic(t *testing.T) {
 	if !ost.IIN().Class1Events {
 		t.Fatal("class 1 IIN should remain set")
 	}
+	if resp.Data[0] != 0x02 || resp.Data[1] != 0x00 {
+		t.Fatalf("class 1 IIN wire = % X, want 02 00", resp.Data[:2])
+	}
 }
 
 func TestPublishRejectsBadTimeAndIndex(t *testing.T) {
@@ -247,6 +250,17 @@ func TestMultipleEventsSamePointAndOverflow(t *testing.T) {
 	}
 	if !ost.IIN().BufferOverflow {
 		t.Fatal("overflow IIN not set")
+	}
+	wire, err := ost.ProcessRequest(&al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
+		FuncCode: al.FuncRead,
+		Data:     []byte{2, 1, 0x07, 0x00},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wire.Data[0] != 0x02 || wire.Data[1] != 0x08 {
+		t.Fatalf("overflow IIN wire = % X, want 02 08", wire.Data[:2])
 	}
 	if ost.EventCount() != 3 {
 		t.Fatalf("count = %d, want the older 3 events", ost.EventCount())

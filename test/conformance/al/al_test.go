@@ -172,13 +172,13 @@ func TestIINEncoding(t *testing.T) {
 		byte1 byte
 	}{
 		{"empty", al.IIN{}, 0x00, 0x00},
-		{"all_stations", al.IIN{AllStations: true}, 0x80, 0x00},
-		{"class1_events", al.IIN{Class1Events: true}, 0x40, 0x00},
-		{"device_trouble", al.IIN{DeviceTrouble: true}, 0x02, 0x00},
-		{"need_time", al.IIN{NeedTime: true}, 0x08, 0x00},
-		{"bad_config", al.IIN{BadConfig: true}, 0x00, 0x04},
-		{"buffer_overflow", al.IIN{BufferOverflow: true}, 0x00, 0x10},
-		{"multiple", al.IIN{AllStations: true, DeviceTrouble: true, BadConfig: true}, 0x82, 0x04},
+		{"all_stations", al.IIN{AllStations: true}, 0x01, 0x00},
+		{"class1_events", al.IIN{Class1Events: true}, 0x02, 0x00},
+		{"device_trouble", al.IIN{DeviceTrouble: true}, 0x40, 0x00},
+		{"need_time", al.IIN{NeedTime: true}, 0x10, 0x00},
+		{"bad_config", al.IIN{BadConfig: true}, 0x00, 0x20},
+		{"buffer_overflow", al.IIN{BufferOverflow: true}, 0x00, 0x08},
+		{"multiple", al.IIN{AllStations: true, DeviceTrouble: true, BadConfig: true}, 0x41, 0x20},
 	}
 
 	for _, tt := range tests {

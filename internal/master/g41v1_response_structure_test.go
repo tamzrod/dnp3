@@ -174,15 +174,15 @@ func TestOperateG41V1F6IINContradictsSuccessEcho(t *testing.T) {
 		wantQuarant bool
 	}{
 		{"clear IIN + SUCCESS echo", [2]byte{0x00, 0x00}, CommandStatusSuccess, false, false},
-		{"non-error IIN (Class1Events) + SUCCESS echo", [2]byte{0x40, 0x00}, CommandStatusSuccess, false, false},
-		{"non-error IIN (NeedTime) + SUCCESS echo", [2]byte{0x08, 0x00}, CommandStatusSuccess, false, false},
-		{"ParameterError contradicts SUCCESS", [2]byte{0x00, 0x20}, CommandStatusBadFormat, false, false},
-		{"ObjectUnknown contradicts SUCCESS", [2]byte{0x00, 0x40}, CommandStatusNotSupported, false, false},
-		{"FuncUnknown contradicts SUCCESS", [2]byte{0x00, 0x80}, CommandStatusNotSupported, false, false},
-		{"BadConfig contradicts SUCCESS", [2]byte{0x00, 0x04}, CommandStatusBadFormat, false, false},
-		{"AlreadyExecuting contradicts SUCCESS", [2]byte{0x00, 0x08}, CommandStatusAlreadyActive, false, false},
-		{"LocalControl contradicts SUCCESS", [2]byte{0x04, 0x00}, CommandStatusLocal, false, false},
-		{"BufferOverflow ambiguity fails closed", [2]byte{0x00, 0x10}, CommandStatusUnknown, true, true},
+		{"non-error IIN (Class1Events) + SUCCESS echo", [2]byte{0x02, 0x00}, CommandStatusSuccess, false, false},
+		{"non-error IIN (NeedTime) + SUCCESS echo", [2]byte{0x10, 0x00}, CommandStatusSuccess, false, false},
+		{"ParameterError contradicts SUCCESS", [2]byte{0x00, 0x04}, CommandStatusBadFormat, false, false},
+		{"ObjectUnknown contradicts SUCCESS", [2]byte{0x00, 0x02}, CommandStatusNotSupported, false, false},
+		{"FuncUnknown contradicts SUCCESS", [2]byte{0x00, 0x01}, CommandStatusNotSupported, false, false},
+		{"BadConfig contradicts SUCCESS", [2]byte{0x00, 0x20}, CommandStatusBadFormat, false, false},
+		{"AlreadyExecuting contradicts SUCCESS", [2]byte{0x00, 0x10}, CommandStatusAlreadyActive, false, false},
+		{"LocalControl contradicts SUCCESS", [2]byte{0x20, 0x00}, CommandStatusLocal, false, false},
+		{"BufferOverflow ambiguity fails closed", [2]byte{0x00, 0x08}, CommandStatusUnknown, true, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -219,7 +219,7 @@ func TestOperateG41V1F6ExplicitNonSuccessStatusPreserved(t *testing.T) {
 		want   CommandStatus
 	}{
 		{"HardwareError, clean IIN", 0x06, [2]byte{0x00, 0x00}, CommandStatusHardwareError},
-		{"HardwareError, conflicting ParameterError", 0x06, [2]byte{0x00, 0x20}, CommandStatusHardwareError},
+		{"HardwareError, conflicting ParameterError", 0x06, [2]byte{0x00, 0x04}, CommandStatusHardwareError},
 		{"NoSelect, clean IIN", 0x02, [2]byte{0x00, 0x00}, CommandStatusNoSelect},
 	}
 	for _, row := range rows {

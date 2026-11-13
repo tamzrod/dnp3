@@ -184,114 +184,113 @@ func (a *APDU) String() string {
 		a.Control.Header(), a.FuncCode, funcName, len(a.Data))
 }
 
-// Internal Indication (IIN) field - 2 bytes
-// IIN holds the 2-byte Internal Indications field (IEEE 1815-2012,
-// Section 10.5.1 "Field Type: Internal Indications"). The field is two
-// octets transmitted IIN1 (first) then IIN2. Bits within each octet are
-// transmitted MSB-first, so bit index 0 (IIN1.0) corresponds to the MSB
-// (0x80) of octet 1, and bit index 7 (IIN1.7) corresponds to the LSB
-// (0x01) of octet 1; likewise for IIN2.
+// Internal Indication (IIN) field - 2 bytes.
+// IIN holds the 2-byte Internal Indications field. Octet 1 is transmitted
+// first, then octet 2. Within each octet, bit 0 is the least significant
+// bit (mask 0x01). These masks match pinned OpenDNP3 3.1.2 IINField.h
+// (commit 26b4c01e4839bbbda8866655e086471c4917ee53): LSBMask for octet 1
+// and MSBMask for octet 2.
 //
-// IIN1 (octet 1) — device status / event availability:
+// EVT-001 lifted the MEXT-019 freeze for this correction. MEXT-019 numbered
+// bit 0 as the most significant bit, which reversed every flag. A partial
+// change of only the class bits collides with the flags that already occupy
+// those masks, so both octets move together. Each named flag still means
+// the same condition.
 //
-//	0x80 IIN1.0 AllStations   — broadcast/all-stations message received
-//	0x40 IIN1.1 Class1Events  — Class 1 event data available
-//	0x20 IIN1.2 Class2Events  — Class 2 event data available
-//	0x10 IIN1.3 Class3Events  — Class 3 event data available
-//	0x08 IIN1.4 NeedTime      — time synchronization required
-//	0x04 IIN1.5 LocalControl  — local mode (points uncontrollable via DNP)
-//	0x02 IIN1.6 DeviceTrouble — device trouble
-//	0x01 IIN1.7 DeviceRestart — device restart
+// Octet 1:
 //
-// IIN2 (octet 2) — application-level errors:
+//	0x01 AllStations   — broadcast message received
+//	0x02 Class1Events  — Class 1 data available
+//	0x04 Class2Events  — Class 2 data available
+//	0x08 Class3Events  — Class 3 data available
+//	0x10 NeedTime      — time synchronization required
+//	0x20 LocalControl  — local mode
+//	0x40 DeviceTrouble — device trouble
+//	0x80 DeviceRestart — device restart
 //
-//	0x80 IIN2.0 FuncUnknown       — function code cannot be processed
-//	0x40 IIN2.1 ObjectUnknown     — object group/variation cannot be processed
-//	0x20 IIN2.2 ParameterError    — qualifier/range field is in error
-//	0x10 IIN2.3 BufferOverflow    — event buffer overflowed, events lost
-//	0x08 IIN2.4 AlreadyExecuting  — operation already executing
-//	0x04 IIN2.5 BadConfig         — bad configuration
-//	0x02 IIN2.6 Reserved2_6       — reserved, always 0
-//	0x01 IIN2.7 Reserved2_7       — reserved, always 0
+// Octet 2:
 //
-// MEXT-019 FREEZE: this bit map is frozen against IEEE 1815-2012 for the
-// external v0 interop claim. The flag-to-octet/position mapping MUST NOT
-// change without an explicit spec-continuity review. The frozen table is
-// locked by internal/al/iin_freeze_test.go (named critical masks + a full
-// 16-bit round-trip).
+//	0x01 FuncUnknown       — function code not supported
+//	0x02 ObjectUnknown     — object unknown
+//	0x04 ParameterError    — parameter error
+//	0x08 BufferOverflow    — event buffer overflow
+//	0x10 AlreadyExecuting  — already executing
+//	0x20 BadConfig         — configuration corrupt
+//	0x40 Reserved2_6       — reserved
+//	0x80 Reserved2_7       — reserved
+//
+// The table is locked by internal/al/iin_freeze_test.go.
 type IIN struct {
-	// IIN1 (octet 1) flags
-	AllStations   bool // IIN1.0 0x80 — broadcast/all-stations message received
-	Class1Events  bool // IIN1.1 0x40 — Class 1 event data available
-	Class2Events  bool // IIN1.2 0x20 — Class 2 event data available
-	Class3Events  bool // IIN1.3 0x10 — Class 3 event data available
-	NeedTime      bool // IIN1.4 0x08 — time synchronization required
-	LocalControl  bool // IIN1.5 0x04 — local mode
-	DeviceTrouble bool // IIN1.6 0x02 — device trouble
-	DeviceRestart bool // IIN1.7 0x01 — device restart
+	AllStations   bool // octet 1 0x01 — broadcast message received
+	Class1Events  bool // octet 1 0x02 — Class 1 data available
+	Class2Events  bool // octet 1 0x04 — Class 2 data available
+	Class3Events  bool // octet 1 0x08 — Class 3 data available
+	NeedTime      bool // octet 1 0x10 — time synchronization required
+	LocalControl  bool // octet 1 0x20 — local mode
+	DeviceTrouble bool // octet 1 0x40 — device trouble
+	DeviceRestart bool // octet 1 0x80 — device restart
 
-	// IIN2 (octet 2) flags
-	FuncUnknown      bool // IIN2.0 0x80 — function code unknown
-	ObjectUnknown    bool // IIN2.1 0x40 — object unknown
-	ParameterError   bool // IIN2.2 0x20 — parameter/qualifier/range error
-	BufferOverflow   bool // IIN2.3 0x10 — event buffer overflow
-	AlreadyExecuting bool // IIN2.4 0x08 — already executing
-	BadConfig        bool // IIN2.5 0x04 — bad configuration
-	Reserved2_6      bool // IIN2.6 0x02 — reserved (always 0)
-	Reserved2_7      bool // IIN2.7 0x01 — reserved (always 0)
+	FuncUnknown      bool // octet 2 0x01 — function code not supported
+	ObjectUnknown    bool // octet 2 0x02 — object unknown
+	ParameterError   bool // octet 2 0x04 — parameter error
+	BufferOverflow   bool // octet 2 0x08 — event buffer overflow
+	AlreadyExecuting bool // octet 2 0x10 — already executing
+	BadConfig        bool // octet 2 0x20 — configuration corrupt
+	Reserved2_6      bool // octet 2 0x40 — reserved
+	Reserved2_7      bool // octet 2 0x80 — reserved
 }
 
 // Bytes returns the 2-byte IIN representation (IIN1, IIN2).
 func (i *IIN) Bytes() [2]byte {
 	var result [2]byte
 	if i.AllStations {
-		result[0] |= 0x80
+		result[0] |= 0x01
 	}
 	if i.Class1Events {
-		result[0] |= 0x40
-	}
-	if i.Class2Events {
-		result[0] |= 0x20
-	}
-	if i.Class3Events {
-		result[0] |= 0x10
-	}
-	if i.NeedTime {
-		result[0] |= 0x08
-	}
-	if i.LocalControl {
-		result[0] |= 0x04
-	}
-	if i.DeviceTrouble {
 		result[0] |= 0x02
 	}
+	if i.Class2Events {
+		result[0] |= 0x04
+	}
+	if i.Class3Events {
+		result[0] |= 0x08
+	}
+	if i.NeedTime {
+		result[0] |= 0x10
+	}
+	if i.LocalControl {
+		result[0] |= 0x20
+	}
+	if i.DeviceTrouble {
+		result[0] |= 0x40
+	}
 	if i.DeviceRestart {
-		result[0] |= 0x01
+		result[0] |= 0x80
 	}
 
 	if i.FuncUnknown {
-		result[1] |= 0x80
+		result[1] |= 0x01
 	}
 	if i.ObjectUnknown {
-		result[1] |= 0x40
-	}
-	if i.ParameterError {
-		result[1] |= 0x20
-	}
-	if i.BufferOverflow {
-		result[1] |= 0x10
-	}
-	if i.AlreadyExecuting {
-		result[1] |= 0x08
-	}
-	if i.BadConfig {
-		result[1] |= 0x04
-	}
-	if i.Reserved2_6 {
 		result[1] |= 0x02
 	}
+	if i.ParameterError {
+		result[1] |= 0x04
+	}
+	if i.BufferOverflow {
+		result[1] |= 0x08
+	}
+	if i.AlreadyExecuting {
+		result[1] |= 0x10
+	}
+	if i.BadConfig {
+		result[1] |= 0x20
+	}
+	if i.Reserved2_6 {
+		result[1] |= 0x40
+	}
 	if i.Reserved2_7 {
-		result[1] |= 0x01
+		result[1] |= 0x80
 	}
 
 	return result
@@ -299,23 +298,23 @@ func (i *IIN) Bytes() [2]byte {
 
 // SetIIN decodes a 2-byte IIN (IIN1, IIN2).
 func (i *IIN) SetIIN(b [2]byte) {
-	i.AllStations = (b[0] & 0x80) != 0
-	i.Class1Events = (b[0] & 0x40) != 0
-	i.Class2Events = (b[0] & 0x20) != 0
-	i.Class3Events = (b[0] & 0x10) != 0
-	i.NeedTime = (b[0] & 0x08) != 0
-	i.LocalControl = (b[0] & 0x04) != 0
-	i.DeviceTrouble = (b[0] & 0x02) != 0
-	i.DeviceRestart = (b[0] & 0x01) != 0
+	i.AllStations = (b[0] & 0x01) != 0
+	i.Class1Events = (b[0] & 0x02) != 0
+	i.Class2Events = (b[0] & 0x04) != 0
+	i.Class3Events = (b[0] & 0x08) != 0
+	i.NeedTime = (b[0] & 0x10) != 0
+	i.LocalControl = (b[0] & 0x20) != 0
+	i.DeviceTrouble = (b[0] & 0x40) != 0
+	i.DeviceRestart = (b[0] & 0x80) != 0
 
-	i.FuncUnknown = (b[1] & 0x80) != 0
-	i.ObjectUnknown = (b[1] & 0x40) != 0
-	i.ParameterError = (b[1] & 0x20) != 0
-	i.BufferOverflow = (b[1] & 0x10) != 0
-	i.AlreadyExecuting = (b[1] & 0x08) != 0
-	i.BadConfig = (b[1] & 0x04) != 0
-	i.Reserved2_6 = (b[1] & 0x02) != 0
-	i.Reserved2_7 = (b[1] & 0x01) != 0
+	i.FuncUnknown = (b[1] & 0x01) != 0
+	i.ObjectUnknown = (b[1] & 0x02) != 0
+	i.ParameterError = (b[1] & 0x04) != 0
+	i.BufferOverflow = (b[1] & 0x08) != 0
+	i.AlreadyExecuting = (b[1] & 0x10) != 0
+	i.BadConfig = (b[1] & 0x20) != 0
+	i.Reserved2_6 = (b[1] & 0x40) != 0
+	i.Reserved2_7 = (b[1] & 0x80) != 0
 }
 
 // EncodeIIN encodes the IIN as 2 bytes.

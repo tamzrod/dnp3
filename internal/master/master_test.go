@@ -882,8 +882,7 @@ func TestProcessResponseStoresIIN(t *testing.T) {
 	m := NewMaster(DefaultConfig())
 	m.AddOutstation(2, "RTU-1")
 
-	// Build a response carrying a known IIN (DeviceTrouble = IIN1.6 = 0x02,
-	// BadConfig = IIN2.5 = 0x04 → bytes {0x02, 0x04}).
+	// Build a response carrying DeviceTrouble (0x40) and BadConfig (0x20).
 	raw := buildResponseFrameWithIIN(7, al.IIN{DeviceTrouble: true, BadConfig: true})
 
 	if _, err := m.processResponse(raw, 2, 7); err != nil {
@@ -895,8 +894,8 @@ func TestProcessResponseStoresIIN(t *testing.T) {
 		t.Fatal("outstation 2 not found")
 	}
 	got := o.GetIIN()
-	if got != [2]byte{0x02, 0x04} {
-		t.Fatalf("stored IIN = %v, want {0x02,0x04}", got)
+	if got != [2]byte{0x40, 0x20} {
+		t.Fatalf("stored IIN = %v, want {0x40,0x20}", got)
 	}
 }
 

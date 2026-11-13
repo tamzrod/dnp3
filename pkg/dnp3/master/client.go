@@ -196,7 +196,7 @@ type Config struct {
 	// Supported-profile: Defer — observability hook, not externally verified in v0.
 	Logger Logger
 	// AutoIntegrityOnRestart enables the DNP3-053 behavior: when a response
-	// carries the DeviceRestart IIN bit (IIN1.7), the master automatically
+	// carries the DeviceRestart IIN bit (octet 1 mask 0x80), the master automatically
 	// issues a Class-0 integrity poll after the triggering request completes,
 	// so the outstation's post-restart static data is re-read without the
 	// caller having to poll manually. Disabled by default (opt-in). The

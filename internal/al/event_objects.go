@@ -89,7 +89,10 @@ func DecodeDNPTime(b []byte) (time.Time, error) {
 	for i := 5; i >= 0; i-- {
 		u = (u << 8) | uint64(b[i])
 	}
-	return DNPEpoch.Add(time.Duration(u) * time.Millisecond), nil
+	// time.Duration counts nanoseconds and overflows about 290 years after
+	// the epoch, so a valid 48-bit count must not be added that way.
+	// Six octets are at most 48 bits, which still fits in int64 milliseconds.
+	return time.UnixMilli(DNPEpoch.UnixMilli() + int64(u)).UTC(), nil
 }
 
 // AppendIndexedEvents appends one qualifier-0x17 object header and its
@@ -180,31 +183,59 @@ func eventObjectSize(group, variation uint8) int {
 	return -1
 }
 
-// DecodeEventObjects parses Group 2/22/32 events encoded with qualifier 0x17.
-// An empty buffer is a valid object-less class response.
+// qualCountIndex16 is IEEE 1815 UINT16_CNT_UINT16_INDEX. OpenDNP3 3.1.2
+// event writers emit this qualifier: a 16-bit object count, then a 16-bit
+// index prefix on every object. The event decoder reads that layout directly.
+// object_header.QualRange16 uses the same octet for a different header model
+// and is not used here.
+const qualCountIndex16 uint8 = 0x28
+
+// DecodeEventObjects parses Group 2/22/32 events encoded with qualifier 0x17
+// (8-bit count and index) or 0x28 (16-bit count and index). An empty buffer
+// is a valid object-less class response.
 func DecodeEventObjects(data []byte) ([]EventObject, error) {
 	var out []EventObject
 	for len(data) > 0 {
-		if len(data) < 4 {
+		if len(data) < 3 {
 			return nil, fmt.Errorf("al: truncated event header")
 		}
 		group, variation, qual := data[0], data[1], data[2]
-		if qual != QualIndex8 {
-			return nil, fmt.Errorf("al: event qualifier 0x%02X is not 0x17", qual)
+		var n, indexWidth, header int
+		switch qual {
+		case QualIndex8:
+			if len(data) < 4 {
+				return nil, fmt.Errorf("al: truncated event header")
+			}
+			n = int(data[3])
+			indexWidth = 1
+			header = 4
+		case qualCountIndex16:
+			if len(data) < 5 {
+				return nil, fmt.Errorf("al: truncated event header")
+			}
+			n = int(data[3]) | int(data[4])<<8
+			indexWidth = 2
+			header = 5
+		default:
+			return nil, fmt.Errorf("al: event qualifier 0x%02X is not 0x17 or 0x28", qual)
 		}
-		n := int(data[3])
 		size := eventObjectSize(group, variation)
 		if size < 0 {
 			return nil, fmt.Errorf("al: unsupported event g%d v%d", group, variation)
 		}
-		data = data[4:]
+		data = data[header:]
 		for i := 0; i < n; i++ {
-			if len(data) < 1+size {
+			if len(data) < indexWidth+size {
 				return nil, fmt.Errorf("al: truncated event object")
 			}
-			index := uint16(data[0])
-			body := data[1 : 1+size]
-			data = data[1+size:]
+			var index uint16
+			if indexWidth == 1 {
+				index = uint16(data[0])
+			} else {
+				index = uint16(data[0]) | uint16(data[1])<<8
+			}
+			body := data[indexWidth : indexWidth+size]
+			data = data[indexWidth+size:]
 			ev := EventObject{Group: group, Variation: variation, Index: index, Flags: body[0]}
 			switch group {
 			case 32:

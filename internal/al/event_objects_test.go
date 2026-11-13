@@ -34,6 +34,53 @@ func TestDNPTimeRoundTripAndRejects(t *testing.T) {
 	}
 }
 
+// TestDecodeDNPTimePastDurationLimit pins the year-2300 and 48-bit-maximum
+// timestamps. time.Duration overflows near year 2290, and the old Add path
+// decoded year 2300 as a date in 1715.
+func TestDecodeDNPTimePastDurationLimit(t *testing.T) {
+	stamp := time.Date(2300, 1, 1, 0, 0, 0, 0, time.UTC)
+	enc, err := EncodeDNPTime(stamp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeDNPTime(enc[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal(stamp) {
+		t.Fatalf("year 2300 decode = %s", got.UTC())
+	}
+	again, err := EncodeDNPTime(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != enc {
+		t.Fatalf("year 2300 re-encode = % X, want % X", again, enc)
+	}
+
+	var maxb [6]byte
+	u := uint64(DNPTimeMax)
+	for i := 0; i < 6; i++ {
+		maxb[i] = byte(u)
+		u >>= 8
+	}
+	got, err = DecodeDNPTime(maxb[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.UnixMilli(DNPEpoch.UnixMilli() + int64(DNPTimeMax)).UTC()
+	if !got.Equal(want) {
+		t.Fatalf("48-bit max decode = %s, want %s", got.UTC(), want)
+	}
+	back, err := EncodeDNPTime(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back != maxb {
+		t.Fatalf("48-bit max re-encode = % X, want % X", back, maxb)
+	}
+}
+
 func TestEventObjectGoldens(t *testing.T) {
 	stamp := time.Date(2000, 1, 1, 0, 0, 1, 0, time.UTC)
 	bin, err := PutBinaryEventObject(BinEventOnline|BinEventState, false, time.Time{})
@@ -128,5 +175,34 @@ func TestEventObjectGoldens(t *testing.T) {
 func TestDecodeRejectsShortEvent(t *testing.T) {
 	if _, err := DecodeEventObjects([]byte{0x02, 0x01, 0x17, 0x01}); err == nil {
 		t.Fatal("truncated object must fail")
+	}
+}
+
+// TestDecodeEventQualifier16 pins OpenDNP3 3.1.2's event layout: qualifier
+// 0x28 is a 16-bit count followed by a 16-bit index on each object.
+func TestDecodeEventQualifier16(t *testing.T) {
+	stamp := time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC)
+	body, err := PutBinaryEventObject(BinEventOnline|BinEventState, true, stamp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// g2v2, count 1, index 300 (0x012C).
+	frame := []byte{0x02, 0x02, qualCountIndex16, 0x01, 0x00, 0x2C, 0x01}
+	frame = append(frame, body...)
+	decoded, err := DecodeEventObjects(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 1 || decoded[0].Index != 300 || !decoded[0].Time.Equal(stamp) || decoded[0].Flags != 0x81 {
+		t.Fatalf("decoded %+v", decoded)
+	}
+	// A 16-bit header with no room for the index and object must fail.
+	if _, err := DecodeEventObjects([]byte{0x02, 0x02, qualCountIndex16, 0x01, 0x00, 0x07}); err == nil {
+		t.Fatal("truncated 0x28 object must fail")
+	}
+	// Count zero is an empty event response, not static data.
+	empty, err := DecodeEventObjects([]byte{0x02, 0x02, qualCountIndex16, 0x00, 0x00})
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty 0x28 = %+v err=%v", empty, err)
 	}
 }

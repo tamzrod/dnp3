@@ -4,18 +4,14 @@ import (
 	"testing"
 )
 
-// MEXT-019 — IIN bit-map freeze vs IEEE 1815.
+// EVT-001 — IIN wire masks vs pinned OpenDNP3 3.1.2 IINField.h.
 //
-// The IIN field is defined in application.go as a frozen 2-octet table
-// (IIN1 then IIN2, MSB-first within each octet). These tests lock the table
-// against semantic drift before the external interop claim: named critical
-// masks are pinned to their verified [2]byte, every possible 16-bit mask
-// round-trips losslessly through Bytes/SetIIN, and the reserved IIN2 bits are
-// characterized. If any of these breaks, the IIN table drifted.
+// MEXT-019 numbered bit 0 as the MSB. That freeze is lifted for this
+// correction. Bit 0 is now the least significant bit, matching OpenDNP3
+// LSBMask/MSBMask at 26b4c01e. These tests lock the corrected table:
+// named masks, a full 16-bit round-trip, and the two reserved octet-2 bits.
 
-// TestIINKnownMasksFreeze pins named critical IIN masks to their frozen
-// [IIN1, IIN2] byte values (IEEE 1815-2012). Adding, removing, or reordering
-// a bit will break the named entry it affects.
+// TestIINKnownMasksFreeze pins named IIN masks to the OpenDNP3 wire bytes.
 func TestIINKnownMasksFreeze(t *testing.T) {
 	tests := []struct {
 		name string
@@ -23,19 +19,20 @@ func TestIINKnownMasksFreeze(t *testing.T) {
 		want [2]byte
 	}{
 		{"all clear", IIN{}, [2]byte{0x00, 0x00}},
-		{"NeedTime", IIN{NeedTime: true}, [2]byte{0x08, 0x00}},
-		{"DeviceRestart", IIN{DeviceRestart: true}, [2]byte{0x01, 0x00}},
-		{"DeviceTrouble", IIN{DeviceTrouble: true}, [2]byte{0x02, 0x00}},
+		{"NeedTime", IIN{NeedTime: true}, [2]byte{0x10, 0x00}},
+		{"DeviceRestart", IIN{DeviceRestart: true}, [2]byte{0x80, 0x00}},
+		{"DeviceTrouble", IIN{DeviceTrouble: true}, [2]byte{0x40, 0x00}},
 		{"AllStations+DeviceRestart", IIN{AllStations: true, DeviceRestart: true}, [2]byte{0x81, 0x00}},
-		{"Class1+2+3 events", IIN{Class1Events: true, Class2Events: true, Class3Events: true}, [2]byte{0x70, 0x00}},
-		{"FuncUnknown", IIN{FuncUnknown: true}, [2]byte{0x00, 0x80}},
-		{"ObjectUnknown", IIN{ObjectUnknown: true}, [2]byte{0x00, 0x40}},
-		{"ParameterError", IIN{ParameterError: true}, [2]byte{0x00, 0x20}},
+		{"Class1+2+3 events", IIN{Class1Events: true, Class2Events: true, Class3Events: true}, [2]byte{0x0E, 0x00}},
+		{"FuncUnknown", IIN{FuncUnknown: true}, [2]byte{0x00, 0x01}},
+		{"ObjectUnknown", IIN{ObjectUnknown: true}, [2]byte{0x00, 0x02}},
+		{"ParameterError", IIN{ParameterError: true}, [2]byte{0x00, 0x04}},
+		{"BufferOverflow", IIN{BufferOverflow: true}, [2]byte{0x00, 0x08}},
 		{"all IIN2 errors", IIN{
 			FuncUnknown: true, ObjectUnknown: true, ParameterError: true,
 			BufferOverflow: true, AlreadyExecuting: true, BadConfig: true,
-		}, [2]byte{0x00, 0xFC}},
-		{"command rejected (ParameterError)", IIN{ParameterError: true}, [2]byte{0x00, 0x20}},
+		}, [2]byte{0x00, 0x3F}},
+		{"command rejected (ParameterError)", IIN{ParameterError: true}, [2]byte{0x00, 0x04}},
 	}
 	for _, tt := range tests {
 		got := tt.iin.Bytes()
@@ -93,7 +90,7 @@ func TestIINDecodeIINAllMasks(t *testing.T) {
 // change (e.g. forcing reserved bits to 0 on decode) is a deliberate, reviewed
 // decision.
 func TestIINReservedBitsRoundTrip(t *testing.T) {
-	for _, mask := range [][2]byte{{0x00, 0x02}, {0x00, 0x01}, {0x00, 0x03}} {
+	for _, mask := range [][2]byte{{0x00, 0x40}, {0x00, 0x80}, {0x00, 0xC0}} {
 		var iin IIN
 		iin.SetIIN(mask)
 		got := iin.Bytes()
@@ -101,10 +98,10 @@ func TestIINReservedBitsRoundTrip(t *testing.T) {
 			t.Errorf("reserved mask [%02X %02X]: round-trip = [%02X %02X]",
 				mask[0], mask[1], got[0], got[1])
 		}
-		if mask[1]&0x02 != 0 && !iin.Reserved2_6 {
+		if mask[1]&0x40 != 0 && !iin.Reserved2_6 {
 			t.Errorf("reserved mask % X: Reserved2_6 not set", mask)
 		}
-		if mask[1]&0x01 != 0 && !iin.Reserved2_7 {
+		if mask[1]&0x80 != 0 && !iin.Reserved2_7 {
 			t.Errorf("reserved mask % X: Reserved2_7 not set", mask)
 		}
 	}
