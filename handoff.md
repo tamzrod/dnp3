@@ -2154,3 +2154,9 @@ Captures: `docs/verification/evt001/evt001-duplicate.pcap` (sha256 `0a1de37d96c9
 Profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` is unchanged. Events stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. This package is not archived. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release. EVT-001 verification is complete for owner review.
 
 Go gates before this verification commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.
+
+## EVT-001 closure rerun (2026-11-13)
+
+The first duplicate capture's empty-queue leg did not contain a class READ. OpenDNP3 3.1.2 drops a one-shot `ScanClasses` issued before the master is online. `lab/evt001/evt_master.cpp` now uses `AddClassScan` with a 30 second period, and the PCAP check requires that READ plus an object-less response before index 14. Two isolated reruns passed. Closure captures: `docs/verification/evt001/evt001-duplicate.pcap` sha256 `27009cbf22a1c8ab8af2778f0a737f82328e5029e5c97726b26c3b4c368a89fe` and `docs/verification/evt001/evt001-withhold.pcap` sha256 `c923a3fb5fc546b40df01421b9c16760f6dd51d39c9e6a9acc5490430c6190e3`. The positive capture sha256 `4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98` is unchanged. A positive rerun also printed `RESULT EVT001_INTEROP PASS`. Profile blob, CURRENT, and archive state are unchanged. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
+
+Go gates before this closure commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.

@@ -1,13 +1,13 @@
 === duplicate derive_pcap ===
-pcap_dlt=1 packets=57 dnp_app=19
+pcap_dlt=1 packets=60 dnp_app=21
 func 0x00 CONFIRM count=5
-func 0x01 READ count=1
+func 0x01 READ count=2
 func 0x14 ENABLE_UNSOLICITED count=2
 func 0x15 DISABLE_UNSOLICITED count=2
-func 0x81 RESPONSE count=5
+func 0x81 RESPONSE count=6
 func 0x82 UNSOLICITED count=4
 === duplicate check_negative ===
-pcap packets=57 dnp_app=19
+pcap packets=60 dnp_app=21
 PCAP_CHECK duplicate PASS confirms=2 seq=0 next=1 operational=1
 === withhold derive_pcap ===
 pcap_dlt=1 packets=46 dnp_app=17

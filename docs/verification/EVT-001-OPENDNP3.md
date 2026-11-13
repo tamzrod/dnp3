@@ -165,14 +165,14 @@ outstation-leg totals below.
 
 | File | SHA-256 |
 | --- | --- |
-| `docs/verification/evt001/evt001-duplicate.pcap` | `0a1de37d96c9902705067b7848040174a42f904ef601ee6e8369595254952257` |
-| `docs/verification/evt001/evt001-withhold.pcap` | `2bffd6efef5752d8c2bc7fa44e9f9665a54ce51d6a588ccaba54065b92b234c0` |
-| `docs/verification/evt001/negative-run.log` | `3f556dbb78f23bc33c8534d59291df10b21bb3ba54ebacde3a28789191137306` |
-| `docs/verification/evt001/negative-derived.txt` | `df8302f295e8482f5f847de5beb3310c9e0c9096626c56f2a978906e086f8bf6` |
+| `docs/verification/evt001/evt001-duplicate.pcap` | `27009cbf22a1c8ab8af2778f0a737f82328e5029e5c97726b26c3b4c368a89fe` |
+| `docs/verification/evt001/evt001-withhold.pcap` | `c923a3fb5fc546b40df01421b9c16760f6dd51d39c9e6a9acc5490430c6190e3` |
+| `docs/verification/evt001/negative-run.log` | `ef5bf5ed0468e08d73d8feabf797d470783eeafebe81b94dc74776f27ff242e2` |
+| `docs/verification/evt001/negative-derived.txt` | `d701f991db650318ffa98c7a383ebc6ff835de6375c3df38f8a02eacced6a569` |
 | `docs/verification/evt001/proxy-duplicate.log` | `b292ae99ccfdee53c05256900a45c639abf9cb65b9fbdd1c38a468b186ffcbd8` |
 | `docs/verification/evt001/proxy-withhold.log` | `65169dba0b55cf8e8ef441fb7dcac37016d0106114400bcfa47aa05440611564` |
 | `docs/verification/evt001/negative-a-unsol.log` | `48826c717423f63a0ef341cf8cabe15fefee48f71aa7f6fe1ddcac57fb66a54f` |
-| `docs/verification/evt001/negative-a-gone.log` | `c7a999ba1960819f75a8b5b7891ae11e74e753ce0b337f6631aadfe5ab656dd3` |
+| `docs/verification/evt001/negative-a-gone.log` | `3502fd3550458475dee14ff388a8cbd72114d18ccab6a20b243a44413cb2a0f0` |
 | `docs/verification/evt001/negative-a-operational.log` | `7a5459ac2fa2135eb673dfd57620ca876d321bf79dd04912b658f3e3aaad402f` |
 | `docs/verification/evt001/negative-b-unsol.log` | `124fcfa2c173f98d434713954ab3303991409d0beef70564edd8d764478724a8` |
 | `docs/verification/evt001/negative-b-recover.log` | `d9245d9d6fc17415d0663ea4207ed5264575a78f32e9c64c765e12636895bcce` |
@@ -191,8 +191,10 @@ The duplicate capture shows one unsolicited fragment for index 9 at
 application sequence 0, two identical CONFIRM frames for sequence 0 on TCP
 port 20000, and one later unsolicited fragment at sequence 1 that carries
 index 13 and not index 9. One stock confirm for sequence 1 was forwarded.
-The following class read returned no events. A new index 14 event was then
-read, so the outstation was still serving. `check_negative.py` printed
+The following class read returned no events. That read is on the wire:
+disable-unsolicited, then READ, then an object-less response with IIN
+`00 00`. A new index 14 event was then read, so the outstation was still
+serving. `check_negative.py` printed
 `PCAP_CHECK duplicate PASS confirms=2 seq=0 next=1 operational=1`.
 
 ### Withheld confirm, retry limit, retention
@@ -225,7 +227,29 @@ AO-005 was not started. No PR, no merge to `main`, and no release.
 The in-process regression `TestDuplicateConfirmLeavesOtherQueuedEvent` checks
 the same confirm rule. It is not a substitute for the captures above.
 
-On this tree, before the verification commit: `gofmt -l` printed nothing,
+## Closure rerun — class read was being dropped
+
+The first negative capture, duplicate sha256
+`0a1de37d96c9902705067b7848040174a42f904ef601ee6e8369595254952257`,
+showed the duplicate confirm and the later index 14 read. Its empty-queue
+check did not. OpenDNP3 3.1.2 `MContext::ScheduleAdhocTask` drops a one-shot
+`ScanClasses` when the master is not online yet. That capture's first
+follow-up dial sent DISABLE_UNSOLICITED and no READ. The log check treated
+a missing event line as proof the events were gone. The stricter
+`check_negative.py` now requires the class READ and an object-less response
+before index 14. That older capture fails the new check.
+
+`evt_master` now uses `AddClassScan` with a 30 second period. OpenDNP3 binds
+that scan and starts it when the link comes up. The period is longer than
+the process, so the scan runs once. `run-negative.sh` fails if the
+Application Poll task does not start. Two isolated reruns printed
+`RESULT EVT001_NEGATIVE PASS`. The hashes in the table above are the first
+of those reruns. The second withhold gap pair was 2.001s and 2.000s. The
+positive capture was not replaced. A separate positive rerun with the same
+master change printed `RESULT EVT001_INTEROP PASS` and is not a new capture
+file.
+
+On this tree, before the closure commit: `gofmt -l` printed nothing,
 `go vet ./...` passed, `go build ./...` passed, `go test ./... -count=1`
 passed, `go test -race ./... -count=1` passed, and
 `bash scripts/verify-external-mvp.sh` passed. The script's required tiers

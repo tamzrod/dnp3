@@ -190,8 +190,12 @@ if start_go; then
       fail=1
     fi
     if "$MASTER" solicit 20000 4 "$OUT/a-gone.log" > "$OUT/a-gone.stdout" 2>"$OUT/a-gone.stderr"; then
+      gone_iin=$(grep -c '^IIN ' "$OUT/a-gone.log" || true)
       if grep -F -q "BIN idx=9" "$OUT/a-gone.log" || grep -F -q "BIN idx=13" "$OUT/a-gone.log"; then
         note "A_DUPLICATE_DOES_NOT_KEEP FAIL an acknowledged event remained"
+        fail=1
+      elif [[ "${gone_iin:-0}" -lt 2 ]] || ! grep -q "Begining task: Application Poll" "$OUT/a-gone.stdout"; then
+        note "A_BOTH_REMOVED_ONCE FAIL class read did not run iin=${gone_iin:-0}"
         fail=1
       else
         note "A_BOTH_REMOVED_ONCE PASS"
@@ -202,7 +206,10 @@ if start_go; then
     fi
     go_cmd bin 14 1 1 2021-06-07T08:09:10Z || true
     if "$MASTER" solicit 20000 4 "$OUT/a-operational.log" > "$OUT/a-operational.stdout" 2>"$OUT/a-operational.stderr"; then
-      if grep -F -q "BIN idx=14 value=1 flags=81 time=676368550000" "$OUT/a-operational.log"; then
+      if ! grep -q "Begining task: Application Poll" "$OUT/a-operational.stdout"; then
+        note "A_OPERATIONAL FAIL class read did not run"
+        fail=1
+      elif grep -F -q "BIN idx=14 value=1 flags=81 time=676368550000" "$OUT/a-operational.log"; then
         note "A_OPERATIONAL PASS"
       else
         note "A_OPERATIONAL FAIL"

@@ -243,6 +243,24 @@ def check_duplicate(rows):
     ]
     if len(recovered) != 1:
         return fail("operational index 14 response count=%d" % len(recovered))
+    reads = [
+        r
+        for r in rows
+        if r["func"] == 0x01 and r["dport"] == 20000 and second[0]["ts"] < r["ts"] < recovered[0]["ts"]
+    ]
+    if not reads:
+        return fail("no class read between index 13 and index 14")
+    empty = [
+        r
+        for r in rows
+        if r["func"] == 0x81
+        and r["sport"] == 20000
+        and r["seq"] == reads[0]["seq"]
+        and r["ts"] >= reads[0]["ts"]
+        and not r["events"]
+    ]
+    if not empty:
+        return fail("class read after the duplicate confirm still carried events or did not answer")
     print(
         "PCAP_CHECK duplicate PASS confirms=2 seq=%d next=%d operational=1"
         % (first[0]["seq"], second[0]["seq"])

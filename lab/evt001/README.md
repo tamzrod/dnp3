@@ -61,6 +61,10 @@ OpenDNP3 confirms every fragment that asks for confirmation, and it does so
 once. `run-isolated.sh` does not inject a second confirm or drop one. The
 positive capture stays `docs/verification/evt001/evt001.pcap`.
 
+Class reads use `AddClassScan` with a 30 second period. OpenDNP3 3.1.2 drops
+a one-shot `ScanClasses` issued before the master link is online. The bound
+scan starts when the link comes up and does not repeat during these runs.
+
 ## Negative run
 
 `run-negative.sh` uses the same image, isolation gate, addresses, and

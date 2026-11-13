@@ -38,7 +38,7 @@ RESULT B_RETRY_IDENTICAL PASS
 RESULT B_CONFIRM_WITHHELD PASS dropped=3
 RESULT B_RECOVERY PASS
 === pcap check ===
-pcap packets=57 dnp_app=19
+pcap packets=60 dnp_app=21
 PCAP_CHECK duplicate PASS confirms=2 seq=0 next=1 operational=1
 RESULT A_PCAP PASS
 pcap packets=46 dnp_app=17

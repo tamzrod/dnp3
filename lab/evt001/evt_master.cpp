@@ -196,13 +196,18 @@ int main(int argc, char** argv)
     auto master = channel->AddMaster("master", soe, app, stack);
     master->Enable();
 
+    // ScanClasses is an ad-hoc task. OpenDNP3 3.1.2 drops it when the master
+    // is not online yet (MContext::ScheduleAdhocTask). AddClassScan is bound
+    // and starts on link-up, so the class read is not lost to that race. The
+    // period is longer than this process, so the scan runs once.
+    const auto period = TimeDuration::Seconds(30);
     if (mode == "solicit")
     {
-        master->ScanClasses(ClassField::AllEventClasses(), soe);
+        master->AddClassScan(ClassField::AllEventClasses(), period, soe);
     }
     else if (mode == "class0")
     {
-        master->ScanClasses(ClassField(true, false, false, false), soe);
+        master->AddClassScan(ClassField(true, false, false, false), period, soe);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
