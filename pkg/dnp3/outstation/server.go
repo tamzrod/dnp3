@@ -206,6 +206,16 @@ type Config struct {
 	// explicit, non-default experimental switch, not a profile promotion.
 	// Supported-profile: Reject by default (experimental, off by default).
 	ExperimentalEventDelivery bool
+	// ExperimentalAnalogControl opts into the Group 41 analog-output command
+	// path on the outstation bridge (the host CommandHandler.HandleAnalogCommand
+	// call for a G41 Direct Operate). The published v0 supported profile rejects
+	// "Command handler analog controls" (Group 41 and related variations), so the
+	// default is false: a G41 Direct Operate fails closed before any host analog
+	// handler is invoked and is never acknowledged as SUCCESS. This is an
+	// explicit, non-default experimental switch, not a profile promotion. Enable
+	// it only for the isolated G41 lab path.
+	// Supported-profile: Reject by default (experimental, off by default).
+	ExperimentalAnalogControl bool
 	// MaxConnections is the maximum number of simultaneous master
 	// connections the outstation will serve. The v0 MVP profile is
 	// single-master: a connection that arrives while MaxConnections are
@@ -295,6 +305,21 @@ func WithUnsolicitedMode(enabled bool) ConfigOption {
 func WithExperimentalEventDelivery() ConfigOption {
 	return func(c *Config) {
 		c.ExperimentalEventDelivery = true
+	}
+}
+
+// WithExperimentalAnalogControl opts into the Group 41 analog-output command
+// path on the outstation bridge (the host CommandHandler.HandleAnalogCommand
+// call for a G41 Direct Operate). It is an explicit, non-default experimental
+// switch: the published v0 supported profile rejects "Command handler analog
+// controls" (Group 41 and related variations), so without it a G41 Direct
+// Operate fails closed before any host analog handler is invoked and is never
+// acknowledged as SUCCESS. It is not a profile promotion; it only opens the
+// isolated G41 lab path.
+// Supported-profile: Reject by default (experimental, off by default).
+func WithExperimentalAnalogControl() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalAnalogControl = true
 	}
 }
 
@@ -432,6 +457,11 @@ type UnsolicitedHandler interface {
 type internalDataHandler struct {
 	publicHandler  DataHandler
 	commandHandler CommandHandler
+	// analogControlEnabled mirrors Config.ExperimentalAnalogControl. When false
+	// (the default) WriteAnalogOutput fails closed before invoking the host
+	// analog handler, so a Group 41 Direct Operate is never executed and never
+	// acknowledged as SUCCESS through the ordinary public API.
+	analogControlEnabled bool
 }
 
 func (h *internalDataHandler) GetBinaryInputs() []outstation.BinaryInput {
@@ -649,6 +679,15 @@ func wireCommandStatus(s types.ControlStatus) (uint8, bool) {
 // (int16), G41V3 (float32) and G41V4 (float64) carriers under the same
 // DirectOperate-with-response semantics and the owner-approved float policy.
 func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{}, variation uint8) error {
+	if !h.analogControlEnabled {
+		// AO-005: the published v0 supported profile rejects "Command handler
+		// analog controls" (Group 41 and related variations). Fail closed before
+		// invoking the host analog handler or mutating any state, and never
+		// acknowledge the command as SUCCESS. The G41 path is reachable only via
+		// the explicit, non-default WithExperimentalAnalogControl switch.
+		debugLog("WriteAnalogOutput: refusing Group 41 analog control (variation=%d); v0 profile rejects analog controls", variation)
+		return fmt.Errorf("analog output (Group 41) is rejected by the v0 supported profile; enable WithExperimentalAnalogControl for the isolated lab path")
+	}
 	if h.commandHandler == nil {
 		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)
 		return fmt.Errorf("no command handler registered")
@@ -1069,8 +1108,9 @@ func (s *server) handleConnection(conn net.Conn) {
 	inst.UseEventQueue(s.eventQueue)
 	inst.Initialize()
 	inst.SetDataHandler(&internalDataHandler{
-		publicHandler:  s.dataHandler,
-		commandHandler: s.commandHandler,
+		publicHandler:        s.dataHandler,
+		commandHandler:       s.commandHandler,
+		analogControlEnabled: s.config.ExperimentalAnalogControl,
 	})
 	inst.Start()
 
@@ -1144,8 +1184,9 @@ func (s *server) SetDataHandler(handler DataHandler) {
 	s.connectionsMu.Lock()
 	for _, inst := range s.connections {
 		inst.outstation.SetDataHandler(&internalDataHandler{
-			publicHandler:  handler,
-			commandHandler: s.commandHandler,
+			publicHandler:        handler,
+			commandHandler:       s.commandHandler,
+			analogControlEnabled: s.config.ExperimentalAnalogControl,
 		})
 	}
 	s.connectionsMu.Unlock()

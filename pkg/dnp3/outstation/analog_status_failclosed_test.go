@@ -51,7 +51,7 @@ func TestBridgeAnalogOutputF2FailClosed(t *testing.T) {
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			h := &scriptedAnalogHandler{status: row.status, err: row.err}
-			d := &internalDataHandler{commandHandler: h}
+			d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 			err := d.WriteAnalogOutput(0, int32(2300), 1)
 			if row.wantErr {
 				if err == nil {
@@ -81,7 +81,8 @@ func TestBridgeAnalogOutputF2FalseSuccessNotPropagated(t *testing.T) {
 	inst.Initialize()
 	inst.Start()
 	inst.SetDataHandler(&internalDataHandler{
-		commandHandler: &scriptedAnalogHandler{status: nil, err: nil},
+		analogControlEnabled: true,
+		commandHandler:       &scriptedAnalogHandler{status: nil, err: nil},
 	})
 
 	req := &al.APDU{
