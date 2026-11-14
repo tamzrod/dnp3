@@ -3,9 +3,16 @@
 Repository: tamzrod/dnp3
 Package: AO-005
 Branch: work
-CURRENT: AO-005
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_IN_PROGRESS
+Status: WORK_PACKAGE_READY
+
+## AO-005 CLOSED — 2026-11-14
+
+Owner-authorized closure of AO-005 accepted 16/16 acceptance matrix (`docs/verification/AO-005.md` §8.1). Complete historical task and owner authorization are preserved at `archive/active-work/AO-005.md`; CURRENT task was retired. Prior documentation-only acceptance reconciliation modified **four authorized documentation files** (+156/-0), correcting the earlier verbal three-file count. No new protocol tests were requested or run for closure; existing Go/peer/PCAP evidence stands.
+
+**Closed AO-005 experimental mission, not supported-profile promotion:** published `active_work/supported-profile.md` remains blob `3e592e77ad6e31d5492c609c5fdd62382505904b`; Group 41 **UNSUPPORTED**. Known signed-zero/subnormal OpenDNP3 peer FAIL/DIVERGENCE, legacy `NewAnalogControl(float64)` exclusion, and reverse-fault NOT_RUN retained. No QUEUED mission, PR, merge, release, promotion, field/NGCP/SCADA action or deployment. **STOP for independent read-only CHECK**.
+
 
 ## CURRENT owner authorization — 2026-11-14 — AO-005 final acceptance reconciliation
 
