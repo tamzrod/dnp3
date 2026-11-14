@@ -7,6 +7,13 @@ CURRENT: AO-005
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## AO-005 owner disposition — ACCEPT_SCOPE_EXCEPTION — 2026-11-14
+
+Owner explicitly accepts the **exact 24-line test-only insertion** of `TestBridgeAnalogOutputNilHandlerFailsClosed` in `pkg/dnp3/outstation/bridge_status_matrix_test.go` from PCAP checkpoint `5ef3dfba0acb7509fef6505a28dd793c5575a7f1`. Independent source review verified +24/-0 against `42c2bacac71e13ea2c873591461288d99d68fb0f`, V1–V4 nil-handler error assertions, and the existing fail-closed production nil guard. This is a **narrow owner-approved exception** to the PCAP iteration's file allowlist, not retrospective permission for broader `pkg/` changes. Full factual disposition is appended in CURRENT `workflow/active_work/AO-005.md`.
+
+This documentation checkpoint changes **no code, tests, PCAP, published profile, or governance rules**. Historical PCAP authorization remains intact. G41 remains UNSUPPORTED in the published v0 profile (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`); the floating-point peer divergence and independent-wire malformed/in-flight timeout NOT_RUN remain. Markers unchanged: `AO-005 / QUEUED NONE / TASK_IN_PROGRESS`. No PR, merge, release, promotion or deployment. **STOP for independent read-only CHECK.**
+
+
 ## CURRENT owner authorization — 2026-11-14 — AO-005 independent G41 PCAP corrective iteration
 
 **OpenHands Cloud: invoke `operation cwal` only.** The latest bounded owner authorization is the `AO-005 owner-authorized independent G41 PCAP corrective iteration — 2026-11-14` section of CURRENT `workflow/active_work/AO-005.md`. Collect **original raw PCAPs** for both opt-in G41V1–V4 independent OpenDNP3 3.1.2 peer directions (eight index-0 SUCCESS/index-1 OUT_OF_RANGE cases per direction), independently decode CRC/framing/qualifier/index/typed exact value/status/IIN/echo, record SHA-256 and reproducibility, run the required Go/CWAL gates, non-force checkpoint to `work`, and STOP for independent audit. Correct missing capture tooling **only within allowed lab paths** and proven isolated `--network none` plus two-namespace memory-only setup. Missing capture or failed isolation = BLOCKED, not PASS. The existing -0.0/subnormal divergence remains an explicit FAIL/DIVERGENCE; malformed/mid-command negative cases remain NOT_RUN absent separate authority.
