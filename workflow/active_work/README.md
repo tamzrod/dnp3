@@ -7,6 +7,17 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — PR #29 PPR-001-S1/S2 pre-merge correction
+
+**Invoke `operation cwal` in OpenHands Cloud.** Latest owner-approved bounded work is the `Owner-authorized pre-merge corrective iteration — PPR-001-S1/S2 (2026-11-14)` addendum in **CURRENT** `workflow/active_work/EVT-001.md`. It supersedes earlier PR-ready checkpoints only on these two pending audit findings. Complete implementation, tests, evidence and verified non-force `origin/work` checkpoint autonomously, no routine owner prompts.
+
+**S1 — public-profile contract:** `active_work/supported-profile.md` explicitly makes unsolicited/event delivery a v0 **Reject** option, while PR #29 implements operational public `EnableUnsolicited`, `DisableUnsolicited`, `SetUnsolicitedHandler`, `ReadEvents`, `WatchUnsolicited`, event publishing and unsolicited configuration. Preserve the working EVT-001 internal/isolated behavior but enforce the ordinary v0 public Reject semantics without changing/promoting the published profile. An explicit, non-default experimental path is permitted if independently gated and documented; no accidental v0 activation, send, handler registration or silent success. Pin tests on rejected defaults and experimental interoperability, leaving Class 0/CROB/G41 intact.
+
+**S2 — function 0x15 alias:** `FuncGetIdentifier = 21` aliases `FuncDisableUnsolicited = 0x15`. Search callers, remove or formally deprecate the misleading legacy symbol and test canonical 0x14 enable / 0x15 disable mapping without inventing or reinterpreting wire commands.
+
+Run focused pre-fix RED/post-fix GREEN and all Go/race/vet/build/gofmt/CWAL gates, pinned independent OpenDNP3 3.1.2 isolated `--network none` two directions, boundary batches 254/255/256/257/333, negative confirms, accurate PCAP/log SHA evidence; report actual PASS/FAIL/NOT_RUN. Do not touch the owner's separate local Grok/Qwen work. No `main` change, nested `dnp3/`, `internal/sa`, KDE governance or supported-profile edit, no archive, release, promotion or next mission. **PR #29 must remain open/unmerged; do not edit its metadata.** Only non-force `work` push after verified checks, GitHub readback, and final `READY_FOR_INDEPENDENT_PRE_MERGE_REAUDIT`. All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
+
+
 ## CURRENT owner authorization — 2026-11-14 — PPR-001-F4 and valid F2 fixture
 
 **OpenHands Cloud: run `operation cwal` only.** The owner's latest explicit authorization is the `Owner-authorized pre-PR corrective iteration — PPR-001-F4 and F2 fixture (2026-11-14)` addendum in the existing **CURRENT** `workflow/active_work/EVT-001.md`. This supersedes the earlier “F1/F2/F3 verified / ready” language as an authority for PR readiness; it does not alter prior passed evidence or CWAL/KDE boundaries.
