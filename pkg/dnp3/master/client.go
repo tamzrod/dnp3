@@ -120,6 +120,10 @@ type Client interface {
 	// Operate issues a control command to the outstation.
 	// Supported-profile: Target for DirectOperate (Group 12 Variation 1 only);
 	// Reject for SelectThenOperate and DirectOperateNoResponse (DNP3-030).
+	// Supported-profile: Reject by default for Group 41 analog output (V1-V4
+	// Direct Operate with response) — refused with ErrUnsupportedOption and no
+	// wire traffic unless the explicit, non-default WithExperimentalAnalogControl
+	// switch is set (AO-005).
 	Operate(ctx context.Context, command *types.ControlOutput) (*OperateResponse, error)
 
 	// EnableUnsolicited asks the outstation to enable Class 1, 2, and 3
@@ -241,6 +245,15 @@ type Config struct {
 	// profile promotion. Enable it only for the isolated EVT-001 lab path.
 	// Supported-profile: Reject by default (experimental, off by default).
 	ExperimentalEventDelivery bool
+	// ExperimentalAnalogControl opts into the Group 41 analog-output control
+	// path (G41V1-V4 Direct Operate with response). The published v0 supported
+	// profile rejects Group 41 and related analog-output variations, so the
+	// default is false: Operate refuses a Group 41 control with
+	// ErrUnsupportedOption before any wire traffic. This is an explicit,
+	// non-default experimental switch, not a profile promotion. Enable it only
+	// for the isolated G41 lab path.
+	// Supported-profile: Reject by default (experimental, off by default).
+	ExperimentalAnalogControl bool
 }
 
 // DefaultConfig returns a default configuration
@@ -384,6 +397,19 @@ func WithReadTimeout(d time.Duration) ConfigOption {
 func WithExperimentalEventDelivery() ConfigOption {
 	return func(c *Config) {
 		c.ExperimentalEventDelivery = true
+	}
+}
+
+// WithExperimentalAnalogControl opts into the Group 41 analog-output control
+// path (G41V1-V4 Direct Operate with response). It is an explicit, non-default
+// experimental switch: the published v0 supported profile rejects Group 41 and
+// related analog-output variations, so without it Operate refuses a Group 41
+// control with ErrUnsupportedOption and sends no wire traffic. It is not a
+// profile promotion; it only opens the isolated G41 lab path.
+// Supported-profile: Reject by default (experimental, off by default).
+func WithExperimentalAnalogControl() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalAnalogControl = true
 	}
 }
 
@@ -2103,17 +2129,24 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		return nil, fmt.Errorf("%w: unknown command type %d", dnp3.ErrUnsupportedOption, command.CommandType)
 	}
 
-	// Fail-closed object gate (AO-002/AO-003): admit only the verified control
-	// objects — Group 12 Variation 1 (CROB), Group 41 Variation 1 (int32 analog
-	// output), Group 41 Variation 2 (int16 analog output), Group 41 Variation 3
-	// (float32 analog output) and Group 41 Variation 4 (float64 analog output),
-	// DirectOperate-with-response. Any other group/variation is rejected before
-	// any wire traffic rather than encoded and sent.
+	// Fail-closed object gate (AO-002/AO-003/AO-005): admit only the verified
+	// control objects — Group 12 Variation 1 (CROB) unconditionally, and Group 41
+	// Variation 1 (int32), Variation 2 (int16), Variation 3 (float32) and
+	// Variation 4 (float64) analog output only when the explicit, non-default
+	// experimental analog-control switch is on. The published v0 supported profile
+	// rejects Group 41 ("Command handler analog controls — Reject"), so a Group 41
+	// control is refused with ErrUnsupportedOption before any wire traffic unless
+	// WithExperimentalAnalogControl is set. Any other group/variation is rejected
+	// before any wire traffic rather than encoded and sent.
 	switch {
 	case command.Group == 12 && command.Variation == 1:
 		// CROB (existing behavior)
 	case command.Group == 41 && (command.Variation == 1 || command.Variation == 2 || command.Variation == 3 || command.Variation == 4):
-		// G41V1 int32 / G41V2 int16 / G41V3 float32 / G41V4 float64 analog output
+		if !c.config.ExperimentalAnalogControl {
+			release()
+			return nil, fmt.Errorf("%w: analog control (Group 41 Variation %d); the v0 supported profile rejects Group 41 analog controls", dnp3.ErrUnsupportedOption, command.Variation)
+		}
+		// G41V1 int32 / G41V2 int16 / G41V3 float32 / G41V4 float64 analog output (experimental)
 	default:
 		release()
 		return nil, fmt.Errorf("%w: unsupported control object group %d variation %d", dnp3.ErrUnsupportedOption, command.Group, command.Variation)

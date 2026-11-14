@@ -23,11 +23,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # iproute2 = namespaces/veth/routes; build-essential+cmake = peer build;
 # ca-certificates+curl+unzip = pinned acquisition; coreutils = sha256sum.
+# tcpdump = AO-005 isolated raw capture (lab-only; see README/AO-005 evidence).
+# python3-minimal = the unmodified lab/vec01/preflight.sh listener-bind proof.
 # No Docker CLI and no daemon socket are installed.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       iproute2 iputils-ping build-essential cmake make pkg-config \
-      ca-certificates curl unzip xz-utils coreutils procps \
+      ca-certificates curl unzip xz-utils coreutils procps tcpdump python3-minimal \
  && rm -rf /var/lib/apt/lists/*
 
 # Reuse the existing verified pinned acquisition script UNMODIFIED. It sha256-
@@ -46,6 +48,11 @@ RUN chmod +x /opt/vec01/acquire-pinned.sh && /opt/vec01/acquire-pinned.sh
 COPY lab/vec01/lab-netns.sh /opt/vec01/lab-netns.sh
 COPY lab/vec01/preflight.sh /opt/vec01/preflight.sh
 RUN chmod +x /opt/vec01/lab-netns.sh /opt/vec01/preflight.sh
+
+# AO-005 isolated raw-PCAP evidence runner (lab-only; invoked explicitly on an
+# authorized isolated runner, never by the default command).
+COPY lab/ao004/ao005-pcap-runner.sh /opt/ao004/ao005-pcap-runner.sh
+RUN chmod +x /opt/ao004/ao005-pcap-runner.sh
 
 # Harness sources (allowlisted).
 COPY lab/ao004/G41MemoryCommandHandler.h  /opt/ao004/

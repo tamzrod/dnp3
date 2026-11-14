@@ -61,6 +61,7 @@ func newG41V4Loopback(t *testing.T, handler outstation.CommandHandler) (master.C
 		outstation.WithAddress(1024),
 		outstation.WithMasterAddress(0xFFFF),
 		outstation.WithTransport(dnp3.TCP, "localhost", port),
+		outstation.WithExperimentalAnalogControl(),
 	))
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -84,6 +85,7 @@ func newG41V4Loopback(t *testing.T, handler outstation.CommandHandler) (master.C
 		master.WithMasterAddress(0xFFFF),
 		master.WithOutstationAddress(1024),
 		master.WithTransport(dnp3.TCP, "localhost", port),
+		master.WithExperimentalAnalogControl(),
 		master.WithTimeout(5*time.Second),
 		master.WithRetry(1, 0),
 	))

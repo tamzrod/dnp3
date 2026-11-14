@@ -108,6 +108,25 @@ func newConnectedExperimentalClientWithTransport(t *testing.T, tr master.Transpo
 	return cc
 }
 
+// newConnectedExperimentalAnalogClientWithTransport is newConnectedClientWithTransport
+// with the explicit, non-default experimental analog-control switch enabled, so
+// the Group 41 Direct Operate path (rejected by the v0 supported profile by
+// default) can be exercised against a substituted transport.
+func newConnectedExperimentalAnalogClientWithTransport(t *testing.T, tr master.TransportHandler) *client {
+	t.Helper()
+	c, err := NewClient(NewConfig(WithExperimentalAnalogControl()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cc := c.(*client)
+	cc.internalMaster.SetTransport(tr)
+	cc.internalMaster.SetState(master.StateInitialized)
+	cc.mu.Lock()
+	cc.state = dnp3.StateConnected
+	cc.mu.Unlock()
+	return cc
+}
+
 // TestPublicOperateSurfacesStatus asserts the public OperateResponse carries
 // the real per-point command status parsed from the response (DNP3-021): a
 // success byte surfaces ControlSuccess, and a rejected byte surfaces the
