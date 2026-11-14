@@ -7,6 +7,13 @@ CURRENT: AO-005
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — AO-005 negative interoperability iteration
+
+**Invoke `operation cwal` in OpenHands Cloud.** The latest owner-approved bounded work is documented in CURRENT `workflow/active_work/AO-005.md`, section `Owner authorization — AO-005 negative interoperability iteration — 2026-11-14`. Run pinned OpenDNP3 3.1.2 independent **malformed G41 request** and deterministic **after-send response-loss/disconnect/timeout** negatives only within proven `--network none` two-namespace memory-only isolated lab. Capture original PCAP, decoded packet/status/CRC evidence, peer handler execution counts, quarantine/no-retry behavior, SHA-256 provenance; run Go/CWAL gates. Preserve honest PASS/FAIL/NOT_RUN distinctions and the known float signed-zero/subnormal peer divergence.
+
+**Exact allowed writes:** lab-only fault injector/runner/decoder under `lab/ao004/`, new `active_work/testdata/external/ao005-negative-*/` artifacts, append-only `docs/verification/AO-005.md` and concise CURRENT checkpoint entries in these two handoffs. Do **not** modify `lab/vec01/`, `pkg/`, `internal/`, current task contract or any other path. Any additional needed path requires separate owner authorization. Maintain six authority markers `AO-005 / QUEUED NONE / TASK_IN_PROGRESS`, published G41 UNSUPPORTED profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. No PR, merge, release, profile promotion, task closure, field/NGCP/SCADA action or other mission. Non-force push to `work` after verification, remote readback, then **STOP for independent read-only CHECK**.
+
+
 ## AO-005 owner disposition — ACCEPT_SCOPE_EXCEPTION — 2026-11-14
 
 Owner explicitly accepts the **exact 24-line test-only insertion** of `TestBridgeAnalogOutputNilHandlerFailsClosed` in `pkg/dnp3/outstation/bridge_status_matrix_test.go` from PCAP checkpoint `5ef3dfba0acb7509fef6505a28dd793c5575a7f1`. Independent source review verified +24/-0 against `42c2bacac71e13ea2c873591461288d99d68fb0f`, V1–V4 nil-handler error assertions, and the existing fail-closed production nil guard. This is a **narrow owner-approved exception** to the PCAP iteration's file allowlist, not retrospective permission for broader `pkg/` changes. Full factual disposition is appended in CURRENT `workflow/active_work/AO-005.md`.
