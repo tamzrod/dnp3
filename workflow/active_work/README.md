@@ -12,6 +12,40 @@ Status: TASK_IN_PROGRESS
 **CURRENT: AO-005.** The owner authorized bounded G41 V1–V4 Direct Operate-with-response implementation and independent-wire verification. Execution contract: `workflow/active_work/AO-005.md`; technical precheck: `docs/verification/AO-005-PRECHECK.md`. EVT-001 is archived and closed; the published v0 supported profile stays unchanged, with G41 **UNSUPPORTED**. No AO-005 profile promotion, merge, release or deployment is authorized. `QUEUED: NONE`. Use CWAL/KDE gates and preserve evidence provenance. Shell/Go/interop tests must actually be run and reported; task activation alone is not implementation acceptance.
 
 
+## AO-005 checkpoint — default-Reject reconciliation + independent-wire verification — 2026-11-14 — cloud
+
+Bounded `operation cwal` on `work`. Reconciled a real default-behavior mismatch
+and ran independent-wire verification. Markers unchanged: `AO-005 / QUEUED NONE /
+TASK_IN_PROGRESS`. G41 stays **UNSUPPORTED**; `active_work/supported-profile.md`
+is unchanged.
+
+- **Mismatch found:** the published v0 profile marks Group 41 analog control
+  **Reject**, but the master `Operate` gate and the outstation `WriteAnalogOutput`
+  bridge admitted and executed G41V1–V4 **by default**.
+- **Fix:** default-Reject plus an explicit, non-default opt-in
+  (`WithExperimentalAnalogControl` / `Config.ExperimentalAnalogControl` on both
+  master and outstation), mirroring `WithExperimentalEventDelivery`. Default
+  master refuses G41 with `ErrUnsupportedOption` before any wire traffic; default
+  outstation fails closed before calling the host analog handler. G12V1 CROB
+  unchanged.
+- **Tests:** added default-reject regressions (`TestPublicOperateG41RejectedByDefault`,
+  `TestBridgeAnalogOutputRejectedByDefault`, `test/integration/g41_default_reject_test.go`)
+  and moved existing G41 suites to the opt-in helper.
+- **Go gates:** `gofmt` clean; `go vet ./...`, `go build ./...`, `go test ./...`
+  (25 pkgs), `-race` (affected pkgs), `scripts/verify-external-mvp.sh`,
+  `git diff --check` — all PASS.
+- **Independent wire (pinned OpenDNP3 3.1.2, `--network none`, two-ns veth):**
+  direction A C++ master → Go outstation 8/8 PASS (V1–V4 idx0 SUCCESS, idx1
+  OUT_OF_RANGE); direction B Go master → C++ peer 8/8 PASS. Float `-0.0`
+  normalized by the peer → Go master fails closed (tracked FAIL/DIVERGENCE).
+  Malformed and mid-command fault injection **NOT_RUN**; raw PCAP **NOT_RUN**
+  (tcpdump absent from the pinned image).
+- **Evidence:** `docs/verification/AO-005.md`.
+- **Disposition:** `DEFAULT_REJECT_RECONCILED — INDEPENDENT_WIRE_PASS`.
+  Next: STOP for a separate independent read-only CHECK. No profile promotion,
+  merge, release, or field/NGCP/SCADA action.
+
+
 ## Owner-authorized EVT-001 formal closure — 2026-11-14
 
 Owner authorized closure of EVT-001 after the 2026-11-14 post-merge reconciliation. PR #29 merged to `main` at `81cd6c3d0896abe87b96e60e71e1df54b5b34d9d`; CI run #252 succeeded. Evidence and limitations: `docs/verification/EVT-001-POSTMERGE.md`, `docs/verification/evt001/EVT-001-PPR-001.md`, and `docs/verification/EVT-001.md`.

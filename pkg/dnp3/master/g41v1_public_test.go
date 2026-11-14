@@ -67,7 +67,7 @@ func TestPublicOperateGateRejectsUnsupportedObjects(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			_, err := cc.Operate(context.Background(), &types.ControlOutput{
 				Group: tc.group, Variation: tc.variation, Index: 0,
 				CommandType: types.DirectOperate,
@@ -78,6 +78,40 @@ func TestPublicOperateGateRejectsUnsupportedObjects(t *testing.T) {
 			}
 			if tr.sent {
 				t.Fatalf("unsupported control object was transmitted despite the gate")
+			}
+		})
+	}
+}
+
+// TestPublicOperateG41RejectedByDefault asserts the published v0 supported
+// profile's "Reject" for Group 41 analog controls is enforced by the default
+// public client: a G41V1-V4 Direct Operate on a client built without
+// WithExperimentalAnalogControl is refused with ErrUnsupportedOption and no
+// wire traffic is sent. G41V1-V4 are admitted only via the explicit, non-default
+// experimental switch (AO-005).
+func TestPublicOperateG41RejectedByDefault(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  *types.ControlOutput
+	}{
+		{"G41V1 int32", types.NewAnalogInt32Control(0, 2300, types.DirectOperate)},
+		{"G41V2 int16", types.NewAnalogInt16Control(0, 42, types.DirectOperate)},
+		{"G41V3 float32", types.NewAnalogFloat32Control(0, 1.0, types.DirectOperate)},
+		{"G41V4 float64", types.NewAnalogFloat64Control(0, 1.0, types.DirectOperate)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := &recordingPubTransport{}
+			cc := newConnectedClientWithTransport(t, tr)
+			resp, err := cc.Operate(context.Background(), tc.cmd)
+			if !errors.Is(err, dnp3.ErrUnsupportedOption) {
+				t.Fatalf("error = %v, want ErrUnsupportedOption", err)
+			}
+			if resp != nil && resp.Status == types.ControlSuccess {
+				t.Fatalf("default-rejected G41 control surfaced as ControlSuccess")
+			}
+			if tr.sent {
+				t.Fatalf("default-rejected G41 control was transmitted despite the profile gate")
 			}
 		})
 	}
@@ -100,7 +134,7 @@ func (t *recordingPubTransport) Receive() ([]byte, error) {
 // TestPublicOperateG41V1Success asserts a G41V1 DirectOperate with a SUCCESS
 // echo surfaces ControlSuccess through the public API.
 func TestPublicOperateG41V1Success(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubG41V1EchoTransport{commandStatus: 0})
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V1EchoTransport{commandStatus: 0})
 	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 		Group: 41, Variation: 1, Index: 0,
 		CommandType: types.DirectOperate,
@@ -127,7 +161,7 @@ func TestPublicOperateG41V1NonSuccess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := newConnectedClientWithTransport(t, &pubG41V1EchoTransport{commandStatus: tc.status})
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V1EchoTransport{commandStatus: tc.status})
 			resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 				Group: 41, Variation: 1, Index: 0,
 				CommandType: types.DirectOperate,

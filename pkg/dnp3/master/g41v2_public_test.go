@@ -81,7 +81,7 @@ func TestNewAnalogInt16Control(t *testing.T) {
 // TestPublicOperateG41V2Success asserts a G41V2 DirectOperate with a SUCCESS echo
 // surfaces ControlSuccess through the public API.
 func TestPublicOperateG41V2Success(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: 0, value: 42})
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: 0, value: 42})
 	resp, err := cc.Operate(context.Background(), types.NewAnalogInt16Control(0, 42, types.DirectOperate))
 	if err != nil {
 		t.Fatalf("Operate error: %v", err)
@@ -105,7 +105,7 @@ func TestPublicOperateG41V2NonSuccess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := newConnectedClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: tc.status, value: 42})
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: tc.status, value: 42})
 			resp, err := cc.Operate(context.Background(), types.NewAnalogInt16Control(0, 42, types.DirectOperate))
 			if err != nil {
 				t.Fatalf("Operate error: %v", err)
@@ -124,7 +124,7 @@ func TestPublicOperateG41V2NonSuccess(t *testing.T) {
 // value does not match the request is never ControlSuccess: the public path
 // fails closed (error, no success status).
 func TestPublicOperateG41V2MismatchedEchoNotSuccess(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: 0, value: 43})
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V2EchoTransport{commandStatus: 0, value: 43})
 	resp, err := cc.Operate(context.Background(), types.NewAnalogInt16Control(0, 42, types.DirectOperate))
 	if err == nil && resp != nil && resp.Status == types.ControlSuccess {
 		t.Fatalf("mismatched G41V2 echo surfaced as ControlSuccess")
@@ -145,7 +145,7 @@ func TestPublicOperateG41V2UnsupportedModesBlockedBeforeSend(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			_, err := cc.Operate(context.Background(), types.NewAnalogInt16Control(0, 42, tc.mode))
 			if !errors.Is(err, dnp3.ErrUnsupportedOption) {
 				t.Fatalf("error = %v, want ErrUnsupportedOption", err)
@@ -171,7 +171,7 @@ func TestPublicOperateGateRejectsG41V5BeforeSend(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			_, err := cc.Operate(context.Background(), &types.ControlOutput{
 				Group: 41, Variation: tc.variation, Index: 0,
 				CommandType: types.DirectOperate,
@@ -202,7 +202,7 @@ func TestPublicOperateG41V2RejectsWrongTypeAndRange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 				Group: 41, Variation: 2, Index: 0,
 				CommandType: types.DirectOperate,
