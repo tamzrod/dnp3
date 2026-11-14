@@ -3,9 +3,16 @@
 Repository: tamzrod/dnp3
 Package: EVT-001
 Branch: work
-CURRENT: EVT-001
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_IN_PROGRESS
+Status: WORK_PACKAGE_READY
+
+## Owner-authorized EVT-001 formal closure — 2026-11-14
+
+Owner authorized closure of EVT-001 after the 2026-11-14 post-merge reconciliation. PR #29 merged to `main` at `81cd6c3d0896abe87b96e60e71e1df54b5b34d9d`; CI run #252 succeeded. Evidence and limitations: `docs/verification/EVT-001-POSTMERGE.md`, `docs/verification/evt001/EVT-001-PPR-001.md`, and `docs/verification/EVT-001.md`.
+
+Disposition: **EVT-001 CLOSED — WORK_PACKAGE_READY**. Archived task: `archive/active-work/EVT-001.md`. There is no newly promoted CURRENT or QUEUED task. AO-005 remains a **DRAFT / UNPROMOTED** precheck only. Group 41 and event/unsolicited delivery remain **UNSUPPORTED** in the unchanged v0 supported profile; experimental event delivery remains opt-in, not an advertised v0 feature. No source, protocol, test, release, merge, or deployment changes were authorized by this closure.
+
 
 ## EVT-001 post-merge reconciliation — 2026-11-14 — cloud
 
