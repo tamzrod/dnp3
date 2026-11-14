@@ -7,6 +7,13 @@ CURRENT: AO-005
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — AO-005 independent G41 PCAP corrective iteration
+
+**OpenHands Cloud: invoke `operation cwal` only.** The latest bounded owner authorization is the `AO-005 owner-authorized independent G41 PCAP corrective iteration — 2026-11-14` section of CURRENT `workflow/active_work/AO-005.md`. Collect **original raw PCAPs** for both opt-in G41V1–V4 independent OpenDNP3 3.1.2 peer directions (eight index-0 SUCCESS/index-1 OUT_OF_RANGE cases per direction), independently decode CRC/framing/qualifier/index/typed exact value/status/IIN/echo, record SHA-256 and reproducibility, run the required Go/CWAL gates, non-force checkpoint to `work`, and STOP for independent audit. Correct missing capture tooling **only within allowed lab paths** and proven isolated `--network none` plus two-namespace memory-only setup. Missing capture or failed isolation = BLOCKED, not PASS. The existing -0.0/subnormal divergence remains an explicit FAIL/DIVERGENCE; malformed/mid-command negative cases remain NOT_RUN absent separate authority.
+
+**Hard boundary:** no production Go, published v0 supported-profile, KDE, historic artifacts, field/NGCP/SCADA, PR, merge, release, promotion or task closure. Preserve `CURRENT: AO-005`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`, and supported-profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. Read the full contract, execute autonomously only within the stated allowlist, report actual PASS/FAIL/NOT_RUN.
+
+
 ## Owner-promoted AO-005 — 2026-11-14
 
 **CURRENT: AO-005.** The owner authorized bounded G41 V1–V4 Direct Operate-with-response implementation and independent-wire verification. Execution contract: `workflow/active_work/AO-005.md`; technical precheck: `docs/verification/AO-005-PRECHECK.md`. EVT-001 is archived and closed; the published v0 supported profile stays unchanged, with G41 **UNSUPPORTED**. No AO-005 profile promotion, merge, release or deployment is authorized. `QUEUED: NONE`. Use CWAL/KDE gates and preserve evidence provenance. Shell/Go/interop tests must actually be run and reported; task activation alone is not implementation acceptance.
