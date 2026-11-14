@@ -141,3 +141,47 @@ weakening of the exact-bit float fail-closed behavior.
 Until those decisions and any applicable KDE approval are recorded, Group 41
 stays **UNSUPPORTED**, AO-005 stays **unpromoted**, and
 `active_work/supported-profile.md` stays byte-identical.
+
+---
+
+## Reconciliation note — 2026-11-14 (append-only; original draft above preserved)
+
+> **This note does not replace, edit or supersede any text above.** The entire
+> document above remains the original `DRAFT / UNPROMOTED / NON-AUTHORITATIVE`
+> precheck with its initial claims intact. This append-only note records, for the
+> owner, which of those initial claims later AO-005 execution addressed. Group 41
+> remains **UNSUPPORTED**; no promotion, closure or status change is made here.
+
+**`HISTORICAL_PRECHECK_RESOLVED_BY_AO005` — §5 "Public API contract mismatch
+(blocking for promotion)".** The draft recorded that the default `Operate`
+admitted G41V1–V4 while `active_work/supported-profile.md` mandates Reject. AO-005
+resolved this: the master `Operate` object gate and the outstation
+`WriteAnalogOutput` path now both **reject Group 41 by default** with
+`ErrUnsupportedOption`/an error and no wire traffic or host-handler call, and G41
+is reachable only through the explicit non-default `WithExperimentalAnalogControl`
+switch. Evidence: `pkg/dnp3/master/client.go`, `pkg/dnp3/outstation/server.go`,
+`TestPublicOperateG41RejectedByDefault`,
+`TestBridgeAnalogOutputRejectedByDefault`, `test/integration/g41_default_reject_test.go`;
+recorded in `docs/verification/AO-005.md` §2 and §8.1 rows 5–6. The legacy
+`types.NewAnalogControl(float64)` constructor is retained but labelled Reject and
+is **not** the verified V1 path (`NewAnalogInt32Control` is).
+
+**`HISTORICAL_PRECHECK_RESOLVED_BY_AO005` — §3 gap table (malformed / mid-command
+`NOT_RUN`).** The draft listed malformed G41 objects and mid-command
+response-loss/disconnect as `NOT_RUN` on the independent wire. AO-005 closed both:
+an independent raw-frame injector proved malformed-application and link-CRC
+rejection (zero handler writes, no false SUCCESS), and an independent after-send
+fault proxy proved pre-send definite failure versus post-send UNKNOWN/timeout/
+disconnect with quarantine and no blind retry. Evidence:
+`active_work/testdata/external/ao005-negative-2026-11-14/`, decoded in
+`docs/verification/AO-005.md` §5B and §8.1 rows 14–16.
+
+**Retained limitations (unchanged by AO-005).** OpenDNP3 3.1.2 signed-zero /
+smallest-subnormal normalization remains `FAIL/DIVERGENCE`; reverse-direction
+fault injection remains `NOT_RUN`; and no generalized IEEE 1815 conformance,
+third-party certification, production/field/NGCP readiness, point/scale/units
+mapping, SBO, Direct-Operate-No-Response, G41-via-WRITE or multi-point claim is
+made. Group 41 stays **UNSUPPORTED** and `active_work/supported-profile.md` stays
+byte-identical (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`). The AO-005
+final acceptance reconciliation produced an owner-controlled
+`AO-005_CLOSURE_READY` recommendation only; no closure was performed.
