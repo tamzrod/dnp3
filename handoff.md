@@ -1,11 +1,161 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: AO-004
+Package: EVT-001
 Branch: work
-CURRENT: AO-004
+CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
+
+## CURRENT owner authorization — 2026-11-14 — PR #29 PPR-001-S1/S2 pre-merge correction
+
+**Invoke `operation cwal` in OpenHands Cloud.** Latest owner-approved bounded work is the `Owner-authorized pre-merge corrective iteration — PPR-001-S1/S2 (2026-11-14)` addendum in **CURRENT** `workflow/active_work/EVT-001.md`. It supersedes earlier PR-ready checkpoints only on these two pending audit findings. Complete implementation, tests, evidence and verified non-force `origin/work` checkpoint autonomously, no routine owner prompts.
+
+**S1 — public-profile contract:** `active_work/supported-profile.md` explicitly makes unsolicited/event delivery a v0 **Reject** option, while PR #29 implements operational public `EnableUnsolicited`, `DisableUnsolicited`, `SetUnsolicitedHandler`, `ReadEvents`, `WatchUnsolicited`, event publishing and unsolicited configuration. Preserve the working EVT-001 internal/isolated behavior but enforce the ordinary v0 public Reject semantics without changing/promoting the published profile. An explicit, non-default experimental path is permitted if independently gated and documented; no accidental v0 activation, send, handler registration or silent success. Pin tests on rejected defaults and experimental interoperability, leaving Class 0/CROB/G41 intact.
+
+**S2 — function 0x15 alias:** `FuncGetIdentifier = 21` aliases `FuncDisableUnsolicited = 0x15`. Search callers, remove or formally deprecate the misleading legacy symbol and test canonical 0x14 enable / 0x15 disable mapping without inventing or reinterpreting wire commands.
+
+Run focused pre-fix RED/post-fix GREEN and all Go/race/vet/build/gofmt/CWAL gates, pinned independent OpenDNP3 3.1.2 isolated `--network none` two directions, boundary batches 254/255/256/257/333, negative confirms, accurate PCAP/log SHA evidence; report actual PASS/FAIL/NOT_RUN. Do not touch the owner's separate local Grok/Qwen work. No `main` change, nested `dnp3/`, `internal/sa`, KDE governance or supported-profile edit, no archive, release, promotion or next mission. **PR #29 must remain open/unmerged; do not edit its metadata.** Only non-force `work` push after verified checks, GitHub readback, and final `READY_FOR_INDEPENDENT_PRE_MERGE_REAUDIT`. All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
+
+
+## PPR-001-S1/S2 progress — 2026-11-14 — cloud
+
+S1 and S2 corrected and covered by default-reject and canonical-mapping tests.
+
+- **S2:** removed the misleading `FuncGetIdentifier = 21` alias and its
+  `CategoryConfiguration` term in `internal/al/function_codes.go`. Canonical
+  `FuncEnableUnsolicited = 0x14` / `FuncDisableUnsolicited = 0x15` retained; no
+  wire behavior changed. New `internal/al/function_codes_test.go` pins the mapping.
+- **S1:** the public unsolicited/event surface now Rejects by default behind one
+  explicit, non-default `WithExperimentalEventDelivery()` switch per side. Master
+  `EnableUnsolicited`/`DisableUnsolicited`/`ReadEvents`/`WatchUnsolicited` return
+  `ErrUnsupportedOption` and `SetUnsolicitedHandler` registers no handler without
+  it; outstation publishing returns `ErrUnsupportedOption`, `SetUnsolicitedHandler`
+  registers no handler, and `WithUnsolicitedMode(true)` fails `NewServer`
+  validation. The published supported profile is unchanged. The EVT-001 lab path
+  (`lab/evt001`, integration test) opts in explicitly and still passes.
+
+Full Go gates PASS: `gofmt -l` clean, `git diff --check` clean, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`,
+`bash scripts/verify-external-mvp.sh`. Pinned OpenDNP3 3.1.2 `--network none`
+loopback: positive `RESULT PCAP_DERIVE PASS` (0x14 enable / 0x15 disable on the
+wire), large-batch `RESULT EVT001_LARGEBATCH PASS` both directions for
+N=254/255/256/257/333, and negative `RESULT EVT001_NEGATIVE PASS`. Evidence and
+capture hashes: `docs/verification/evt001/EVT-001-PPR-001.md`.
+
+## CURRENT owner authorization — 2026-11-14 — PPR-001-F4 and valid F2 fixture
+
+**OpenHands Cloud: run `operation cwal` only.** The owner's latest explicit authorization is the `Owner-authorized pre-PR corrective iteration — PPR-001-F4 and F2 fixture (2026-11-14)` addendum in the existing **CURRENT** `workflow/active_work/EVT-001.md`. This supersedes the earlier “F1/F2/F3 verified / ready” language as an authority for PR readiness; it does not alter prior passed evidence or CWAL/KDE boundaries.
+
+**PPR-001-F4 (P1):** `EventQueue.Restore` returns false if the event class buffer has refilled, but `requeueSolicitedEvents` ignores that return. Because `stageSolicitedRemovalLocked` removes accepted events before a multi-frame send, a concurrent publisher can fill those slots and trigger **silent rollback loss** on failed send. Reproduce deterministically with a barrier/hooked transport, reservation-capacity/full-buffer condition, new publishers, failed later send and reconnect. Correct queue reservation/rollback so every previously accepted event survives, new publishes are explicitly rejected when full, event identities/sequence/IIN remain correct, and restore failures cannot be ignored. Account for partial sends as delivery-indeterminate; no blind retries, no unbounded buffers.
+
+**F2 test validity:** Previous 300-point packed G1V1 fixture used 8-bit count 0x2C (=44), not 300. Replace with a valid oversized static block (e.g. 255 packed G1V1 bits, qualifier 0x07 count 0xFF, 32 packed octets, 36-octet object block under a 32-octet application budget). Verify actual generated wire bytes and fail-closed behavior; keep malformed fixtures separate and correctly described.
+
+Cloud uses verified clean `origin/work`; owner's laptop Grok/Qwen work is inaccessible and must not be touched or claimed recovered. Rerun scoped F4/F2 and previous F1-F3, all Go/race/CWAL gates, pinned **OpenDNP3 3.1.2** isolated `--network none` both directions with 254/255/256/257/333 plus negative confirms; document objective evidence and PCAP hashes. Only scoped `work` non-force checkpoints after verification. **No PR, merge, archive, release, profile promotion, main push, nested dnp3/ changes, SA or KDE governance edits.** All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. Exit: `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`, not PR approval.
+
+
+## PPR-001-F4 and F2 fixture progress — 2026-11-14 — cloud
+
+F4 and the F2 fixture correction are implemented on `work` with a deterministic
+RED pre-fix / GREEN post-fix regression.
+- F4: `EventQueue` now reserves one per-class slot for each event removed during
+  a solicited READ. `Add`/`IsFull` count the reservation against the per-class
+  cap, so a concurrent publisher is rejected with `ErrEventBufferFull` instead
+  of taking a slot the staged events need; `Restore` consumes a reservation and
+  its boolean is checked (failures counted in `restoreFailures`);
+  `releaseSolicitedEvents` frees reservations after a delivered response and
+  `discardSolicitedLocked` frees a staging that was never sent. A partly
+  transmitted multi-fragment response is delivery-indeterminate and may be
+  re-delivered at least once; no blind replay, memory bounded by the per-class
+  cap. `TestSolicitedRestoreSurvivesConcurrentPublisher` reproduces the loss on
+  the pre-fix source and passes after the correction.
+- F2 fixture: the 300-point `0x2C` fixture is replaced by a wire-valid 255-point
+  packed G1V1 block (qualifier `0x07`, count `0xFF`, 32 packed octets, 36-octet
+  block vs a 32-octet budget); `TestOversizeFixtureIsWireValid` pins the bytes.
+
+Gates PASS: `gofmt -l` clean, `git diff --check` clean, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`,
+`bash scripts/verify-external-mvp.sh`. Independent pinned OpenDNP3 3.1.2 rerun in
+`--network none` loopback isolation: `EVT001_INTEROP PASS`,
+`EVT001_LARGEBATCH PASS` (254/255/256/257/333 both directions),
+`EVT001_NEGATIVE PASS`. Evidence and capture hashes:
+`docs/verification/evt001/EVT-001-PPR-001.md`.
+
+Result: `PPR-001-F4 VERIFIED — READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`. Markers
+stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. No PR, merge, archive, release,
+or profile promotion.
+
+## CURRENT owner authorization — 2026-11-14 — PPR-001 pre-PR F1/F2/F3 corrective iteration
+
+**Run `operation cwal` in OpenHands Cloud.** The latest owner authorization is in the existing CURRENT `workflow/active_work/EVT-001.md`, section `Owner-authorized pre-PR corrective iteration — PPR-001-F1/F2/F3 (2026-11-14)`. This supersedes the previous “PPR-001 verified” conclusion for PR readiness: independent read-only audit of `c319050ee828290022f5af61a8822fabeed74292` issued **PUSHBACK** on three findings. Continue autonomously; this handoff is a route to the approved CURRENT, not separate authority to expand work.
+
+**F1:** `internal/outstation/outstation.go` removes class/direct READ event IDs while preparing a response, *before* later link/transport sends that can fail or partially complete. Reproduce and fix silent event loss, retain accurate queue/IIN/reconnect semantics. **F2:** `splitObjectData` may preserve a single nonindexed block larger than `MaxFragmentSize`; `responseFragments` can then return an oversized original APDU. Prove and correct via valid splitting or explicit fail-closed behavior. **F3:** `internal/master/master.go` `confirmPendingAppFragments` ignores `sendApplicationConfirm` failure while advancing `done`. Reproduce/propagate send error, keep per-fragment sequence and bounded/deadline behavior, do not silently complete.
+
+Use the cloud-clean `origin/work` per prior authorization (do not touch or claim recovered the owner's local Grok/Qwen files). Required: targeted negative tests for each finding, full Go/CWAL checks, pinned isolated OpenDNP3 3.1.2 both directions with 256+ event batches and relevant fault probes; record hashes/PCAP and honest result in PPR-001 evidence. Restrict edits to relevant CURRENT allowlist. **Never edit `main`, nested `dnp3/`, `internal/sa`, KDE governance, or published supported profile.** No PR, merge, archive, release, or promotion. On verified PASS checkpoint non-force to `work`; final report only `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`. Markers remain `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
+
+
+## PPR-001-F1/F2/F3 progress — 2026-11-14 — cloud
+
+F1, F2, F3 corrected on `work` and covered by new negative tests that were
+observed to fail on the pre-fix source and pass after the correction.
+- F1: `stageSolicitedRemovalLocked` snapshots events before removal; a failed
+  `sendResponseFragments` calls `requeueSolicitedEvents`, restoring them with
+  `EventQueue.Restore` (original sequence/class). No silent loss.
+- F2: `responseFragments` now returns `([]*al.APDU, error)`; an un-splittable
+  block over the budget yields `ErrFragmentTooLarge` (fail closed), never an
+  oversized fragment.
+- F3: `confirmPendingAppFragments` returns and propagates the confirm send
+  error through `markDisconnected`; a failed confirm no longer counts as done.
+
+Go gates PASS (`gofmt`, `git diff --check`, `go vet`, `go build`,
+`go test ./... -count=1`, `go test -race ./... -count=1`,
+`scripts/verify-external-mvp.sh`). Pinned OpenDNP3 3.1.2 `--network none`
+loopback large-batch run PASS in both directions for N=254/255/256/257/333 with
+exact per-object counts, plus duplicate and withheld confirm negatives PASS.
+Captures, hashes and logs in `docs/verification/evt001/EVT-001-PPR-001.md`.
+Result: `PPR-001-F1/F2/F3 VERIFIED — READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`.
+Markers unchanged: `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. No PR/merge/
+archive/release/profile promotion.
+
+## Cloud continuation progress — 2026-11-13 — PPR-001
+
+OpenHands Cloud executed PPR-001 from a verified clean `origin/work` checkout. Starting `HEAD` was `768e1f984455184bc3fe04baad836f3a0370e0de` (markers already `EVT-001 / TASK_IN_PROGRESS`). The owner's laptop workspace `/home/sysadmin/apps/dnp3` is **UNAVAILABLE / NOT RECOVERED / NOT TOUCHED**; Grok's untracked test and Qwen's edits were not accessed. `internal/outstation/event_batch_test.go` was newly authored from the live source, not restored.
+
+Root cause confirmed: `encodeEventList` grouped one same-variation run under a single qualifier-`0x17` header, and `al.AppendIndexedEvents` rejects more than 255 objects in one header, so a 256+ run returned `nil,nil` and suppressed the whole batch.
+
+Correction (smallest bounded change, no event loss):
+
+- `internal/outstation/event_report.go`: `encodeEventList` now emits a same-variation run as consecutive count-bounded headers (`maxObjectsPerHeader=255`), returning only the objects actually encoded so the caller removes exactly those; added `encodeEventListBounded` for the unsolicited path, which bounds one application fragment and leaves the rest queued.
+- `internal/outstation/outstation.go`: added `MaxFragmentSize` config, `responseFragments`/`splitObjectData`/`indexedBlock`/`eventValueSize` so a solicited response larger than the peer's 2048-octet transport receive buffer is split into valid FIR/FIN application fragments (only qualifier-`0x17` indexed runs are split below a header; sequential blocks stay whole).
+- `internal/tl/transport.go` + `test/conformance/tl/tl_test.go`: corrected the transport-header bit convention to IEEE 1815 (FIN=0x80 bit 7, FIR=0x40 bit 6), verified against OpenDNP3 3.1.2 `TransportHeader.cpp`.
+- `internal/master/master.go`: `waitForResponseTimeout` now accumulates multi-fragment solicited responses; `confirmPendingAppFragments` confirms every CON application fragment with that fragment's own sequence, including the final fragment (OpenDNP3 sets CON on the last solicited fragment too and stays in confirm-wait until confirmed). The redundant confirm in `processResponse` was removed because it used the joined APDU's first-fragment sequence.
+
+Verification on this tree: `gofmt -l` clean, `go vet ./...` PASS, `go build ./...` PASS, `go test ./... -count=1` PASS, `go test -race ./... -count=1` PASS, `bash scripts/verify-external-mvp.sh` PASS, `git diff --check` PASS.
+
+Isolated `--network none` loopback interop (pinned OpenDNP3 3.1.2, memory-only points) both directions: solicited N=254/255/256/257/333 all deliver exactly N; unsolicited N=254/255/256/257/333 deliver exactly N (Go outstation→OD master). For OD outstation→Go master, `unsol` mode returns after the first fragment (226 events, one bounded fragment, by harness design), so a `drain` mode was added to the go-master harness and delivers all N (verified N=333) with no wrong-sequence warning. PCAPs `docs/verification/evt001/evt001-largebatch-*.pcap` show genuine multi-application-fragment delivery. Full evidence and hashes: `docs/verification/evt001/EVT-001-PPR-001.md`.
+
+Also fixed in this checkpoint: OpenDNP3's outstation sets CON on every fragment of a multi-fragment solicited response, including the final one. The master now confirms each fragment with that fragment's own sequence; before the fix the peer stayed in confirm-wait and the next read observed leftover events (`solicited confirm with wrong seq: 1, expected: 2`).
+
+CURRENT stays `EVT-001 / TASK_IN_PROGRESS`; QUEUED NONE; no archive, PR, merge, release, or profile promotion.
+
+## CURRENT owner cloud-continuation override — 2026-11-13 — PPR-001
+
+**Execute by typing `operation cwal`.** The owner explicitly amended the human-promoted `EVT-001` task at `workflow/active_work/EVT-001.md`, section **Owner-approved cloud continuation amendment — PPR-001**. This is the current, higher-precedence authority for OpenHands Cloud PPR-001. It **supersedes the local-workspace-must-exist STOP condition** in the older handoff immediately below, but leaves all other task safety and acceptance gates intact.
+
+Cloud may work from a verified clean `origin/work` checkout without access to `/home/sysadmin/apps/dnp3`. The owner's laptop files, Grok's untracked test, and Qwen's partial edits are **UNAVAILABLE, NOT RECOVERED, NOT TOUCHED** and must not be modified or claimed as preserved. Create a **new** `internal/outstation/event_batch_test.go` regression from the live source, not a purported restoration. Authorize bounded official/checksum-verified Go toolchain setup and pinned OpenDNP3 **3.1.2** lab/dependencies in the cloud sandbox; downloads only during setup, then `--network none` loopback-only simulated isolated interoperability. No weakening lab isolation. If tools or isolation cannot be established, report truthful `TASK_BLOCKED` / `NOT_RUN`, not PASS. Existing 254/255/256/333 boundary tests, mixed Group 2/22/32, confirm/retry/retention, full Go gates, independent both-direction 256+ PCAP evidence remain mandatory.
+
+Continue bounded implementation and independent checks autonomously. Do not edit the supported profile, nested `dnp3/` submodule, security authentication, KDE governance, `main`, or real field systems. Never create PR/merge/release/archive/promote; non-force checkpoint on `work` only after genuine verification. Keep all six markers unchanged: CURRENT EVT-001, QUEUED NONE, Status TASK_IN_PROGRESS. See CURRENT task for exact authorized source paths and acceptance.
+
+
+
+## CURRENT owner handoff — 2026-11-13 — OpenHands PPR-001 continuation
+
+**Execute with `operation cwal` only.** The owner authorized **PPR-001 corrective work within existing CURRENT EVT-001** in `workflow/active_work/EVT-001.md` (section `Owner-approved corrective addendum — PPR-001 / OpenHands continuation`). This handoff and its section are the entry point; historical Gate B and earlier VEC checkpoints farther below are background, not today's CURRENT.
+
+Remote reference when authorized: `c012feb20dc715e2fd8342f535860563100d9b4b` plus this documentation checkpoint. The **user's local** `/home/sysadmin/apps/dnp3` has unknown dirty state after Grok/Qwen: untracked `internal/outstation/event_batch_test.go` from Grok, possibly malformed `internal/outstation/event_report.go` after Qwen and unauthorized nested `dnp3/` edits. **Do not assume local HEAD or cleanliness from remote GitHub.** Inspect status/diffs/untracked/submodules/stashes, preserve lossless outside-repo copies with manifest **before** any source recovery or fast-forward. Do not reset, clean, force checkout/push/rebase or discard the Grok test. If no access to that exact workspace, STOP and report missing local recovery access; do not proceed pretending the remote tree contains the untracked test.
+
+PPR-001 target: `encodeEventList` silently loses the whole same-variation run for 256+ items because qualifier 0x17 is limited to 255. Reproduce with existing test, make the smallest standards-correct bounded batching/fragmentation correction **without event loss**, then test 254/255/256/333 and mixed Group 2/22/32, send/confirm/retry/reconnect negatives, full Go suite, and isolated pinned OpenDNP3 3.1.2 **both-direction 256+ interoperability** with PCAP. Keep supported profile unchanged; do not edit nested `dnp3/`, AO-005, or SA. Verify gates, document evidence, non-force push a scoped checkpoint on `work` only. Leave `EVT-001 / TASK_IN_PROGRESS` and no PR/archive/merge. Detailed acceptance, allowed paths and negative cases are authoritative in the CURRENT addendum.
+
 
 
 
@@ -1474,3 +1624,689 @@ execution, no lab network, no live control, no PR/merge/release, no supported-pr
 Next: **STOP for independent CHECK** of this corrective. A distinct later `operation cwal` may resume the
 original AO-004 isolation/readiness-first plan only after that CHECK. No PR/merge, no `main` push, no
 release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 PR #27 post-merge governance reconciliation checkpoint — 2026-11-12
+Owner addendum "Owner-authorized PR #27 governance reconciliation — documentation-only (2026-11-12)"
+(`workflow/active_work/AO-004.md`, committed `fd831cf`, by `tamzrod`). Single documentation-only
+reconciliation invocation. No Go/tests/CI/scripts/governance-rule change, new PR, further merge,
+release, force push, rebase, live network, lab peer exchange or field command.
+- **Draft-only authorization vs actual merge.** The owner authorized **creation of a draft PR only**;
+  the later recorded GitHub merge is a **fact to reconcile**, not evidence a merge was authorized. No
+  intent, operator identity or merge authority is inferred; the already-merged PR is not reverted.
+- **Verified facts (live readback).** PR #27 `draft(dnp3): G41V1–V4 analog direct-operate …` — created
+  as draft `2026-11-11T23:58:26Z`, `ready_for_review` `2026-11-12T00:01:57Z`, **merged into `main`**
+  `2026-11-12T00:02:01Z` (state `closed`, `merged=true`, `draft=false`); head
+  `38c6df0a43e7093613ae4ab70dbd4750a04e1a35`; pre-merge base `f55278cb1f91fb7e66e82a89458f6de9d777302a`;
+  GitHub merge commit `2ff2ffca05c66ba73d8c08a561e1227d301348a1` with those two parents; 32 commits, 41
+  changed files. Live refs: `main=2ff2ffc`, `work=fd831cf`. PR-head CI run #244 (`43123823490`,
+  `pull_request`, **`success`**); job logs NOT independently inspected.
+- **Discrepancy (honest).** The authorization stated "no separately verified merge-commit CI →
+  `NOT_VERIFIED`". Independent readback **found** merge-commit CI run #245 (`43124269983`, event `push`,
+  branch `main`, head `2ff2ffc…`, **`success`**). Recorded as observed; conclusion verifies workflow-level
+  result only, job logs not inspected; not AO-004 interoperability evidence. Flagged for maintainer
+  resolution.
+- **No new support.** `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`) on `main` and `work`: Group 41 remains **UNSUPPORTED**.
+  Merged implementation is **not** AO-004 independent-peer evidence; original PCAP + packet-derived
+  `.vec` G41 verification **NOT RUN**; AO-005 **not** authorized. Merge ≠ AO-004 closure/promotion/release.
+- **Markers unchanged** on both branches: `Repository: tamzrod/dnp3`, `Package: AO-004`, `Branch: work`,
+  `CURRENT: AO-004`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`.
+- Checks (observed PASS): `git diff --check`; `bash scripts/cwal-check.sh` OK. Go build/test/vet/race
+  **NOT_RUN** (documentation-only). Evidence: `docs/verification/AO-004-PR27-GOVERNANCE-RECON.md`.
+Next: **STOP for a separate independent read-only CHECK**. A distinct later `operation cwal` may resume
+AO-004 isolated lab readiness only after CHECK acceptance. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolation/readiness preflight checkpoint — 2026-11-12
+Owner authorization `ca304c0` (records independent PR #27 CHECK acceptance; authorizes the AO-004
+isolation/readiness-first preflight, documentation-only). No DNP3 packet, peer connection, control
+request, harness build, Go/test/script/profile/roadmap/governance change, PR, merge, `main` push,
+release or field command.
+- **Result: `NOT_READY` / fail-closed.** Neither AO-004 entry-gate prerequisite is met in the reported
+  environment.
+- **Isolation FAIL:** `/proc/net/route` default route via `169.254.1.1` dev `eth0`; `ip_forward=1`;
+  `/proc/net/tcp` shows `ESTABLISHED` egress to `:443` and DNS `10.3.0.10` (routed k8s pod); wildcard
+  `LISTEN 0.0.0.0:60000`/`60001`; `unshare --net` denied (`CapEff=0`, no `CAP_NET_ADMIN`). No physical
+  I/O (PASS); no DNP3 lab listener. Isolation cannot be proven → no listener/packet attempted.
+- **Peer/harness NOT_READY:** no pinned OpenDNP3 3.1.2 source/tarball/harness present; stock/patched peer
+  analog handler returns `NOT_SUPPORTED` for all G41 (`AnalogOutputInt16/Int32/Float32/Double64`). G41
+  support needs separately authorized acquisition + memory-only analog harness allowlist.
+- **Design-only plan** recorded (variation/direction matrix + PCAP/.vec derivation procedure); nothing run.
+- **No new support:** `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 **UNSUPPORTED**; AO-005 not authorized. Markers
+  unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): markers, ancestry, `git diff --check`, `bash scripts/cwal-check.sh`. Isolation
+  gates FAIL; peer readiness NOT_READY; Go gates and protocol exchange NOT_RUN (documentation-only).
+  Evidence: `docs/verification/AO-004.md`.
+Next: **STOP for independent read-only CHECK**. A later bounded invocation may proceed only after
+isolation + peer/harness readiness PASS and a separate owner harness/code allowlist. No PR/merge, no
+`main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolation + harness readiness corrective checkpoint — 2026-11-12
+Owner authorization `3b0afec` (accepts the `c94b79a` NOT_READY CHECK; authorizes ONE bounded
+readiness-construction microtask: source-pin + statically assess a memory-only OpenDNP3 3.1.2 G41 peer
+harness and an isolated lab). No DNP3 packet, peer connection, command, PR, merge, `main` push, release
+or production use. G41 stays **UNSUPPORTED**.
+- **Hard gate `ISOLATED_RUNNER_UNAVAILABLE`:** no Docker daemon (`/var/run/docker.sock` absent,
+  `docker info` cannot connect); the routed JR pod is prohibited as a lab; no owner-provided isolated
+  runner is reachable. No isolation probe was attempted on the routed pod; no protocol probe performed.
+- **`SOURCE_NOT_ACQUIRED`:** pinned acquisition over the routed pod is prohibited; the sha256-verified
+  URLs/hashes (OpenDNP3 3.1.2, Go 1.22.12, asio/exe4cpp/ser4cpp) are recorded but nothing was downloaded.
+- **`HARNESS_BUILD_NOT_RUN`:** authored static scaffolding only — 7 allowlisted files under `lab/ao004/`
+  (`README.md`, `Dockerfile`, `compose.yaml`, `G41MemoryCommandHandler.h/.cpp`, `g41_peer.cpp`,
+  `CMakeLists.txt`). Memory-only handler: G41V1–V4, fixed index 0, DirectOperate-with-response only;
+  rejects index ≠ 0 and NaN/±Inf before mutation. `compose.yaml` uses `network_mode: none`, no `ports`,
+  not `privileged`, no socket. No build (no CMake/pinned source), no listener, no traffic.
+- **`INTEROP_NOT_RUN`.** No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); AO-005 not authorized. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): markers, ancestry, `git diff --check`, `bash scripts/cwal-check.sh`, static
+  compose/brace sanity. Go gates NOT_RUN (no Go change); harness build NOT_RUN.
+  Evidence: `docs/verification/AO-004.md` (Appendix A).
+Next: **STOP for independent read-only CHECK**. A later bounded invocation may proceed only after an
+owner-provided isolated runner (`NETWORK_ISOLATION_PASS`), authorized sha256-verified acquisition/build,
+and a new explicit owner-authorized protocol-execution microtask. No PR/merge, no `main` push, no release,
+no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 C++ harness corrective checkpoint — 2026-11-12
+Owner authorization `b49c66a` (bounded corrective of the `lab/ao004/` harness's confirmed C++ interface
+and offline build/scaffolding defects against pinned OpenDNP3 3.1.2). No Go change, DNP3 listener, peer
+connection, command, capture, PR, merge, `main` push, release or AO-005 promotion. G41 stays
+**UNSUPPORTED**. Appendices §A (`ISOLATED_RUNNER_UNAVAILABLE`, `SOURCE_NOT_ACQUIRED`,
+`HARNESS_BUILD_NOT_RUN`, `INTEROP_NOT_RUN`) preserved.
+- Corrected exactly **6 existing paths** in `lab/ao004/`: (1) `G41MemoryCommandHandler.h` — qualified
+  `opendnp3::CommandStatus` and added the missing CROB G12V1 `Select`/`Operate` (`NOT_SUPPORTED`, no
+  mutation) so all 10 pinned `ICommandHandler` hooks are implemented; (2) `g41_peer.cpp` — corrected
+  endpoint header to `opendnp3/channel/IPEndpoint.h` and `opendnp3::levels::NORMAL`; (3) `CMakeLists.txt`
+  — bound `FETCHCONTENT_SOURCE_DIR_{ASIO,EXE4CPP,SER4CPP}` to the verified `/opt/vec01/deps` dirs,
+  `FETCHCONTENT_FULLY_DISCONNECTED=ON`, fail-closed `FATAL_ERROR` if missing (no implicit download);
+  (4) `Dockerfile` — declared `BASE_IMAGE_UNPINNED` and aligned offline CMake; (5) `compose.yaml` and
+  (6) `README.md` — distinguished `network_mode: none` baseline from the two-namespace topology built by
+  the existing **unmodified** `lab/vec01/lab-netns.sh`. No new paths; `G41MemoryCommandHandler.cpp`
+  unchanged (read-only per allowlist).
+- **`COMPILE_NOT_RUN`**, **`SOURCE_NOT_ACQUIRED`**, **`ISOLATED_RUNNER_UNAVAILABLE`**, **`INTEROP_NOT_RUN`**.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); AO-005 not authorized. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, brace/paren balance, compose minimal sanity, all 10 hooks
+  present, `CommandStatus` fully qualified, exact allowlist (6 paths). Go gates NOT_RUN (no Go change);
+  compile NOT_RUN. Evidence: `docs/verification/AO-004.md` (Appendix B).
+Next: **STOP for a fresh independent read-only CHECK** of this bounded corrective. The remaining
+principal blocker is a genuine owner-provided isolated runner plus compile validation. No PR/merge, no
+`main` push, no release, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 one-line LogLevels include corrective checkpoint — 2026-11-12
+Owner authorization `ed91f0c` (one-line pinned LogLevels include corrective following the static
+corrective `7b0f3d9` and the independent read-only audit). Applies to `lab/ao004/g41_peer.cpp` only.
+- Corrected the nonexistent pinned header `#include <opendnp3/LogLevels.h>` to the actual pinned path
+  `#include <opendnp3/logging/LogLevels.h>` (upstream commit `26b4c01e…`). `git diff --numstat` = `1 1`;
+  no other byte changed; no other path changed; no new files.
+- Preconditions (observed): old include occurred exactly once; new include absent pre-edit; `ed91f0c`
+  and `7b0f3d9` in `work` ancestry.
+- **No compilation, Docker build, source acquisition, namespace execution, DNP3 listener, peer
+  connection, packet/control exchange, Go change, PR, merge, `main` push, release or AO-005 promotion.**
+  `COMPILE_NOT_RUN`, `SOURCE_NOT_ACQUIRED`, `ISOLATED_RUNNER_UNAVAILABLE`, `INTEROP_NOT_RUN` remain.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, exact one-line diff, ancestry, `bash scripts/cwal-check.sh`.
+  Evidence: `docs/verification/AO-004.md` (Appendix C).
+Next: **STOP for a fresh independent read-only source CHECK**. No PR/merge, no `main` push, no release,
+no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker Compose capability smoke checkpoint — 2026-11-12
+Owner authorization `6c838c8` (bounded, non-DNP3 Docker Compose capability smoke in the OpenHands Cloud
+sandbox; discovery only — overrides `ISOLATED_RUNNER_UNAVAILABLE` for discovery, not for AO-004 peer/
+protocol execution). Concrete probes run in the actual sandbox:
+- **Probe 1 — `DOCKER_AVAILABLE`.** Client 29.9.3 + compose v5.7.0 + buildx v0.38.1 preinstalled; daemon
+  **not running** by default (`/var/run/docker.sock` absent, `DOCKER_HOST` unset, no rootless socket) but
+  **startable** via passwordless `sudo dockerd` → Server 29.9.3, containerd v2.4.2, runc 1.5.2.
+- **Probe 2 — `COMPOSE_VALID`.** `docker compose -f lab/ao004/compose.yaml config --quiet` and
+  `-f lab/vec01/compose.yaml config --quiet` both exit 0.
+- **Probe 3 — `COMPOSE_SMOKE_NOT_RUN` / `NO_LOCAL_IMAGE`.** Zero local images and no offline-loadable
+  archives; per authorization no image was pulled, so no container ran.
+- **Probe 4.** `NETWORK_ISOLATION_NOT_PROVEN` (no container ran); `NET_ADMIN`/`SYS_ADMIN` grant
+  `NOT_TESTED`. Non-rootless daemon, overlayfs, cgroup v2, seccomp+cgroupns.
+- Sandbox restored: discovery daemon stopped and the daemon-created `docker0` removed via netlink
+  (`err=0`); final state only `lo` + `eth0`, no daemon/socket; tree clean.
+- **No DNP3 build, compile, listener, peer connection, packet/control exchange, external source fetch,
+  Go change, PR, merge, `main` push, release or AO-005 promotion.** `COMPILE_NOT_RUN`,
+  `SOURCE_NOT_ACQUIRED`, `INTEROP_NOT_RUN` remain; `ISOLATED_RUNNER_UNAVAILABLE` superseded for
+  discovery only. No DNP3 isolation or interoperability PASS claimed.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix D).
+Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no
+field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker build-only G41 harness checkpoint — 2026-11-12
+Owner authorization `8251115` ("OpenHands Docker build-only G41 harness"; one bounded `operation cwal`
+microtask: real Docker build verification of the existing `lab/ao004/` G41 C++ harness in the OpenHands
+Cloud sandbox, **no DNP3 protocol execution**). Executed on `work` at HEAD
+`8251115f31bf7c84914a29b38a399effcaa87ba7` (prior checkpoint `d4908f2` confirmed in ancestry after
+`git fetch --deepen=50`; the clone is shallow, so the object was initially absent — recorded limitation).
+- **Docker.** Client 29.9.3 / Compose v5.7.0 / Buildx v0.38.1 present; daemon not running by default
+  (no `/var/run/docker.sock`) but started via passwordless `sudo dockerd` → Server 29.9.3, containerd
+  v2.4.2, runc 1.5.2, overlayfs, cgroup v2, host Debian 13 (trixie), kernel 6.8.0-1055-gke. Root-owned
+  socket ⇒ daemon commands run under `sudo`.
+- **Authorized build.** `sudo docker compose -f lab/ao004/compose.yaml build lab --progress plain`
+  completed all steps `1/13`–`13/13`. Base `debian:12-slim` resolved to digest
+  `sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc`. All five pinned SHA-256
+  gates **PASS** (`go.tgz`/`opendnp3.tar.gz`/`asio.zip`/`exe4cpp.zip`/`ser4cpp.zip` OK). CMake configure
+  (GNU 12.2.0, `FETCHCONTENT_FULLY_DISCONNECTED=ON`, no download) OK; `Built target opendnp3`;
+  `Linking CXX executable g41_peer`; `Built target g41_peer`. **0** errors; 14 warnings all
+  `-Wstringop-overflow=` inside the pinned peer (`HexLogging.h`), harness files warning-free. Image
+  `ao004-g41-peer:3.1.2` (config digest `sha256:7d087460627b59313a19edd8f8ade0bef847041593a98269ef20a11580a3dc4e`);
+  cache-served re-run exit code **0**.
+- **Result: `HARNESS_BUILD_PASS` (build only)** — resolves the earlier `COMPILE_NOT_RUN` /
+  `HARNESS_BUILD_NOT_RUN` blocker for the outstation-harness build. **Not** an isolation, interoperability
+  or readiness PASS. `NETWORK_ISOLATION_NOT_PROVEN`; `INTEROP_NOT_RUN`.
+- **No execution.** No `docker compose up`/`run`, no `g41_peer`, no DNP3 listener/socket/packet/peer/
+  control/capture, no privileged container, no host-port publishing, no physical devices; `compose.yaml`
+  `cap_add` declarative only, never exercised. Go gates **NOT_RUN** (no Go change).
+- **Cleanup (own resources only).** Removed the built image (`rmi -f`, exit 0) and pruned 1.054 GB
+  BuildKit cache; stopped the daemon this invocation started (no `dockerd`/`containerd`, no socket);
+  removed the daemon-created `docker0` via `RTM_DELLINK` (`errno=0`). `/var/lib/docker` 1.8 GB → 1.9 MB;
+  interfaces restored to only `lo` + `eth0`. No unrelated resource touched.
+- **Limitations.** `debian:12-slim` tag/APT not immutable (no invented pin); ephemeral runner ⇒ built
+  artifact and durability **NOT verified**; image never run ⇒ runtime **NOT_TESTED**.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix E).
+Next: **STOP for a fresh independent read-only CHECK**. A separate owner authorization and a verified
+runtime isolation gate are required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main`
+push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OpenHands Docker runtime readiness + baseline isolation checkpoint — 2026-11-12
+Owner authorization `d519243` ("AO-004 Docker readiness runtime isolation"; one bounded `operation cwal`
+microtask: rebuild and actually run the already compiler-verified OpenDNP3 3.1.2 G41 harness image in its
+no-listener readiness mode, then inspect runtime isolation/capabilities; non-DNP3 container execution
+only). Executed on clean `work`, fast-forwarded to HEAD `d519243b6ba098d5e0b194c1ee8b58d4b3670b1e`
+(ancestry includes prior checkpoint `39da9db`); markers unchanged by the authorization commit.
+- **Default path verified readiness-before-listener.** `lab/ao004/g41_peer.cpp` prints a readiness line and
+  returns 0 before any `DNP3Manager`/`AddTCPServer`/outstation; `compose.yaml` (`command: []`) and the
+  Dockerfile (`ENTRYPOINT ["/opt/ao004/g41_peer"]`) add no implicit `--listen`.
+- **Rebuild (`HARNESS_BUILD_PASS`).** `sudo docker compose -f lab/ao004/compose.yaml build lab` completed
+  steps `1/13`–`13/13`; all five pinned SHA-256 gates **PASS**; base `debian:12-slim` resolved to digest
+  `sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc`; `Built target opendnp3` +
+  `Built target g41_peer`; 0 errors; cache-served re-run exit **0**; image `ao004-g41-peer:3.1.2`
+  (content ID `38d5f156349a…`).
+- **Readiness run (`READINESS_RUNTIME_PASS`).** `sudo docker compose -f lab/ao004/compose.yaml run --rm
+  --no-deps lab` (no `--listen`) → exit **0**; stdout exactly the readiness line; no listener/socket/
+  packet/master/outstation/control created.
+- **Baseline isolation/capabilities (`CONTAINER_NETWORK_NONE_OBSERVED`, `CAPABILITY_BITS_OBSERVED`).**
+  Effective `docker inspect`: `NetworkMode=none`, `Privileged=false`, no published ports, no devices, no
+  binds, own PID ns. In-container: only `lo`, **empty** IPv4/IPv6 route tables, own netns, no docker socket
+  or host device mounts. `CapEff=CapBnd=CapPrm=00000000a82435fb` → **NET_ADMIN, NET_RAW, SYS_ADMIN actually
+  granted** (SYS_MODULE/SYS_RAWIO absent). `cap_add` is thus not merely declarative.
+- **`TWO_NAMESPACE_TOPOLOGY_NOT_TESTED`; `INTEROP_NOT_RUN`.** Baseline `network_mode: none` only; no
+  `ip netns`/`unshare`/veth, no `--listen`, no DNP3 listener/packet/peer/control/capture, no privileged
+  mode, no host networking, no ports.
+- **Cleanup (own resources only).** Removed created container + built image (exit 0); pruned 1.054 GB
+  BuildKit cache; stopped the daemon this invocation started; removed daemon-created `docker0` via
+  `RTM_DELLINK` (`errno=0`). `/var/lib/docker` ≈ 2.6 MB; interfaces restored to `lo` + `eth0`. Residual:
+  two defunct `containerd-shim` processes reparented to PID 1 (`ZN`), not reaped by this shell — recorded.
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix F).
+Next: **STOP for a fresh independent read-only CHECK**. A separately verified two-namespace topology plus
+a **new owner-authorized protocol-execution task** are required before any OpenDNP3 G41 protocol exchange.
+No PR/merge, no `main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated two-namespace Docker topology checkpoint — 2026-11-12
+Owner authorization `71f110a` ("AO-004 two-namespace Docker topology execution"; one bounded `operation
+cwal` microtask: execute the existing VEC-01 two-namespace topology inside one isolated non-privileged
+OpenHands Cloud Docker lab container, verify real veth connectivity/isolation/forwarding and effective
+NET_ADMIN/SYS_ADMIN, then clean up; container-internal namespaces + non-DNP3 lab-local tests only).
+Executed on clean `work` fast-forwarded to HEAD `71f110a6aa5c6fd4a0796cdf2c8ceaf8e44b6fdf` (ancestry
+includes `8c5ae26`); markers unchanged by the authorization commit.
+- **`HARNESS_BUILD_PASS`.** `sudo docker compose -f lab/ao004/compose.yaml build lab`: 5/5 pinned SHA-256
+  gates PASS; base `debian:12-slim@sha256:734a72b3…`; `Built target opendnp3` + `g41_peer`; 0 errors;
+  cache-served re-run exit 0; image `ao004-g41-peer:3.1.2`.
+- **`CONTAINER_NETWORK_NONE_OBSERVED`.** One temporary **non-privileged** container from the built image
+  with `--network none`, `--cap-add NET_ADMIN/SYS_ADMIN/NET_RAW`, `--entrypoint /bin/sh` (test script via
+  stdin, no host mounts; no `--privileged`/host-net/host-pid/socket/devices/ports). Before-state: only
+  `lo`, empty IPv4/IPv6 routes, main netns `net:[4026532640]`, `/proc/sys` read-only.
+- **`CAPABILITY_FUNCTIONAL_PASS`.** Unmodified `/opt/vec01/lab-netns.sh up` exited 0 — the granted
+  capabilities actually permitted `ip netns add`, veth creation/cross-namespace moves, addressing and the
+  container-local `/proc/sys` remount + `sysctl`.
+- **`TWO_NAMESPACE_TOPOLOGY_PASS`.** `vec01-master` (`net:[4026532712]`, `10.77.0.1/24` on `veth-m` UP)
+  and `vec01-outstation` (`net:[4026532783]`, `10.77.0.2/24` on `veth-o` UP), distinct namespace IDs;
+  only link-scope `10.77.0.0/24` routes (no default) in each; base container ns still `lo` only.
+- **`LAB_LOCAL_ICMP_PASS`.** `ping -c1 -W2 10.77.0.2` from master → 0% loss; reverse → 0% loss.
+  **`FORWARDING_OFF_PASS`.** `net.ipv4.ip_forward=0` verified in both namespaces; no NAT/bridge/external
+  reachability; no listener opened; no public DNS/Internet probe.
+- **`CLEANUP_PASS`.** In-container `lab-netns.sh down` → torn down (netns/veth gone, only `lo`, routes
+  empty). `--rm` container removed; host `/var/run/netns` absent; host `eth0`/routes unchanged. Host
+  cleanup (own resources only): image removed, 1.054 GB cache pruned, daemon this invocation started
+  stopped, daemon-created `docker0` removed (`RTM_DELLINK` errno 0). Final: only `lo` + `eth0`;
+  `/var/lib/docker` ≈ 3.3 MB; no zombies this invocation.
+- **`INTEROP_NOT_RUN`.** No `g41_peer`, no DNP3 listener/master/outstation/peer/command/packet/capture;
+  `lab/vec01/preflight.sh` treated read-only and not executed (external DNS + temporary TCP listener
+  outside scope).
+- No new support: `active_work/supported-profile.md` byte-identical (blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06`); G41 stays **UNSUPPORTED**. Markers unchanged
+  (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact docs-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix G).
+Next: **STOP for a fresh independent read-only CHECK**. A **new owner-authorized protocol-execution task**
+remains required before any OpenDNP3 G41 protocol exchange. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 read-only V3 negative-zero PCAP evidence analysis — 2026-11-12
+Owner authorization `137cd0c` (one bounded `operation cwal` invocation, **read-only**: recover and analyze
+the EXISTING artifacts of the earlier isolated Go-master → OpenDNP3 3.1.2 C++-outstation interop run; **no**
+new protocol execution, source edit, Docker build/daemon, namespace start or experiment). Executed on clean
+`work`, fast-forwarded to HEAD `137cd0c77687785ed34446ce354b33e83d021a12` (ancestry includes `723984d`).
+- **Same-session artifacts recovered (no rerun).** `/tmp/ao004-docker4/`: `driver.out` (40852 B,
+  `799c2f39…8994`), `cap.pcap` (8676 B, `dd0021ee…fe03`), `driver2.out` (100703 B, `3cf9cffe…2080`),
+  `cap2.pcap` (47846 B, `9d44bde4…582ff`). Raw captures kept out of Git; original bytes unaltered.
+- **Offline decode.** All **214** link frames CRC-valid (0 bad); **26** requests ↔ **26** responses
+  (transport seq `0xC0..0xD9`); master=3, outstation=4; Direct Operate `0x05` → Response `0x81`;
+  IIN `0x90 0x00`; qualifier `0x28` count 1.
+- **Root cause.** G41V3 `negzero`: master sent `-0.0` (`0x80000000`) but the peer echoed `+0.0`
+  (`0x00000000`), status `0x00`; likewise subnormal `0x00000001`→`0x00000000` (and the G41V4 analogs). The
+  peer's ser4cpp `SingleFloat`/`DoubleFloat` codec collapses `-0.0`→`+0.0` and flushes subnormals
+  (reproduced offline against the pinned header). The Go master's strict raw-bit echo check correctly
+  fails closed (`ErrControlOutcomeUnknown: no parseable command status`); no Go defect; not lost/mis-sequenced.
+- **Matrix.** V1 (5) / V2 (5) / V3 finite non-zero (4) / V4 finite non-zero (4): packet-proven **PASS**.
+  V3/V4 `-0.0` + smallest subnormal: **FAIL (peer-side)**. Invalid index 1: response `status=0x0C`
+  OUT_OF_RANGE, fail-closed **PASS**. Non-finite + SBO/DirectOpNoResponse: pre-send, **0** wire frames.
+- **`EVIDENCE_ANALYSIS_PASS` (read-only).** G41 stays **UNSUPPORTED**. No new execution; no Docker/daemon/
+  namespaces/source edits/retry/quarantine reset/external probe. Go gates **NOT_RUN** (no Go change).
+- No new support: `active_work/supported-profile.md` blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06`
+  unchanged. Markers unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact append-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix H).
+Next: **STOP for a fresh independent read-only CHECK**. Any further protocol execution or harness change
+requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005 promotion, no
+field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 Appendix H count correction + invalid-index timeout analysis — 2026-11-12
+Owner authorization `8ab00ef` (one bounded human-promoted `operation cwal` microtask, **documentation/
+evidence analysis ONLY**; no rerun, network, source change or parser fix). Executed on clean `work`,
+fast-forwarded to HEAD `8ab00ef1cd5bce6ea8e5d79b82dd106774c38ea6` (ancestry includes `9e57c62`).
+- **`RAW_PCAP_UNAVAILABLE`.** `/tmp/ao004-docker4/{driver.out,cap.pcap,driver2.out,cap2.pcap}` are gone
+  (sandbox `/tmp` reset; no `*.pcap`/`driver*.out`/`*ao004*`). No rerun/synthetic evidence. Wire content
+  is **secondhand** (Appendix H); Go findings **firsthand** source.
+- **Count correction.** Appendix H's "21 bit-identical successes" **superseded**: 26 transmitted = **18
+  bit-identical successes** (V1=5,V2=5,V3=4,V4=4) + **4 float echo mismatches** (V3/V4 `-0.0`+subnormal)
+  + **4 invalid-index** (`0x0C`); 18+4+4=26. 6 non-finite + 2 mode rejections pre-send (outside 26).
+- **Invalid-index root cause (source).** Internal `CommandStatus` has **no `0x0C`/12** constant; the echo
+  status `CommandStatus(12)` is returned verbatim (`(12, nil)`, no quarantine); public `mapCommandStatus`
+  has **no case for 12** → `default` → **`types.ControlTimeout`** (`err == nil`). A **definite remote
+  rejection** (`OUT_OF_RANGE`) is mislabeled as timeout. Not a harness bug; not lost/mis-sequenced.
+- **Recommendation (NOT executed).** Later owner-approved **production** change: add a distinct
+  OUT_OF_RANGE status (mind the public enum's numeric-12 `ControlSynchBlocked`) + map + negative tests.
+- **`EVIDENCE_ANALYSIS_PASS` (documentation/source-only).** G41 stays **UNSUPPORTED**. No new execution;
+  Go gates **NOT_RUN** (no Go change). Profile blob `8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged;
+  markers unchanged (`Package/CURRENT: AO-004`, `QUEUED: NONE`, `TASK_IN_PROGRESS`).
+- Checks (observed PASS): `git diff --check`, `bash scripts/cwal-check.sh`, exact append-only allowlist.
+  Evidence: `docs/verification/AO-004.md` (Appendix I).
+Next: **STOP for a fresh independent read-only CHECK**. Any production status-mapping change or protocol
+execution requires a **new owner authorization**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 OUT_OF_RANGE status mapping correction — 2026-11-12
+Owner authorization `0fc8876` (bounded corrective implementation microtask). Executed on clean `work`,
+fast-forwarded to HEAD `0fc887696170c81ad23d13263239f229c0b16850` (ancestry includes `8ea3494`).
+- **Change:** internal `CommandStatusOutOfRange = 12` (`internal/master/master.go`); public
+  `ControlOutOfRange = 13` + `String()` → `"out_of_range"` (`pkg/dnp3/types/commands.go`; `ControlSynchBlocked`
+  stays 12); `mapCommandStatus` case (`pkg/dnp3/master/client.go`) so a definite G41 `0x0C` rejection is no
+  longer mislabeled `ControlTimeout`. No other functional changes; `default` stays fail-closed.
+- **Tests:** new `internal/master/g41_out_of_range_status_test.go` and
+  `pkg/dnp3/master/out_of_range_status_test.go`; extended `pkg/dnp3/types/types_test.go` (value/string pins).
+- **`GO_TOOLCHAIN_UNAVAILABLE` — verification NOT_RUN.** No Go toolchain on this runner; install/download/
+  Docker not authorized. `gofmt`/`go test`/`go vet` **not run** (NOT_RUN, not PASS). Change **UNVERIFIED**;
+  only manual inspection + `git diff --check`.
+- **Hygiene:** `.gitignore` pattern `master` ignores `internal/master/`+`pkg/dnp3/master/`; new test files
+  needed `git add -f`. `.gitignore` not modified.
+- **`IMPLEMENTATION_COMPLETE / VERIFICATION_BLOCKED`.** G41 stays **UNSUPPORTED**; profile blob
+  `8a96819917ffde2b6e6915b2cfc74371d1a02e06` and markers unchanged. Evidence: `docs/verification/AO-004.md`
+  (Appendix J).
+Next: **STOP for an independent read-only CHECK** (must include the blocked Go gates). No PR/merge, no
+`main` push, no release, no AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 pinned-Go verification of the OUT_OF_RANGE correction — 2026-11-12
+Owner authorization `b9c0fbd` (bounded verification microtask on `work` for checkpoint `811c6f5`). Executed
+on clean `work`, fast-forwarded to HEAD `b9c0fbdf04ff1ca83d425826b0af4908a6ef5cef`; markers + profile blob
+unchanged; `cwal-check` OK.
+- **Toolchain:** repository-pinned **Go 1.22.12** (`lab/vec01/acquire-pinned.sh`), SHA-256
+  `4fa4f869…b34d43` verified before extraction, isolated install `/tmp/ao004-go-verify/go` (PATH only).
+- **Deps:** only declared modules at exact versions; `go.mod`/`go.sum` unchanged.
+- **Gates (observed PASS):** `gofmt -l` (six files, empty); targeted G41 internal/public/types tests;
+  `go test ./... -count=1`; `go vet ./...`; targeted `go test -race`; `git diff --check`; `cwal-check`.
+- **Corrections:** none; no source line changed.
+- **`GO_VERIFICATION_PASS`** — Appendix J `GO_TOOLCHAIN_UNAVAILABLE` cleared. G41 stays **UNSUPPORTED**.
+  Evidence: `docs/verification/AO-004.md` (Appendix K).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse C++ master harness compile-only preparation — 2026-11-12
+Owner authorization `c7deb8a` (bounded compile-only microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `c7deb8af68b7dda627dd98880bc00b491b53fedc`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Sources (lab/ao004/ only):** new `G41MasterCommandCallback.h/.cpp`, `g41_master.cpp`; minimal edits to
+  `CMakeLists.txt`, `Dockerfile`, `compose.yaml`, `README.md`. No production Go change; `lab/vec01/` intact.
+- **Build (compile-only):** build-only Docker container; five pinned inputs sha256-verified
+  (`acquire-pinned: OK`); `FETCHCONTENT_FULLY_DISCONNECTED=ON`; g++ 12.2.0. One missing-include fixed
+  minimally; **both** `g41_master` and `g41_peer` compiled+linked against pinned OpenDNP3 3.1.2.
+- **Readiness:** no-argument master mode under `--network none` exits 0, no listening sockets; non-lab host
+  and invalid variation refused before any channel is created.
+- **`REVERSE_HARNESS_COMPILE_PASS`**; `C++_MASTER_TO_GO_OUTSTATION_INTEROP_NOT_RUN`. G41 stays
+  **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix L).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 reverse Go fixture and isolated topology readiness — 2026-11-12
+Owner authorization `ff3fb7d` (bounded preparation microtask on `work`). Executed on clean `work`,
+fast-forwarded to HEAD `ff3fb7d69e5a586fc7c898ab21ddaad17872453a`; markers + profile blob unchanged;
+`cwal-check` OK.
+- **Feasibility (source-verified):** Go outstation **already implements** G41V1–V4 Direct Operate; no
+  `GO_OUTSTATION_G41_VARIATION_UNSUPPORTED` gap; no `internal/`/`pkg/` change.
+- **Go fixture (lab/ao004/go-outstation/, memory-only):** outstation=4, master=3, index 0 only; default
+  readiness only; `--listen` fails closed to `10.77.0.2:20000`. C++ `--value` help corrected.
+- **Gates:** `gofmt`/`go vet` clean; fixture tests 11/11 PASS; `go test ./...` 25 pkgs ok; readiness no
+  listening socket; C++ rebuild exit 0 (both targets), `--run` fail-closed.
+- **Topology:** `ISOLATED_RUNNER_UNAVAILABLE` / `TOPOLOGY_NOT_RUN` (routed JR pod prohibited).
+- **`GO_FIXTURE_BUILD_PASS`** + `REVERSE_HARNESS_COMPILE_PASS`; `REVERSE_G41_INTEROP_NOT_RUN`. G41 stays
+  **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md` (Appendix M).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated reverse topology configuration-only gate — 2026-11-12
+Owner authorization `ec521fc` (bounded topology-only verification microtask on `work`). Executed on clean
+`work`, fast-forwarded to HEAD `ec521fcbd7254493fdac823d30b8d7186d558466`; markers + profile blob
+unchanged; `cwal-check` OK.
+- **Runner identity FIRST:** only the routed JR Kubernetes pod is available (pod IP 10.2.81.6,
+  `KUBERNETES_SERVICE_HOST=10.3.0.1`, `eth0` default route + `docker0`, `CapEff=0x0`, `ip` absent, no
+  `/var/run/netns`, no separate lab runner).
+- **Fail-closed STOP:** `ISOLATED_RUNNER_UNAVAILABLE` / `TOPOLOGY_NOT_RUN`; pod not repurposed; `lab-netns.sh`
+  and `preflight.sh` not run; no network probes; no DNP3 traffic.
+- **`REVERSE_G41_INTEROP_NOT_RUN`.** G41 stays **UNSUPPORTED**. Evidence: `docs/verification/AO-004.md`
+  (Appendix N).
+Next: **STOP for a fresh independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated Docker lab topology configuration gate — 2026-11-12
+Owner **corrective** authorization `22d2c36` (bounded topology-only microtask on `work`), after Appendix N
+`TOPOLOGY_NOT_RUN`. Executed on clean `work`, fast-forwarded to HEAD
+`22d2c36240cf7718b1468b69012a14d7f404ff25`; markers + profile blob unchanged; `cwal-check` OK.
+- **Ephemeral Docker lab** provisioned (same technique as Appendices L/M); lab container isolated:
+  `--network none`, `Privileged=false`, own PID ns, no ports/host-net/host-PID/docker-sock/binds; inside:
+  only `lo`, no routes, 0 pre-existing namespaces.
+- **`lab-netns.sh up`** (unmodified) inside the lab: exactly `vec01-master` 10.77.0.1/24 ↔
+  `vec01-outstation` 10.77.0.2/24 via one paired veth; loopbacks up; connected-only routes; no default
+  route; `ip_forward=0`; no extra ifaces/NAT. `lab-netns.sh down` → 0 namespaces; container+image removed;
+  daemon stopped; host baseline unchanged. `preflight.sh` not run; no probes; no DNP3 traffic.
+- **`ISOLATED_TOPOLOGY_CONFIG_PASS`**; `REVERSE_G41_INTEROP_NOT_RUN`. G41 stays **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-004.md` (Appendix O).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated reverse G41 interop execution — 2026-11-12
+Owner authorization `7681cf7` (bounded interop-execution microtask on `work`), after Appendix O `9e5fc2f`.
+Executed on clean `work`, fast-forwarded to HEAD `7681cf7ea8fc745aa103c0e12eea4ed661f4e9b9`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Lab:** ephemeral isolated Docker lab (`--network none`); `vec01-master` 10.77.0.1/24 ↔
+  `vec01-outstation` 10.77.0.2/24 via one veth; no default routes; `ip_forward=0`; no NAT; static Go
+  fixture, fresh process per variation.
+- **Matrix:** V1–V4 all `FAILURE_RESPONSE_TIMEOUT` (state=INIT, status=UNDEFINED); no fixture acceptance;
+  wire = master's well-formed G41 frames with **0** bytes returned.
+- **Root cause:** master uses link function **4** (UNCONFIRMED_USER_DATA); Go outstation accepts only
+  function **3** and silently drops function 4. Control proved it (func-0/func-3 replied; func-4 not).
+  Production gap; not repaired.
+- **`REVERSE_G41_INTEROP_FAIL`** (0/4). Test-only observability line in `lab/ao004/go-outstation/main.go`
+  (11/11 tests PASS). Cleanup complete; host baseline unchanged. G41 stays **UNSUPPORTED**. Evidence:
+  `docs/verification/AO-004.md` (Appendix P).
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 func-4 outstation corrective + isolated reverse retest — 2026-11-12
+Owner authorization `8ae3981` (bounded corrective microtask on `work`), after Appendix P `dc92400`.
+Executed on clean `work`, fast-forwarded to HEAD `8ae398161a3ce3d2407b1fafa5005cf8ef3dd101`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Fix:** `internal/outstation/outstation.go` `reassembleMessage` accepts primary func 3 **or** func 4
+  addressed to the outstation; comment corrected; nothing else changed. New
+  `internal/outstation/func4_userdata_test.go` (fails pre-fix, passes post-fix).
+- **Go gates:** gofmt clean; vet OK; `go test ./...` all ok; `-race` OK; build OK.
+- **Retest (isolated ephemeral Docker lab):** fixture **accepts** V1–V4 (correct values; float bits
+  `0x3fc00000`, `0x3ff8000000000000`) and now **responds**. Master still
+  `FAILURE_RESPONSE_TIMEOUT` + `Unknown SecToPri FUNCTION: INVALID`.
+- **Residual root cause (2nd, pre-existing, out of scope):** outstation responses use control `0x04`
+  (PRM=0, func=4) — secondary framing; DNP3 needs primary user data both directions. Not repaired.
+- **`REVERSE_G41_INTEROP_FAIL`** (0/4); authorized fix verified. Cleanup complete; host baseline
+  unchanged. G41 stays **UNSUPPORTED**. Evidence: Appendix Q.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 response PRM framing corrective + isolated reverse retest — 2026-11-12
+Owner authorization `ee98d72` (bounded corrective microtask on `work`), after Appendix Q `473ceb9`.
+Executed on clean `work`, fast-forwarded to HEAD `ee98d726908dfbfff8bdddcd89fe1fe6dfbe1c2d`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Fix:** `internal/outstation/outstation.go` — the three outstation-originating **user-data** constructors
+  (solicited response, application confirmation, error response) now emit valid **primary** frames
+  `DIR=false, PRM=true, FuncCode=FuncUnconfirmedUserData` (wire `0x44`) instead of secondary `0x04`
+  (PRM=0). Secondary link-control (Reset→ACK, Link Status→LINK_STATUS) deliberately keep `PRM=false`. No
+  other behavior changed.
+- **Regressions:** new `internal/outstation/response_framing_test.go` (solicited/confirmation/error
+  responses primary func 4; ACK + Link Status secondary; malformed/mis-directed fail closed); three
+  user-data tests fail pre-fix, pass post-fix; Appendix Q receive regressions preserved; whitespace-only
+  gofmt fix in `func4_userdata_test.go`.
+- **Go gates:** gofmt clean; vet OK; `go test ./...` 25 packages ok; `-race` OK; build OK; diff-check OK.
+- **Retest (isolated ephemeral Docker lab):** isolation verified pre-traffic; **4/4 PASS** — master
+  `completed=yes summary=SUCCESS point[index=0 state=SUCCESS status=SUCCESS]` exit 0; fixture accepted
+  int32:2300, int16:12345, float32:1.5 bits=0x3fc00000, float64:1.5 bits=0x3ff8000000000000.
+- **Wire evidence:** outstation→master responses `ctrl=0x44` (DIR=0, **PRM=1**, func 4), application
+  RESPONSE (0x81), Direct Operate IIN=0x0000; Appendix Q `Unknown SecToPri FUNCTION: INVALID` gone.
+- **`REVERSE_G41_INTEROP_PASS`** (4/4). Cleanup complete; host baseline unchanged (`docker0 eth0 lo`, no
+  netns, no :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix R.
+Next: **STOP for an independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+---
+
+### AO-004 isolated invalid-index G41V1–V4 negative interoperability — 2026-11-12
+Owner authorization `b6fe5d5` (bounded lab-only microtask on `work`), after Appendix R `0b9cb26`.
+Executed on clean `work`, fast-forwarded to HEAD `b6fe5d51792e698abba1abe85ee1b2bc58a885e5`; markers +
+profile blob unchanged; `cwal-check` OK.
+- **Harness extension (`lab/ao004/g41_master.cpp` only):** bounded `--index` (0 or 1, default 0) rejected
+  before any channel; strict bounded numeric parsing (no `std::stoi`) rejects negative/overflow/junk/unknown
+  args with exit 2. Endpoint, link 3→4, pinned OpenDNP3 3.1.2, values, variations, Direct Operate with
+  response, single-command behavior preserved. Callback files unmodified.
+- **Isolation:** `--network none`, not privileged; `lo` only/0 routes pre-topology; two-ns one-veth topology,
+  no default route, `ip_forward=0`, no DNS/route; host baseline unchanged.
+- **Negative matrix (index 1):** master summary `SUCCESS` but point `state=INIT status=UNDEFINED` (no
+  `OUT_OF_RANGE`); outstation error RESPONSE IIN FuncUnknown(0x0080), no command-status object; fixture
+  count=0 (fail-closed, zero writes). Status-propagation gap in production (bridge discards the status),
+  observed but not repaired (out of scope).
+- **Positive control (index 0):** 4/4 PASS — point SUCCESS, echo idx=0 status=0x00, correct typed values. No
+  regression.
+- **Go gates:** gofmt N/A; outstation+fixture ok; 25 pkgs ok; vet OK; build OK; `-race` OK; diff-check OK.
+- **`INVALID_INDEX_NEGATIVE_PARTIAL`.** Cleanup complete; host baseline unchanged. G41 stays
+  **UNSUPPORTED**. Evidence: Appendix S.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix T — G41 OUT_OF_RANGE status propagation corrective (2026-11-12, authorization `c19e614`)
+
+Owner authorization `c19e614` (bounded corrective on `work`), after Appendix S `7fd16ea`
+(`INVALID_INDEX_NEGATIVE_PARTIAL`). Executed on clean `work`, fast-forwarded from `7fd16ea` to
+`c19e614e4fd2393c9283d1a2b1ea5f516a8db131`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Root cause:** the public bridge discarded a handler's definite `ControlOutOfRange` on an error; the
+  outstation then emitted a generic error RESPONSE (FuncUnknown, no command-status object). Public
+  `ControlOutOfRange` is `13` but the IEEE 1815 wire octet is `12` (`0x0C`), so a mapping was required.
+- **Corrective:** `internal/outstation/outstation.go` adds a `ControlStatusError` carrier; `handleDirectOperate`
+  echoes a well-formed single-point G41 refusal with the carried status and `buildG41EchoObject` takes an
+  explicit status. `pkg/dnp3/outstation/server.go` `WriteAnalogOutput` maps public→wire status
+  (`ControlOutOfRange`→`0x0C`) and returns a status-carrying error; unmapped/nil statuses still fail closed.
+  No public signature changed; `pkg/dnp3/types` untouched.
+- **Tests:** new `internal/outstation/g41_out_of_range_echo_test.go` and
+  `pkg/dnp3/outstation/bridge_out_of_range_test.go` fail pre-fix, pass post-fix.
+- **Go gates:** gofmt clean; `go test ./...` 25 pkgs ok; vet OK; build OK; `-race` OK; diff-check OK.
+- **Isolation:** `--network none`, not privileged; `lo` only/0 routes pre-topology; two-ns one-veth topology,
+  no default route, `ip_forward=0`, no DNS/route; host baseline unchanged.
+- **Negative matrix (index 1):** all four variations now master point `state=SUCCESS status=OUT_OF_RANGE`; wire
+  G41 echo carries original index/variation/value and command-status `0x0C` with IIN `0x0000`; fixture count=0
+  (no write). Pre-fix: generic error RESPONSE, point `status=UNDEFINED`.
+- **Positive control (index 0):** 4/4 PASS — point SUCCESS, echo idx=0 status=0x00, correct typed values and
+  float bits. No regression.
+- **`OUT_OF_RANGE_STATUS_PROPAGATION_PASS`.** Cleanup complete; host baseline unchanged. G41 stays
+  **UNSUPPORTED**. Evidence: Appendix T.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no
+AO-005 promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix U — capture provenance and evidence-closure (2026-11-12, authorization `fce286e`)
+
+Owner authorization `fce286e` (bounded evidence-closure on `work`), after Appendix T `800e6be`. Executed on
+clean `work`, fast-forwarded to `fce286e0e0faa6534dc62e15fe9fc65bbc81d040`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Original captures:** **`ORIGINAL_PCAP_UNAVAILABLE`** — Appendix H's ephemeral `/tmp/ao004-docker4/*`
+  captures/logs are gone; no AO-004 PCAP was ever committed; historical SHA-256 values are secondhand.
+- **New capture:** ephemeral `--network none` lab (isolation proven before traffic); eight single-shot
+  G41V1–V4 Direct-Operate cases (idx0 SUCCESS, idx1 OUT_OF_RANGE); V4 idx0 needed one benign
+  readiness-wait retry after a `FAILURE_NO_COMMS` startup race (zero wire frames, logged).
+- **Independent decode:** all link CRCs valid; idx0 echoes bit-identical (`st=00`); idx1 echoes request
+  index/value with `st=0x0C`, IIN `0x0000`; fixture wrote 0 on idx1.
+- **Artifacts:** `active_work/testdata/external/ao004-20261112/` (README, 8 `.vec`, sanitized 12 KB pcap,
+  `SHA256SUMS.txt`); pcap contains only lab traffic. Authorization's `testdata/external/` reconciled to
+  canonical `active_work/testdata/external/`.
+- **Float divergence:** Appendix H V3/V4 `-0.0`/subnormal = **`NEW_CAPTURE_NOT_RUN`**, stays historic
+  **`FAIL/DIVERGENCE`**; no production float/parser change.
+- **Coverage:** idx0/idx1 wire+unit PASS; reverse, other subnormals/NaN/Inf, malformed, timeout, concurrency
+  **NOT_RUN**.
+- **`EVIDENCE_CLOSURE_PARTIAL`.** Cleanup complete; host baseline unchanged (`docker0 eth0 lo`, no netns, no
+  :20000 listener). G41 stays **UNSUPPORTED**. Evidence: Appendix U.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix V — evidence-path variance reconciliation (2026-11-13, authorization `d3a6b5f`)
+
+Owner authorization `d3a6b5f` (documentation-only corrective on `work`), after Appendix U `99d05e7`.
+Fast-forwarded to `d3a6b5ff91bc568f8ad6ba2128ac90c2b840c9fb`; six markers + profile blob
+`8a96819917ffde2b6e6915b2cfc74371d1a02e06` unchanged; `cwal-check` OK.
+- **Variance:** original `fce286e` allowlist `testdata/external/ao004/` vs actual `99d05e7` path
+  `active_work/testdata/external/ao004-20261112/` — a historical, noncompliant-at-time-of-write deviation;
+  `d3a6b5f` grants prospective retention approval only, no backdating.
+- **Verification (read-only):** 9/9 `sha256sum -c` PASS against committed bytes; PCAP header-valid/12328 B/
+  lab-only; all 64 `.vec` link frames CRC-consistent; echo idx0 `0x00`, idx1 `0x0C`.
+- **Unchanged:** `ORIGINAL_PCAP_UNAVAILABLE`; new capture ≠ original; float `FAIL/DIVERGENCE`; malformed/
+  timeout/concurrency `NOT_RUN`; `EVIDENCE_CLOSURE_PARTIAL`.
+- **`EVIDENCE_CLOSURE_PARTIAL`.** Only the three documentation paths changed; artifacts preserved
+  byte-for-byte and read-only. G41 stays **UNSUPPORTED**. Evidence: Appendix V.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix W — bounded negative/timeout/quarantine coverage (2026-11-13, authorization `807644e`)
+
+Owner authorization `807644e` (bounded coverage on `work`), after CHECKED Appendix V `01a2d3b`. Fast-forwarded
+to `807644e528447b20e73c9c71599eacd4a12d5e28`; six markers + profile blob `8a968199...` unchanged; `cwal-check` OK.
+- **Independent-wire PASS:** pinned OpenDNP3 3.1.2 master → Go outstation: G41V1–V4 idx0 `SUCCESS` (1 write),
+  idx1 `OUT_OF_RANGE` (`st=0x0C`, 0 writes); peer-unavailable `FAILURE_NO_COMMS` with zero DNP3 frames.
+- **`NOT_RUN` (independent-wire):** malformed G41 (public master API can't emit malformed; injection
+  disallowed) and mid-command response-loss/disconnect (no single-shot fault injector) → covered `UNIT_ONLY`
+  by existing `TestOutstationG41*` / `TestControl*` (PASS).
+- **Artifacts:** `active_work/testdata/external/ao004-negative-20261113/` (README, 9 pcaps, 9 `.vec`,
+  `SHA256SUMS.txt`); prior evidence read-only and byte-for-byte preserved.
+- **Gates:** `gofmt`/`go vet`/`go build`/`go test ./...` OK; `git diff --check`/`cwal-check` OK; cleanup
+  complete; host baseline restored.
+- **`NEGATIVE_TIMEOUT_COVERAGE_PARTIAL`.** G41 stays **UNSUPPORTED**. Evidence: Appendix W.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005
+promotion, no field/NGCP/SCADA or physical I/O.
+
+## AO-004 Appendix X — one-pass pre-PR branch reconciliation (2026-11-13, authorization `b205abc`)
+
+Read-only, docs-only bounded `operation cwal` on `work` after CHECKED Appendix W `8945a51`. `work`=`b205abc`,
+`main`=`2ff2ffc`, merge base `38c6df0`; six markers + profile blob `8a968199…` unchanged; `cwal-check` OK.
+- **Key finding:** `main`'s tree == merge-base tree `8e5993a7…`; the two `main`-only commits are content-empty
+  merges (PR#26 `f55278c`, PR#27 `2ff2ffc`); PR#26 tip `c81fa5d` is an ancestor of `work`. `work` contains all
+  `main` content (0 deletions); no content conflict.
+- **Minimal PR scope:** 12 source/test files (Func4 accept / primary-user-data framing / `OUT_OF_RANGE`
+  propagation) + optionally `lab/ao004/*` + 2 evidence dirs; exclude 6 governance/history docs.
+- **Safe route (validated read-only):** new branch off current `main`, apply `git diff 38c6df0 b205abc -- <paths>`;
+  `git apply --check` CLEAN; patched-`main` `go vet`/`go test ./...` PASS.
+- **Gates:** gofmt clean; vet/build/test OK; `git diff --check`/`cwal-check` OK.
+- **Decision: GO** (bounded new-branch-off-`main` route) / **NO-GO** (full `work`→`main`). G41 **UNSUPPORTED**;
+  AO-004 CURRENT. Evidence: Appendix X.
+Next: **STOP for a separate independent read-only CHECK**. No PR/merge, no `main` push, no release, no AO-005.
+
+## AO-004 closed — EVT-001 promoted (2026-11-13)
+
+Owner decision recorded in the archived AO-004 task. PR #28 is merged. `origin/main` was merged into `work` with the protocol tree unchanged (`97a08a6d201c116b5d620f3f69e690543b79cf41` before and after). AO-004 is archived at `archive/active-work/AO-004.md`. CURRENT is EVT-001. G41 stays **UNSUPPORTED**. AO-005 is not promoted. Signed-zero/subnormal divergence and untested independent-wire negatives remain as already recorded. The MEXT-019 IIN bitmap freeze is not lifted. `active_work/supported-profile.md` is unchanged.
+
+## EVT-001 checkpoint (2026-11-13)
+
+Timestamped Group 2/22/32 events and Class 1/2/3 unsolicited reporting are implemented on `work`. Internal unit and 127.0.0.1 TCP tests passed, including `go test -race ./...`. Independent OpenDNP3 interop was **NOT_RUN**. The published supported profile was not changed and does not advertise this behavior. Secure Authentication stays **BLOCKED**. The MEXT-019 IIN bitmap freeze is not lifted. Details and labels are in `workflow/active_work/EVT-001.md`.
+
+## EVT-001 completion checkpoint (2026-11-13)
+
+Independent OpenDNP3 3.1.2 interoperability for the EVT-001 event scenarios was run in an isolated container (`--network none`, loopback only, memory points). Both directions passed. The capture is `docs/verification/evt001/evt001.pcap` (sha256 `4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98`). The result record is `docs/verification/EVT-001-OPENDNP3.md`.
+
+The MEXT-019 IIN map now uses the pinned OpenDNP3 LSB bit positions. `DecodeDNPTime` no longer converts the 48-bit millisecond count through `time.Duration`. The Go master skips a bounded run of outstation-primary frames while waiting for the secondary handshake response and confirms a null unsolicited fragment with UNS set. Duplicate-confirm and withheld-confirm behavior against OpenDNP3 is `NOT_RUN`, because that master confirms once. Those branches remain unit-tested.
+
+`active_work/supported-profile.md` blob is `3e592e77ad6e31d5492c609c5fdd62382505904b`. Only the MEXT-019 row changed. Events and unsolicited reporting stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
+
+Go gates before this checkpoint: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` all passed. `git diff --check` passed.
+
+## EVT-001 verification checkpoint (2026-11-13)
+
+Duplicate application confirm and withheld application confirm were run against the pinned OpenDNP3 3.1.2 master in `--network none`. The master created each CONFIRM. `lab/evt001/confirm_proxy.py` replayed one of those link frames twice, and on the other run did not forward CONFIRM frames to the outstation. The duplicate run left the unrelated event in place, advanced the application sequence once, and the outstation still answered a later read. The withheld run sent three identical fragments at about 2.001s spacing, stopped, and a later class read returned the retained event.
+
+Captures: `docs/verification/evt001/evt001-duplicate.pcap` (sha256 `0a1de37d96c9902705067b7848040174a42f904ef601ee6e8369595254952257`) and `docs/verification/evt001/evt001-withhold.pcap` (sha256 `2bffd6efef5752d8c2bc7fa44e9f9665a54ce51d6a588ccaba54065b92b234c0`). The positive capture is unchanged. The record is `docs/verification/EVT-001-OPENDNP3.md`. The negative script printed `RESULT EVT001_NEGATIVE PASS`.
+
+Profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` is unchanged. Events stay unsupported in that profile. CURRENT stays EVT-001 / `TASK_IN_PROGRESS`. This package is not archived. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release. EVT-001 verification is complete for owner review.
+
+Go gates before this verification commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.
+
+## EVT-001 closure rerun (2026-11-13)
+
+The first duplicate capture's empty-queue leg did not contain a class READ. OpenDNP3 3.1.2 drops a one-shot `ScanClasses` issued before the master is online. `lab/evt001/evt_master.cpp` now uses `AddClassScan` with a 30 second period, and the PCAP check requires that READ plus an object-less response before index 14. Two isolated reruns passed. Closure captures: `docs/verification/evt001/evt001-duplicate.pcap` sha256 `27009cbf22a1c8ab8af2778f0a737f82328e5029e5c97726b26c3b4c368a89fe` and `docs/verification/evt001/evt001-withhold.pcap` sha256 `c923a3fb5fc546b40df01421b9c16760f6dd51d39c9e6a9acc5490430c6190e3`. The positive capture sha256 `4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98` is unchanged. A positive rerun also printed `RESULT EVT001_INTEROP PASS`. Profile blob, CURRENT, and archive state are unchanged. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
+
+Go gates before this closure commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.

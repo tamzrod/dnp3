@@ -4,8 +4,8 @@
 // and reassembles received fragments back into complete messages.
 //
 // Transport Header (1 byte):
-//   - Bit 7 (FIR): First fragment indicator
-//   - Bit 6 (FIN): Final fragment indicator
+//   - Bit 7 (FIN): Final fragment indicator
+//   - Bit 6 (FIR): First fragment indicator
 //   - Bits 5-0: Sequence number (0-63)
 //
 // Reference: IEEE 1815-2012 Section 6
@@ -30,10 +30,12 @@ const (
 	SeqMask = 0x3F // Sequence number mask
 )
 
-// Transport header bit masks
+// Transport header bit masks. IEEE 1815-2012 Section 6.2 places FIN in bit 7
+// (0x80) and FIR in bit 6 (0x40). A single-fragment message sets both, so its
+// header is 0xC0 either way; only a multi-fragment message reveals the order.
 const (
-	FIRBit = 0x80 // First fragment
-	FINBit = 0x40 // Final fragment
+	FIRBit = 0x40 // First fragment
+	FINBit = 0x80 // Final fragment
 )
 
 // Transport errors

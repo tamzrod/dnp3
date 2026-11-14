@@ -166,9 +166,8 @@ func TestNewUnsolicited(t *testing.T) {
 }
 
 func TestIINBytes(t *testing.T) {
-	// Verified mapping (IEEE 1815-2012): IIN1.0=0x80 (AllStations),
-	// IIN1.1=0x40 (Class1Events), IIN1.6=0x02 (DeviceTrouble),
-	// IIN1.4=0x08 (NeedTime); IIN2.5=0x04 (BadConfig).
+	// OpenDNP3 3.1.2 masks: AllStations 0x01, Class1 0x02, NeedTime 0x10,
+	// DeviceTrouble 0x40, BadConfig 0x20.
 	iin := &IIN{
 		AllStations:   true,
 		Class1Events:  true,
@@ -179,19 +178,18 @@ func TestIINBytes(t *testing.T) {
 
 	bytes := iin.Bytes()
 
-	// AllStations(0x80) + Class1Events(0x40) + NeedTime(0x08) + DeviceTrouble(0x02) = 0xCA
-	if bytes[0] != 0xCA {
-		t.Errorf("IIN[0] = 0x%02X, want 0xCA", bytes[0])
+	// 0x01 + 0x02 + 0x10 + 0x40 = 0x53
+	if bytes[0] != 0x53 {
+		t.Errorf("IIN[0] = 0x%02X, want 0x53", bytes[0])
 	}
-	// BadConfig = 0x04
-	if bytes[1] != 0x04 {
-		t.Errorf("IIN[1] = 0x%02X, want 0x04", bytes[1])
+	if bytes[1] != 0x20 {
+		t.Errorf("IIN[1] = 0x%02X, want 0x20", bytes[1])
 	}
 }
 
 func TestIINSetIIN(t *testing.T) {
 	var iin IIN
-	iin.SetIIN([2]byte{0xCA, 0x04})
+	iin.SetIIN([2]byte{0x53, 0x20})
 
 	if !iin.AllStations {
 		t.Error("Expected AllStations = true")
@@ -253,20 +251,20 @@ func TestIINBitPositions(t *testing.T) {
 		wantB byte
 		want  byte
 	}{
-		{"IIN1.0 AllStations", func(i *IIN) { i.AllStations = true }, 0, 0x80},
-		{"IIN1.1 Class1Events", func(i *IIN) { i.Class1Events = true }, 0, 0x40},
-		{"IIN1.2 Class2Events", func(i *IIN) { i.Class2Events = true }, 0, 0x20},
-		{"IIN1.3 Class3Events", func(i *IIN) { i.Class3Events = true }, 0, 0x10},
-		{"IIN1.4 NeedTime", func(i *IIN) { i.NeedTime = true }, 0, 0x08},
-		{"IIN1.5 LocalControl", func(i *IIN) { i.LocalControl = true }, 0, 0x04},
-		{"IIN1.6 DeviceTrouble", func(i *IIN) { i.DeviceTrouble = true }, 0, 0x02},
-		{"IIN1.7 DeviceRestart", func(i *IIN) { i.DeviceRestart = true }, 0, 0x01},
-		{"IIN2.0 FuncUnknown", func(i *IIN) { i.FuncUnknown = true }, 1, 0x80},
-		{"IIN2.1 ObjectUnknown", func(i *IIN) { i.ObjectUnknown = true }, 1, 0x40},
-		{"IIN2.2 ParameterError", func(i *IIN) { i.ParameterError = true }, 1, 0x20},
-		{"IIN2.3 BufferOverflow", func(i *IIN) { i.BufferOverflow = true }, 1, 0x10},
-		{"IIN2.4 AlreadyExecuting", func(i *IIN) { i.AlreadyExecuting = true }, 1, 0x08},
-		{"IIN2.5 BadConfig", func(i *IIN) { i.BadConfig = true }, 1, 0x04},
+		{"AllStations", func(i *IIN) { i.AllStations = true }, 0, 0x01},
+		{"Class1Events", func(i *IIN) { i.Class1Events = true }, 0, 0x02},
+		{"Class2Events", func(i *IIN) { i.Class2Events = true }, 0, 0x04},
+		{"Class3Events", func(i *IIN) { i.Class3Events = true }, 0, 0x08},
+		{"NeedTime", func(i *IIN) { i.NeedTime = true }, 0, 0x10},
+		{"LocalControl", func(i *IIN) { i.LocalControl = true }, 0, 0x20},
+		{"DeviceTrouble", func(i *IIN) { i.DeviceTrouble = true }, 0, 0x40},
+		{"DeviceRestart", func(i *IIN) { i.DeviceRestart = true }, 0, 0x80},
+		{"FuncUnknown", func(i *IIN) { i.FuncUnknown = true }, 1, 0x01},
+		{"ObjectUnknown", func(i *IIN) { i.ObjectUnknown = true }, 1, 0x02},
+		{"ParameterError", func(i *IIN) { i.ParameterError = true }, 1, 0x04},
+		{"BufferOverflow", func(i *IIN) { i.BufferOverflow = true }, 1, 0x08},
+		{"AlreadyExecuting", func(i *IIN) { i.AlreadyExecuting = true }, 1, 0x10},
+		{"BadConfig", func(i *IIN) { i.BadConfig = true }, 1, 0x20},
 	}
 	for _, tt := range tests {
 		iin := &IIN{}

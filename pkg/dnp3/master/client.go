@@ -29,10 +29,15 @@
 //   - Operate                      — Target for DirectOperate G12V1 CROB;
 //     Reject for SelectThenOperate / DirectOperateNoResponse
 //   - LastIIN                      — Target
-//   - EnableUnsolicited / DisableUnsolicited / SetUnsolicitedHandler — Reject
+//   - EnableUnsolicited / DisableUnsolicited / ReadEvents / WatchUnsolicited /
+//     SetUnsolicitedHandler — Reject by default. The published supported profile
+//     does not advertise events or unsolicited delivery, so these return
+//     ErrUnsupportedOption and register no handler unless the explicit,
+//     non-default WithExperimentalEventDelivery switch is set (EVT-001 lab
+//     path only).
 //
 // Explicitly unsupported in v0 (rejected by the public API): TLS, serial
-// transport, unsolicited responses and event delivery, secure authentication,
+// transport, secure authentication,
 // time synchronization and time objects, file transfer, device attributes,
 // restart/delay-measurement/freeze operations, select-before-operate, and any
 // object group/variation not listed above.
@@ -117,16 +122,35 @@ type Client interface {
 	// Reject for SelectThenOperate and DirectOperateNoResponse (DNP3-030).
 	Operate(ctx context.Context, command *types.ControlOutput) (*OperateResponse, error)
 
-	// EnableUnsolicited enables unsolicited responses from the outstation.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
+	// EnableUnsolicited asks the outstation to enable Class 1, 2, and 3
+	// unsolicited reporting.
+	// Supported-profile: Reject by default — returns ErrUnsupportedOption
+	// and sends no wire traffic unless the explicit, non-default
+	// WithExperimentalEventDelivery switch is set.
 	EnableUnsolicited(ctx context.Context) error
 
-	// DisableUnsolicited disables unsolicited responses.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
+	// DisableUnsolicited asks the outstation to disable Class 1, 2, and 3
+	// unsolicited reporting.
+	// Supported-profile: Reject by default (see EnableUnsolicited).
 	DisableUnsolicited(ctx context.Context) error
 
+	// ReadEvents reads queued Class 1, 2, and 3 events with Group 60
+	// Variations 2, 3, and 4. This is a solicited read. It is not a
+	// substitute for unsolicited delivery.
+	// Supported-profile: Reject by default — event objects are outside the
+	// v0 supported profile.
+	ReadEvents(ctx context.Context) (*UnsolicitedResponse, error)
+
+	// WatchUnsolicited receives unsolicited fragments until ctx is canceled.
+	// It must not be called concurrently with Read, ReadEvents, Operate, or
+	// EnableUnsolicited on the same client. The handler must not call back
+	// into the client.
+	// Supported-profile: Reject by default.
+	WatchUnsolicited(ctx context.Context) error
+
 	// SetUnsolicitedHandler sets the handler for unsolicited responses.
-	// Supported-profile: Reject — no unsolicited delivery path in v0.
+	// Supported-profile: Reject by default — no handler is registered unless
+	// the explicit, non-default WithExperimentalEventDelivery switch is set.
 	SetUnsolicitedHandler(handler UnsolicitedHandler)
 
 	// Close gracefully shuts down the client.
@@ -183,7 +207,7 @@ type Config struct {
 	// Supported-profile: Defer — observability hook, not externally verified in v0.
 	Logger Logger
 	// AutoIntegrityOnRestart enables the DNP3-053 behavior: when a response
-	// carries the DeviceRestart IIN bit (IIN1.7), the master automatically
+	// carries the DeviceRestart IIN bit (octet 1 mask 0x80), the master automatically
 	// issues a Class-0 integrity poll after the triggering request completes,
 	// so the outstation's post-restart static data is re-read without the
 	// caller having to poll manually. Disabled by default (opt-in). The
@@ -208,6 +232,15 @@ type Config struct {
 	// caller's earlier context deadline always tightens it.
 	// Supported-profile: Defer — requires lifecycle verification.
 	ReadTimeout time.Duration
+	// ExperimentalEventDelivery opts into the EVT-001 event and unsolicited
+	// path (EnableUnsolicited, DisableUnsolicited, ReadEvents,
+	// WatchUnsolicited, SetUnsolicitedHandler). The published v0 supported
+	// profile does not advertise events or unsolicited delivery, so the default
+	// is false: those public methods return ErrUnsupportedOption and register no
+	// handler. This is an explicit, non-default experimental switch, not a
+	// profile promotion. Enable it only for the isolated EVT-001 lab path.
+	// Supported-profile: Reject by default (experimental, off by default).
+	ExperimentalEventDelivery bool
 }
 
 // DefaultConfig returns a default configuration
@@ -337,6 +370,20 @@ func WithOperateTimeout(d time.Duration) ConfigOption {
 func WithReadTimeout(d time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.ReadTimeout = d
+	}
+}
+
+// WithExperimentalEventDelivery opts into the EVT-001 event and unsolicited
+// path. It is an explicit, non-default experimental switch: the published v0
+// supported profile does not advertise events or unsolicited delivery, so
+// without it EnableUnsolicited, DisableUnsolicited, ReadEvents,
+// WatchUnsolicited and SetUnsolicitedHandler return ErrUnsupportedOption and do
+// not register a handler. It is not a profile promotion; it only opens the
+// isolated EVT-001 lab path.
+// Supported-profile: Reject by default (experimental, off by default).
+func WithExperimentalEventDelivery() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalEventDelivery = true
 	}
 }
 
@@ -583,14 +630,21 @@ func NewClient(config *Config) (Client, error) {
 		internal.SetDiagnosticHook(diagAdapter(config.Logger))
 	}
 
-	return &client{
+	c := &client{
 		config:         config,
 		state:          dnp3.StateDisconnected,
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
 		logger:         config.Logger,
-	}, nil
+	}
+	// Register the unsolicited delivery callback only for the explicit,
+	// non-default experimental path; the v0 profile registers no delivery
+	// machinery.
+	if config.ExperimentalEventDelivery {
+		internal.SetUnsolicitedCallback(c.deliverUnsolicitedApp)
+	}
+	return c, nil
 }
 
 // NewClientWithTransport creates a Master client that uses a caller-supplied
@@ -621,14 +675,21 @@ func NewClientWithTransport(config *Config, t transport.Handler) (Client, error)
 		internal.SetDiagnosticHook(diagAdapter(config.Logger))
 	}
 
-	return &client{
+	c := &client{
 		config:         config,
 		state:          dnp3.StateDisconnected,
 		handlers:       make([]UnsolicitedHandler, 0),
 		internalMaster: internal,
 		transport:      t,
 		logger:         config.Logger,
-	}, nil
+	}
+	// Register the unsolicited delivery callback only for the explicit,
+	// non-default experimental path; the v0 profile registers no delivery
+	// machinery.
+	if config.ExperimentalEventDelivery {
+		internal.SetUnsolicitedCallback(c.deliverUnsolicitedApp)
+	}
+	return c, nil
 }
 
 // Connect implements Client.Connect
@@ -750,6 +811,7 @@ func (c *client) Connect(ctx context.Context) error {
 			c.state = dnp3.StateError
 		} else {
 			c.state = dnp3.StateActive
+			c.internalMaster.ResetUnsolicitedSession()
 		}
 		c.mu.Unlock()
 		if res.err != nil {
@@ -2182,18 +2244,36 @@ func mapCommandStatus(cs master.CommandStatus) types.ControlStatus {
 	}
 }
 
-// EnableUnsolicited implements Client.EnableUnsolicited
+// EnableUnsolicited implements Client.EnableUnsolicited.
+// Supported-profile: Reject by default — the v0 supported profile does not
+// deliver unsolicited responses. It returns ErrUnsupportedOption with no wire
+// traffic unless the experimental event delivery switch is on.
 func (c *client) EnableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
+	if !c.config.ExperimentalEventDelivery {
+		return fmt.Errorf("%w: unsolicited enable (EnableUnsolicited); the v0 supported profile does not deliver unsolicited responses", dnp3.ErrUnsupportedOption)
+	}
+	return c.sendClassFunction(ctx, al.FuncEnableUnsolicited)
 }
 
-// DisableUnsolicited implements Client.DisableUnsolicited
+// DisableUnsolicited implements Client.DisableUnsolicited.
+// Supported-profile: Reject by default (see EnableUnsolicited).
 func (c *client) DisableUnsolicited(ctx context.Context) error {
-	return fmt.Errorf("%w: unsolicited responses", dnp3.ErrUnsupportedOption)
+	if !c.config.ExperimentalEventDelivery {
+		return fmt.Errorf("%w: unsolicited disable (DisableUnsolicited); the v0 supported profile does not deliver unsolicited responses", dnp3.ErrUnsupportedOption)
+	}
+	return c.sendClassFunction(ctx, al.FuncDisableUnsolicited)
 }
 
-// SetUnsolicitedHandler implements Client.SetUnsolicitedHandler
+// SetUnsolicitedHandler implements Client.SetUnsolicitedHandler.
+// Supported-profile: Reject by default — the v0 profile has no unsolicited
+// delivery path, so no handler is registered unless the experimental event
+// delivery switch is on. The method has no error return, and a prohibited
+// capability must never be silently activated, so it records the refusal
+// instead of registering the handler.
 func (c *client) SetUnsolicitedHandler(handler UnsolicitedHandler) {
+	if !c.config.ExperimentalEventDelivery {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.handlers = append(c.handlers, handler)

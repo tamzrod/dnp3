@@ -20,6 +20,10 @@ This is a current-status addendum; historical task reports below are retained as
 - **Next roadmap candidate:** MEXT-042 is an **unpromoted** documentation/procedure backlog stub; it is not an active implementation task. SBO and event/unsolicited implementation require new KDE design approval and human-promoted CWAL authority.
 - **Execution authority:** The matching top marker blocks in root `handoff.md` and `workflow/active_work/README.md` control the active CWAL task. The historical MEXT roadmap is not execution authority.
 
+## EVT-001 note — 2026-11-13
+
+The 2026-11-08 addendum above is unchanged. EVT-001 later ran an isolated OpenDNP3 3.1.2 event exchange, including duplicate-confirm and withheld-confirm cases, recorded in `docs/verification/EVT-001-OPENDNP3.md`. A closure rerun replaced the negative captures after the first empty-queue leg was found to lack a class READ. The published profile still lists unsolicited responses and event delivery as unsupported. Root `handoff.md` is the current CWAL handoff.
+
 ---
 
 ## Status

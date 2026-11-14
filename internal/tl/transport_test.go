@@ -14,9 +14,9 @@ func TestFragmentHeader(t *testing.T) {
 		expected byte
 	}{
 		{"Single Fragment", true, true, 0, 0xC0}, // FIR + FIN
-		{"First of Multi", true, false, 0, 0x80},
+		{"First of Multi", true, false, 0, 0x40},
 		{"Middle Fragment", false, false, 5, 0x05},
-		{"Final Fragment", false, true, 10, 0x4A},
+		{"Final Fragment", false, true, 10, 0x8A},
 		{"Max Seq", true, true, 63, 0xFF}, // 0xC0 | 0x3F
 	}
 
@@ -45,9 +45,9 @@ func TestSetHeader(t *testing.T) {
 		wantSeq uint8
 	}{
 		{"Single Fragment", 0xC0, true, true, 0},
-		{"First of Multi", 0x80, true, false, 0},
+		{"First of Multi", 0x40, true, false, 0},
 		{"Middle", 0x05, false, false, 5},
-		{"Final", 0x4A, false, true, 10},
+		{"Final", 0x8A, false, true, 10},
 		{"Max Seq", 0xFF, true, true, 63},
 	}
 

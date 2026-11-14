@@ -1,0 +1,7 @@
+pcap_dlt=1 packets=201 dnp_app=52
+func 0x00 CONFIRM count=8
+func 0x01 READ count=10
+func 0x14 ENABLE_UNSOLICITED count=2
+func 0x15 DISABLE_UNSOLICITED count=7
+func 0x81 RESPONSE count=19
+func 0x82 UNSOLICITED count=6

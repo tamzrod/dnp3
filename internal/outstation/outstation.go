@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -19,6 +20,20 @@ import (
 	"dnp3/internal/al"
 	"dnp3/internal/dll/frame"
 	"dnp3/internal/tl"
+)
+
+var (
+	// ErrEventBufferFull is returned when the newest event is discarded
+	// because that class buffer is already at its cap.
+	ErrEventBufferFull = errors.New("event buffer full")
+	// ErrEventIndex is returned when an event index does not fit the 8-bit
+	// indexed qualifier used for event reports.
+	ErrEventIndex = errors.New("event index exceeds 8-bit prefix")
+	// ErrEventClass is returned when the event class is not 1, 2, or 3.
+	ErrEventClass = errors.New("event class must be 1, 2, or 3")
+	// ErrSessionClosed ends RunWithContext when the link is gone. Idle
+	// timeouts are not this error. The event buffer is left intact.
+	ErrSessionClosed = errors.New("session closed")
 )
 
 // debugControls enables debug logging for control operations (group 12, 41-44).
@@ -67,6 +82,10 @@ var (
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrBufferFull      = errors.New("event buffer full")
 	ErrTransportNotSet = errors.New("transport not configured")
+	// ErrFragmentTooLarge: a solicited response contains an object block that
+	// cannot be split to fit the configured application-fragment budget. The
+	// response is refused rather than sending a fragment the peer would discard.
+	ErrFragmentTooLarge = errors.New("response block exceeds application fragment budget")
 	// ErrNotSupported: the request cannot be executed because the configured
 	// data handler does not support the required operation. Fail-closed: a
 	// non-success response is returned rather than a false success (AO-002 F1).
@@ -139,6 +158,10 @@ type Config struct {
 	MaxEventBuffers   int    // Maximum event buffer size
 	Unsolicited       bool   // Enable unsolicited responses
 	SBOTimeout        int    // Select-before-operate timeout in milliseconds (default 10000)
+	// MaxFragmentSize bounds one application-layer response fragment. A peer
+	// discards an application fragment larger than its receive buffer (OpenDNP3
+	// 3.1.2 default 2048), so a larger response is split across fragments.
+	MaxFragmentSize int
 }
 
 // DefaultConfig returns default outstation configuration.
@@ -150,6 +173,7 @@ func DefaultConfig() *Config {
 		MaxEventBuffers:   1000,
 		Unsolicited:       false,
 		SBOTimeout:        10000, // 10 seconds default for SBO timeout
+		MaxFragmentSize:   defaultMaxAppFragment,
 	}
 }
 
@@ -229,21 +253,40 @@ const (
 	Class3
 )
 
+// Event kind values stored on Event.Kind.
+const (
+	EventKindNone uint8 = iota
+	EventKindBinary
+	EventKindAnalog
+	EventKindCounter
+)
+
 // Event represents a DNP3 event.
 type Event struct {
-	Class   EventClass
-	Group   uint8
-	Index   uint16
-	Value   []byte
-	Quality uint8
-	Time    time.Time
+	Class        EventClass
+	Group        uint8
+	Index        uint16
+	Value        []byte
+	Quality      uint8
+	Time         time.Time
+	Seq          uint64
+	Kind         uint8
+	HasTime      bool
+	BinaryValue  bool
+	AnalogValue  int32
+	CounterValue uint32
 }
 
 // EventQueue manages event buffers for outstation.
 type EventQueue struct {
 	mu      sync.Mutex
 	buffers map[EventClass][]Event
-	maxSize int
+	// reserved counts, per class, slots held for events removed while a
+	// solicited response is in flight. A concurrent publisher must not take a
+	// reserved slot, so a failed send can always restore the staged event.
+	reserved map[EventClass]int
+	maxSize  int
+	nextSeq  uint64
 }
 
 // NewEventQueue creates a new event queue with the specified maximum size.
@@ -254,20 +297,27 @@ func NewEventQueue(maxSize int) *EventQueue {
 			Class2: make([]Event, 0, maxSize/3),
 			Class3: make([]Event, 0, maxSize/3),
 		},
-		maxSize: maxSize,
+		reserved: map[EventClass]int{},
+		maxSize:  maxSize,
 	}
 }
 
-// Add adds an event to the queue.
+// classCap is the per-class event capacity.
+func (q *EventQueue) classCap() int { return q.maxSize / 3 }
+
+// Add adds an event to the queue. A class that has no free capacity after
+// accounting for in-flight reserved slots rejects the event.
 func (q *EventQueue) Add(event Event) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	classEvents := q.buffers[event.Class]
-	if len(classEvents) >= q.maxSize/3 {
+	if len(classEvents)+q.reserved[event.Class] >= q.classCap() {
 		return false // Buffer full for this class
 	}
 
+	event.Seq = q.nextSeq
+	q.nextSeq++
 	q.buffers[event.Class] = append(classEvents, event)
 	return true
 }
@@ -279,6 +329,7 @@ func (q *EventQueue) Clear() {
 
 	for class := range q.buffers {
 		q.buffers[class] = q.buffers[class][:0]
+		q.reserved[class] = 0
 	}
 }
 
@@ -287,6 +338,7 @@ func (q *EventQueue) ClearClass(class EventClass) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.buffers[class] = q.buffers[class][:0]
+	q.reserved[class] = 0
 }
 
 // GetAll returns all events.
@@ -313,13 +365,14 @@ func (q *EventQueue) Count() int {
 	return count
 }
 
-// IsFull returns true if any event class buffer is full.
+// IsFull returns true if any event class buffer is full. In-flight reserved
+// slots count as used, because a publisher cannot take them.
 func (q *EventQueue) IsFull() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for _, events := range q.buffers {
-		if len(events) >= q.maxSize/3 {
+	for class := range q.buffers {
+		if len(q.buffers[class])+q.reserved[class] >= q.classCap() {
 			return true
 		}
 	}
@@ -526,13 +579,38 @@ type Outstation struct {
 	appSeq      uint8  // Application sequence number
 	unsolicited bool   // Unsolicited responses enabled
 	iin         al.IIN // Internal Indication
-	fragmenter  *tl.Fragmenter
-	reassembler *tl.Reassembler
+	// Unsolicited Class 1/2/3 enables, separate from the solicited sequence.
+	unsolClass       [3]bool
+	unsolSeq         uint8
+	unsolAwait       bool
+	unsolRetries     int
+	unsolFrames      [][]byte
+	unsolIDs         []uint64
+	unsolGen         uint64
+	unsolTimer       *time.Timer
+	unsolConfirmWait time.Duration
+	unsolSendAfter   bool
+	fragmenter       *tl.Fragmenter
+	reassembler      *tl.Reassembler
+	// maxAppFragment bounds one application-layer fragment. OpenDNP3 3.1.2
+	// sizes its transport receive buffer at maxRxFragSize = 2048, so an
+	// application fragment larger than that is rejected before FIN.
+	maxAppFragment int
 	// SBO state tracking
 	pendingSelects map[uint16]*PendingSelect // Index -> PendingSelect
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
 	// Event queue
 	eventQueue *EventQueue
+	// solicitedRemoved holds events removed from the queue while a solicited
+	// READ response is assembled; they are re-inserted if that response cannot
+	// be fully delivered, so a failed send never loses an accepted event. Each
+	// staged event holds a reservation in the queue until the send outcome is
+	// known.
+	solicitedRemoved []Event
+	// restoreFailures counts staged events that could not be restored. With
+	// reserved slots in place it must stay zero; a non-zero value is a
+	// correctness alarm that the lossless guarantee was violated.
+	restoreFailures uint64
 }
 
 // NewOutstation creates a new Outstation.
@@ -547,6 +625,7 @@ func NewOutstation(config *Config) *Outstation {
 		appSeq:         0,
 		fragmenter:     tl.NewFragmenter(),
 		reassembler:    tl.NewReassembler(),
+		maxAppFragment: maxAppFragmentSize(config),
 		pendingSelects: make(map[uint16]*PendingSelect),
 		eventQueue:     NewEventQueue(config.MaxEventBuffers),
 	}
@@ -614,6 +693,7 @@ func (o *Outstation) Start() error {
 
 // Stop halts outstation operation.
 func (o *Outstation) Stop() error {
+	o.StopUnsolicitedTimer()
 	o.SetState(StateDown)
 	// Clear all pending selects on shutdown
 	o.selectMu.Lock()
@@ -718,17 +798,28 @@ func (o *Outstation) GenerateEvent(class EventClass, group uint8, index uint16, 
 		Value:   value,
 		Quality: quality,
 		Time:    time.Now(),
+		HasTime: true,
+	}
+	switch group {
+	case 2:
+		event.Kind = EventKindBinary
+		event.BinaryValue = len(value) > 0 && value[0] != 0
+	case 32:
+		event.Kind = EventKindAnalog
+		if len(value) >= 4 {
+			event.AnalogValue = int32(uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24)
+		}
+	case 22:
+		event.Kind = EventKindCounter
+		if len(value) >= 4 {
+			event.CounterValue = uint32(value[0]) | uint32(value[1])<<8 | uint32(value[2])<<16 | uint32(value[3])<<24
+		}
 	}
 
 	added := o.eventQueue.Add(event)
-
-	// Update IIN if buffer is full
-	if o.eventQueue.IsFull() {
-		o.mu.Lock()
-		o.iin.BufferOverflow = true
-		o.mu.Unlock()
-	}
-
+	o.mu.Lock()
+	o.refreshEventIINLocked()
+	o.mu.Unlock()
 	return added
 }
 
@@ -741,7 +832,7 @@ func (o *Outstation) EventCount() int {
 func (o *Outstation) ClearEvents() {
 	o.eventQueue.Clear()
 	o.mu.Lock()
-	o.iin.BufferOverflow = false
+	o.refreshEventIINLocked()
 	o.mu.Unlock()
 }
 
@@ -787,9 +878,15 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 			return nil
 		}
 
-		// Receive data from transport
+		// Receive data from transport. A closed link ends this session so the
+		// server can accept a new master. Timeouts and bad frames stay in the
+		// loop. StopUnsolicitedTimer drops the confirm wait and keeps events.
 		data, err := transport.Receive()
 		if err != nil {
+			if errors.Is(err, ErrSessionClosed) {
+				o.StopUnsolicitedTimer()
+				return err
+			}
 			continue
 		}
 
@@ -824,30 +921,21 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 			continue
 		}
 
-		// Send response with DLL framing
+		// Send response with DLL framing. A response whose object data exceeds
+		// the application-fragment budget is split into several fragments, each
+		// carried in its own transport-message/DLL frame run. A response that
+		// cannot be delivered (unbounded fragment, encode error, or transport
+		// send failure) re-queues every event removed while it was built, so an
+		// accepted event is never lost; the peer re-polls and receives them
+		// again. A partly transmitted response is delivery-indeterminate: the
+		// peer may have received some fragments, so the restored events can be
+		// delivered at least once. A fully delivered response releases the
+		// reserved slots so publishers may reuse them.
 		if resp != nil {
-			respData := o.buildTransportFragments(resp)
-			for _, frag := range respData {
-				// Wrap in DLL frame. A solicited application response is user
-				// data and must be a primary frame (PRM=1) in both directions;
-				// unconfirmed user data carries no FCB/FCV.
-				dllFrame := &frame.Frame{
-					Control: frame.Control{
-						DIR:      false, // Outstation-to-Master
-						PRM:      true,  // Primary: carries user data
-						FuncCode: frame.FuncUnconfirmedUserData,
-					},
-					DestAddr: o.config.MasterAddress,
-					SrcAddr:  o.config.OutstationAddress,
-					Data:     frag,
-				}
-				dllEncoded, err := frame.Encode(dllFrame)
-				if err != nil {
-					continue
-				}
-				if err := transport.Send(dllEncoded); err != nil {
-					continue
-				}
+			if serr := o.sendResponseFragments(transport, resp); serr != nil {
+				o.requeueSolicitedEvents()
+			} else {
+				o.releaseSolicitedEvents()
 			}
 		}
 
@@ -855,6 +943,7 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 		if needsConfirm {
 			o.sendConfirmation(req.Control.Seq)
 		}
+		o.flushPendingUnsolicited()
 	}
 }
 
@@ -972,6 +1061,351 @@ func (o *Outstation) reassembleMessage(data []byte) ([]byte, error) {
 	return nil, nil
 }
 
+// maxAppFragmentSize returns the configured application-fragment budget. The
+// zero value and any value too small to carry object data fall back to the
+// OpenDNP3-compatible default.
+func maxAppFragmentSize(cfg *Config) int {
+	if cfg != nil && cfg.MaxFragmentSize > appFragmentOverhead+1 {
+		return cfg.MaxFragmentSize
+	}
+	return defaultMaxAppFragment
+}
+
+// appFragmentOverhead is the octet count preceding the object data on every
+// application fragment: application control, function code, and two IIN octets.
+const appFragmentOverhead = 4
+
+// maxObjectsPerAppFragmentFallback bounds one application-layer response
+// fragment when no configured budget is available. OpenDNP3 3.1.2 sizes its
+// transport receive buffer at 2048 octets, so a larger fragment is discarded
+// before FIN.
+const defaultMaxAppFragment = 2048
+
+// stageSolicitedRemovalLocked removes the events identified by ids from the
+// queue, remembering them so a response that cannot be delivered can put them
+// back. Each removed event reserves a slot, so a concurrent publisher cannot
+// take the space the staged events need to be restored into. It runs while the
+// queue still holds the events, so a concurrent unsolicited send cannot also
+// remove them. The caller holds o.mu.
+func (o *Outstation) stageSolicitedRemovalLocked(ids []uint64) {
+	if len(ids) == 0 {
+		return
+	}
+	// Snapshot the events that are about to be removed so they can be restored
+	// verbatim (insertion order, sequence, timestamps) if the response fails.
+	// A sequence named twice is staged once.
+	idSet := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+	staged := o.solicitedRemoved
+	seen := make(map[uint64]struct{}, len(staged))
+	for _, ev := range staged {
+		seen[ev.Seq] = struct{}{}
+	}
+	for _, ev := range o.eventQueue.GetAll() {
+		if _, ok := idSet[ev.Seq]; !ok {
+			continue
+		}
+		if _, dup := seen[ev.Seq]; dup {
+			continue
+		}
+		seen[ev.Seq] = struct{}{}
+		staged = append(staged, ev)
+	}
+	o.solicitedRemoved = staged
+	o.eventQueue.StageSeqs(ids)
+	o.cancelInFlightLocked(ids)
+}
+
+// requeueSolicitedEvents restores every event staged by stageSolicitedRemovalLocked
+// after its response could not be delivered. The events keep their original
+// insertion sequence numbers and IIN bits, so the next poll re-encodes exactly
+// what was lost. Each restore is checked: with reserved slots in place it must
+// succeed, and a failure is recorded and logged rather than silently dropping
+// an accepted event.
+func (o *Outstation) requeueSolicitedEvents() {
+	o.mu.Lock()
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	o.mu.Unlock()
+	if len(staged) == 0 {
+		return
+	}
+	for _, ev := range staged {
+		if !o.eventQueue.Restore(ev) {
+			o.mu.Lock()
+			o.restoreFailures++
+			o.mu.Unlock()
+			if debugControls {
+				log.Printf("outstation: failed to restore staged event seq=%d class=%d after failed send", ev.Seq, ev.Class)
+			}
+		}
+	}
+	o.mu.Lock()
+	o.refreshEventIINLocked()
+	o.mu.Unlock()
+}
+
+// releaseSolicitedEvents drops the reservations held for the events of a
+// solicited response that was fully delivered. The delivered events stay
+// removed; their slots become available to publishers again.
+func (o *Outstation) releaseSolicitedEvents() {
+	o.mu.Lock()
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	o.mu.Unlock()
+	for _, ev := range staged {
+		o.eventQueue.ReleaseReserved(ev)
+	}
+}
+
+// discardSolicitedLocked drops any staged solicited events without restoring
+// them, releasing their reservations. It is used at the start of a request to
+// clear staging that was never sent (a direct ProcessRequest caller that did
+// not run the send loop). The caller holds o.mu.
+func (o *Outstation) discardSolicitedLocked() {
+	if len(o.solicitedRemoved) == 0 {
+		return
+	}
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	for _, ev := range staged {
+		o.eventQueue.ReleaseReserved(ev)
+	}
+}
+
+// sendResponseFragments writes every application fragment and transport frame of
+// a solicited response, returning the first error encountered. An error means
+// the response was not fully delivered.
+func (o *Outstation) sendResponseFragments(transport TransportHandler, resp *al.APDU) error {
+	frags, err := o.responseFragments(resp)
+	if err != nil {
+		return err
+	}
+	for _, appFrag := range frags {
+		for _, frag := range o.buildTransportFragments(appFrag) {
+			// Wrap in DLL frame. A solicited application response is user data
+			// and must be a primary frame (PRM=1) in both directions;
+			// unconfirmed user data carries no FCB/FCV.
+			dllFrame := &frame.Frame{
+				Control: frame.Control{
+					DIR:      false, // Outstation-to-Master
+					PRM:      true,  // Primary: carries user data
+					FuncCode: frame.FuncUnconfirmedUserData,
+				},
+				DestAddr: o.config.MasterAddress,
+				SrcAddr:  o.config.OutstationAddress,
+				Data:     frag,
+			}
+			dllEncoded, err := frame.Encode(dllFrame)
+			if err != nil {
+				return err
+			}
+			if err := transport.Send(dllEncoded); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// responseFragments splits a solicited response into consecutive application
+// fragments, each at most the configured budget. A response that already fits
+// is returned as a single FIR|FIN fragment. The first fragment keeps the
+// request sequence; each later fragment advances it by one, so a conformant
+// peer accepts the run. Non-final fragments clear FIN and leave CON clear:
+// IEEE 1815 permits a solicited multi-fragment response without an
+// inter-fragment confirmation, and OpenDNP3's master accepts it (it advances
+// its solicited sequence and stays in WAIT_FOR_RESPONSE).
+//
+// Only qualifier-0x17 indexed runs are split below a header: their objects are
+// re-emitted under fresh count-bounded headers, each fragment repeating the IIN.
+// Sequential blocks (qualifier 0x07, implicit indexes) stay whole so no point
+// index is renumbered.
+func (o *Outstation) responseFragments(resp *al.APDU) ([]*al.APDU, error) {
+	budget := o.maxAppFragment
+	if budget <= appFragmentOverhead+1 {
+		budget = defaultMaxAppFragment
+	}
+	// resp.Data carries a two-octet IIN prefix ahead of the object data. The
+	// budget covers the whole fragment body (IIN + objects), so the object
+	// payload gets budget-4 octets per fragment.
+	maxData := budget - appFragmentOverhead
+	if len(resp.Data) <= maxData+2 {
+		return []*al.APDU{resp}, nil
+	}
+	chunks := splitObjectData(resp.Data[2:], maxData)
+	if len(chunks) <= 1 {
+		// The object data exceeds the budget yet the splitter produced a single
+		// chunk: one non-indexed block is larger than the budget and cannot be
+		// split without renaming point indexes. Fail closed before sending rather
+		// than emit a fragment the peer would discard.
+		return nil, fmt.Errorf("%w: %d octets of object data, budget %d", ErrFragmentTooLarge, len(resp.Data[2:]), maxData)
+	}
+	out := make([]*al.APDU, len(chunks))
+	iin := append([]byte(nil), resp.Data[:2]...)
+	for i, c := range chunks {
+		if len(c) > maxData {
+			return nil, fmt.Errorf("%w: chunk %d is %d octets, budget %d", ErrFragmentTooLarge, i, len(c), maxData)
+		}
+		body := make([]byte, 0, 2+len(c))
+		body = append(body, iin...)
+		body = append(body, c...)
+		out[i] = &al.APDU{
+			Control: al.AppControl{
+				FIR: i == 0,
+				FIN: i == len(chunks)-1,
+				CON: false,
+				UNS: resp.Control.UNS,
+				Seq: (resp.Control.Seq + uint8(i)) % al.AppSeqMod,
+			},
+			FuncCode: resp.FuncCode,
+			Data:     body,
+		}
+	}
+	return out, nil
+}
+
+// splitObjectData partitions encoded object data (everything after the two IIN
+// octets) into payloads of at most maxData octets. It splits only at object
+// boundaries inside a qualifier-0x17 indexed run; any other block is kept
+// whole.
+func splitObjectData(data []byte, maxData int) [][]byte {
+	if maxData < 8 {
+		maxData = 8
+	}
+	var frags [][]byte
+	var cur []byte
+	flush := func() {
+		if len(cur) > 0 {
+			frags = append(frags, cur)
+			cur = nil
+		}
+	}
+	off := 0
+	for off < len(data) {
+		span, indexed, perObject, count, ok := indexedBlock(data, off)
+		if !ok || span <= 0 || off+span > len(data) {
+			if len(cur) > 0 {
+				flush()
+			}
+			frags = append(frags, append([]byte(nil), data[off:]...))
+			return frags
+		}
+		if !indexed {
+			if len(cur)+span > maxData && len(cur) > 0 {
+				flush()
+			}
+			cur = append(cur, data[off:off+span]...)
+			off += span
+			continue
+		}
+		group, variation := data[off], data[off+1]
+		objects := data[off+appFragmentOverhead : off+span]
+		i := 0
+		for i < count {
+			avail := maxData - len(cur) - appFragmentOverhead
+			if avail < perObject {
+				flush()
+				avail = maxData - appFragmentOverhead
+			}
+			n := avail / perObject
+			if n < 1 {
+				n = 1
+			}
+			if n > count-i {
+				n = count - i
+			}
+			sub := make([]byte, 0, appFragmentOverhead+n*perObject)
+			sub = append(sub, group, variation, al.QualIndex8, byte(n))
+			sub = append(sub, objects[i*perObject:(i+n)*perObject]...)
+			if len(cur)+len(sub) > maxData && len(cur) > 0 {
+				flush()
+			}
+			cur = append(cur, sub...)
+			i += n
+		}
+		off += span
+	}
+	flush()
+	return frags
+}
+
+// indexedBlock describes the object block at off. indexed is true only for a
+// qualifier-0x17 header whose events carry an explicit 1-octet index prefix;
+// perObject is the total octets of one such object. ok is false when the block
+// cannot be parsed.
+func indexedBlock(data []byte, off int) (span int, indexed bool, perObject, count int, ok bool) {
+	if off+3 > len(data) {
+		return 0, false, 0, 0, false
+	}
+	group, variation, qual := data[off], data[off+1], data[off+2]
+	if qual != al.QualIndex8 || off+4 > len(data) {
+		return blockSpan(data, off)
+	}
+	valueSize, known := eventValueSize(group, variation)
+	if !known {
+		return blockSpan(data, off)
+	}
+	count = int(data[off+3])
+	perObject = 1 + valueSize
+	span = appFragmentOverhead + count*perObject
+	return span, true, perObject, count, true
+}
+
+// blockSpan returns the octet span of a non-indexed object block, which is kept
+// whole. A count-qualified sequential block (0x07) has no derivable length
+// without the group layout, so the remainder of the buffer is attributed to it.
+func blockSpan(data []byte, off int) (span int, indexed bool, perObject, count int, ok bool) {
+	if off+3 > len(data) {
+		return 0, false, 0, 0, false
+	}
+	switch data[off+2] {
+	case al.QualAllObjects:
+		return 3, false, 0, 0, true
+	case al.QualCount8:
+		return len(data) - off, false, 0, 0, true
+	case al.QualStartStop8:
+		return 5, false, 0, 0, true
+	case al.QualCount16:
+		return 5, false, 0, 0, true
+	case al.QualRange16:
+		return 7, false, 0, 0, true
+	default:
+		return len(data) - off, false, 0, 0, true
+	}
+}
+
+// eventValueSize returns the octets of one event object's value (flags plus any
+// value and absolute time) excluding its 1-octet index prefix.
+func eventValueSize(group, variation uint8) (int, bool) {
+	switch group {
+	case 2:
+		switch variation {
+		case 1:
+			return 1, true
+		case 2:
+			return 7, true
+		}
+	case 22:
+		switch variation {
+		case 1:
+			return 5, true
+		case 5:
+			return 11, true
+		}
+	case 32:
+		switch variation {
+		case 1:
+			return 5, true
+		case 3:
+			return 11, true
+		}
+	}
+	return 0, false
+}
+
 // buildTransportFragments builds transport fragments from an APDU.
 func (o *Outstation) buildTransportFragments(apdu *al.APDU) [][]byte {
 	fragmenter := tl.NewFragmenter()
@@ -989,6 +1423,19 @@ func (o *Outstation) buildTransportFragments(apdu *al.APDU) [][]byte {
 func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
+	// A previous solicited response that was not delivered re-queued its events;
+	// release any reservation left by a staging that was never sent (for example
+	// a direct ProcessRequest caller that did not use the run loop), then start
+	// this request clean.
+	o.discardSolicitedLocked()
+
+	// Confirm is not a solicited request. Accept or ignore it without
+	// consuming the solicited application sequence and without a response.
+	if req.FuncCode == al.FuncConfirm {
+		o.acceptConfirmLocked(req.Control.Seq)
+		return nil, nil
+	}
 
 	// Increment sequence number
 	o.appSeq = (o.appSeq + 1) % 16
@@ -1122,18 +1569,17 @@ func requestObjectHeaderSize(data []byte, offset int) int {
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
 
-	// If no specific data requested, return all static data
-	if len(requestData) < 4 {
+	// A Group 60 Variation 2/3/4 header is 3 octets (qualifier 0x06 has no
+	// range byte). Shorter than that is not a parsed object header.
+	if len(requestData) < 3 {
 		result = o.buildAllStaticData()
+		o.refreshEventIINLocked()
 		return result
 	}
 
-	// classEventsRequested is true when the master asked for Class 1/2/3 event
-	// data (G60 V2/V3/V4). The v0 outstation has an empty event buffer stub
-	// (DNP3-088): such a poll deterministically returns no event objects. It
-	// must NOT fall back to "all static data" — an empty event-class response
-	// is the correct, protocol-valid reply.
-	classEventsRequested := false
+	// explicitEvent is true when the master asked for event data. An empty
+	// event response must not fall back to static points.
+	explicitEvent := false
 
 	// Parse object headers. Each header's size depends on its qualifier
 	// (IEEE 1815): all-objects (0x06) is 3 octets; start/stop (0x00) is 5 octets
@@ -1149,17 +1595,22 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildAllStaticData()...)
 		case 1: // Binary Input (static - no timestamp)
 			result = append(result, o.buildBinaryInputData(normalizeStaticVariation(group, variation))...)
-		case 2: // Binary Input Event (with timestamp)
-			result = append(result, o.buildBinaryInputEventData(variation)...)
+		case 2, 22, 32: // Binary, counter, and analog input events from the queue
+			explicitEvent = true
+			encoded, ids := o.encodeDirectRead(group, variation, requestData[offset:])
+			result = append(result, encoded...)
+			if len(ids) > 0 {
+				o.stageSolicitedRemovalLocked(ids)
+			}
 		case 10: // Binary Output (static - no timestamp)
 			result = append(result, o.buildBinaryOutputData(normalizeStaticVariation(group, variation))...)
 		case 20: // Counter (static - no timestamp)
 			result = append(result, o.buildCounterData(normalizeStaticVariation(group, variation))...)
-		case 21: // Counter Event (with timestamp)
+		case 21: // Frozen counter. Not a Group 22 event read.
 			result = append(result, o.buildCounterEventData(variation)...)
 		case 30: // Analog Input (static - no timestamp)
 			result = append(result, o.buildAnalogInputData(normalizeStaticVariation(group, variation))...)
-		case 31: // Analog Input Event (with timestamp)
+		case 31: // Frozen analog. Not a Group 32 event read.
 			result = append(result, o.buildAnalogInputEventData(variation)...)
 		case 40: // Analog Output (static - no timestamp)
 			result = append(result, o.buildAnalogOutputData(normalizeStaticVariation(group, variation))...)
@@ -1167,8 +1618,13 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			switch variation {
 			case 1: // Class 0 (integrity) — all static data
 				result = append(result, o.buildAllStaticData()...)
-			case 2, 3, 4: // Class 1/2/3 events — empty stub (DNP3-088)
-				classEventsRequested = true
+			case 2, 3, 4: // Class 1/2/3 events
+				explicitEvent = true
+				encoded, ids := o.encodeClassRead(EventClass(variation - 2))
+				result = append(result, encoded...)
+				if len(ids) > 0 {
+					o.stageSolicitedRemovalLocked(ids)
+				}
 			default:
 				// Unknown class variation — treat as Class 0.
 				result = append(result, o.buildAllStaticData()...)
@@ -1183,12 +1639,12 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	}
 
 	// Only fall back to "all static data" when nothing was recognized AND the
-	// master did not explicitly request an event class. An explicit event-class
-	// poll with an empty buffer returns an empty (object-less) response.
-	if len(result) == 0 && !classEventsRequested {
+	// master did not explicitly request event data. An explicit event read
+	// with an empty buffer returns an empty (object-less) response.
+	if len(result) == 0 && !explicitEvent {
 		result = o.buildAllStaticData()
 	}
-
+	o.refreshEventIINLocked()
 	return result
 }
 
@@ -2020,29 +2476,22 @@ func (o *Outstation) handleDirectOperateNoResp(req *al.APDU) (*al.APDU, error) {
 
 // handleEnableUnsolicited handles ENABLE UNSOLICITED requests.
 // Note: Called while holding lock from ProcessRequest.
+// Empty data enables Class 1, 2, and 3. Object headers enable only the
+// listed Group 60 variations.
 func (o *Outstation) handleEnableUnsolicited(req *al.APDU) (*al.APDU, error) {
-	o.unsolicited = true
-
-	resp := &al.APDU{
-		Control: al.AppControl{
-			FIR: true,
-			FIN: true,
-			CON: false,
-			UNS: false,
-			Seq: o.appSeq,
-		},
-		FuncCode: al.FuncResponse,
-		Data:     nil,
-	}
-	return resp, nil
+	o.applyUnsolicitedMask(req.Data, true)
+	return o.emptyResponse(), nil
 }
 
 // handleDisableUnsolicited handles DISABLE UNSOLICITED requests.
 // Note: Called while holding lock from ProcessRequest.
 func (o *Outstation) handleDisableUnsolicited(req *al.APDU) (*al.APDU, error) {
-	o.unsolicited = false
+	o.applyUnsolicitedMask(req.Data, false)
+	return o.emptyResponse(), nil
+}
 
-	resp := &al.APDU{
+func (o *Outstation) emptyResponse() *al.APDU {
+	return &al.APDU{
 		Control: al.AppControl{
 			FIR: true,
 			FIN: true,
@@ -2053,7 +2502,6 @@ func (o *Outstation) handleDisableUnsolicited(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil,
 	}
-	return resp, nil
 }
 
 // handleFreeze handles FREEZE requests.

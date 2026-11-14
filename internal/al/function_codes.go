@@ -10,32 +10,38 @@ const (
 	FuncNoAck               = 0x7F // No acknowledgment required
 
 	// Master to outstation codes
-	FuncRead                  = 0x01 // Read data
-	FuncWrite                 = 0x02 // Write data
-	FuncSelect                = 0x03 // Select for operate
-	FuncOperate               = 0x04 // Execute selected operation
-	FuncDirectOperate         = 0x05 // Direct operate (select + operate)
-	FuncDirectOperateNoResp   = 0x06 // Direct operate, no response
-	FuncFreeze                = 10   // Freeze counter values
-	FuncFileOpen              = 13   // Open file for transfer
-	FuncFileClose             = 14   // Close file
-	FuncFileRead              = 15   // Read file data
-	FuncFileWrite             = 16   // Write file data
-	FuncGetIdentifier         = 21   // Get device identification
-	FuncGetLabel              = 22   // Get device label
-	FuncGetDescription        = 23   // Get device description
-	FuncChangeFilename        = 24   // Change file name
-	FuncStartUpload           = 25   // Start file upload
-	FuncStartDownload         = 26   // Start file download
-	FuncAuthenticate          = 27   // Authenticate request
-	FuncAuthenticateConf      = 28   // Authentication confirmation
-	FuncAbort                 = 29   // Abort file transfer
-	FuncTimeSync              = 32   // Time synchronization
-	FuncRecordCurrentTime     = 33   // Record current time
-	FuncFreezeClear           = 37   // Freeze and clear counters
-	FuncFreezeAtTime          = 38   // Freeze at specified time
-	FuncEnableUnsolicited     = 41   // Enable unsolicited responses
-	FuncDisableUnsolicited    = 42   // Disable unsolicited responses
+	FuncRead                = 0x01 // Read data
+	FuncWrite               = 0x02 // Write data
+	FuncSelect              = 0x03 // Select for operate
+	FuncOperate             = 0x04 // Execute selected operation
+	FuncDirectOperate       = 0x05 // Direct operate (select + operate)
+	FuncDirectOperateNoResp = 0x06 // Direct operate, no response
+	FuncFreeze              = 10   // Freeze counter values
+	FuncFileOpen            = 13   // Open file for transfer
+	FuncFileClose           = 14   // Close file
+	FuncFileRead            = 15   // Read file data
+	FuncFileWrite           = 16   // Write file data
+	// The legacy decimal constant 21 ("get identifier") was removed: IEEE 1815
+	// assigns no request function to 21, and 21 (0x15) is DISABLE_UNSOLICITED.
+	// Keeping both meanings on one wire value was ambiguous, so the misleading
+	// symbol is gone rather than reassigned.
+	FuncGetLabel          = 22 // Get device label
+	FuncGetDescription    = 23 // Get device description
+	FuncChangeFilename    = 24 // Change file name
+	FuncStartUpload       = 25 // Start file upload
+	FuncStartDownload     = 26 // Start file download
+	FuncAuthenticate      = 27 // Authenticate request
+	FuncAuthenticateConf  = 28 // Authentication confirmation
+	FuncAbort             = 29 // Abort file transfer
+	FuncTimeSync          = 32 // Time synchronization
+	FuncRecordCurrentTime = 33 // Record current time
+	FuncFreezeClear       = 37 // Freeze and clear counters
+	FuncFreezeAtTime      = 38 // Freeze at specified time
+	// Enable and disable unsolicited match IEEE 1815 and pinned OpenDNP3
+	// 3.1.2 FunctionCode.h (0x14 / 0x15). The previous decimal values 41 and
+	// 42 were not those function codes.
+	FuncEnableUnsolicited     = 0x14 // Enable unsolicited responses
+	FuncDisableUnsolicited    = 0x15 // Disable unsolicited responses
 	FuncAssignClass           = 48   // Assign data to classes
 	FuncDelayMeasurement      = 51   // Measure communication delay
 	FuncRecordBatteryVoltage  = 52   // Record battery voltage
@@ -61,7 +67,6 @@ func FunctionCodeName(code uint8) string {
 		14:   "FILE_CLOSE",
 		15:   "FILE_READ",
 		16:   "FILE_WRITE",
-		21:   "GET_IDENTIFIER",
 		22:   "GET_LABEL",
 		23:   "GET_DESCRIPTION",
 		24:   "CHANGE_FILENAME",
@@ -74,8 +79,8 @@ func FunctionCodeName(code uint8) string {
 		33:   "RECORD_CURRENT_TIME",
 		37:   "FREEZE_CLEAR",
 		38:   "FREEZE_AT_TIME",
-		41:   "ENABLE_UNSOLICITED",
-		42:   "DISABLE_UNSOLICITED",
+		0x14: "ENABLE_UNSOLICITED",
+		0x15: "DISABLE_UNSOLICITED",
 		48:   "ASSIGN_CLASS",
 		51:   "DELAY_MEASUREMENT",
 		52:   "RECORD_BATTERY_VOLTAGE",
@@ -201,7 +206,6 @@ func Category(code uint8) FunctionCodeCategory {
 	if code == FuncEnableUnsolicited ||
 		code == FuncDisableUnsolicited ||
 		code == FuncAssignClass ||
-		code == FuncGetIdentifier ||
 		code == FuncGetLabel ||
 		code == FuncGetDescription {
 		return CategoryConfiguration

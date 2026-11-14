@@ -10,8 +10,8 @@ import (
 	"dnp3/pkg/dnp3/types"
 )
 
-// DeviceRestart is IIN1.7 (bit 0x01 of the first IIN octet).
-var deviceRestartIIN = [2]byte{0x01, 0x00}
+// DeviceRestart is mask 0x80 of the first IIN octet (OpenDNP3 DEVICE_RESTART).
+var deviceRestartIIN = [2]byte{0x80, 0x00}
 
 // TestAutoIntegrityOnRestart verifies DNP3-053: when AutoIntegrityOnRestart is
 // enabled, a response carrying the DeviceRestart IIN bit automatically triggers

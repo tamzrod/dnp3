@@ -377,6 +377,13 @@ var (
 	ErrConfirmSeqMismatch  = errors.New("confirmation sequence mismatch")
 	ErrResponseSeqMismatch = errors.New("response sequence mismatch")
 
+	// errIncompleteResponse reports that the bytes received so far are a valid
+	// prefix of a transport message that has not finished arriving. A solicited
+	// response may span multiple transport fragments delivered across separate
+	// Receive() calls, so the response wait keeps reading rather than treating a
+	// partial message as a failure.
+	errIncompleteResponse = errors.New("incomplete response")
+
 	// ErrIllegalStateTransition indicates a lifecycle method attempted an
 	// undefined state transition (DNP3-039). Surfaced rather than silently
 	// overwriting the state.
@@ -666,6 +673,15 @@ type Master struct {
 	// reassembler or interleave fragments on a single link (DNP3-025). A DNP3
 	// link is request/response; concurrent requests are safely queued.
 	reqMu sync.Mutex
+
+	// Unsolicited delivery state. The sequence and callback are guarded by
+	// unsolMu and must not call back into a method that takes reqMu.
+	// The peer address is a parameter of each wait, so concurrent requests
+	// do not share one slot.
+	unsolMu       sync.Mutex
+	unsolInit     bool
+	unsolLast     uint8
+	onUnsolicited func([]byte)
 
 	// outstanding tracks per-outstation in-flight requests so a concurrent
 	// request to the SAME outstation is rejected with ErrRequestOutstanding
@@ -1460,6 +1476,89 @@ func (m *Master) resetForReconnect() {
 	}
 }
 
+// maxHandshakePeerFrames bounds how many outstation-primary user-data frames
+// are set aside while one secondary handshake response is outstanding.
+// OpenDNP3 3.1.2 transmits a null unsolicited response as soon as the TCP
+// session is up, and that primary frame can arrive before the secondary ACK.
+const maxHandshakePeerFrames = 4
+
+// maxResponseBytes bounds the reassembly of one solicited response. The
+// transport fragments a single application message into 249-byte payloads, and
+// the APDU cap for this stack is far below this bound; the limit only stops an
+// endless stream of fragments from growing the buffer without limit.
+const maxResponseBytes = 64 * 1024
+
+// peerPrimaryUserData reports a primary user-data frame addressed from the
+// outstation to this master. It is not a secondary handshake response.
+// A mis-addressed frame is not matched, so it still fails the handshake.
+func peerPrimaryUserData(f *frame.Frame, outstationID, masterAddr uint16) bool {
+	if f == nil || f.Control.DIR || !f.Control.PRM {
+		return false
+	}
+	if f.SrcAddr != outstationID || f.DestAddr != masterAddr {
+		return false
+	}
+	switch f.Control.FuncCode {
+	case frame.FuncUnconfirmedUserData, frame.FuncConfirmedUserData:
+		return true
+	default:
+		return false
+	}
+}
+
+// awaitSecondaryHandshake reads until the next frame is not an addressed
+// outstation-primary user-data frame. Those frames are copied into pending
+// and do not consume a Reset Link retry. The returned buffer is validated
+// by the caller as the secondary ACK or Link Status response.
+func (m *Master) awaitSecondaryHandshake(deadline time.Time, outstationID uint16, pending *[][]byte) ([]byte, error) {
+	nominal := time.Duration(m.config.Timeout) * time.Millisecond
+	skipped := 0
+	for {
+		wait := constrainTimeout(m, nominal, deadline)
+		m.transport.SetTimeout(int(wait / time.Millisecond))
+		t0 := time.Now()
+		raw, err := m.transport.Receive()
+		if err != nil {
+			if m.waitHitBudget(deadline, nominal, wait, t0) {
+				return nil, ErrOperationDeadlineExceeded
+			}
+			return nil, err
+		}
+		f, derr := frame.Decode(raw)
+		if derr == nil && peerPrimaryUserData(f, outstationID, m.config.MasterAddress) {
+			skipped++
+			if skipped > maxHandshakePeerFrames {
+				return nil, fmt.Errorf("ignored %d outstation primary frames waiting for a secondary handshake response", skipped)
+			}
+			if pending != nil {
+				*pending = append(*pending, append([]byte(nil), raw...))
+			}
+			if m.deadlineExpired(deadline) {
+				return nil, ErrOperationDeadlineExceeded
+			}
+			continue
+		}
+		return raw, nil
+	}
+}
+
+// confirmHandshakeUnsolicited confirms outstation-primary fragments that
+// arrived before the link handshake finished. OpenDNP3 will not answer a
+// class read while a null unsolicited response is still awaiting confirm.
+func (m *Master) confirmHandshakeUnsolicited(pending [][]byte) {
+	for _, raw := range pending {
+		f, err := frame.Decode(raw)
+		if err != nil {
+			continue
+		}
+		app, err := m.processReceivedBytes(raw)
+		if err != nil {
+			continue
+		}
+		m.consumeUnsolicited(app, f.SrcAddr)
+	}
+}
+
 // performLinkHandshake performs the DNP3 link-layer handshake sequence.
 // This establishes the data link connection before application layer communication.
 // The sequence is:
@@ -1467,19 +1566,21 @@ func (m *Master) resetForReconnect() {
 //  2. Request Link Status → secondary Link Status response
 //
 // Connect succeeds only after both exchanges validate (DNP3-006/DNP3-007).
+// Outstation-primary user data seen while waiting is confirmed afterward.
 func (m *Master) performLinkHandshake(deadline time.Time) error {
+	var pending [][]byte
 	// Step 1: Send Reset Link Stations and validate the secondary ACK.
-	if err := m.sendResetLinkDeadline(deadline); err != nil {
+	if err := m.sendResetLinkDeadline(deadline, &pending); err != nil {
 		return fmt.Errorf("reset link failed: %w", err)
 	}
 
 	// Step 2: Request Link Status and validate the secondary Link Status
 	// response. This confirms the link is fully established in both
 	// directions before application communication begins.
-	if err := m.sendLinkStatusRequestDeadline(deadline); err != nil {
+	if err := m.sendLinkStatusRequestDeadline(deadline, &pending); err != nil {
 		return fmt.Errorf("link status request failed: %w", err)
 	}
-
+	m.confirmHandshakeUnsolicited(pending)
 	return nil
 }
 
@@ -1490,13 +1591,13 @@ func (m *Master) performLinkHandshake(deadline time.Time) error {
 // handshake is retried up to the NACK retry budget from the master's
 // RetryPolicy; non-NACK failures fail immediately.
 func (m *Master) sendResetLink() error {
-	return m.sendResetLinkDeadline(time.Time{})
+	return m.sendResetLinkDeadline(time.Time{}, nil)
 }
 
 // sendResetLinkDeadline issues Reset Link Stations with each blocking receive
 // capped to the operation's remaining wall-clock budget (VEC-01 B4 F2). A zero
 // deadline means no cap (the legacy per-step timeout applies unchanged).
-func (m *Master) sendResetLinkDeadline(deadline time.Time) error {
+func (m *Master) sendResetLinkDeadline(deadline time.Time, pending *[][]byte) error {
 	// Build Reset Link Stations frame (no data needed)
 	// This tells the outstation to clear buffers and reset the FCB counter
 	for _, o := range m.outstations {
@@ -1530,16 +1631,11 @@ func (m *Master) sendResetLinkDeadline(deadline time.Time) error {
 			}
 
 			// The outstation acknowledges Reset Link Stations at the data-link
-			// layer. Consume and validate that frame here so the next application
-			// request reads an application response rather than a stale or invalid
-			// handshake ACK.
-			nominal := time.Duration(m.config.Timeout) * time.Millisecond
-			wait := constrainTimeout(m, nominal, deadline)
-			m.transport.SetTimeout(int(wait / time.Millisecond))
-			t0 := time.Now()
-			raw, err := m.transport.Receive()
+			// layer. A primary user-data frame that arrives first is not that
+			// ACK; keep reading until the secondary frame or the skip bound.
+			raw, err := m.awaitSecondaryHandshake(deadline, o.ID, pending)
 			if err != nil {
-				if m.waitHitBudget(deadline, nominal, wait, t0) {
+				if errors.Is(err, ErrOperationDeadlineExceeded) {
 					return ErrOperationDeadlineExceeded
 				}
 				return fmt.Errorf("failed to receive reset acknowledgment: %w", err)
@@ -1614,13 +1710,13 @@ func validateResetLinkACK(raw []byte, outstationID, masterAddr uint16) error {
 // of the link handshake (DNP3-007): Connect succeeds only after a valid Link
 // Status response.
 func (m *Master) sendLinkStatusRequest() error {
-	return m.sendLinkStatusRequestDeadline(time.Time{})
+	return m.sendLinkStatusRequestDeadline(time.Time{}, nil)
 }
 
 // sendLinkStatusRequestDeadline issues Request Link Status with each blocking
 // receive capped to the operation's remaining wall-clock budget (VEC-01 B4 F2).
 // A zero deadline means no cap (the legacy per-step timeout applies unchanged).
-func (m *Master) sendLinkStatusRequestDeadline(deadline time.Time) error {
+func (m *Master) sendLinkStatusRequestDeadline(deadline time.Time, pending *[][]byte) error {
 	for _, o := range m.outstations {
 		req := &frame.Frame{
 			Control: frame.Control{
@@ -1640,13 +1736,9 @@ func (m *Master) sendLinkStatusRequestDeadline(deadline time.Time) error {
 			return fmt.Errorf("failed to send link status request: %w", err)
 		}
 
-		nominal := time.Duration(m.config.Timeout) * time.Millisecond
-		wait := constrainTimeout(m, nominal, deadline)
-		m.transport.SetTimeout(int(wait / time.Millisecond))
-		t0 := time.Now()
-		raw, err := m.transport.Receive()
+		raw, err := m.awaitSecondaryHandshake(deadline, o.ID, pending)
 		if err != nil {
-			if m.waitHitBudget(deadline, nominal, wait, t0) {
+			if errors.Is(err, ErrOperationDeadlineExceeded) {
 				return ErrOperationDeadlineExceeded
 			}
 			return fmt.Errorf("failed to receive link status response: %w", err)
@@ -2043,7 +2135,7 @@ func (m *Master) sendControlOnce(ctx context.Context, gen uint64, req *al.APDU, 
 	}
 
 	// Wait for the response (single wait, single attempt).
-	resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+	resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 	if err != nil {
 		wrapped, _ := m.markDisconnected(err)
 		m.quarantineOutstation(outstationID)
@@ -2412,7 +2504,7 @@ func (m *Master) sendWithRetry(req *al.APDU, outstationID uint16) error {
 		}
 
 		// Wait for response
-		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
 			m.diag(DiagWarn, "receive", seq, "response failed", err)
@@ -2580,7 +2672,7 @@ func (m *Master) performRequest(req *al.APDU, outstationID uint16, deadline time
 		}
 
 		// Wait for response.
-		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline))
+		resp, err := m.waitForResponseTimeout(constrainTimeout(m, time.Duration(m.config.Timeout)*time.Millisecond, deadline), outstationID)
 		if err != nil {
 			lastErr, _ = m.markDisconnected(err)
 			m.diag(DiagWarn, "receive", seq, "response failed", err)
@@ -2815,17 +2907,27 @@ func (m *Master) waitForConfirmationTimeout(stepTimeout time.Duration, expectedS
 // unchanged so the caller's markDisconnected wraps it with ErrTransportDisconnected
 // (unchanged behavior).
 func (m *Master) waitForResponse() ([]byte, error) {
-	return m.waitForResponseTimeout(time.Duration(m.config.Timeout) * time.Millisecond)
+	return m.waitForResponseTimeout(time.Duration(m.config.Timeout)*time.Millisecond, 0)
 }
 
 // waitForResponseTimeout waits for a response with stepTimeout already capped to
-// the operation's remaining budget (VEC-01 B4 F2).
-func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, error) {
+// the operation's remaining budget (VEC-01 B4 F2). peer is the outstation the
+// solicited request was sent to, and is used only to confirm an unsolicited
+// fragment that arrives during the wait.
+func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) ([]byte, error) {
 	// VEC-01 B4 F2: stepTimeout is the response timeout capped to the
 	// operation's remaining wall-clock budget by the caller. The overall wait is
 	// bounded by this single deadline so that a peer emitting repeated bare
 	// link-layer ACKs cannot extend the wait indefinitely.
 	deadline := time.Now().Add(stepTimeout)
+	// A solicited response may span several transport fragments, and the
+	// transport delivers one data-link frame per Receive(). Accumulate the raw
+	// frames of the in-progress message and re-run the DLL+TL path over the whole
+	// buffer each time; errIncompleteResponse means more fragments are needed.
+	var acc []byte
+	// appConfirmed counts the non-final application fragments already confirmed on
+	// this response, so a re-parse of the growing buffer does not confirm twice.
+	appConfirmed := 0
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -2843,15 +2945,185 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration) ([]byte, erro
 		}
 		// A conformant outstation ACKs confirmed user data at the link layer
 		// (a bare secondary ACK carrying no transport fragment) before sending
-		// its solicited application response. Consume that ACK and keep waiting
-		// within the same bounded deadline rather than treating it as the
-		// response or triggering a blind retry. NACKs are surfaced earlier by
+		// its solicited application response. Skip it only when the whole receive
+		// is exactly that one bare frame, so a segment that also carries a
+		// transport fragment is not dropped. NACKs are surfaced earlier by
 		// processReceivedBytes, so only ACK is skipped here.
+		if len(data) == frame.EncodedSize(0) {
+			if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
+				f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
+				continue
+			}
+		}
+		acc = append(acc, data...)
+		if len(acc) > maxResponseBytes {
+			return nil, fmt.Errorf("%w: response exceeds %d bytes", ErrInvalidResponse, maxResponseBytes)
+		}
+		// An unsolicited fragment has its own application sequence. Confirm it
+		// when it is in order and keep waiting for the solicited response.
+		app, aerr := m.processReceivedBytes(acc)
+		if errors.Is(aerr, errIncompleteResponse) {
+			// A multi-fragment solicited response requires an application-layer
+			// confirmation per fragment: OpenDNP3's outstation sets CON on every
+			// fragment and will not send the next until the current one is
+			// confirmed. Confirm each complete fragment once. A failed confirm
+			// means the response is not delivered; fail rather than wait forever.
+			if cerr := m.confirmPendingAppFragments(acc, peer, &appConfirmed); cerr != nil {
+				return nil, cerr
+			}
+			continue
+		}
+		if aerr == nil && m.consumeUnsolicited(app, peer) {
+			acc = acc[:0]
+			appConfirmed = 0
+			continue
+		}
+		// The solicited response is complete. Confirm every CON fragment not yet
+		// confirmed, including the final one: OpenDNP3 sets CON on the last
+		// fragment of a multi-fragment solicited response too and stays in the
+		// confirm-wait state until it is confirmed. A failed confirm is an
+		// indeterminate outcome: fail closed instead of reporting success.
+		if cerr := m.confirmPendingAppFragments(acc, peer, &appConfirmed); cerr != nil {
+			return nil, cerr
+		}
+		return acc, nil
+	}
+}
+
+// confirmPendingAppFragments sends a solicited application confirmation for
+// every complete application fragment in data that carries CON and has not yet
+// been confirmed. done counts the fragments already handled; it advances past
+// each fragment so a re-parse of the growing buffer does not confirm twice.
+//
+// Each fragment is confirmed with its own sequence: OpenDNP3 advances the
+// solicited sequence per fragment and requires the matching confirmation before
+// sending the next.
+func (m *Master) confirmPendingAppFragments(data []byte, peer uint16, done *int) error {
+	frags, err := m.parseAppFragments(data)
+	if err != nil || len(frags) == 0 {
+		return nil
+	}
+	for i := *done; i < len(frags); i++ {
+		if frag, derr := al.Decode(frags[i]); derr == nil && frag.Control.CON {
+			if serr := m.sendApplicationConfirm(frag.Control.Seq, peer, false); serr != nil {
+				// The confirmation was not delivered. Do NOT advance done past this
+				// fragment: it is unconfirmed, so the peer stays in confirm-wait and
+				// the outcome is indeterminate. Surface the classified error instead
+				// of reporting a completed response.
+				wrapped, _ := m.markDisconnected(serr)
+				return wrapped
+			}
+		}
+		*done = i + 1
+	}
+	return nil
+}
+
+// SetUnsolicitedCallback registers the handler for an accepted unsolicited
+// application fragment. The callback runs without reqMu and must not start
+// another request on this master.
+func (m *Master) SetUnsolicitedCallback(fn func([]byte)) {
+	m.unsolMu.Lock()
+	m.onUnsolicited = fn
+	m.unsolMu.Unlock()
+}
+
+// ResetUnsolicitedSession accepts the next unsolicited sequence as the first
+// sequence of a new connection.
+func (m *Master) ResetUnsolicitedSession() {
+	m.unsolMu.Lock()
+	m.unsolInit = false
+	m.unsolMu.Unlock()
+}
+
+// consumeUnsolicited reports whether app is an unsolicited fragment.
+// In-order fragments are delivered once and confirmed. A duplicate of the
+// last accepted sequence is confirmed and not delivered. Any other sequence
+// is neither confirmed nor delivered.
+func (m *Master) consumeUnsolicited(app []byte, peer uint16) bool {
+	resp, err := al.DecodeResponse(app)
+	if err != nil {
+		return false
+	}
+	if resp.Header.FuncCode != al.FuncUnsolicitedResponse && !resp.Header.Control.UNS {
+		return false
+	}
+	seq := resp.Header.Control.Seq
+	m.unsolMu.Lock()
+	deliver := false
+	confirm := false
+	switch {
+	case !m.unsolInit:
+		m.unsolInit = true
+		m.unsolLast = seq
+		deliver = true
+		confirm = true
+	case seq == m.unsolLast:
+		confirm = true
+	case seq == (m.unsolLast+1)%16:
+		m.unsolLast = seq
+		deliver = true
+		confirm = true
+	}
+	cb := m.onUnsolicited
+	m.unsolMu.Unlock()
+	if deliver && cb != nil {
+		cb(app)
+	}
+	if confirm && resp.Header.Control.CON {
+		_ = m.sendApplicationConfirm(seq, peer, true)
+	}
+	return true
+}
+
+// PollUnsolicited waits for one unsolicited fragment. It holds the request
+// lock only for this receive, so it does not run beside a solicited read.
+func (m *Master) PollUnsolicited(peer uint16, wait time.Duration) error {
+	if !m.isLinkUp() {
+		return ErrNotConnected
+	}
+	if wait <= 0 {
+		wait = 200 * time.Millisecond
+	}
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+	m.transport.SetTimeout(int((wait + time.Millisecond - 1) / time.Millisecond))
+	defer m.transport.SetTimeout(m.config.Timeout)
+
+	deadline := time.Now().Add(wait)
+	var acc []byte
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("%w: no unsolicited response within %v", ErrTimeout, wait)
+		}
+		m.transport.SetTimeout(int((remaining + time.Millisecond - 1) / time.Millisecond))
+		data, err := m.transport.Receive()
+		if err != nil {
+			return err
+		}
 		if f, derr := frame.Decode(data); derr == nil && !f.Control.PRM &&
 			f.Control.FuncCode == frame.FuncAck && len(f.Data) == 0 {
 			continue
 		}
-		return data, nil
+		// A single unsolicited response may span several transport fragments, one
+		// data-link frame per Receive(). Accumulate raw frames and retry until the
+		// message is complete.
+		acc = append(acc, data...)
+		if len(acc) > maxResponseBytes {
+			return fmt.Errorf("%w: unsolicited response exceeds %d bytes", ErrInvalidResponse, maxResponseBytes)
+		}
+		app, err := m.processReceivedBytes(acc)
+		if errors.Is(err, errIncompleteResponse) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !m.consumeUnsolicited(app, peer) {
+			return fmt.Errorf("%w: received a solicited frame while waiting for unsolicited data", ErrInvalidResponse)
+		}
+		return nil
 	}
 }
 
@@ -2905,16 +3177,12 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 		o.UpdateIIN(resp.IIN.Bytes())
 	}
 
-	// DNP3-054: if the outstation's response requested an application-layer
-	// confirmation (CON=1), the master must send a confirm APDU — same sequence,
-	// FuncCode 0 (Confirm), CON=0 — before processing the response data. The
-	// confirm is sent as unconfirmed user data so it does not require a
-	// link-layer ACK and cannot desync the ping-pong request/response path.
-	if resp.Header.Control.CON {
-		if err := m.sendApplicationConfirm(resp.Header.Control.Seq, outstationID); err != nil {
-			return nil, fmt.Errorf("send application confirm: %w", err)
-		}
-	}
+	// DNP3-054: an application-layer confirmation (CON=1) is sent from the
+	// response receive path (waitForResponseTimeout), where each application
+	// fragment's own sequence is available. A multi-fragment response carries a
+	// distinct sequence per fragment, so confirming from the joined APDU (which
+	// keeps the first fragment's sequence for the DNP3-010 check) would send the
+	// wrong sequence.
 
 	// DNP3-013: react to critical IIN bits.
 	m.reactToIIN(outstationID, resp.IIN, o)
@@ -2926,8 +3194,14 @@ func (m *Master) processResponse(data []byte, outstationID uint16, expectedSeq u
 // to outstationID for the response carrying seq. The confirm is a single
 // FIR|FIN APDU with FuncCode 0 (Confirm) and CON=0, sent as unconfirmed user
 // data (no link-layer ACK expected).
-func (m *Master) sendApplicationConfirm(seq uint8, outstationID uint16) error {
+func (m *Master) sendApplicationConfirm(seq uint8, outstationID uint16, unsolicited bool) error {
 	confirm := al.NewConfirm(seq)
+	// IEEE 1815: the confirmation of an unsolicited fragment carries UNS.
+	// A solicited confirmation leaves UNS clear. OpenDNP3 ignores a null
+	// unsolicited confirmation that does not set the bit.
+	if unsolicited {
+		confirm.Control.UNS = true
+	}
 	data := confirm.Encode()
 	fragments := m.fragmenter.Fragmentize(data)
 	for _, frag := range fragments {
@@ -2958,8 +3232,8 @@ func (m *Master) sendApplicationConfirm(seq uint8, outstationID uint16) error {
 
 // reactToIIN applies the minimal required Master reaction to received IIN
 // bits (DNP3-013):
-//   - DeviceRestart (IIN1.7): clear local state and flag re-integrity.
-//   - NeedTime (IIN1.4): record that a time sync is required (stub).
+//   - DeviceRestart (octet 1 mask 0x80): clear local state and flag re-integrity.
+//   - NeedTime (octet 1 mask 0x10): record that a time sync is required (stub).
 //
 // Both also invoke the optional callback hooks (logging/stub). Full integrity
 // polling and time objects are later roadmap items.
@@ -2998,20 +3272,42 @@ func (m *Master) reactToIIN(outstationID uint16, iin al.IIN, o *Outstation) {
 //   - a secondary NACK frame (PRM=0, FuncNack) is surfaced as ErrLinkNACK
 //     (the link is alive but rejected the frame; retryable).
 func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
-	// Reset reassembler for new response
+	frags, err := m.parseAppFragments(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(frags) == 0 {
+		return nil, errIncompleteResponse
+	}
+	// The run is complete only once the final application fragment (FIN=1) has
+	// arrived; until then the caller keeps reading.
+	if last, lerr := al.Decode(frags[len(frags)-1]); lerr == nil && !last.Control.FIN {
+		return nil, errIncompleteResponse
+	}
+	if len(frags) == 1 {
+		return frags[0], nil
+	}
+	return joinAppFragments(frags), nil
+}
+
+// parseAppFragments decodes all complete transport messages in data, in order.
+// Each FIN-terminated transport message is one application fragment; the
+// reassembler is reset between messages so consecutive application fragments of
+// one response are not conflated. It surfaces the same link-layer error classes
+// as the receive path (ErrCRCError, ErrLinkNACK).
+func (m *Master) parseAppFragments(data []byte) ([][]byte, error) {
 	m.reassembler.Reset()
 
-	var completeData []byte
-
-	// Parse all DLL frames in the received data
+	var frags [][]byte
 	offset := 0
 	for offset < len(data) {
 		// Decode DLL frame
 		dllFrame, err := frame.Decode(data[offset:])
 		if err != nil {
-			// If we got complete data, return it
-			if len(completeData) > 0 {
-				return completeData, nil
+			// If fragments were already parsed, return them; trailing bytes may be a
+			// partial frame that a later read completes.
+			if len(frags) > 0 {
+				return frags, nil
 			}
 
 			// DNP3-034: surface CRC validation failures as a distinct,
@@ -3056,24 +3352,45 @@ func (m *Master) processReceivedBytes(data []byte) ([]byte, error) {
 			continue // Skip malformed fragments
 		}
 
-		// Push fragment to reassembler - returns complete message when FIN received
+		// Push fragment to reassembler - returns one complete application fragment
+		// when FIN is received.
 		result, err := m.reassembler.Push(tlFrag)
 		if err != nil {
 			return nil, fmt.Errorf("reassembly error: %w", err)
 		}
 
 		if result != nil {
-			completeData = result
+			frags = append(frags, result)
+			// A FIN ends this transport message; the next fragment (if any) starts a
+			// new application fragment with its own FIR.
+			m.reassembler.Reset()
 		}
 
 	}
 
-	// Check if we have complete application data
-	if len(completeData) == 0 {
-		return nil, fmt.Errorf("no complete response received")
-	}
+	return frags, nil
+}
 
-	return completeData, nil
+// joinAppFragments concatenates the object data of consecutive application
+// fragments into one APDU. The first fragment's control byte, function code, and
+// IIN are authoritative; each fragment repeats them, so only the object data
+// (octets after the 4-octet header) of every later fragment is appended.
+func joinAppFragments(frags [][]byte) []byte {
+	first, err := al.Decode(frags[0])
+	if err != nil {
+		return frags[0]
+	}
+	out := make([]byte, 0, 4096)
+	out = append(out, first.Control.Header(), first.FuncCode)
+	out = append(out, first.Data...)
+	for _, f := range frags[1:] {
+		frag, derr := al.Decode(f)
+		if derr != nil || len(frag.Data) < 2 {
+			continue
+		}
+		out = append(out, frag.Data[2:]...)
+	}
+	return out
 }
 
 // isCRCError reports whether a frame.Decode error is a CRC validation failure

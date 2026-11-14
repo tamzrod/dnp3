@@ -1,0 +1,8 @@
+STATE OPEN
+IIN lsb=00 msb=00
+BIN idx=9 value=0 flags=01 time=699685567008 gv=0202 qual=17 unsol=1
+IIN lsb=02 msb=00
+BIN idx=13 value=1 flags=81 time=676368550000 gv=0202 qual=17 unsol=1
+IIN lsb=02 msb=00
+END open=1
+STATE CLOSED

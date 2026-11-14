@@ -8,7 +8,7 @@ import (
 )
 
 // TestTransportHeaderEncoding tests transport header byte encoding
-// Header format: FIR=0x80, FIN=0x40, Seq=0x3F
+// Header format (IEEE 1815 Section 6.2 / OpenDNP3 3.1.2): FIN=0x80, FIR=0x40, Seq=0x3F
 func TestTransportHeaderEncoding(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -18,9 +18,9 @@ func TestTransportHeaderEncoding(t *testing.T) {
 		expected byte
 	}{
 		{"single_fragment", true, true, 0, 0xC0},    // 0x80 | 0x40 | 0x00
-		{"first_of_multi", true, false, 5, 0x85},    // 0x80 | 0x05
+		{"first_of_multi", true, false, 5, 0x45},    // 0x40 | 0x05
 		{"middle_fragment", false, false, 10, 0x0A}, // 0x0A
-		{"final_fragment", false, true, 15, 0x4F},   // 0x40 | 0x0F
+		{"final_fragment", false, true, 15, 0x8F},   // 0x80 | 0x0F
 		{"max_seq_first", true, true, 15, 0xCF},     // 0x80 | 0x40 | 0x0F
 	}
 
@@ -50,9 +50,9 @@ func TestTransportHeaderDecoding(t *testing.T) {
 		wantSeq uint8
 	}{
 		{"single", 0xC0, true, true, 0},
-		{"first", 0x85, true, false, 5},
+		{"first", 0x45, true, false, 5},
 		{"middle", 0x1A, false, false, 0x1A}, // Seq is 0x3F mask
-		{"final", 0x4F, false, true, 15},
+		{"final", 0x8F, false, true, 15},
 		{"max", 0xCF, true, true, 15},
 	}
 

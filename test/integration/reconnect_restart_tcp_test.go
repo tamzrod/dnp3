@@ -26,7 +26,7 @@ import (
 //     Active and never blocks.)
 //
 //  2. DeviceRestart IIN (TestDeviceRestartNotRaisableOnV0Outstation): the
-//     DeviceRestart IIN bit (IIN1.7) is not raisable via the v0 public
+//     DeviceRestart IIN bit (octet 1 mask 0x80) is not raisable via the v0 public
 //     outstation API (no SetDeviceRestart/SetRequestHandler surface; the
 //     outstation never sets o.iin.DeviceRestart). The master's DNP3-053
 //     auto-integrity-on-DeviceRestart path is therefore exercised only against
@@ -154,7 +154,7 @@ func TestReconnectOnTCPNoStuckState(t *testing.T) {
 
 // TestDeviceRestartNotRaisableOnV0Outstation characterizes the DeviceRestart
 // half of MEXT-025: the v0 public outstation never raises the DeviceRestart IIN
-// bit (IIN1.7), so a normal real-TCP exchange carries a clean IIN. The master's
+// bit (octet 1 mask 0x80), so a normal real-TCP exchange carries a clean IIN. The master's
 // DNP3-053 auto-integrity-on-DeviceRestart path is exercised against the
 // in-memory simulator (auto_integrity_test.go) and awaits a raisable outstation
 // to be exercised over real TCP (post-MVP). This test pins the clean-IIN
@@ -203,13 +203,13 @@ func TestDeviceRestartNotRaisableOnV0Outstation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	// IIN1.7 (DeviceRestart) is bit 0x01 of the first IIN octet. The v0
+	// DeviceRestart is mask 0x80 of the first IIN octet. The v0
 	// outstation must not raise it on a normal exchange.
 	if len(resp.IIN) < 1 {
 		t.Fatalf("response has no IIN bytes: %v", resp.IIN)
 	}
-	if resp.IIN[0]&0x01 != 0 {
-		t.Fatalf("v0 outstation raised DeviceRestart (IIN1.7) on a normal exchange: IIN=%v — "+
+	if resp.IIN[0]&0x80 != 0 {
+		t.Fatalf("v0 outstation raised DeviceRestart (0x80) on a normal exchange: IIN=%v — "+
 			"the v0 outstation must not raise DeviceRestart", resp.IIN)
 	}
 }

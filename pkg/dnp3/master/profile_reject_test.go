@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
 )
@@ -60,15 +63,38 @@ func TestOperateAcceptsDirectOperate(t *testing.T) {
 	}
 }
 
-// TestUnsolicitedRejected asserts the unsolicited enable/disable APIs return
-// ErrUnsupportedOption (DNP3-030).
-func TestUnsolicitedRejected(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubStatusEchoTransport{commandStatus: 0})
+// fnCaptureTransport records application function codes and answers with an
+// empty response so enable/disable can complete.
+type fnCaptureTransport struct {
+	pubStatusEchoTransport
+	funcs []uint8
+}
 
-	if err := cc.EnableUnsolicited(context.Background()); !errors.Is(err, dnp3.ErrUnsupportedOption) {
-		t.Fatalf("EnableUnsolicited error = %v, want ErrUnsupportedOption", err)
+func (t *fnCaptureTransport) Send(data []byte) error {
+	if f, err := frame.Decode(data); err == nil {
+		if frag, err := tl.DecodeFragment(f.Data); err == nil {
+			if apdu, err := al.Decode(frag.Data); err == nil {
+				t.funcs = append(t.funcs, apdu.FuncCode)
+			}
+		}
 	}
-	if err := cc.DisableUnsolicited(context.Background()); !errors.Is(err, dnp3.ErrUnsupportedOption) {
-		t.Fatalf("DisableUnsolicited error = %v, want ErrUnsupportedOption", err)
+	return t.pubStatusEchoTransport.Send(data)
+}
+
+// TestUnsolicitedSendsIEEEFunctionCodes asserts enable/disable are real
+// requests on the explicit, non-default experimental event delivery path. The
+// published supported profile is unchanged; this test only locks the wire
+// function codes 0x14 and 0x15 when the experimental switch is enabled.
+func TestUnsolicitedSendsIEEEFunctionCodes(t *testing.T) {
+	tr := &fnCaptureTransport{}
+	cc := newConnectedExperimentalClientWithTransport(t, tr)
+	if err := cc.EnableUnsolicited(context.Background()); err != nil {
+		t.Fatalf("EnableUnsolicited: %v", err)
+	}
+	if err := cc.DisableUnsolicited(context.Background()); err != nil {
+		t.Fatalf("DisableUnsolicited: %v", err)
+	}
+	if len(tr.funcs) != 2 || tr.funcs[0] != 0x14 || tr.funcs[1] != 0x15 {
+		t.Fatalf("function codes = %v, want [0x14 0x15]", tr.funcs)
 	}
 }

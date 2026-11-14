@@ -261,11 +261,11 @@ func TestOperateG41V4ConflictingIIN(t *testing.T) {
 		wantQuarant bool
 	}{
 		{"clear IIN + SUCCESS echo", [2]byte{0x00, 0x00}, CommandStatusSuccess, false, false},
-		{"non-error IIN (Class1Events)", [2]byte{0x40, 0x00}, CommandStatusSuccess, false, false},
-		{"ParameterError contradicts SUCCESS", [2]byte{0x00, 0x20}, CommandStatusBadFormat, false, false},
-		{"ObjectUnknown contradicts SUCCESS", [2]byte{0x00, 0x40}, CommandStatusNotSupported, false, false},
-		{"LocalControl contradicts SUCCESS", [2]byte{0x04, 0x00}, CommandStatusLocal, false, false},
-		{"BufferOverflow ambiguity fails closed", [2]byte{0x00, 0x10}, CommandStatusUnknown, true, true},
+		{"non-error IIN (Class1Events)", [2]byte{0x02, 0x00}, CommandStatusSuccess, false, false},
+		{"ParameterError contradicts SUCCESS", [2]byte{0x00, 0x04}, CommandStatusBadFormat, false, false},
+		{"ObjectUnknown contradicts SUCCESS", [2]byte{0x00, 0x02}, CommandStatusNotSupported, false, false},
+		{"LocalControl contradicts SUCCESS", [2]byte{0x20, 0x00}, CommandStatusLocal, false, false},
+		{"BufferOverflow ambiguity fails closed", [2]byte{0x00, 0x08}, CommandStatusUnknown, true, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
