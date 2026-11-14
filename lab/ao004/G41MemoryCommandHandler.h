@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <iostream>
 
 #include <opendnp3/gen/CommandStatus.h>
 #include <opendnp3/outstation/ICommandHandler.h>
@@ -83,6 +84,10 @@ public:
         last_.variation = 2;
         last_.i16 = command.value;
         last_.status = opendnp3::CommandStatus::SUCCESS;
+        // Bounded, memory-only observability for the authorized AO-005 interop
+        // evidence run: one line per accepted command, mirroring the Go fixture.
+        std::cout << "ao005-g41-peer: accepted group=41 variation=2 index=" << index
+                  << " value=" << command.value << " count=" << (++acceptCount_) << std::endl;
         return last_.status;
     }
 
@@ -105,6 +110,8 @@ public:
         last_.variation = 1;
         last_.i32 = command.value;
         last_.status = opendnp3::CommandStatus::SUCCESS;
+        std::cout << "ao005-g41-peer: accepted group=41 variation=1 index=" << index
+                  << " value=" << command.value << " count=" << (++acceptCount_) << std::endl;
         return last_.status;
     }
 
@@ -129,6 +136,9 @@ public:
         last_.variation = 3;
         std::memcpy(&last_.f32_bits, &command.value, sizeof(last_.f32_bits));
         last_.status = opendnp3::CommandStatus::SUCCESS;
+        std::cout << "ao005-g41-peer: accepted group=41 variation=3 index=" << index
+                  << " value=" << command.value << " bits=0x" << std::hex
+                  << last_.f32_bits << std::dec << " count=" << (++acceptCount_) << std::endl;
         return last_.status;
     }
 
@@ -152,6 +162,9 @@ public:
         last_.variation = 4;
         std::memcpy(&last_.f64_bits, &command.value, sizeof(last_.f64_bits));
         last_.status = opendnp3::CommandStatus::SUCCESS;
+        std::cout << "ao005-g41-peer: accepted group=41 variation=4 index=" << index
+                  << " value=" << command.value << " bits=0x" << std::hex
+                  << last_.f64_bits << std::dec << " count=" << (++acceptCount_) << std::endl;
         return last_.status;
     }
 
@@ -166,6 +179,7 @@ private:
     }
 
     G41Observed last_;
+    uint64_t acceptCount_ = 0;
 };
 
 } // namespace ao004

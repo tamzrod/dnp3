@@ -19,6 +19,45 @@ Status: TASK_IN_PROGRESS
 **CURRENT: AO-005.** The owner authorized bounded G41 V1–V4 Direct Operate-with-response implementation and independent-wire verification. Execution contract: `workflow/active_work/AO-005.md`; technical precheck: `docs/verification/AO-005-PRECHECK.md`. EVT-001 is archived and closed; the published v0 supported profile stays unchanged, with G41 **UNSUPPORTED**. No AO-005 profile promotion, merge, release or deployment is authorized. `QUEUED: NONE`. Use CWAL/KDE gates and preserve evidence provenance. Shell/Go/interop tests must actually be run and reported; task activation alone is not implementation acceptance.
 
 
+## AO-005 checkpoint — independent G41 PCAP evidence — 2026-11-14 — cloud
+
+Bounded `operation cwal` on `work` under the *"AO-005 independent G41 PCAP
+corrective iteration"* authorization. Markers unchanged: `AO-005 / QUEUED NONE /
+TASK_IN_PROGRESS`. G41 stays **UNSUPPORTED**; `active_work/supported-profile.md`
+unchanged (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`).
+
+- **Capture-tool correction (lab-only):** added `tcpdump` 4.99.3 and
+  `python3-minimal` to the `lab/ao004` image allowlist; added the isolated
+  capture runner `lab/ao004/ao005-pcap-runner.sh`, an independent first-principles
+  decoder `lab/ao004/ao005-decode-pcap.py`, and the direction-B Go master harness
+  `lab/ao004/go-master/main.go`. No production protocol code changed.
+- **Determinism fix (harness-only):** the one-shot C++ master now waits (bounded)
+  for the channel to reach OPEN via an `IChannelListener` before issuing its
+  command, removing the earlier `FAILURE_NO_COMMS` connect/operate race. Both
+  directions then ran **8/8 deterministically**.
+- **Isolation:** container `--network none`; unmodified `lab/vec01/lab-netns.sh`
+  two-namespace one-veth topology (`10.77.0.1` ↔ `10.77.0.2`); unmodified
+  `lab/vec01/preflight.sh` → **`GATE_B_PREFLIGHT: PASS`** (no default route,
+  `ip_forward=0`, no DNS, no docker socket).
+- **Raw PCAP:** `tcpdump -i veth-m -s 0 -U` on the master veth, **0 packets
+  dropped**. `raw/ao005-dirA.pcap`
+  `sha256:85e96847651cb4b3b8bed0271b4543d3834f058fc8d35f3af5acb8a70ea59741`,
+  `raw/ao005-dirB.pcap`
+  `sha256:d71224368dbd0d7ff80113f29a2c7b16536e1aadc5b0d36f48a2a171841bbe38`.
+- **Independent decode:** all link header/block CRCs **OK**; 16/16 cases decode
+  with the exact typed value echo (`int32:2300`, `int16:12345`, `float32:1.5`
+  `0x3fc00000`, `float64:1.5` `0x3ff8000000000000`) and per-point status `0x00`
+  (idx0 SUCCESS) / `0x0c` (idx1 OUT_OF_RANGE); IIN `0x0000` (A) / `0x0090` (B);
+  no false SUCCESS. Bundle: `active_work/testdata/external/ao005-pcap-2026-11-14/`.
+- **Gates:** `gofmt` clean; `go vet ./...`, `go build ./...`, `go test ./...`
+  (25 pkgs), `-race` (affected pkgs), `scripts/verify-external-mvp.sh`,
+  `git diff --check`, `scripts/cwal-check.sh` — all PASS.
+- **Evidence:** `docs/verification/AO-005.md` §5A.
+- **Disposition:** `INDEPENDENT_PCAP_WIRE_PASS`. Float `-0.0`/subnormal remains
+  FAIL/DIVERGENCE; malformed/mid-command remain NOT_RUN. Next: STOP for
+  independent audit. No profile promotion, merge, release, or field/NGCP action.
+
+
 ## AO-005 checkpoint — default-Reject reconciliation + independent-wire verification — 2026-11-14 — cloud
 
 Bounded `operation cwal` on `work`. Reconciled a real default-behavior mismatch

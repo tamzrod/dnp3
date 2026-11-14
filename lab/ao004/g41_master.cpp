@@ -28,6 +28,7 @@
 // DirectOperate(CommandSet&&, callback, config), CommandSet/WithIndex,
 // AnalogOutputInt16/Int32/Float32/Double64, CommandStatus, PrintingSOEHandler.
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -40,6 +41,7 @@
 #include <opendnp3/DNP3Manager.h>
 #include <opendnp3/channel/ChannelRetry.h>
 #include <opendnp3/channel/IChannel.h>
+#include <opendnp3/channel/IChannelListener.h>
 #include <opendnp3/channel/IPEndpoint.h>
 #include <opendnp3/channel/PrintingChannelListener.h>
 #include <opendnp3/gen/CommandPointState.h>
@@ -56,6 +58,23 @@
 
 namespace
 {
+// Records the last channel state observed by the OpenDNP3 channel listener so
+// the single-shot harness can wait (bounded) for OPEN before issuing its
+// command, removing the connect/operate race. It takes no action of its own.
+class OpenStateListener final : public opendnp3::IChannelListener
+{
+public:
+    void OnStateChange(opendnp3::ChannelState state) override
+    {
+        last_.store(state, std::memory_order_release);
+    }
+
+    opendnp3::ChannelState Get() const { return last_.load(std::memory_order_acquire); }
+
+private:
+    std::atomic<opendnp3::ChannelState> last_{opendnp3::ChannelState::CLOSED};
+};
+
 // The only host this harness will ever connect to. Any other value is refused
 // before a channel is created.
 constexpr const char* kLabOutstationAddress = "10.77.0.2";
@@ -165,12 +184,13 @@ int RunLive(const std::string& host, uint16_t port, int variation, uint16_t inde
     auto logLevels = opendnp3::levels::NORMAL;
     opendnp3::DNP3Manager manager(1, opendnp3::ConsoleLogger::Create());
 
+    auto stateListener = std::make_shared<OpenStateListener>();
     auto channel = manager.AddTCPClient("ao004-g41-master",
                                         logLevels,
                                         opendnp3::ChannelRetry::Default(),
                                         {opendnp3::IPEndpoint(kLabOutstationAddress, kLabOutstationPort)},
                                         "0.0.0.0",
-                                        opendnp3::PrintingChannelListener::Create());
+                                        stateListener);
 
     opendnp3::MasterStackConfig config;
     config.link.LocalAddr = kLinkLocalAddr;
@@ -185,6 +205,22 @@ int RunLive(const std::string& host, uint16_t port, int variation, uint16_t inde
     if (!master->Enable())
     {
         std::cerr << "ao004-g41-master: failed to enable master" << std::endl;
+        return 1;
+    }
+
+    // Wait (bounded) for the channel to reach OPEN before issuing the command.
+    // Without this the single DirectOperate can race the initial TCP connect and
+    // return a spurious FAILURE_NO_COMMS; the wait makes each single-shot case
+    // deterministic. It issues no command and sends no DNP3 traffic itself.
+    const auto openDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
+    while (stateListener->Get() != opendnp3::ChannelState::OPEN
+           && std::chrono::steady_clock::now() < openDeadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (stateListener->Get() != opendnp3::ChannelState::OPEN)
+    {
+        std::cerr << "ao004-g41-master: channel did not open within " << timeoutSeconds << "s" << std::endl;
         return 1;
     }
 

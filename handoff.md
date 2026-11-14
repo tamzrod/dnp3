@@ -2390,3 +2390,36 @@ Go gates before this verification commit: `gofmt` clean, `go vet ./...`, `go bui
 The first duplicate capture's empty-queue leg did not contain a class READ. OpenDNP3 3.1.2 drops a one-shot `ScanClasses` issued before the master is online. `lab/evt001/evt_master.cpp` now uses `AddClassScan` with a 30 second period, and the PCAP check requires that READ plus an object-less response before index 14. Two isolated reruns passed. Closure captures: `docs/verification/evt001/evt001-duplicate.pcap` sha256 `27009cbf22a1c8ab8af2778f0a737f82328e5029e5c97726b26c3b4c368a89fe` and `docs/verification/evt001/evt001-withhold.pcap` sha256 `c923a3fb5fc546b40df01421b9c16760f6dd51d39c9e6a9acc5490430c6190e3`. The positive capture sha256 `4c56f54975c00b4183341a87ab63db010d0573c0f104b4634f89db7aafe6cb98` is unchanged. A positive rerun also printed `RESULT EVT001_INTEROP PASS`. Profile blob, CURRENT, and archive state are unchanged. Secure Authentication stays **BLOCKED**. AO-005 was not started. No PR, no merge to `main`, and no release.
 
 Go gates before this closure commit: `gofmt` clean, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, and `bash scripts/verify-external-mvp.sh` passed. `git diff --check` passed.
+
+## AO-005 checkpoint — independent G41 PCAP evidence — 2026-11-14 — cloud
+
+Bounded `operation cwal` on `work` under the *"AO-005 independent G41 PCAP
+corrective iteration"* authorization. Markers unchanged: `AO-005 / QUEUED NONE /
+TASK_IN_PROGRESS`. G41 stays **UNSUPPORTED**; `active_work/supported-profile.md`
+unchanged (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`).
+
+- **Isolation:** `docker --network none`; unmodified two-namespace one-veth
+  topology; unmodified `lab/vec01/preflight.sh` → **`GATE_B_PREFLIGHT: PASS`**.
+- **Capture-tool correction (lab-only):** `tcpdump` 4.99.3 + `python3-minimal`
+  added to the `lab/ao004` image allowlist; new isolated runner
+  `lab/ao004/ao005-pcap-runner.sh`, independent decoder
+  `lab/ao004/ao005-decode-pcap.py`, direction-B Go master
+  `lab/ao004/go-master/main.go`. No production protocol code changed.
+- **Determinism (harness-only):** bounded wait for channel OPEN before the
+  one-shot command; both directions **8/8**, no `FAILURE_NO_COMMS`.
+- **Raw PCAP:** `raw/ao005-dirA.pcap`
+  `sha256:85e96847651cb4b3b8bed0271b4543d3834f058fc8d35f3af5acb8a70ea59741`,
+  `raw/ao005-dirB.pcap`
+  `sha256:d71224368dbd0d7ff80113f29a2c7b16536e1aadc5b0d36f48a2a171841bbe38`;
+  0 packets dropped. Independent decode: link header/block CRCs **OK**; 16/16
+  cases with exact typed-value echo and status `0x00` (idx0) / `0x0c` (idx1);
+  IIN `0x0000` (A) / `0x0090` (B); no false SUCCESS.
+- **Gates:** `gofmt` clean; `go vet ./...`, `go build ./...`, `go test ./...`
+  (25 pkgs), `-race` (affected pkgs), `scripts/verify-external-mvp.sh`,
+  `git diff --check`, `scripts/cwal-check.sh` — all PASS.
+- **Evidence:** `docs/verification/AO-005.md` §5A;
+  `active_work/testdata/external/ao005-pcap-2026-11-14/`.
+- **Result:** `AO-005_PCAP_EVIDENCE_PASS`. Float `-0.0`/subnormal remains
+  FAIL/DIVERGENCE; malformed/mid-command remain NOT_RUN. Next: STOP for a
+  separate independent read-only CHECK. No PR, merge, release, promotion, or
+  field/NGCP/SCADA action.

@@ -1,0 +1,219 @@
+PCAP active_work/testdata/external/ao005-pcap-2026-11-14/ao005-dirB.pcap: 147 packets, microsecond timestamps
+
+TCP STREAM 10.77.0.1:46260 -> 10.77.0.2:20000  (47 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=20 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v1 qual=0x28 count=1
+        idx=0 int32:2300
+    HEX 056414f3040003001a4cc0c00529012801000000fc080000005af5
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:46260  (61 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=22 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v1 qual=0x28 count=1
+        idx=0 int32:2300 status=0x00
+    HEX 05641644030004000f01c0c081900029012801000000fc080000da5100ffff
+
+TCP STREAM 10.77.0.1:46264 -> 10.77.0.2:20000  (45 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=18 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v2 qual=0x28 count=1
+        idx=0 int16:12345
+    HEX 056412f304000300c327c0c00529022801000000393000df84
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:46264  (57 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=20 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc1 FIR=True FIN=True seq=1
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v2 qual=0x28 count=1
+        idx=0 int16:12345 status=0x00
+    HEX 0564144403000400b827c1c0819000290228010000003930006232
+
+TCP STREAM 10.77.0.1:46280 -> 10.77.0.2:20000  (47 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=20 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v3 qual=0x28 count=1
+        idx=0 float32:1.5 bits=0x3fc00000
+    HEX 056414f3040003001a4cc0c005290328010000000000c03f00050a
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:46280  (61 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=22 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc2 FIR=True FIN=True seq=2
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v3 qual=0x28 count=1
+        idx=0 float32:1.5 bits=0x3fc00000 status=0x00
+    HEX 05641644030004000f01c2c0819000290328010000000000c03fca1c00ffff
+
+TCP STREAM 10.77.0.1:51406 -> 10.77.0.2:20000  (53 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=24 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v4 qual=0x28 count=1
+        idx=0 float64:1.5 bits=0x3ff8000000000000
+    HEX 056418f304000300a89bc0c0052904280100000000000000000076a3f83f007119
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:51406  (65 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=26 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc3 FIR=True FIN=True seq=3
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v4 qual=0x28 count=1
+        idx=0 float64:1.5 bits=0x3ff8000000000000 status=0x00
+    HEX 05641a4403000400bdd6c3c0819000290428010000000000000049d40000f83f007119
+
+TCP STREAM 10.77.0.1:51408 -> 10.77.0.2:20000  (47 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=20 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v1 qual=0x28 count=1
+        idx=1 int32:2300
+    HEX 056414f3040003001a4cc0c00529012801000100fc0800000038aa
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:51408  (61 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=22 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc4 FIR=True FIN=True seq=4
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v1 qual=0x28 count=1
+        idx=1 int32:2300 status=0x0c
+    HEX 05641644030004000f01c4c081900029012801000100fc080000749f0c0ed9
+
+TCP STREAM 10.77.0.1:51414 -> 10.77.0.2:20000  (45 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=18 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v2 qual=0x28 count=1
+        idx=1 int16:12345
+    HEX 056412f304000300c327c0c00529022801000100393000d9a7
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:51414  (57 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=20 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc5 FIR=True FIN=True seq=5
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v2 qual=0x28 count=1
+        idx=1 int16:12345 status=0x0c
+    HEX 0564144403000400b827c5c08190002902280100010039300c8cc2
+
+TCP STREAM 10.77.0.1:51430 -> 10.77.0.2:20000  (47 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=20 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v3 qual=0x28 count=1
+        idx=1 float32:1.5 bits=0x3fc00000
+    HEX 056414f3040003001a4cc0c005290328010001000000c03f006755
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:51430  (61 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=22 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc6 FIR=True FIN=True seq=6
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v3 qual=0x28 count=1
+        idx=1 float32:1.5 bits=0x3fc00000 status=0x0c
+    HEX 05641644030004000f01c6c0819000290328010001000000c03f64d20c0ed9
+
+TCP STREAM 10.77.0.1:51436 -> 10.77.0.2:20000  (53 bytes)
+  LINK[0] master->outstation src=3 dest=4 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 056405c004000300f956
+  LINK[1] master->outstation src=3 dest=4 len=5 func=0x09 hdrCRC=ok blkCRC=ok
+    HEX 056405c904000300b620
+  LINK[2] master->outstation src=3 dest=4 len=24 func=0x03 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc0 FIR=True FIN=True seq=0
+    APP DIRECT_OPERATE seq=0 FIR=True FIN=True con=False
+      OBJ g41v4 qual=0x28 count=1
+        idx=1 float64:1.5 bits=0x3ff8000000000000
+    HEX 056418f304000300a89bc0c0052904280100010000000000000064b5f83f007119
+
+TCP STREAM 10.77.0.2:20000 -> 10.77.0.1:51436  (65 bytes)
+  LINK[0] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[1] outstation->master src=4 dest=3 len=5 func=0x0b hdrCRC=ok blkCRC=ok
+    HEX 0564050b030004007f66
+  LINK[2] outstation->master src=4 dest=3 len=5 func=0x00 hdrCRC=ok blkCRC=ok
+    HEX 05640500030004003c56
+  LINK[3] outstation->master src=4 dest=3 len=26 func=0x04 hdrCRC=ok blkCRC=ok
+    TRANSPORT tc=0xc7 FIR=True FIN=True seq=7
+    APP RESPONSE seq=0 FIR=True FIN=True con=False
+      IIN=0x0090
+      OBJ g41v4 qual=0x28 count=1
+        idx=1 float64:1.5 bits=0x3ff8000000000000 status=0x0c
+    HEX 05641a4403000400bdd6c7c08190002904280100010000000000e71a0000f83f0c803f
+
+TOTAL link frames: 56
