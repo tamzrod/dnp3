@@ -111,3 +111,7 @@ perform the closure: archiving EVT-001 and changing `CURRENT`/`QUEUED`/`Status`
 requires an explicit subsequent human owner authorization with exact markers and
 permitted paths. `CURRENT` stays `EVT-001`, `QUEUED: NONE`, `Status:
 TASK_IN_PROGRESS`.
+
+## 5. Owner-authorized formal closure — 2026-11-14
+
+The owner subsequently authorized formal EVT-001 closure based on this reconciliation. EVT-001 is archived under `archive/active-work/EVT-001.md`; both handoff marker blocks are set to `CURRENT: NONE`, `QUEUED: NONE`, `Status: WORK_PACKAGE_READY`. This supersedes the *pending closure* status recorded above, without rewriting historical findings. See `docs/verification/EVT-001.md` for closure disposition and verification limits. The published v0 supported profile is unchanged; no AO-005 promotion or next task was authorized.
