@@ -30,6 +30,7 @@ func main() {
 		outstation.WithAddress(1024),
 		outstation.WithMasterAddress(1),
 		outstation.WithTransport(dnp3.TCP, "127.0.0.1", port),
+		outstation.WithExperimentalEventDelivery(),
 	)
 	if v := os.Getenv("EVT_MAX_EVENTS"); v != "" {
 		n, err := strconv.Atoi(v)

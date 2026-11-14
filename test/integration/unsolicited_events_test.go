@@ -17,6 +17,7 @@ func TestTCPUnsolicitedAndClassRead(t *testing.T) {
 		outstation.WithAddress(1024),
 		outstation.WithMasterAddress(1),
 		outstation.WithTransport(dnp3.TCP, "127.0.0.1", port),
+		outstation.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +46,7 @@ func TestTCPUnsolicitedAndClassRead(t *testing.T) {
 		master.WithTransport(dnp3.TCP, "127.0.0.1", port),
 		master.WithTimeout(3*time.Second),
 		master.WithRetry(1, 0),
+		master.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +142,7 @@ func TestTCPReconnectKeepsUnconfirmedEvent(t *testing.T) {
 		outstation.WithAddress(1024),
 		outstation.WithMasterAddress(1),
 		outstation.WithTransport(dnp3.TCP, "127.0.0.1", port),
+		outstation.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +165,7 @@ func TestTCPReconnectKeepsUnconfirmedEvent(t *testing.T) {
 		master.WithTransport(dnp3.TCP, "127.0.0.1", port),
 		master.WithTimeout(3*time.Second),
 		master.WithRetry(1, 0),
+		master.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +191,7 @@ func TestTCPReconnectKeepsUnconfirmedEvent(t *testing.T) {
 		master.WithTransport(dnp3.TCP, "127.0.0.1", port),
 		master.WithTimeout(3*time.Second),
 		master.WithRetry(1, 0),
+		master.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		t.Fatal(err)

@@ -42,6 +42,7 @@ func main() {
 		master.WithTransport(dnp3.TCP, "127.0.0.1", port),
 		master.WithTimeout(3*time.Second),
 		master.WithRetry(1, 0),
+		master.WithExperimentalEventDelivery(),
 	))
 	if err != nil {
 		fmt.Println("ERROR", err)

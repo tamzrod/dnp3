@@ -21,19 +21,22 @@ const (
 	FuncFileClose           = 14   // Close file
 	FuncFileRead            = 15   // Read file data
 	FuncFileWrite           = 16   // Write file data
-	FuncGetIdentifier       = 21   // Get device identification
-	FuncGetLabel            = 22   // Get device label
-	FuncGetDescription      = 23   // Get device description
-	FuncChangeFilename      = 24   // Change file name
-	FuncStartUpload         = 25   // Start file upload
-	FuncStartDownload       = 26   // Start file download
-	FuncAuthenticate        = 27   // Authenticate request
-	FuncAuthenticateConf    = 28   // Authentication confirmation
-	FuncAbort               = 29   // Abort file transfer
-	FuncTimeSync            = 32   // Time synchronization
-	FuncRecordCurrentTime   = 33   // Record current time
-	FuncFreezeClear         = 37   // Freeze and clear counters
-	FuncFreezeAtTime        = 38   // Freeze at specified time
+	// The legacy decimal constant 21 ("get identifier") was removed: IEEE 1815
+	// assigns no request function to 21, and 21 (0x15) is DISABLE_UNSOLICITED.
+	// Keeping both meanings on one wire value was ambiguous, so the misleading
+	// symbol is gone rather than reassigned.
+	FuncGetLabel          = 22 // Get device label
+	FuncGetDescription    = 23 // Get device description
+	FuncChangeFilename    = 24 // Change file name
+	FuncStartUpload       = 25 // Start file upload
+	FuncStartDownload     = 26 // Start file download
+	FuncAuthenticate      = 27 // Authenticate request
+	FuncAuthenticateConf  = 28 // Authentication confirmation
+	FuncAbort             = 29 // Abort file transfer
+	FuncTimeSync          = 32 // Time synchronization
+	FuncRecordCurrentTime = 33 // Record current time
+	FuncFreezeClear       = 37 // Freeze and clear counters
+	FuncFreezeAtTime      = 38 // Freeze at specified time
 	// Enable and disable unsolicited match IEEE 1815 and pinned OpenDNP3
 	// 3.1.2 FunctionCode.h (0x14 / 0x15). The previous decimal values 41 and
 	// 42 were not those function codes.
@@ -203,7 +206,6 @@ func Category(code uint8) FunctionCodeCategory {
 	if code == FuncEnableUnsolicited ||
 		code == FuncDisableUnsolicited ||
 		code == FuncAssignClass ||
-		code == FuncGetIdentifier ||
 		code == FuncGetLabel ||
 		code == FuncGetDescription {
 		return CategoryConfiguration

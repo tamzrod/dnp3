@@ -18,6 +18,31 @@ Status: TASK_IN_PROGRESS
 Run focused pre-fix RED/post-fix GREEN and all Go/race/vet/build/gofmt/CWAL gates, pinned independent OpenDNP3 3.1.2 isolated `--network none` two directions, boundary batches 254/255/256/257/333, negative confirms, accurate PCAP/log SHA evidence; report actual PASS/FAIL/NOT_RUN. Do not touch the owner's separate local Grok/Qwen work. No `main` change, nested `dnp3/`, `internal/sa`, KDE governance or supported-profile edit, no archive, release, promotion or next mission. **PR #29 must remain open/unmerged; do not edit its metadata.** Only non-force `work` push after verified checks, GitHub readback, and final `READY_FOR_INDEPENDENT_PRE_MERGE_REAUDIT`. All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
 
 
+## PPR-001-S1/S2 progress — 2026-11-14 — cloud
+
+S1 and S2 corrected and covered by default-reject and canonical-mapping tests.
+
+- **S2:** removed the misleading `FuncGetIdentifier = 21` alias and its
+  `CategoryConfiguration` term in `internal/al/function_codes.go`. Canonical
+  `FuncEnableUnsolicited = 0x14` / `FuncDisableUnsolicited = 0x15` retained; no
+  wire behavior changed. New `internal/al/function_codes_test.go` pins the mapping.
+- **S1:** the public unsolicited/event surface now Rejects by default behind one
+  explicit, non-default `WithExperimentalEventDelivery()` switch per side. Master
+  `EnableUnsolicited`/`DisableUnsolicited`/`ReadEvents`/`WatchUnsolicited` return
+  `ErrUnsupportedOption` and `SetUnsolicitedHandler` registers no handler without
+  it; outstation publishing returns `ErrUnsupportedOption`, `SetUnsolicitedHandler`
+  registers no handler, and `WithUnsolicitedMode(true)` fails `NewServer`
+  validation. The published supported profile is unchanged. The EVT-001 lab path
+  (`lab/evt001`, integration test) opts in explicitly and still passes.
+
+Full Go gates PASS: `gofmt -l` clean, `git diff --check` clean, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`,
+`bash scripts/verify-external-mvp.sh`. Pinned OpenDNP3 3.1.2 `--network none`
+loopback: positive `RESULT PCAP_DERIVE PASS` (0x14 enable / 0x15 disable on the
+wire), large-batch `RESULT EVT001_LARGEBATCH PASS` both directions for
+N=254/255/256/257/333, and negative `RESULT EVT001_NEGATIVE PASS`. Evidence and
+capture hashes: `docs/verification/evt001/EVT-001-PPR-001.md`.
+
 ## CURRENT owner authorization — 2026-11-14 — PPR-001-F4 and valid F2 fixture
 
 **OpenHands Cloud: run `operation cwal` only.** The owner's latest explicit authorization is the `Owner-authorized pre-PR corrective iteration — PPR-001-F4 and F2 fixture (2026-11-14)` addendum in the existing **CURRENT** `workflow/active_work/EVT-001.md`. This supersedes the earlier “F1/F2/F3 verified / ready” language as an authority for PR readiness; it does not alter prior passed evidence or CWAL/KDE boundaries.

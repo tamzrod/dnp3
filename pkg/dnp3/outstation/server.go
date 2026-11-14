@@ -103,18 +103,24 @@ type Server interface {
 	// SetCommandHandler sets the command handler
 	SetCommandHandler(handler CommandHandler)
 
-	// SetUnsolicitedHandler sets the handler for enabling/disabling unsolicited
+	// SetUnsolicitedHandler sets the handler for enabling/disabling unsolicited.
+	// Supported-profile: Reject by default — no handler is registered unless the
+	// explicit, non-default WithExperimentalEventDelivery switch is set.
 	SetUnsolicitedHandler(handler UnsolicitedHandler)
 
 	// PublishBinaryEvent queues a binary input event. The host does not build
 	// a DNP3 frame. quality is the Group 2 flag octet without the state bit.
 	// A zero time selects the variation without a timestamp.
+	// Supported-profile: Reject by default — returns ErrUnsupportedOption unless
+	// the explicit, non-default WithExperimentalEventDelivery switch is set.
 	PublishBinaryEvent(index uint16, value bool, quality uint8, class EventClass, at time.Time) error
 
 	// PublishAnalogEvent queues an analog input event as Group 32 signed int32.
+	// Supported-profile: Reject by default (see PublishBinaryEvent).
 	PublishAnalogEvent(index uint16, value int32, quality uint8, class EventClass, at time.Time) error
 
 	// PublishCounterEvent queues a counter event as Group 22 unsigned int32.
+	// Supported-profile: Reject by default (see PublishBinaryEvent).
 	PublishCounterEvent(index uint16, value uint32, quality uint8, class EventClass, at time.Time) error
 
 	// Close gracefully shuts down the server
@@ -185,10 +191,21 @@ type Config struct {
 	MaxFragmentSize int
 	// KeepAliveInterval is the keep-alive interval
 	KeepAliveInterval time.Duration
-	// UnsolicitedMode enables sending unsolicited responses
+	// UnsolicitedMode enables sending unsolicited responses.
+	// Supported-profile: Reject by default — enabling it requires the explicit,
+	// non-default WithExperimentalEventDelivery switch or Validate rejects it.
 	UnsolicitedMode bool
 	// MaxEventBuffers is the maximum event buffer size
 	MaxEventBuffers int
+	// ExperimentalEventDelivery opts into the EVT-001 event and unsolicited
+	// path (PublishBinaryEvent/PublishAnalogEvent/PublishCounterEvent,
+	// SetUnsolicitedHandler, WithUnsolicitedMode). The published v0 supported
+	// profile does not advertise events or unsolicited delivery, so the default
+	// is false: publishing returns ErrUnsupportedOption, no handler is
+	// registered, and WithUnsolicitedMode(true) fails validation. This is an
+	// explicit, non-default experimental switch, not a profile promotion.
+	// Supported-profile: Reject by default (experimental, off by default).
+	ExperimentalEventDelivery bool
 	// MaxConnections is the maximum number of simultaneous master
 	// connections the outstation will serve. The v0 MVP profile is
 	// single-master: a connection that arrives while MaxConnections are
@@ -259,10 +276,25 @@ func WithMaxFragmentSize(size int) ConfigOption {
 }
 
 // WithUnsolicitedMode enables unsolicited responses.
-// Supported-profile: Reject — no unsolicited delivery path in v0.
+// Supported-profile: Reject — no unsolicited delivery path in v0. Enabling it
+// requires the explicit, non-default experimental event delivery switch;
+// otherwise NewServer rejects the configuration.
 func WithUnsolicitedMode(enabled bool) ConfigOption {
 	return func(c *Config) {
 		c.UnsolicitedMode = enabled
+	}
+}
+
+// WithExperimentalEventDelivery opts into the EVT-001 event and unsolicited
+// path. It is an explicit, non-default experimental switch: the published v0
+// supported profile does not advertise events or unsolicited delivery, so
+// without it event publishing returns ErrUnsupportedOption, no unsolicited
+// handler is registered, and WithUnsolicitedMode(true) fails validation. It is
+// not a profile promotion; it only opens the isolated EVT-001 lab path.
+// Supported-profile: Reject by default (experimental, off by default).
+func WithExperimentalEventDelivery() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalEventDelivery = true
 	}
 }
 
@@ -305,9 +337,10 @@ func (c *Config) Validate() error {
 			Message: "TLS transport is not supported in the v0 MVP profile (use TCP)",
 		}
 	}
-	if c.UnsolicitedMode {
+	if c.UnsolicitedMode && !c.ExperimentalEventDelivery {
 		// DNP3-087: the v0 outstation has no unsolicited delivery path.
-		// Reject enabling unsolicited responses with a clear error.
+		// Reject enabling unsolicited responses with a clear error unless the
+		// explicit, non-default experimental event delivery switch is set.
 		return &dnp3.ConfigurationError{
 			Field:   "UnsolicitedMode",
 			Message: "unsolicited responses are not supported in the v0 MVP profile",
@@ -1145,14 +1178,24 @@ func (s *server) SetCommandHandler(handler CommandHandler) {
 }
 
 // SetUnsolicitedHandler implements Server.SetUnsolicitedHandler.
-// Supported-profile: Reject — no unsolicited delivery path in v0.
+// Supported-profile: Reject by default — the v0 outstation has no unsolicited
+// delivery path, so no handler is registered unless the explicit, non-default
+// experimental event delivery switch is on. The method has no error return, and
+// a prohibited capability must never be silently activated, so it records the
+// refusal instead of registering the handler.
 func (s *server) SetUnsolicitedHandler(handler UnsolicitedHandler) {
+	if !s.config.ExperimentalEventDelivery {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.unsolicitedHandler = handler
 }
 
 func (s *server) publish(ev outstation.Event) error {
+	if !s.config.ExperimentalEventDelivery {
+		return fmt.Errorf("%w: event publishing; the v0 supported profile does not deliver events", dnp3.ErrUnsupportedOption)
+	}
 	if err := outstation.ValidateEvent(ev); err != nil {
 		return err
 	}

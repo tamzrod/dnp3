@@ -38,7 +38,13 @@ func (c *client) sendClassFunction(ctx context.Context, funcCode uint8) error {
 }
 
 // ReadEvents implements Client.ReadEvents.
+// Supported-profile: Reject by default — event objects are outside the v0
+// supported profile. It returns ErrUnsupportedOption with no wire traffic
+// unless the experimental event delivery switch is on.
 func (c *client) ReadEvents(ctx context.Context) (*UnsolicitedResponse, error) {
+	if !c.config.ExperimentalEventDelivery {
+		return nil, fmt.Errorf("%w: event read (ReadEvents); the v0 supported profile does not read event objects", dnp3.ErrUnsupportedOption)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -99,7 +105,13 @@ func (c *client) roundTripData(ctx context.Context, apdu *al.APDU) ([]byte, erro
 }
 
 // WatchUnsolicited implements Client.WatchUnsolicited.
+// Supported-profile: Reject by default — the v0 supported profile does not
+// deliver unsolicited responses. It returns ErrUnsupportedOption with no wire
+// traffic unless the experimental event delivery switch is on.
 func (c *client) WatchUnsolicited(ctx context.Context) error {
+	if !c.config.ExperimentalEventDelivery {
+		return fmt.Errorf("%w: unsolicited watch (WatchUnsolicited); the v0 supported profile does not deliver unsolicited responses", dnp3.ErrUnsupportedOption)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

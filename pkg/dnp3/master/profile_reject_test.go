@@ -82,11 +82,12 @@ func (t *fnCaptureTransport) Send(data []byte) error {
 }
 
 // TestUnsolicitedSendsIEEEFunctionCodes asserts enable/disable are real
-// requests. The published supported profile is unchanged; this test only
-// locks the wire function codes 0x14 and 0x15.
+// requests on the explicit, non-default experimental event delivery path. The
+// published supported profile is unchanged; this test only locks the wire
+// function codes 0x14 and 0x15 when the experimental switch is enabled.
 func TestUnsolicitedSendsIEEEFunctionCodes(t *testing.T) {
 	tr := &fnCaptureTransport{}
-	cc := newConnectedClientWithTransport(t, tr)
+	cc := newConnectedExperimentalClientWithTransport(t, tr)
 	if err := cc.EnableUnsolicited(context.Background()); err != nil {
 		t.Fatalf("EnableUnsolicited: %v", err)
 	}
