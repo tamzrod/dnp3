@@ -37,7 +37,10 @@ is unchanged.
   unchanged.
 - **Tests:** added default-reject regressions (`TestPublicOperateG41RejectedByDefault`,
   `TestBridgeAnalogOutputRejectedByDefault`, `test/integration/g41_default_reject_test.go`)
-  and moved existing G41 suites to the opt-in helper.
+  and moved existing G41 suites to the opt-in helper. Follow-up: added
+  `TestBridgeAnalogOutputNilHandlerFailsClosed` (opted-in bridge fails closed
+  for G41V1–V4 with no command handler; no panic, no false success), closing the
+  explicitly-named nil/missing-handler acceptance item.
 - **Go gates:** `gofmt` clean; `go vet ./...`, `go build ./...`, `go test ./...`
   (25 pkgs), `-race` (affected pkgs), `scripts/verify-external-mvp.sh`,
   `git diff --check` — all PASS.

@@ -111,6 +111,30 @@ func (h *aoRecordingHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*typ
 	return &s, nil
 }
 
+// TestBridgeAnalogOutputNilHandlerFailsClosed asserts the opted-in analog path
+// fails closed when no command handler is registered: the bridge returns an
+// error and never panics or acknowledges success. AO-005.
+func TestBridgeAnalogOutputNilHandlerFailsClosed(t *testing.T) {
+	d := &internalDataHandler{analogControlEnabled: true}
+	cases := []struct {
+		name      string
+		value     interface{}
+		variation uint8
+	}{
+		{"G41V1 int32", int32(7), 1},
+		{"G41V2 int16", int16(7), 2},
+		{"G41V3 float32", float32(7), 3},
+		{"G41V4 float64", float64(7), 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := d.WriteAnalogOutput(0, tc.value, tc.variation); err == nil {
+				t.Fatal("analog bridge accepted a control with no command handler; want a fail-closed error")
+			}
+		})
+	}
+}
+
 // TestBridgeAnalogOutputG41V1Semantics locks the AO-002 bridge contract: a G41V1
 // analog output is carried as a typed AnalogInt32CommandValue with DirectOperate
 // semantics (not the previously hard-coded SelectThenOperate).

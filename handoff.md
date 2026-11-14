@@ -33,7 +33,8 @@ is unchanged (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`).
   `WithExperimentalEventDelivery`. G12V1 CROB unchanged.
 - **Tests:** default-reject regressions added at the public master, outstation
   bridge, and end-to-end TCP layers; existing G41 suites moved to the opt-in
-  helper.
+  helper. Follow-up: `TestBridgeAnalogOutputNilHandlerFailsClosed` closes the
+  explicitly-named nil/missing-handler acceptance item.
 - **Go gates:** `gofmt`/`go vet`/`go build`/`go test ./...` (25 pkgs)/`-race`/
   `scripts/verify-external-mvp.sh`/`git diff --check` — all PASS.
 - **Independent wire (pinned OpenDNP3 3.1.2, `--network none`, two-ns veth):**
