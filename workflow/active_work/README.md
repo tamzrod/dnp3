@@ -7,6 +7,13 @@ CURRENT: AO-005
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — AO-005 final acceptance reconciliation
+
+**OpenHands Cloud: execute `operation cwal` only.** Current owner-authorized documentation-only contract is the `Owner authorization — AO-005 final acceptance reconciliation — 2026-11-14` section in `workflow/active_work/AO-005.md`. Reconcile stale AO-005 PRECHECK statements append-only against later source, Go gate and verified OpenDNP3 3.1.2 positive PCAP (16/16) and negative-wire (malformed, response loss/disconnect, quarantine) evidence. Preserve explicit exclusions: peer signed-zero/subnormal normalization FAIL/DIVERGENCE, legacy `NewAnalogControl(float64)` non-candidate, reverse-direction fault negative NOT_RUN, and unsupported profile status. Incorporate owner-accepted 24-line nil-handler test exception.
+
+**Scope:** append-only dated evidence in `docs/verification/AO-005.md`, append-only historical reconciliation note at end of `docs/verification/AO-005-PRECHECK.md`, and concise append-only status under unchanged top markers in these two handoffs. Produce row-by-row acceptance verdict and `AO-005_CLOSURE_READY` or `AO-005_CLOSURE_BLOCKED` **recommendation** for a later owner decision. No task closure/archival, CURRENT/QUEUED/Status change, supported-profile modification, source/tests/lab/capture edit, PR, merge, release or deployment. Existing published profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` remains G41 **UNSUPPORTED**. No protocol tests in this docs-only execution; use `PREVIOUSLY_RECORDED` and `NOT_RUN_THIS_INVOCATION` honestly. Run `git diff --check`, `bash scripts/cwal-check.sh`, marker/profile/allowlist gates; non-force push `work`, remote readback, then **STOP for independent read-only CHECK**.
+
+
 ## CURRENT owner authorization — 2026-11-14 — AO-005 negative interoperability iteration
 
 **Invoke `operation cwal` in OpenHands Cloud.** The latest owner-approved bounded work is documented in CURRENT `workflow/active_work/AO-005.md`, section `Owner authorization — AO-005 negative interoperability iteration — 2026-11-14`. Run pinned OpenDNP3 3.1.2 independent **malformed G41 request** and deterministic **after-send response-loss/disconnect/timeout** negatives only within proven `--network none` two-namespace memory-only isolated lab. Capture original PCAP, decoded packet/status/CRC evidence, peer handler execution counts, quarantine/no-retry behavior, SHA-256 provenance; run Go/CWAL gates. Preserve honest PASS/FAIL/NOT_RUN distinctions and the known float signed-zero/subnormal peer divergence.
