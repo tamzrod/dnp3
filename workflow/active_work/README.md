@@ -7,6 +7,34 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## EVT-001 post-merge reconciliation — 2026-11-14 — cloud
+
+Documentation-only. Reconciled the merged PR #29 and the completed PPR-001
+F1–F4 / S1–S2 evidence; drafted the AO-005 G41 promotion precheck. No code, test,
+profile, marker, archive, PR, merge, release or promotion change.
+
+- **Live facts re-verified:** PR #29 is `closed`/`merged` (merge commit
+  `81cd6c3d0896abe87b96e60e71e1df54b5b34d9d`, head `ffd03038c36989ec476f3960b6d0d6c2961c3067`,
+  merged 2026-11-14T04:21:22Z); `origin/main` is `81cd6c3`; the merge tree
+  `8720c708…` equals the PR-head tree, so the merge added no content; CI run #252
+  (`pull_request`) concluded `success`. `origin/work` is `2603563`.
+- **Profile unchanged:** `active_work/supported-profile.md` blob
+  `3e592e77ad6e31d5492c609c5fdd62382505904b`, byte-identical on `work` and `main`.
+  Events/unsolicited and G41 analog controls remain `Reject`.
+- **Disposition (Deliverable A):** `EVT-001_CLOSURE_READY` — a decision for the
+  owner. No open code defect or failing gate remains; what is left is a
+  profile-promotion/scope decision, not a fix. Reconciliation:
+  `docs/verification/EVT-001-POSTMERGE.md`.
+- **Draft (Deliverable B):** `docs/verification/AO-005-PRECHECK.md` —
+  DRAFT/UNPROMOTED, non-authoritative, for owner/KDE review only. G41 stays
+  **UNSUPPORTED**; AO-005 is not promoted or queued.
+- No tests or protocol executions were run this invocation. Only the
+  CURRENT-allowed evidence/handoff files were written.
+
+Result: `EVT-001 POSTMERGE RECONCILED — CLOSURE DECISION PENDING; AO-005 PRECHECK
+DRAFT READY FOR OWNER REVIEW`. Markers unchanged: `EVT-001 / QUEUED NONE /
+TASK_IN_PROGRESS`.
+
 ## CURRENT owner authorization — 2026-11-14 — EVT-001 post-merge reconciliation / AO-005 PRECHECK draft
 
 **OpenHands Cloud: execute `operation cwal` only.** The newest owner instruction is the `Owner-authorized PR #29 merge reconciliation and AO-005 PRECHECK preparation — 2026-11-14` addendum in CURRENT `workflow/active_work/EVT-001.md`. It authorizes documentation-only reconciliation and drafting, **not** closure, archiving, promotion, code, PR, merge or release. Prior pre-merge "PR #29 must stay open" language is historical: GitHub has confirmed PR #29 merged `ffd03038c36989ec476f3960b6d0d6c2961c3067` into `main` using merge commit `81cd6c3d0896abe87b96e60e71e1df54b5b34d9d`. Reverify the remote state.
