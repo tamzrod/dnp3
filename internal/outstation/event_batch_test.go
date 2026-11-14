@@ -745,6 +745,62 @@ func TestSolicitedSendFailureThenReconnectRedelivers(t *testing.T) {
 	}
 }
 
+// oversizeG1V1Block returns the wire bytes of a valid static Group 1 Variation 1
+// packed-binary block with 255 points, each point's value alternating starting
+// true. The header is qualifier 0x07 (8-bit count) with count 0xFF (=255), the
+// only count an 8-bit qualifier can represent, followed by ceil(255/8)=32 packed
+// data octets: a 36-octet object block. A count byte of 0x2C would be 44, not a
+// valid representation of 300 points, so 255 is the largest valid oversized
+// block expressible under qualifier 0x07.
+func oversizeG1V1Block() []byte {
+	const points = 255
+	block := []byte{1, 1, 0x07, 0xFF}
+	packed := make([]byte, (points+7)/8)
+	for i := 0; i < points; i++ {
+		if i%2 == 0 {
+			packed[i/8] |= 1 << uint(i%8)
+		}
+	}
+	return append(block, packed...)
+}
+
+// TestOversizeFixtureIsWireValid proves the F2 fixture is a real, decodable
+// oversized static block: the encoder emits qualifier 0x07 with count 0xFF, 32
+// packed data octets, the exact packed-bit mapping, and a 36-octet block that
+// exceeds a 32-octet application budget. It is not a malformed fixture.
+func TestOversizeFixtureIsWireValid(t *testing.T) {
+	want := oversizeG1V1Block()
+	if len(want) != 36 {
+		t.Fatalf("fixture block = %d octets, want 36", len(want))
+	}
+	if want[2] != 0x07 || want[3] != 0xFF {
+		t.Fatalf("fixture header = % X, want qualifier 07 count FF", want[:4])
+	}
+	if len(want[4:]) != 32 {
+		t.Fatalf("packed data = %d octets, want 32", len(want[4:]))
+	}
+	for i, b := range want[4:] {
+		if b != 0x55 {
+			t.Fatalf("packed octet %d = %02X, want 55 (alternating bits)", i, b)
+		}
+	}
+
+	// The public data handler must produce exactly these bytes for 255 points.
+	inputs := make([]BinaryInput, 255)
+	for i := range inputs {
+		inputs[i] = BinaryInput{Value: i%2 == 0, Quality: BinaryQualityOnline}
+	}
+	ost := NewOutstation(nil)
+	ost.SetDataHandler(&bigStaticHandler{inputs: inputs})
+	got := ost.buildBinaryInputData(1)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("buildBinaryInputData = % X, want % X", got, want)
+	}
+	if len(got) <= 32 {
+		t.Fatalf("fixture block %d octets must exceed a 32-octet budget", len(got))
+	}
+}
+
 // TestSolicitedOversizeBlockFailsClosed pins PPR-001-F2: a single non-indexed
 // static block larger than a small application-fragment budget must fail closed
 // before sending, rather than emitting an oversized APDU the peer would discard.
@@ -753,9 +809,9 @@ func TestSolicitedOversizeBlockFailsClosed(t *testing.T) {
 	ost := NewOutstation(cfg)
 	ost.Initialize()
 	ost.Start()
-	// 300 binary inputs -> a G1V1 count-qualified block of 4 + ceil(300/8)=38 = 42
+	// 255 binary inputs -> a G1V1 count-qualified block of 4 + ceil(255/8)=32 = 36
 	// octets, above the 32-octet budget and not splittable without renumbering.
-	inputs := make([]BinaryInput, 300)
+	inputs := make([]BinaryInput, 255)
 	for i := range inputs {
 		inputs[i] = BinaryInput{Value: i%2 == 0, Quality: BinaryQualityOnline}
 	}
@@ -787,15 +843,325 @@ func TestSolicitedOversizeBlockFailsClosed(t *testing.T) {
 // larger than the budget.
 func TestResponseFragmentsOversizeBlockErrors(t *testing.T) {
 	ost := NewOutstation(&Config{MaxFragmentSize: 32})
-	// IIN(2) + G1V1 count-qualified block with 300 packed bits (4 + 38 = 42 octets).
-	block := append([]byte{1, 1, 0x07, 0x2C}, make([]byte, 38)...)
+	// IIN(2) + the valid 36-octet G1V1 count-qualified block (above the 32-octet
+	// budget and not splittable without renumbering).
 	resp := &al.APDU{Control: al.AppControl{FIR: true, FIN: true, Seq: 1}, FuncCode: al.FuncResponse,
-		Data: append([]byte{0, 0}, block...)}
+		Data: append([]byte{0, 0}, oversizeG1V1Block()...)}
 	frags, err := ost.responseFragments(resp)
 	if !errors.Is(err, ErrFragmentTooLarge) {
 		t.Fatalf("err = %v, want ErrFragmentTooLarge", err)
 	}
 	if frags != nil {
 		t.Fatalf("oversize block must not yield fragments, got %d", len(frags))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PPR-001-F4 corrective-iteration regression.
+// ---------------------------------------------------------------------------
+
+// hookTransport feeds inbound frames from a channel and blocks each Send on
+// release until the test allows it, so a publisher can interleave between READ
+// preparation (which removes the accepted events) and the outcome of the send.
+// The failing send fails the failFrom-th frame (1-based) and every send after
+// it. Every send attempt is recorded.
+type hookTransport struct {
+	in       chan []byte
+	release  chan struct{}
+	failFrom int
+	mu       sync.Mutex
+	sent     [][]byte
+}
+
+func newHookTransport(failFrom int) *hookTransport {
+	return &hookTransport{in: make(chan []byte, 8), release: make(chan struct{}, 8), failFrom: failFrom}
+}
+
+func (t *hookTransport) Send(data []byte) error {
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	t.mu.Lock()
+	t.sent = append(t.sent, cp)
+	n := len(t.sent)
+	t.mu.Unlock()
+	<-t.release // hold the send until the test releases it
+	if t.failFrom > 0 && n >= t.failFrom {
+		return errString("send failed")
+	}
+	return nil
+}
+
+func (t *hookTransport) snapshot() [][]byte {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([][]byte, len(t.sent))
+	copy(out, t.sent)
+	return out
+}
+
+func (t *hookTransport) Receive() ([]byte, error) {
+	f, ok := <-t.in
+	if !ok {
+		return nil, ErrSessionClosed
+	}
+	return f, nil
+}
+
+func (t *hookTransport) SetTimeout(int) {}
+
+func restoreFailures(ost *Outstation) uint64 {
+	ost.mu.Lock()
+	defer ost.mu.Unlock()
+	return ost.restoreFailures
+}
+
+// TestSolicitedRestoreSurvivesConcurrentPublisher is the deterministic F4
+// regression. A class buffer is saturated so the accepted events are the only
+// content. A solicited READ removes them and begins sending while the test holds
+// the send blocked. A publisher then tries to add events into the apparent free
+// slots. Because the removed events hold reservations, the publisher must be
+// rejected with ErrEventBufferFull instead of taking the space, so when the send
+// finally fails every originally accepted event is restored with its identity
+// intact and no duplicate sequence is created.
+func TestSolicitedRestoreSurvivesConcurrentPublisher(t *testing.T) {
+	const perClass = 10
+	cfg := &Config{OutstationAddress: 4, MasterAddress: 3, MaxEventBuffers: 3 * perClass}
+	ost := NewOutstation(cfg)
+	ost.Initialize()
+	ost.Start()
+	wantOn := map[uint16]bool{}
+	for i := 0; i < perClass; i++ {
+		on := i%2 == 0
+		wantOn[uint16(i)] = on
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(i), on, i)); err != nil {
+			t.Fatalf("publish %d: %v", i, err)
+		}
+	}
+	if got := ost.EventCount(); got != perClass {
+		t.Fatalf("queued = %d, want %d", got, perClass)
+	}
+	if !ost.IIN().BufferOverflow {
+		t.Fatal("saturated class must report BufferOverflow")
+	}
+
+	tr := newHookTransport(1) // the first send fails, after the events are staged
+	ost.SetTransport(tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = ost.RunWithContext(ctx)
+		close(done)
+	}()
+
+	tr.in <- classReadFrame(t)
+
+	// Wait until the outstation has staged the removal and is blocked in Send.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(tr.snapshot()) < 1 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := len(tr.snapshot()); got < 1 {
+		t.Fatalf("send not attempted, got %d", got)
+	}
+
+	// Concurrent publishers must be rejected: the in-flight events hold their
+	// capacity, so no event is accepted into the freed slots. The publisher gets
+	// the existing explicit full-buffer error, not silent loss of an old event.
+	for i := 0; i < 5; i++ {
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(200+i), true, 1000+i)); err != ErrEventBufferFull {
+			t.Fatalf("publish during in-flight send = %v, want ErrEventBufferFull", err)
+		}
+	}
+	if got := ost.EventCount(); got != 0 {
+		t.Fatalf("queue during in-flight send = %d, want 0 (all staged)", got)
+	}
+
+	// Let the send proceed and fail; the staged events must be restored.
+	tr.release <- struct{}{}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && ost.EventCount() != perClass {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	close(tr.in)
+	cancel()
+	<-done
+
+	if got := ost.EventCount(); got != perClass {
+		t.Fatalf("events after failed send = %d, want %d (silent loss)", got, perClass)
+	}
+	if rf := restoreFailures(ost); rf != 0 {
+		t.Fatalf("restore failures = %d, want 0", rf)
+	}
+	if !ost.IIN().Class1Events {
+		t.Fatal("Class1Events IIN must remain set after a failed solicited send")
+	}
+	// Every original event survives exactly once with value, quality and
+	// timestamp intact; no publisher event leaked in and no sequence duplicated.
+	seen := map[uint64]bool{}
+	gotIdx := map[uint16]int{}
+	for _, ev := range ost.GetEvents() {
+		if seen[ev.Seq] {
+			t.Fatalf("duplicate sequence %d after restore", ev.Seq)
+		}
+		seen[ev.Seq] = true
+		if ev.Class != Class1 || ev.Index >= 200 {
+			t.Fatalf("restored event identity changed: %+v", ev)
+		}
+		if ev.BinaryValue != wantOn[ev.Index] || !ev.Time.Equal(batchStamp(int(ev.Index))) {
+			t.Fatalf("restored value/time changed for index %d: %+v", ev.Index, ev)
+		}
+		gotIdx[ev.Index]++
+	}
+	if len(seen) != perClass {
+		t.Fatalf("distinct sequences = %d, want %d", len(seen), perClass)
+	}
+	for i := 0; i < perClass; i++ {
+		if gotIdx[uint16(i)] != 1 {
+			t.Fatalf("index %d restored %d times, want 1", i, gotIdx[uint16(i)])
+		}
+	}
+
+	// Post-reconnect: a fresh session sharing the queue re-delivers exactly the
+	// retained originals, once each, with value and timestamp preserved.
+	tr2 := newFailFromTransport(0)
+	next := NewOutstation(cfg)
+	next.UseEventQueue(ost.eventQueue)
+	next.Initialize()
+	next.Start()
+	next.SetTransport(tr2)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done2 := make(chan struct{})
+	go func() {
+		_ = next.RunWithContext(ctx2)
+		close(done2)
+	}()
+	tr2.in <- classReadFrame(t)
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && next.EventCount() != 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(tr2.in)
+	cancel2()
+	<-done2
+
+	if got := next.EventCount(); got != 0 {
+		t.Fatalf("events after reconnect read = %d, want 0", got)
+	}
+	re := tl.NewReassembler()
+	delivered := map[uint16]int{}
+	for _, raw := range tr2.snapshot() {
+		f, err := frame.Decode(raw)
+		if err != nil || len(f.Data) == 0 {
+			continue
+		}
+		tf, err := tl.DecodeFragment(f.Data)
+		if err != nil {
+			continue
+		}
+		msg, err := re.Push(tf)
+		if err != nil || msg == nil {
+			continue
+		}
+		re.Reset()
+		resp, err := al.Decode(msg)
+		if err != nil || resp.FuncCode != al.FuncResponse || len(resp.Data) < 2 {
+			continue
+		}
+		evs, derr := al.DecodeEventObjects(resp.Data[2:])
+		if derr != nil {
+			continue
+		}
+		for _, eo := range evs {
+			delivered[eo.Index]++
+			if on := eo.Flags&al.BinEventState != 0; on != wantOn[eo.Index] {
+				t.Fatalf("delivered value for index %d = %v, want %v", eo.Index, on, wantOn[eo.Index])
+			}
+			if !eo.Time.Equal(batchStamp(int(eo.Index))) {
+				t.Fatalf("delivered time for index %d = %v, want %v", eo.Index, eo.Time, batchStamp(int(eo.Index)))
+			}
+		}
+	}
+	if len(delivered) != perClass {
+		t.Fatalf("delivered distinct indexes = %d, want %d", len(delivered), perClass)
+	}
+	for i := 0; i < perClass; i++ {
+		if delivered[uint16(i)] != 1 {
+			t.Fatalf("index %d delivered %d times across reconnect, want 1", i, delivered[uint16(i)])
+		}
+	}
+}
+
+// TestSolicitedReservedCapacityReleasedOnSuccess proves the reservation is
+// released once a solicited response is fully delivered: the delivered events
+// stay removed and the slots become available to publishers again.
+func TestSolicitedReservedCapacityReleasedOnSuccess(t *testing.T) {
+	const perClass = 10
+	cfg := &Config{OutstationAddress: 4, MasterAddress: 3, MaxEventBuffers: 3 * perClass}
+	ost := NewOutstation(cfg)
+	ost.Initialize()
+	ost.Start()
+	for i := 0; i < perClass; i++ {
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(i), i%2 == 0, i)); err != nil {
+			t.Fatalf("publish %d: %v", i, err)
+		}
+	}
+	tr := newFailFromTransport(0) // all sends succeed
+	ost.SetTransport(tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = ost.RunWithContext(ctx)
+		close(done)
+	}()
+	tr.in <- classReadFrame(t)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && ost.EventCount() != 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := ost.EventCount(); got != 0 {
+		t.Fatalf("events after delivered read = %d, want 0", got)
+	}
+	// Capacity must be free again: a full class worth of new events is accepted.
+	for i := 0; i < perClass; i++ {
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(i), true, 2000+i)); err != nil {
+			t.Fatalf("publish %d after delivered read: %v", i, err)
+		}
+	}
+	if rf := restoreFailures(ost); rf != 0 {
+		t.Fatalf("restore failures = %d, want 0", rf)
+	}
+	close(tr.in)
+	cancel()
+	<-done
+}
+
+// TestEventQueueRestoreWithoutReservationReportsFalse proves Restore no longer
+// silently succeeds when there is no reservation, so a caller that ignores the
+// return cannot mistake a rejected restore for a successful one.
+func TestEventQueueRestoreWithoutReservationReportsFalse(t *testing.T) {
+	q := NewEventQueue(9)
+	ev := batchBinary(Class1, 1, true, 0)
+	if q.Restore(ev) {
+		t.Fatal("Restore without a staged reservation must report false")
+	}
+	if q.Count() != 0 {
+		t.Fatalf("count = %d, want 0", q.Count())
+	}
+	if !q.Add(ev) {
+		t.Fatal("Add rejected an empty queue")
+	}
+	q.StageSeqs([]uint64{ev.Seq})
+	if !q.Restore(ev) {
+		t.Fatal("Restore with a reservation must succeed")
+	}
+	if q.Count() != 1 {
+		t.Fatalf("count after restore = %d, want 1", q.Count())
+	}
+	if q.Restore(ev) {
+		t.Fatal("second Restore without a reservation must report false")
+	}
+	if q.Count() != 1 {
+		t.Fatalf("duplicate restore changed the queue: %d", q.Count())
 	}
 }

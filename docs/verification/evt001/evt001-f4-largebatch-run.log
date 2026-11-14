@@ -1,0 +1,39 @@
+=== isolation ===
+RESULT ISOLATION PASS no default route and external connect failed
+=== N=254 ===
+RESULT A_254_process PASS
+RESULT A_254_count PASS (254)
+RESULT A_254_distinct PASS (254)
+RESULT B_254_process PASS
+RESULT B_254_count PASS (254)
+RESULT B_254_once_only PASS
+=== N=255 ===
+RESULT A_255_process PASS
+RESULT A_255_count PASS (255)
+RESULT A_255_distinct PASS (255)
+RESULT B_255_process PASS
+RESULT B_255_count PASS (255)
+RESULT B_255_once_only PASS
+=== N=256 ===
+RESULT A_256_process PASS
+RESULT A_256_count PASS (256)
+RESULT A_256_distinct PASS (256)
+RESULT B_256_process PASS
+RESULT B_256_count PASS (256)
+RESULT B_256_once_only PASS
+=== N=257 ===
+RESULT A_257_process PASS
+RESULT A_257_count PASS (257)
+RESULT A_257_distinct PASS (256)
+RESULT B_257_process PASS
+RESULT B_257_count PASS (257)
+RESULT B_257_once_only PASS
+=== N=333 ===
+RESULT A_333_process PASS
+RESULT A_333_count PASS (333)
+RESULT A_333_distinct PASS (256)
+RESULT B_333_process PASS
+RESULT B_333_count PASS (333)
+RESULT B_333_once_only PASS
+=== done ===
+RESULT EVT001_LARGEBATCH PASS

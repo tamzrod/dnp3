@@ -91,7 +91,9 @@ func (q *EventQueue) SnapshotClass(class EventClass) []Event {
 	return out
 }
 
-// RemoveSeqs deletes events with the given insertion sequences.
+// RemoveSeqs deletes events with the given insertion sequences. It is used for
+// removals that are final (an acknowledged unsolicited response), so no
+// reservation is held.
 func (q *EventQueue) RemoveSeqs(ids []uint64) {
 	if len(ids) == 0 {
 		return
@@ -114,16 +116,65 @@ func (q *EventQueue) RemoveSeqs(ids []uint64) {
 	}
 }
 
+// StageSeqs removes the given sequences and reserves one slot per event removed.
+// The reservation keeps a concurrent publisher out of the space a staged
+// solicited response may need to restore into, so a failed send can always put
+// every accepted event back. The reservation is released by ReleaseSeqs (send
+// succeeded) or consumed by Restore (send failed).
+func (q *EventQueue) StageSeqs(ids []uint64) {
+	if len(ids) == 0 {
+		return
+	}
+	drop := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		drop[id] = struct{}{}
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for class, evs := range q.buffers {
+		kept := evs[:0]
+		removed := 0
+		for _, ev := range evs {
+			if _, ok := drop[ev.Seq]; ok {
+				removed++
+				continue
+			}
+			kept = append(kept, ev)
+		}
+		q.buffers[class] = kept
+		q.reserved[class] += removed
+	}
+}
+
+// ReleaseReserved drops one reservation for ev's class without re-inserting the
+// event. It is used when a staged solicited response was delivered, so the
+// reserved slot becomes available to publishers again.
+func (q *EventQueue) ReleaseReserved(ev Event) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.reserved[ev.Class] > 0 {
+		q.reserved[ev.Class]--
+	}
+}
+
 // Restore re-inserts one event that was removed from the queue but whose
 // response could not be delivered. It keeps the event's original insertion
 // sequence number and class buffer, so a later read re-encodes exactly the
-// event that was lost. The caller must ensure the buffer has room; a
-// just-removed event leaves the buffer no fuller than before.
+// event that was lost. The slot was reserved when the event was staged, so a
+// restore succeeds even if publishers filled the buffer in the meantime; the
+// reservation is consumed. Restore reports false only if no reservation is
+// held for the event's class, which the caller must not ignore.
 func (q *EventQueue) Restore(ev Event) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if len(q.buffers[ev.Class]) >= q.maxSize/3 {
+	if q.reserved[ev.Class] <= 0 {
 		return false
+	}
+	q.reserved[ev.Class]--
+	for _, have := range q.buffers[ev.Class] {
+		if have.Seq == ev.Seq {
+			return true
+		}
 	}
 	q.buffers[ev.Class] = append(q.buffers[ev.Class], ev)
 	if ev.Seq >= q.nextSeq {

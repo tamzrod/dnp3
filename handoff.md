@@ -18,6 +18,37 @@ Status: TASK_IN_PROGRESS
 Cloud uses verified clean `origin/work`; owner's laptop Grok/Qwen work is inaccessible and must not be touched or claimed recovered. Rerun scoped F4/F2 and previous F1-F3, all Go/race/CWAL gates, pinned **OpenDNP3 3.1.2** isolated `--network none` both directions with 254/255/256/257/333 plus negative confirms; document objective evidence and PCAP hashes. Only scoped `work` non-force checkpoints after verification. **No PR, merge, archive, release, profile promotion, main push, nested dnp3/ changes, SA or KDE governance edits.** All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. Exit: `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`, not PR approval.
 
 
+## PPR-001-F4 and F2 fixture progress — 2026-11-14 — cloud
+
+F4 and the F2 fixture correction are implemented on `work` with a deterministic
+RED pre-fix / GREEN post-fix regression.
+- F4: `EventQueue` now reserves one per-class slot for each event removed during
+  a solicited READ. `Add`/`IsFull` count the reservation against the per-class
+  cap, so a concurrent publisher is rejected with `ErrEventBufferFull` instead
+  of taking a slot the staged events need; `Restore` consumes a reservation and
+  its boolean is checked (failures counted in `restoreFailures`);
+  `releaseSolicitedEvents` frees reservations after a delivered response and
+  `discardSolicitedLocked` frees a staging that was never sent. A partly
+  transmitted multi-fragment response is delivery-indeterminate and may be
+  re-delivered at least once; no blind replay, memory bounded by the per-class
+  cap. `TestSolicitedRestoreSurvivesConcurrentPublisher` reproduces the loss on
+  the pre-fix source and passes after the correction.
+- F2 fixture: the 300-point `0x2C` fixture is replaced by a wire-valid 255-point
+  packed G1V1 block (qualifier `0x07`, count `0xFF`, 32 packed octets, 36-octet
+  block vs a 32-octet budget); `TestOversizeFixtureIsWireValid` pins the bytes.
+
+Gates PASS: `gofmt -l` clean, `git diff --check` clean, `go vet ./...`,
+`go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`,
+`bash scripts/verify-external-mvp.sh`. Independent pinned OpenDNP3 3.1.2 rerun in
+`--network none` loopback isolation: `EVT001_INTEROP PASS`,
+`EVT001_LARGEBATCH PASS` (254/255/256/257/333 both directions),
+`EVT001_NEGATIVE PASS`. Evidence and capture hashes:
+`docs/verification/evt001/EVT-001-PPR-001.md`.
+
+Result: `PPR-001-F4 VERIFIED — READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`. Markers
+stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. No PR, merge, archive, release,
+or profile promotion.
+
 ## CURRENT owner authorization — 2026-11-14 — PPR-001 pre-PR F1/F2/F3 corrective iteration
 
 **Run `operation cwal` in OpenHands Cloud.** The latest owner authorization is in the existing CURRENT `workflow/active_work/EVT-001.md`, section `Owner-authorized pre-PR corrective iteration — PPR-001-F1/F2/F3 (2026-11-14)`. This supersedes the previous “PPR-001 verified” conclusion for PR readiness: independent read-only audit of `c319050ee828290022f5af61a8822fabeed74292` issued **PUSHBACK** on three findings. Continue autonomously; this handoff is a route to the approved CURRENT, not separate authority to expand work.

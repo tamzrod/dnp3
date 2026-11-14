@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -280,8 +281,12 @@ type Event struct {
 type EventQueue struct {
 	mu      sync.Mutex
 	buffers map[EventClass][]Event
-	maxSize int
-	nextSeq uint64
+	// reserved counts, per class, slots held for events removed while a
+	// solicited response is in flight. A concurrent publisher must not take a
+	// reserved slot, so a failed send can always restore the staged event.
+	reserved map[EventClass]int
+	maxSize  int
+	nextSeq  uint64
 }
 
 // NewEventQueue creates a new event queue with the specified maximum size.
@@ -292,17 +297,22 @@ func NewEventQueue(maxSize int) *EventQueue {
 			Class2: make([]Event, 0, maxSize/3),
 			Class3: make([]Event, 0, maxSize/3),
 		},
-		maxSize: maxSize,
+		reserved: map[EventClass]int{},
+		maxSize:  maxSize,
 	}
 }
 
-// Add adds an event to the queue.
+// classCap is the per-class event capacity.
+func (q *EventQueue) classCap() int { return q.maxSize / 3 }
+
+// Add adds an event to the queue. A class that has no free capacity after
+// accounting for in-flight reserved slots rejects the event.
 func (q *EventQueue) Add(event Event) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	classEvents := q.buffers[event.Class]
-	if len(classEvents) >= q.maxSize/3 {
+	if len(classEvents)+q.reserved[event.Class] >= q.classCap() {
 		return false // Buffer full for this class
 	}
 
@@ -319,6 +329,7 @@ func (q *EventQueue) Clear() {
 
 	for class := range q.buffers {
 		q.buffers[class] = q.buffers[class][:0]
+		q.reserved[class] = 0
 	}
 }
 
@@ -327,6 +338,7 @@ func (q *EventQueue) ClearClass(class EventClass) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.buffers[class] = q.buffers[class][:0]
+	q.reserved[class] = 0
 }
 
 // GetAll returns all events.
@@ -353,13 +365,14 @@ func (q *EventQueue) Count() int {
 	return count
 }
 
-// IsFull returns true if any event class buffer is full.
+// IsFull returns true if any event class buffer is full. In-flight reserved
+// slots count as used, because a publisher cannot take them.
 func (q *EventQueue) IsFull() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for _, events := range q.buffers {
-		if len(events) >= q.maxSize/3 {
+	for class := range q.buffers {
+		if len(q.buffers[class])+q.reserved[class] >= q.classCap() {
 			return true
 		}
 	}
@@ -590,8 +603,14 @@ type Outstation struct {
 	eventQueue *EventQueue
 	// solicitedRemoved holds events removed from the queue while a solicited
 	// READ response is assembled; they are re-inserted if that response cannot
-	// be fully delivered, so a failed send never loses an accepted event.
+	// be fully delivered, so a failed send never loses an accepted event. Each
+	// staged event holds a reservation in the queue until the send outcome is
+	// known.
 	solicitedRemoved []Event
+	// restoreFailures counts staged events that could not be restored. With
+	// reserved slots in place it must stay zero; a non-zero value is a
+	// correctness alarm that the lossless guarantee was violated.
+	restoreFailures uint64
 }
 
 // NewOutstation creates a new Outstation.
@@ -907,10 +926,16 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 		// carried in its own transport-message/DLL frame run. A response that
 		// cannot be delivered (unbounded fragment, encode error, or transport
 		// send failure) re-queues every event removed while it was built, so an
-		// accepted event is never lost; the peer re-polls and receives them again.
+		// accepted event is never lost; the peer re-polls and receives them
+		// again. A partly transmitted response is delivery-indeterminate: the
+		// peer may have received some fragments, so the restored events can be
+		// delivered at least once. A fully delivered response releases the
+		// reserved slots so publishers may reuse them.
 		if resp != nil {
 			if serr := o.sendResponseFragments(transport, resp); serr != nil {
 				o.requeueSolicitedEvents()
+			} else {
+				o.releaseSolicitedEvents()
 			}
 		}
 
@@ -1058,46 +1083,96 @@ const defaultMaxAppFragment = 2048
 
 // stageSolicitedRemovalLocked removes the events identified by ids from the
 // queue, remembering them so a response that cannot be delivered can put them
-// back. It runs while the queue still holds the events, so a concurrent
-// unsolicited send cannot also remove them. The caller holds o.mu.
+// back. Each removed event reserves a slot, so a concurrent publisher cannot
+// take the space the staged events need to be restored into. It runs while the
+// queue still holds the events, so a concurrent unsolicited send cannot also
+// remove them. The caller holds o.mu.
 func (o *Outstation) stageSolicitedRemovalLocked(ids []uint64) {
 	if len(ids) == 0 {
 		return
 	}
 	// Snapshot the events that are about to be removed so they can be restored
 	// verbatim (insertion order, sequence, timestamps) if the response fails.
+	// A sequence named twice is staged once.
 	idSet := make(map[uint64]struct{}, len(ids))
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
 	staged := o.solicitedRemoved
+	seen := make(map[uint64]struct{}, len(staged))
+	for _, ev := range staged {
+		seen[ev.Seq] = struct{}{}
+	}
 	for _, ev := range o.eventQueue.GetAll() {
-		if _, ok := idSet[ev.Seq]; ok {
-			staged = append(staged, ev)
+		if _, ok := idSet[ev.Seq]; !ok {
+			continue
 		}
+		if _, dup := seen[ev.Seq]; dup {
+			continue
+		}
+		seen[ev.Seq] = struct{}{}
+		staged = append(staged, ev)
 	}
 	o.solicitedRemoved = staged
-	o.eventQueue.RemoveSeqs(ids)
+	o.eventQueue.StageSeqs(ids)
 	o.cancelInFlightLocked(ids)
 }
 
 // requeueSolicitedEvents restores every event staged by stageSolicitedRemovalLocked
 // after its response could not be delivered. The events keep their original
 // insertion sequence numbers and IIN bits, so the next poll re-encodes exactly
-// what was lost.
+// what was lost. Each restore is checked: with reserved slots in place it must
+// succeed, and a failure is recorded and logged rather than silently dropping
+// an accepted event.
 func (o *Outstation) requeueSolicitedEvents() {
 	o.mu.Lock()
 	staged := o.solicitedRemoved
 	o.solicitedRemoved = nil
+	o.mu.Unlock()
 	if len(staged) == 0 {
-		o.mu.Unlock()
 		return
 	}
 	for _, ev := range staged {
-		o.eventQueue.Restore(ev)
+		if !o.eventQueue.Restore(ev) {
+			o.mu.Lock()
+			o.restoreFailures++
+			o.mu.Unlock()
+			if debugControls {
+				log.Printf("outstation: failed to restore staged event seq=%d class=%d after failed send", ev.Seq, ev.Class)
+			}
+		}
 	}
+	o.mu.Lock()
 	o.refreshEventIINLocked()
 	o.mu.Unlock()
+}
+
+// releaseSolicitedEvents drops the reservations held for the events of a
+// solicited response that was fully delivered. The delivered events stay
+// removed; their slots become available to publishers again.
+func (o *Outstation) releaseSolicitedEvents() {
+	o.mu.Lock()
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	o.mu.Unlock()
+	for _, ev := range staged {
+		o.eventQueue.ReleaseReserved(ev)
+	}
+}
+
+// discardSolicitedLocked drops any staged solicited events without restoring
+// them, releasing their reservations. It is used at the start of a request to
+// clear staging that was never sent (a direct ProcessRequest caller that did
+// not run the send loop). The caller holds o.mu.
+func (o *Outstation) discardSolicitedLocked() {
+	if len(o.solicitedRemoved) == 0 {
+		return
+	}
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	for _, ev := range staged {
+		o.eventQueue.ReleaseReserved(ev)
+	}
 }
 
 // sendResponseFragments writes every application fragment and transport frame of
@@ -1349,9 +1424,11 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	// A previous solicited response that was not delivered re-queued its
-	// events; clear any stale staging so this request starts clean.
-	o.solicitedRemoved = nil
+	// A previous solicited response that was not delivered re-queued its events;
+	// release any reservation left by a staging that was never sent (for example
+	// a direct ProcessRequest caller that did not use the run loop), then start
+	// this request clean.
+	o.discardSolicitedLocked()
 
 	// Confirm is not a solicited request. Accept or ignore it without
 	// consuming the solicited application sequence and without a response.
