@@ -1,11 +1,16 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: EVT-001
+Package: AO-005
 Branch: work
-CURRENT: NONE
+CURRENT: AO-005
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_IN_PROGRESS
+
+## Owner-promoted AO-005 — 2026-11-14
+
+**CURRENT: AO-005.** The owner authorized bounded G41 V1–V4 Direct Operate-with-response implementation and independent-wire verification. Execution contract: `workflow/active_work/AO-005.md`; technical precheck: `docs/verification/AO-005-PRECHECK.md`. EVT-001 is archived and closed; the published v0 supported profile stays unchanged, with G41 **UNSUPPORTED**. No AO-005 profile promotion, merge, release or deployment is authorized. `QUEUED: NONE`. Use CWAL/KDE gates and preserve evidence provenance. Shell/Go/interop tests must actually be run and reported; task activation alone is not implementation acceptance.
+
 
 ## Owner-authorized EVT-001 formal closure — 2026-11-14
 
