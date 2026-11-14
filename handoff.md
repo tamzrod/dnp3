@@ -2437,3 +2437,15 @@ unchanged (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`).
   FAIL/DIVERGENCE; malformed/mid-command remain NOT_RUN. Next: STOP for a
   separate independent read-only CHECK. No PR, merge, release, promotion, or
   field/NGCP/SCADA action.
+
+## AO-005 negative interoperability checkpoint (2026-11-14)
+
+The owner-authorized AO-005 negative interoperability iteration was executed on `work` (branch only). Two independent lab matrices ran inside the proven `--network none` two-namespace memory-only topology; the prior `ao005-pcap-2026-11-14` and AO-004 evidence were not rewritten.
+
+Matrix A (independent raw-frame injector -> Go outstation): all malformed Group 41 Direct-Operate objects (truncated/short value, wrong-length value, unsupported qualifier `0x17`, unsupported variation 0/5, bad count 0/2) were rejected with a solicited RESPONSE carrying IIN FuncUnknown (`0x0100`) and no Group 41 echo, with **zero** handler writes and no false SUCCESS. Four positive controls (V1–V4 idx0) returned SUCCESS with exactly four writes; idx1/idx2 returned OUT_OF_RANGE (`0x0c`) with zero writes; a link-layer header-CRC-corrupt frame was discarded with no APDU. No panic or hang.
+
+Matrix B (opted-in Go master -> pinned OpenDNP3 3.1.2 C++ peer through a lab-only fault proxy): a pre-send failure (Operate before Connect; cancelled context before send) produced a definite failure with no quarantine and no fabricated UNKNOWN. After-send response-loss (`drop-response`) and after-send disconnect (`close-after-request`) each produced an ambiguous/UNKNOWN outcome with quarantine; the second control was refused, the peer wrote exactly once per case, and the master never blindly retried or executed twice. A transparent `pass` control succeeded. Reverse-direction fault injection (Go outstation behind the proxy vs the C++ master) is **NOT_RUN**.
+
+Evidence: new `active_work/testdata/external/ao005-negative-2026-11-14/` bundle (raw PCAPs `ao005-neg-A.pcap` sha256 `e6826eb9590c12e81637b837a94ca1e787abca1cef5c0323e11f6fd9ba8e6373`, `ao005-neg-B.pcap` sha256 `5540a10551896071156b5acd50f592d429aace90f897503d6494381b850dab80`, logs, independent decode, SHA-256 manifest). Harness: `lab/ao004/injector/`, `lab/ao004/faultproxy/`, `lab/ao004/neg-master/`, `lab/ao004/ao005-negative-runner.sh`, `lab/ao004/ao005-negative-decode.py`. Full record appended in `docs/verification/AO-005.md` §5B. Known float `-0.0`/subnormal peer divergence remains **FAIL/DIVERGENCE**.
+
+`active_work/supported-profile.md` blob `3e592e77ad6e31d5492c609c5fdd62382505904b` is unchanged; Group 41 remains **UNSUPPORTED**. Markers unchanged: `AO-005 / QUEUED NONE / TASK_IN_PROGRESS`. No production `pkg/`/`internal/` change, no profile promotion, PR, merge, release, task closure, or field/NGCP/SCADA action. **STOP for independent read-only CHECK.**
