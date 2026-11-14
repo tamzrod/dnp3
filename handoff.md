@@ -7,6 +7,17 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## CURRENT owner authorization — 2026-11-14 — PPR-001-F4 and valid F2 fixture
+
+**OpenHands Cloud: run `operation cwal` only.** The owner's latest explicit authorization is the `Owner-authorized pre-PR corrective iteration — PPR-001-F4 and F2 fixture (2026-11-14)` addendum in the existing **CURRENT** `workflow/active_work/EVT-001.md`. This supersedes the earlier “F1/F2/F3 verified / ready” language as an authority for PR readiness; it does not alter prior passed evidence or CWAL/KDE boundaries.
+
+**PPR-001-F4 (P1):** `EventQueue.Restore` returns false if the event class buffer has refilled, but `requeueSolicitedEvents` ignores that return. Because `stageSolicitedRemovalLocked` removes accepted events before a multi-frame send, a concurrent publisher can fill those slots and trigger **silent rollback loss** on failed send. Reproduce deterministically with a barrier/hooked transport, reservation-capacity/full-buffer condition, new publishers, failed later send and reconnect. Correct queue reservation/rollback so every previously accepted event survives, new publishes are explicitly rejected when full, event identities/sequence/IIN remain correct, and restore failures cannot be ignored. Account for partial sends as delivery-indeterminate; no blind retries, no unbounded buffers.
+
+**F2 test validity:** Previous 300-point packed G1V1 fixture used 8-bit count 0x2C (=44), not 300. Replace with a valid oversized static block (e.g. 255 packed G1V1 bits, qualifier 0x07 count 0xFF, 32 packed octets, 36-octet object block under a 32-octet application budget). Verify actual generated wire bytes and fail-closed behavior; keep malformed fixtures separate and correctly described.
+
+Cloud uses verified clean `origin/work`; owner's laptop Grok/Qwen work is inaccessible and must not be touched or claimed recovered. Rerun scoped F4/F2 and previous F1-F3, all Go/race/CWAL gates, pinned **OpenDNP3 3.1.2** isolated `--network none` both directions with 254/255/256/257/333 plus negative confirms; document objective evidence and PCAP hashes. Only scoped `work` non-force checkpoints after verification. **No PR, merge, archive, release, profile promotion, main push, nested dnp3/ changes, SA or KDE governance edits.** All six markers stay `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. Exit: `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`, not PR approval.
+
+
 ## CURRENT owner authorization — 2026-11-14 — PPR-001 pre-PR F1/F2/F3 corrective iteration
 
 **Run `operation cwal` in OpenHands Cloud.** The latest owner authorization is in the existing CURRENT `workflow/active_work/EVT-001.md`, section `Owner-authorized pre-PR corrective iteration — PPR-001-F1/F2/F3 (2026-11-14)`. This supersedes the previous “PPR-001 verified” conclusion for PR readiness: independent read-only audit of `c319050ee828290022f5af61a8822fabeed74292` issued **PUSHBACK** on three findings. Continue autonomously; this handoff is a route to the approved CURRENT, not separate authority to expand work.
