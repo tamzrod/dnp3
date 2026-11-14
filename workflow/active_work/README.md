@@ -7,6 +7,18 @@ CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## PPR-001-F1/F2/F3 progress — 2026-11-14 — cloud
+
+F1/F2/F3 corrected and covered by negative tests (fail pre-fix, pass post-fix).
+F1 re-queues solicited events when the response send fails; F2 fails closed with
+`ErrFragmentTooLarge` on an un-splittable oversized block; F3 propagates the
+application-confirm send failure so the read fails instead of completing. Full Go
+gates PASS. Pinned OpenDNP3 3.1.2 `--network none` loopback large-batch run PASS
+both directions for N=254/255/256/257/333, plus duplicate/withheld confirm
+negatives PASS. Evidence: `docs/verification/evt001/EVT-001-PPR-001.md`.
+Result: `PPR-001-F1/F2/F3 VERIFIED — READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`.
+Markers unchanged: `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
+
 ## CURRENT owner authorization — 2026-11-14 — PPR-001 pre-PR F1/F2/F3 corrective iteration
 
 **Run `operation cwal` in OpenHands Cloud.** The latest owner authorization is in the existing CURRENT `workflow/active_work/EVT-001.md`, section `Owner-authorized pre-PR corrective iteration — PPR-001-F1/F2/F3 (2026-11-14)`. This supersedes the previous “PPR-001 verified” conclusion for PR readiness: independent read-only audit of `c319050ee828290022f5af61a8822fabeed74292` issued **PUSHBACK** on three findings. Continue autonomously; this handoff is a route to the approved CURRENT, not separate authority to expand work.

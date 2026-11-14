@@ -20,6 +20,7 @@
 #include <opendnp3/gen/StaticBinaryVariation.h>
 #include <opendnp3/gen/StaticCounterVariation.h>
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -54,6 +55,23 @@ DatabaseConfig Configure()
     config.counter[4].evariation = EventCounterVariation::Group22Var5;
     return config;
 }
+
+// ConfigureBatch builds n Class-1 binary-input points (indexes 0..n-1), each a
+// Group2Var2 timestamped event, so a single class-1 read exceeds 255 objects
+// and forces qualifier-bounded headers and multiple application fragments.
+DatabaseConfig ConfigureBatch(uint16_t n)
+{
+    DatabaseConfig config;
+    for (uint16_t i = 0; i < n; ++i)
+    {
+        config.binary_input[i].clazz = PointClass::Class1;
+        config.binary_input[i].svariation = StaticBinaryVariation::Group1Var1;
+        config.binary_input[i].evariation = EventBinaryVariation::Group2Var2;
+    }
+    return config;
+}
+
+uint16_t gBatch = 0;
 
 void Apply(const std::shared_ptr<IOutstation>& outstation, const char* which)
 {
@@ -107,8 +125,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    OutstationStackConfig stack(Configure());
-    stack.outstation.eventBufferConfig = EventBufferConfig::AllTypes(50);
+    if (const char* env = std::getenv("EVT_POINTS"))
+    {
+        const int parsed = std::atoi(env);
+        if (parsed > 0 && parsed <= 60000)
+        {
+            gBatch = static_cast<uint16_t>(parsed);
+        }
+    }
+    OutstationStackConfig stack(gBatch > 0 ? ConfigureBatch(gBatch) : Configure());
+    stack.outstation.eventBufferConfig =
+        EventBufferConfig::AllTypes(gBatch > 0 ? static_cast<uint16_t>(gBatch + 10) : 50);
     stack.outstation.params.allowUnsolicited = true;
     // Class mask starts empty so a confirmed null unsolicited does not push
     // the loaded events before the master issues its class read. ENABLE
@@ -135,6 +162,16 @@ int main(int argc, char** argv)
         {
             Apply(outstation, line.c_str());
             std::cout << "OK " << line << "\n" << std::flush;
+        }
+        else if (line == "fillall")
+        {
+            UpdateBuilder builder;
+            for (uint16_t i = 0; i < gBatch; ++i)
+            {
+                builder.Update(Binary((i % 2) == 0, Flags(0x01), DNPTime(kStamp)), i);
+            }
+            outstation->Apply(builder.Build());
+            std::cout << "OK fillall " << gBatch << "\n" << std::flush;
         }
         else if (!line.empty())
         {

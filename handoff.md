@@ -16,6 +16,29 @@ Status: TASK_IN_PROGRESS
 Use the cloud-clean `origin/work` per prior authorization (do not touch or claim recovered the owner's local Grok/Qwen files). Required: targeted negative tests for each finding, full Go/CWAL checks, pinned isolated OpenDNP3 3.1.2 both directions with 256+ event batches and relevant fault probes; record hashes/PCAP and honest result in PPR-001 evidence. Restrict edits to relevant CURRENT allowlist. **Never edit `main`, nested `dnp3/`, `internal/sa`, KDE governance, or published supported profile.** No PR, merge, archive, release, or promotion. On verified PASS checkpoint non-force to `work`; final report only `READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`. Markers remain `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`.
 
 
+## PPR-001-F1/F2/F3 progress — 2026-11-14 — cloud
+
+F1, F2, F3 corrected on `work` and covered by new negative tests that were
+observed to fail on the pre-fix source and pass after the correction.
+- F1: `stageSolicitedRemovalLocked` snapshots events before removal; a failed
+  `sendResponseFragments` calls `requeueSolicitedEvents`, restoring them with
+  `EventQueue.Restore` (original sequence/class). No silent loss.
+- F2: `responseFragments` now returns `([]*al.APDU, error)`; an un-splittable
+  block over the budget yields `ErrFragmentTooLarge` (fail closed), never an
+  oversized fragment.
+- F3: `confirmPendingAppFragments` returns and propagates the confirm send
+  error through `markDisconnected`; a failed confirm no longer counts as done.
+
+Go gates PASS (`gofmt`, `git diff --check`, `go vet`, `go build`,
+`go test ./... -count=1`, `go test -race ./... -count=1`,
+`scripts/verify-external-mvp.sh`). Pinned OpenDNP3 3.1.2 `--network none`
+loopback large-batch run PASS in both directions for N=254/255/256/257/333 with
+exact per-object counts, plus duplicate and withheld confirm negatives PASS.
+Captures, hashes and logs in `docs/verification/evt001/EVT-001-PPR-001.md`.
+Result: `PPR-001-F1/F2/F3 VERIFIED — READY_FOR_INDEPENDENT_PRE_PR_REAUDIT`.
+Markers unchanged: `EVT-001 / QUEUED NONE / TASK_IN_PROGRESS`. No PR/merge/
+archive/release/profile promotion.
+
 ## Cloud continuation progress — 2026-11-13 — PPR-001
 
 OpenHands Cloud executed PPR-001 from a verified clean `origin/work` checkout. Starting `HEAD` was `768e1f984455184bc3fe04baad836f3a0370e0de` (markers already `EVT-001 / TASK_IN_PROGRESS`). The owner's laptop workspace `/home/sysadmin/apps/dnp3` is **UNAVAILABLE / NOT RECOVERED / NOT TOUCHED**; Grok's untracked test and Qwen's edits were not accessed. `internal/outstation/event_batch_test.go` was newly authored from the live source, not restored.

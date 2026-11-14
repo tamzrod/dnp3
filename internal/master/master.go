@@ -2966,8 +2966,11 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) 
 			// A multi-fragment solicited response requires an application-layer
 			// confirmation per fragment: OpenDNP3's outstation sets CON on every
 			// fragment and will not send the next until the current one is
-			// confirmed. Confirm each complete fragment once.
-			m.confirmPendingAppFragments(acc, peer, &appConfirmed)
+			// confirmed. Confirm each complete fragment once. A failed confirm
+			// means the response is not delivered; fail rather than wait forever.
+			if cerr := m.confirmPendingAppFragments(acc, peer, &appConfirmed); cerr != nil {
+				return nil, cerr
+			}
 			continue
 		}
 		if aerr == nil && m.consumeUnsolicited(app, peer) {
@@ -2978,8 +2981,11 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) 
 		// The solicited response is complete. Confirm every CON fragment not yet
 		// confirmed, including the final one: OpenDNP3 sets CON on the last
 		// fragment of a multi-fragment solicited response too and stays in the
-		// confirm-wait state until it is confirmed.
-		m.confirmPendingAppFragments(acc, peer, &appConfirmed)
+		// confirm-wait state until it is confirmed. A failed confirm is an
+		// indeterminate outcome: fail closed instead of reporting success.
+		if cerr := m.confirmPendingAppFragments(acc, peer, &appConfirmed); cerr != nil {
+			return nil, cerr
+		}
 		return acc, nil
 	}
 }
@@ -2992,17 +2998,25 @@ func (m *Master) waitForResponseTimeout(stepTimeout time.Duration, peer uint16) 
 // Each fragment is confirmed with its own sequence: OpenDNP3 advances the
 // solicited sequence per fragment and requires the matching confirmation before
 // sending the next.
-func (m *Master) confirmPendingAppFragments(data []byte, peer uint16, done *int) {
+func (m *Master) confirmPendingAppFragments(data []byte, peer uint16, done *int) error {
 	frags, err := m.parseAppFragments(data)
 	if err != nil || len(frags) == 0 {
-		return
+		return nil
 	}
 	for i := *done; i < len(frags); i++ {
 		if frag, derr := al.Decode(frags[i]); derr == nil && frag.Control.CON {
-			_ = m.sendApplicationConfirm(frag.Control.Seq, peer, false)
+			if serr := m.sendApplicationConfirm(frag.Control.Seq, peer, false); serr != nil {
+				// The confirmation was not delivered. Do NOT advance done past this
+				// fragment: it is unconfirmed, so the peer stays in confirm-wait and
+				// the outcome is indeterminate. Surface the classified error instead
+				// of reporting a completed response.
+				wrapped, _ := m.markDisconnected(serr)
+				return wrapped
+			}
 		}
 		*done = i + 1
 	}
+	return nil
 }
 
 // SetUnsolicitedCallback registers the handler for an accepted unsolicited

@@ -2,10 +2,15 @@ package outstation
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"dnp3/internal/al"
+	"dnp3/internal/dll/frame"
+	"dnp3/internal/tl"
 )
 
 // This file is a newly authored regression for PPR-001 (event batching past the
@@ -484,7 +489,10 @@ func TestResponseFragmentsSplitAndPreserveAllObjects(t *testing.T) {
 	if len(resp.Data) <= 2044 {
 		t.Fatalf("test needs oversize response, data=%d", len(resp.Data))
 	}
-	frags := ost.responseFragments(resp)
+	frags, ferr := ost.responseFragments(resp)
+	if ferr != nil {
+		t.Fatalf("responseFragments: %v", ferr)
+	}
 	if len(frags) < 2 {
 		t.Fatalf("fragments=%d, want >=2", len(frags))
 	}
@@ -526,5 +534,268 @@ func TestSplitObjectDataKeepsSequentialBlockWhole(t *testing.T) {
 	}
 	if !bytes.Equal(frags[0], block) {
 		t.Fatalf("sequential block altered: % X", frags[0])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PPR-001-F1 / F2 corrective-iteration regressions.
+// ---------------------------------------------------------------------------
+
+// bigStaticHandler is a memory-only data handler with a configurable number of
+// static binary inputs, used to build a single non-indexed static block larger
+// than a small application-fragment budget (F2).
+type bigStaticHandler struct {
+	inputs []BinaryInput
+}
+
+func (h *bigStaticHandler) GetBinaryInputs() []BinaryInput { return h.inputs }
+func (h *bigStaticHandler) GetAnalogInputs() []AnalogInput { return nil }
+func (h *bigStaticHandler) GetCounters() []Counter         { return nil }
+func (h *bigStaticHandler) GetBinaryOutputs() []BinaryOutput {
+	return nil
+}
+func (h *bigStaticHandler) GetAnalogOutputs() []AnalogOutput { return nil }
+func (h *bigStaticHandler) GetFrozenCounters() []Counter     { return nil }
+func (h *bigStaticHandler) FreezeCounters(bool) error        { return nil }
+
+// failFromTransport feeds inbound frames from a channel (so the test controls
+// when each request is processed) and fails the Send of the failFrom-th frame
+// (1-based) and every send after it. Every send attempt is recorded.
+type failFromTransport struct {
+	in       chan []byte
+	failFrom int
+	mu       sync.Mutex
+	sent     [][]byte
+}
+
+func newFailFromTransport(failFrom int) *failFromTransport {
+	return &failFromTransport{in: make(chan []byte, 8), failFrom: failFrom}
+}
+
+func (t *failFromTransport) Send(data []byte) error {
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	t.mu.Lock()
+	t.sent = append(t.sent, cp)
+	n := len(t.sent)
+	t.mu.Unlock()
+	if t.failFrom > 0 && n >= t.failFrom {
+		return errString("send failed")
+	}
+	return nil
+}
+
+// snapshot returns a copy of the recorded send attempts.
+func (t *failFromTransport) snapshot() [][]byte {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([][]byte, len(t.sent))
+	copy(out, t.sent)
+	return out
+}
+
+func (t *failFromTransport) Receive() ([]byte, error) {
+	f, ok := <-t.in
+	if !ok {
+		// ErrSessionClosed ends the loop without clearing the event queue, so a
+		// test can inspect (and reconnect to) the retained events.
+		return nil, ErrSessionClosed
+	}
+	return f, nil
+}
+
+func (t *failFromTransport) SetTimeout(int) {}
+
+func classReadFrame(t *testing.T) []byte {
+	t.Helper()
+	read := &al.APDU{Control: al.AppControl{FIR: true, FIN: true, Seq: 1}, FuncCode: al.FuncRead,
+		Data: []byte{60, 2, 0x06}}
+	return buildAppFrame(t, frame.Control{DIR: true, PRM: true, FCV: true, FuncCode: frame.FuncConfirmedUserData}, read)
+}
+
+// TestSolicitedSendFailureRetainsEvents pins PPR-001-F1: when a solicited READ
+// response cannot be fully sent (a later transport frame fails), every event
+// removed while the reply was built is restored, so the events are not lost.
+func TestSolicitedSendFailureRetainsEvents(t *testing.T) {
+	cfg := &Config{OutstationAddress: 4, MasterAddress: 3, MaxEventBuffers: 1000}
+	ost := NewOutstation(cfg)
+	ost.Initialize()
+	ost.Start()
+	const n = 256
+	for i := 0; i < n; i++ {
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(i), i%2 == 0, i)); err != nil {
+			t.Fatalf("publish %d: %v", i, err)
+		}
+	}
+
+	// Fail the 2nd emitted frame so a multi-fragment response is only partly
+	// delivered while its events have already been removed from the queue.
+	tr := newFailFromTransport(2)
+	ost.SetTransport(tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = ost.RunWithContext(ctx)
+		close(done)
+	}()
+	tr.in <- classReadFrame(t)
+	time.Sleep(200 * time.Millisecond)
+
+	if got := len(tr.snapshot()); got < 2 {
+		t.Fatalf("expected at least 2 send attempts, got %d", got)
+	}
+	if got := ost.EventCount(); got != n {
+		t.Fatalf("events after failed send = %d, want %d (silent loss)", got, n)
+	}
+	if !ost.IIN().Class1Events {
+		t.Fatal("Class1Events IIN must remain set after a failed solicited send")
+	}
+
+	close(tr.in)
+	cancel()
+	<-done
+}
+
+// TestSolicitedSendFailureThenReconnectRedelivers pins that after a failed
+// solicited send the retained events are re-delivered on a fresh, working
+// connection with exactly-once accounting.
+func TestSolicitedSendFailureThenReconnectRedelivers(t *testing.T) {
+	cfg := &Config{OutstationAddress: 4, MasterAddress: 3, MaxEventBuffers: 1000}
+	ost := NewOutstation(cfg)
+	ost.Initialize()
+	ost.Start()
+	const n = 256
+	for i := 0; i < n; i++ {
+		if err := ost.PublishEvent(batchBinary(Class1, uint16(i), i%2 == 0, i)); err != nil {
+			t.Fatalf("publish %d: %v", i, err)
+		}
+	}
+
+	// First connection: fail the 2nd frame, so the response is not delivered.
+	tr := newFailFromTransport(2)
+	ost.SetTransport(tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = ost.RunWithContext(ctx)
+		close(done)
+	}()
+	tr.in <- classReadFrame(t)
+	time.Sleep(200 * time.Millisecond)
+	if got := ost.EventCount(); got != n {
+		t.Fatalf("events after failed send = %d, want %d", got, n)
+	}
+	close(tr.in)
+	cancel()
+	<-done
+
+	// Second connection: a fresh outstation sharing the same queue re-delivers
+	// the retained events (a new session does not lose unconfirmed events).
+	tr2 := newFailFromTransport(0)
+	next := NewOutstation(cfg)
+	next.UseEventQueue(ost.eventQueue)
+	next.Initialize()
+	next.Start()
+	next.SetTransport(tr2)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done2 := make(chan struct{})
+	go func() {
+		_ = next.RunWithContext(ctx2)
+		close(done2)
+	}()
+	tr2.in <- classReadFrame(t)
+	time.Sleep(200 * time.Millisecond)
+	close(tr2.in)
+	cancel2()
+	<-done2
+
+	if got := next.EventCount(); got != 0 {
+		t.Fatalf("events after successful read = %d, want 0", got)
+	}
+	// Reassemble the emitted link frames into application fragments and count the
+	// event objects delivered. A multi-fragment response spans several frames.
+	re := tl.NewReassembler()
+	delivered := 0
+	for _, raw := range tr2.snapshot() {
+		f, err := frame.Decode(raw)
+		if err != nil || len(f.Data) == 0 {
+			continue
+		}
+		tf, err := tl.DecodeFragment(f.Data)
+		if err != nil {
+			continue
+		}
+		msg, err := re.Push(tf)
+		if err != nil || msg == nil {
+			continue
+		}
+		re.Reset()
+		resp, err := al.Decode(msg)
+		if err != nil || resp.FuncCode != al.FuncResponse || len(resp.Data) < 2 {
+			continue
+		}
+		evs, derr := al.DecodeEventObjects(resp.Data[2:])
+		if derr != nil {
+			continue
+		}
+		delivered += len(evs)
+	}
+	if delivered != n {
+		t.Fatalf("delivered across reconnect = %d, want %d", delivered, n)
+	}
+}
+
+// TestSolicitedOversizeBlockFailsClosed pins PPR-001-F2: a single non-indexed
+// static block larger than a small application-fragment budget must fail closed
+// before sending, rather than emitting an oversized APDU the peer would discard.
+func TestSolicitedOversizeBlockFailsClosed(t *testing.T) {
+	cfg := &Config{OutstationAddress: 4, MasterAddress: 3, MaxFragmentSize: 32}
+	ost := NewOutstation(cfg)
+	ost.Initialize()
+	ost.Start()
+	// 300 binary inputs -> a G1V1 count-qualified block of 4 + ceil(300/8)=38 = 42
+	// octets, above the 32-octet budget and not splittable without renumbering.
+	inputs := make([]BinaryInput, 300)
+	for i := range inputs {
+		inputs[i] = BinaryInput{Value: i%2 == 0, Quality: BinaryQualityOnline}
+	}
+	ost.SetDataHandler(&bigStaticHandler{inputs: inputs})
+
+	tr := newFailFromTransport(0)
+	ost.SetTransport(tr)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = ost.RunWithContext(ctx)
+		close(done)
+	}()
+	read := &al.APDU{Control: al.AppControl{FIR: true, FIN: true, Seq: 1}, FuncCode: al.FuncRead,
+		Data: []byte{60, 1, 0x06}}
+	tr.in <- buildAppFrame(t, frame.Control{DIR: true, PRM: true, FCV: true, FuncCode: frame.FuncConfirmedUserData}, read)
+	time.Sleep(200 * time.Millisecond)
+
+	if got := len(tr.snapshot()); got != 0 {
+		t.Fatalf("oversize unsplittable block must not be sent, got %d frame(s)", got)
+	}
+	close(tr.in)
+	cancel()
+	<-done
+}
+
+// TestResponseFragmentsOversizeBlockErrors pins the splitter contract directly:
+// responseFragments reports ErrFragmentTooLarge for a single non-indexed block
+// larger than the budget.
+func TestResponseFragmentsOversizeBlockErrors(t *testing.T) {
+	ost := NewOutstation(&Config{MaxFragmentSize: 32})
+	// IIN(2) + G1V1 count-qualified block with 300 packed bits (4 + 38 = 42 octets).
+	block := append([]byte{1, 1, 0x07, 0x2C}, make([]byte, 38)...)
+	resp := &al.APDU{Control: al.AppControl{FIR: true, FIN: true, Seq: 1}, FuncCode: al.FuncResponse,
+		Data: append([]byte{0, 0}, block...)}
+	frags, err := ost.responseFragments(resp)
+	if !errors.Is(err, ErrFragmentTooLarge) {
+		t.Fatalf("err = %v, want ErrFragmentTooLarge", err)
+	}
+	if frags != nil {
+		t.Fatalf("oversize block must not yield fragments, got %d", len(frags))
 	}
 }

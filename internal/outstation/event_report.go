@@ -114,6 +114,24 @@ func (q *EventQueue) RemoveSeqs(ids []uint64) {
 	}
 }
 
+// Restore re-inserts one event that was removed from the queue but whose
+// response could not be delivered. It keeps the event's original insertion
+// sequence number and class buffer, so a later read re-encodes exactly the
+// event that was lost. The caller must ensure the buffer has room; a
+// just-removed event leaves the buffer no fuller than before.
+func (q *EventQueue) Restore(ev Event) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.buffers[ev.Class]) >= q.maxSize/3 {
+		return false
+	}
+	q.buffers[ev.Class] = append(q.buffers[ev.Class], ev)
+	if ev.Seq >= q.nextSeq {
+		q.nextSeq = ev.Seq + 1
+	}
+	return true
+}
+
 func sortEvents(evs []Event) {
 	sort.SliceStable(evs, func(i, j int) bool {
 		a, b := evs[i], evs[j]

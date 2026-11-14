@@ -89,7 +89,9 @@ func main() {
 			}
 			full := 0
 			for i := 0; i < n; i++ {
-				err := server.PublishBinaryEvent(uint16(i), true, al.BinEventOnline, outstation.EventClass1, time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC))
+				// Indexes wrap at 256: the 8-bit index field cannot address
+				// more, and repeated indexes in one run are a supported case.
+				err := server.PublishBinaryEvent(uint16(i%256), true, al.BinEventOnline, outstation.EventClass1, time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC))
 				if err != nil {
 					full++
 				}

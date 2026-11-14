@@ -81,6 +81,10 @@ var (
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrBufferFull      = errors.New("event buffer full")
 	ErrTransportNotSet = errors.New("transport not configured")
+	// ErrFragmentTooLarge: a solicited response contains an object block that
+	// cannot be split to fit the configured application-fragment budget. The
+	// response is refused rather than sending a fragment the peer would discard.
+	ErrFragmentTooLarge = errors.New("response block exceeds application fragment budget")
 	// ErrNotSupported: the request cannot be executed because the configured
 	// data handler does not support the required operation. Fail-closed: a
 	// non-success response is returned rather than a false success (AO-002 F1).
@@ -584,6 +588,10 @@ type Outstation struct {
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
 	// Event queue
 	eventQueue *EventQueue
+	// solicitedRemoved holds events removed from the queue while a solicited
+	// READ response is assembled; they are re-inserted if that response cannot
+	// be fully delivered, so a failed send never loses an accepted event.
+	solicitedRemoved []Event
 }
 
 // NewOutstation creates a new Outstation.
@@ -896,32 +904,13 @@ func (o *Outstation) RunWithContext(ctx context.Context) error {
 
 		// Send response with DLL framing. A response whose object data exceeds
 		// the application-fragment budget is split into several fragments, each
-		// carried in its own transport-message/DLL-frame run.
+		// carried in its own transport-message/DLL frame run. A response that
+		// cannot be delivered (unbounded fragment, encode error, or transport
+		// send failure) re-queues every event removed while it was built, so an
+		// accepted event is never lost; the peer re-polls and receives them again.
 		if resp != nil {
-			for _, appFrag := range o.responseFragments(resp) {
-				respData := o.buildTransportFragments(appFrag)
-				for _, frag := range respData {
-					// Wrap in DLL frame. A solicited application response is user
-					// data and must be a primary frame (PRM=1) in both directions;
-					// unconfirmed user data carries no FCB/FCV.
-					dllFrame := &frame.Frame{
-						Control: frame.Control{
-							DIR:      false, // Outstation-to-Master
-							PRM:      true,  // Primary: carries user data
-							FuncCode: frame.FuncUnconfirmedUserData,
-						},
-						DestAddr: o.config.MasterAddress,
-						SrcAddr:  o.config.OutstationAddress,
-						Data:     frag,
-					}
-					dllEncoded, err := frame.Encode(dllFrame)
-					if err != nil {
-						continue
-					}
-					if err := transport.Send(dllEncoded); err != nil {
-						continue
-					}
-				}
+			if serr := o.sendResponseFragments(transport, resp); serr != nil {
+				o.requeueSolicitedEvents()
 			}
 		}
 
@@ -1067,6 +1056,85 @@ const appFragmentOverhead = 4
 // before FIN.
 const defaultMaxAppFragment = 2048
 
+// stageSolicitedRemovalLocked removes the events identified by ids from the
+// queue, remembering them so a response that cannot be delivered can put them
+// back. It runs while the queue still holds the events, so a concurrent
+// unsolicited send cannot also remove them. The caller holds o.mu.
+func (o *Outstation) stageSolicitedRemovalLocked(ids []uint64) {
+	if len(ids) == 0 {
+		return
+	}
+	// Snapshot the events that are about to be removed so they can be restored
+	// verbatim (insertion order, sequence, timestamps) if the response fails.
+	idSet := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+	staged := o.solicitedRemoved
+	for _, ev := range o.eventQueue.GetAll() {
+		if _, ok := idSet[ev.Seq]; ok {
+			staged = append(staged, ev)
+		}
+	}
+	o.solicitedRemoved = staged
+	o.eventQueue.RemoveSeqs(ids)
+	o.cancelInFlightLocked(ids)
+}
+
+// requeueSolicitedEvents restores every event staged by stageSolicitedRemovalLocked
+// after its response could not be delivered. The events keep their original
+// insertion sequence numbers and IIN bits, so the next poll re-encodes exactly
+// what was lost.
+func (o *Outstation) requeueSolicitedEvents() {
+	o.mu.Lock()
+	staged := o.solicitedRemoved
+	o.solicitedRemoved = nil
+	if len(staged) == 0 {
+		o.mu.Unlock()
+		return
+	}
+	for _, ev := range staged {
+		o.eventQueue.Restore(ev)
+	}
+	o.refreshEventIINLocked()
+	o.mu.Unlock()
+}
+
+// sendResponseFragments writes every application fragment and transport frame of
+// a solicited response, returning the first error encountered. An error means
+// the response was not fully delivered.
+func (o *Outstation) sendResponseFragments(transport TransportHandler, resp *al.APDU) error {
+	frags, err := o.responseFragments(resp)
+	if err != nil {
+		return err
+	}
+	for _, appFrag := range frags {
+		for _, frag := range o.buildTransportFragments(appFrag) {
+			// Wrap in DLL frame. A solicited application response is user data
+			// and must be a primary frame (PRM=1) in both directions;
+			// unconfirmed user data carries no FCB/FCV.
+			dllFrame := &frame.Frame{
+				Control: frame.Control{
+					DIR:      false, // Outstation-to-Master
+					PRM:      true,  // Primary: carries user data
+					FuncCode: frame.FuncUnconfirmedUserData,
+				},
+				DestAddr: o.config.MasterAddress,
+				SrcAddr:  o.config.OutstationAddress,
+				Data:     frag,
+			}
+			dllEncoded, err := frame.Encode(dllFrame)
+			if err != nil {
+				return err
+			}
+			if err := transport.Send(dllEncoded); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // responseFragments splits a solicited response into consecutive application
 // fragments, each at most the configured budget. A response that already fits
 // is returned as a single FIR|FIN fragment. The first fragment keeps the
@@ -1080,7 +1148,7 @@ const defaultMaxAppFragment = 2048
 // re-emitted under fresh count-bounded headers, each fragment repeating the IIN.
 // Sequential blocks (qualifier 0x07, implicit indexes) stay whole so no point
 // index is renumbered.
-func (o *Outstation) responseFragments(resp *al.APDU) []*al.APDU {
+func (o *Outstation) responseFragments(resp *al.APDU) ([]*al.APDU, error) {
 	budget := o.maxAppFragment
 	if budget <= appFragmentOverhead+1 {
 		budget = defaultMaxAppFragment
@@ -1090,15 +1158,22 @@ func (o *Outstation) responseFragments(resp *al.APDU) []*al.APDU {
 	// payload gets budget-4 octets per fragment.
 	maxData := budget - appFragmentOverhead
 	if len(resp.Data) <= maxData+2 {
-		return []*al.APDU{resp}
+		return []*al.APDU{resp}, nil
 	}
 	chunks := splitObjectData(resp.Data[2:], maxData)
 	if len(chunks) <= 1 {
-		return []*al.APDU{resp}
+		// The object data exceeds the budget yet the splitter produced a single
+		// chunk: one non-indexed block is larger than the budget and cannot be
+		// split without renaming point indexes. Fail closed before sending rather
+		// than emit a fragment the peer would discard.
+		return nil, fmt.Errorf("%w: %d octets of object data, budget %d", ErrFragmentTooLarge, len(resp.Data[2:]), maxData)
 	}
 	out := make([]*al.APDU, len(chunks))
 	iin := append([]byte(nil), resp.Data[:2]...)
 	for i, c := range chunks {
+		if len(c) > maxData {
+			return nil, fmt.Errorf("%w: chunk %d is %d octets, budget %d", ErrFragmentTooLarge, i, len(c), maxData)
+		}
 		body := make([]byte, 0, 2+len(c))
 		body = append(body, iin...)
 		body = append(body, c...)
@@ -1114,7 +1189,7 @@ func (o *Outstation) responseFragments(resp *al.APDU) []*al.APDU {
 			Data:     body,
 		}
 	}
-	return out
+	return out, nil
 }
 
 // splitObjectData partitions encoded object data (everything after the two IIN
@@ -1273,6 +1348,10 @@ func (o *Outstation) buildTransportFragments(apdu *al.APDU) [][]byte {
 func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
+	// A previous solicited response that was not delivered re-queued its
+	// events; clear any stale staging so this request starts clean.
+	o.solicitedRemoved = nil
 
 	// Confirm is not a solicited request. Accept or ignore it without
 	// consuming the solicited application sequence and without a response.
@@ -1444,8 +1523,7 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			encoded, ids := o.encodeDirectRead(group, variation, requestData[offset:])
 			result = append(result, encoded...)
 			if len(ids) > 0 {
-				o.eventQueue.RemoveSeqs(ids)
-				o.cancelInFlightLocked(ids)
+				o.stageSolicitedRemovalLocked(ids)
 			}
 		case 10: // Binary Output (static - no timestamp)
 			result = append(result, o.buildBinaryOutputData(normalizeStaticVariation(group, variation))...)
@@ -1468,8 +1546,7 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 				encoded, ids := o.encodeClassRead(EventClass(variation - 2))
 				result = append(result, encoded...)
 				if len(ids) > 0 {
-					o.eventQueue.RemoveSeqs(ids)
-					o.cancelInFlightLocked(ids)
+					o.stageSolicitedRemovalLocked(ids)
 				}
 			default:
 				// Unknown class variation — treat as Class 0.
