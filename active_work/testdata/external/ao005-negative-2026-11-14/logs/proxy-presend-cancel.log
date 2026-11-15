@@ -1,0 +1,2 @@
+faultproxy: mode=pass listening on 10.77.0.1:20000 -> 10.77.0.2:20000
+faultproxy: client connected, peer dialed

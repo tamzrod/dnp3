@@ -96,7 +96,7 @@ func TestPublicOperateG41V3Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := newConnectedClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: tc.bits})
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: tc.bits})
 			resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, math.Float32frombits(tc.bits), types.DirectOperate))
 			if err != nil {
 				t.Fatalf("Operate error: %v", err)
@@ -122,7 +122,7 @@ func TestPublicOperateG41V3NonSuccess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cc := newConnectedClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: tc.status, valueBits: math.Float32bits(1.0)})
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: tc.status, valueBits: math.Float32bits(1.0)})
 			resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, 1.0, types.DirectOperate))
 			if err != nil {
 				t.Fatalf("Operate error: %v", err)
@@ -146,7 +146,7 @@ func TestPublicOperateG41V3SignedZeroEchoNotSuccess(t *testing.T) {
 	posZero := math.Float32bits(float32(0))
 
 	t.Run("matching -0.0 echo is success", func(t *testing.T) {
-		cc := newConnectedClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: negZero})
+		cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: negZero})
 		resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, float32(math.Copysign(0, -1)), types.DirectOperate))
 		if err != nil {
 			t.Fatalf("Operate error: %v", err)
@@ -157,7 +157,7 @@ func TestPublicOperateG41V3SignedZeroEchoNotSuccess(t *testing.T) {
 	})
 
 	t.Run("sign-flipped +0.0 echo is not success", func(t *testing.T) {
-		cc := newConnectedClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: posZero})
+		cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: posZero})
 		resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, float32(math.Copysign(0, -1)), types.DirectOperate))
 		if err == nil && resp != nil && resp.Status == types.ControlSuccess {
 			t.Fatalf("sign-flipped G41V3 echo surfaced as ControlSuccess")
@@ -169,7 +169,7 @@ func TestPublicOperateG41V3SignedZeroEchoNotSuccess(t *testing.T) {
 // does not match the request is never ControlSuccess: the public path fails
 // closed (error, no success status).
 func TestPublicOperateG41V3MismatchedEchoNotSuccess(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: math.Float32bits(2.0)})
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41V3EchoTransport{commandStatus: 0, valueBits: math.Float32bits(2.0)})
 	resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, 1.0, types.DirectOperate))
 	if err == nil && resp != nil && resp.Status == types.ControlSuccess {
 		t.Fatalf("mismatched G41V3 echo surfaced as ControlSuccess")
@@ -190,7 +190,7 @@ func TestPublicOperateG41V3UnsupportedModesBlockedBeforeSend(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			_, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, 1.0, tc.mode))
 			if !errors.Is(err, dnp3.ErrUnsupportedOption) {
 				t.Fatalf("error = %v, want ErrUnsupportedOption", err)
@@ -217,7 +217,7 @@ func TestPublicOperateG41V3RejectsNonFiniteBeforeSend(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := &recordingPubTransport{}
-			cc := newConnectedClientWithTransport(t, tr)
+			cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 			resp, err := cc.Operate(context.Background(), types.NewAnalogFloat32Control(0, tc.value, types.DirectOperate))
 			if err == nil {
 				t.Fatalf("expected rejection for %s, got resp=%v", tc.name, resp)
@@ -237,7 +237,7 @@ func TestPublicOperateG41V3RejectsNonFiniteBeforeSend(t *testing.T) {
 // without any wire traffic (no silent narrowing), and never surfaces as success.
 func TestPublicOperateG41V3RejectsInexactFloat64BeforeSend(t *testing.T) {
 	tr := &recordingPubTransport{}
-	cc := newConnectedClientWithTransport(t, tr)
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, tr)
 	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 		Group: 41, Variation: 3, Index: 0,
 		CommandType: types.DirectOperate,

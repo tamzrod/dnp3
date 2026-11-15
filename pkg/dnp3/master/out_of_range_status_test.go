@@ -58,7 +58,7 @@ func (t *pubG41EchoTransport) Receive() ([]byte, error) {
 // surfaced as ControlOutOfRange (not ControlTimeout, not ControlSuccess), with
 // no error (definite remote rejection).
 func TestPublicOperateOutOfRangeStatus(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &pubG41EchoTransport{index: 1, value: 2300, commandStatus: 0x0C})
+	cc := newConnectedExperimentalAnalogClientWithTransport(t, &pubG41EchoTransport{index: 1, value: 2300, commandStatus: 0x0C})
 	resp, err := cc.Operate(context.Background(), &types.ControlOutput{
 		Group: 41, Variation: 1, Index: 1,
 		CommandType: types.DirectOperate,

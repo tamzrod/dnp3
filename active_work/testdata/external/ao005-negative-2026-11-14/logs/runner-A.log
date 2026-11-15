@@ -1,0 +1,33 @@
+RESULT ISOLATION_BASELINE PASS (no default route before topology)
+RESULT REACH PASS (master reaches outstation over the internal veth)
+--- outstation readiness (A) ---
+ao004-go-outstation: listening on 10.77.0.2:20000 (link outstation=4 <- master=3)
+CASE matrix=A case=pos-v1 :: injector: case=pos-v1 func=0x05 request_hex=056414C404000300C717C0C00529012801000000FC080000005AF5 corrupt_header_crc=false injector: case=pos-v1 response_hex=05640500030004003C5605641644030004000F01C0C081000029012801000000FC080000414700FFFF 
+CASE matrix=A case=pos-v2 :: injector: case=pos-v2 func=0x05 request_hex=056412C4040003001E7CC0C00529022801000000393000DF84 corrupt_header_crc=false injector: case=pos-v2 response_hex=05640500030004003C560564144403000400B827C0C081000029022801000000393000188A 
+CASE matrix=A case=pos-v3 :: injector: case=pos-v3 func=0x05 request_hex=056414C404000300C717C0C005290328010000000000C03F00050A corrupt_header_crc=false injector: case=pos-v3 response_hex=05640500030004003C5605641644030004000F01C0C0810000290328010000000000C03F499100FFFF 
+CASE matrix=A case=pos-v4 :: injector: case=pos-v4 func=0x05 request_hex=056418C40400030075C0C0C0052904280100000000000000000076A3F83F007119 corrupt_header_crc=false injector: case=pos-v4 response_hex=05640500030004003C5605641A4403000400BDD6C0C0810000290428010000000000000046140000F83F007119 
+CASE matrix=A case=idx1-v1 :: injector: case=idx1-v1 func=0x05 request_hex=056414C404000300C717C0C00529012801000100FC0800000038AA corrupt_header_crc=false injector: case=idx1-v1 response_hex=05640500030004003C5605641644030004000F01C0C081000029012801000100FC080000A6F20C0ED9 
+CASE matrix=A case=idx1-v4 :: injector: case=idx1-v4 func=0x05 request_hex=056418C40400030075C0C0C0052904280100010000000000000064B5F83F007119 corrupt_header_crc=false injector: case=idx1-v4 response_hex=05640500030004003C5605641A4403000400BDD6C0C08100002904280100010000000000A1A10000F83F0C803F 
+CASE matrix=A case=trunc-v1 :: injector: case=trunc-v1 func=0x05 request_hex=056413C404000300F9C9C0C00529012801000000FC0800003731 corrupt_header_crc=false injector: case=trunc-v1 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=trunc-v2 :: injector: case=trunc-v2 func=0x05 request_hex=056411C4040003004EEFC0C00529022801000000390022F8 corrupt_header_crc=false injector: case=trunc-v2 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=trunc-v3 :: injector: case=trunc-v3 func=0x05 request_hex=056413C404000300F9C9C0C005290328010000000000C000E800 corrupt_header_crc=false injector: case=trunc-v3 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=trunc-v4 :: injector: case=trunc-v4 func=0x05 request_hex=056417C4040003009784C0C0052904280100000000000000000076A3F8006E0C corrupt_header_crc=false injector: case=trunc-v4 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=long-v1 :: injector: case=long-v1 func=0x05 request_hex=056415C40400030020A2C0C00529012801000000FC0800000000C09F corrupt_header_crc=false injector: case=long-v1 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=badqual-17 :: injector: case=badqual-17 func=0x05 request_hex=056413C404000300F9C9C0C005290117010000FC08000000AE5B corrupt_header_crc=false injector: case=badqual-17 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=var0 :: injector: case=var0 func=0x05 request_hex=056414C404000300C717C0C00529002801000000FC08000000D4E3 corrupt_header_crc=false injector: case=var0 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=var5 :: injector: case=var5 func=0x05 request_hex=056414C404000300C717C0C00529052801000000FC0800000062AF corrupt_header_crc=false injector: case=var5 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=count2 :: injector: case=count2 func=0x05 request_hex=056414C404000300C717C0C00529012802000000FC0800000060DB corrupt_header_crc=false injector: case=count2 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=count0 :: injector: case=count0 func=0x05 request_hex=056414C404000300C717C0C00529012800000000FC080000009B2B corrupt_header_crc=false injector: case=count0 response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=idx2 :: injector: case=idx2 func=0x05 request_hex=056414C404000300C717C0C00529012801000200FC080000009E4B corrupt_header_crc=false injector: case=idx2 response_hex=05640500030004003C5605641644030004000F01C0C081000029012801000200FC080000F6610C0ED9 
+CASE matrix=A case=fc-write :: injector: case=fc-write func=0x02 request_hex=056414C404000300C717C0C00229012801000000FC080000008225 corrupt_header_crc=false injector: case=fc-write response_hex=05640500030004003C5605640A44030004007CAEC0C0810001C2DE 
+CASE matrix=A case=crc-corrupt :: injector: case=pos-v1 func=0x05 request_hex=056414C4040003003817C0C00529012801000000FC080000005AF5 corrupt_header_crc=true injector: case=pos-v1 response_hex=05640500030004003C56 
+--- outstation accepted-command log (A) ---
+ao004-go-outstation: listening on 10.77.0.2:20000 (link outstation=4 <- master=3)
+ao004-go-outstation: accepted group=41 variation=1 index=0 value=int32:2300 count=1
+ao004-go-outstation: accepted group=41 variation=2 index=0 value=int16:12345 count=2
+ao004-go-outstation: accepted group=41 variation=3 index=0 value=float32:1.5 bits=0x3fc00000 count=3
+ao004-go-outstation: accepted group=41 variation=4 index=0 value=float64:1.5 bits=0x3ff8000000000000 count=4
+ao004-go-outstation: shutting down...
+ao004-go-outstation: stopped
+RESULT PCAP_PRESENT /out/ao005-neg-A.pcap (23339 bytes)
+RESULT MATRIX_A DONE

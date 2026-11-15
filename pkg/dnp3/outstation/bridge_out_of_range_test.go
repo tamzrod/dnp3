@@ -68,7 +68,7 @@ func (h *bridgeOutOfRangeHandler) HandleAnalogCommand(cmd *types.ControlOutput) 
 // and still returns an error (fail closed).
 func TestBridgeAnalogOutOfRangeCarriesStatus(t *testing.T) {
 	h := &bridgeOutOfRangeHandler{}
-	d := &internalDataHandler{commandHandler: h}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 	err := d.WriteAnalogOutput(1, int32(2300), 1)
 	if err == nil {
 		t.Fatal("expected a failure error from the bridge, got nil")
@@ -89,7 +89,7 @@ func TestBridgeAnalogOutOfRangeCarriesStatus(t *testing.T) {
 // ((ControlOutOfRange, nil)) also carries wire 0x0C — the handler is not
 // required to raise an error to convey the status.
 func TestBridgeAnalogOutOfRangeStatusOnlyNoError(t *testing.T) {
-	d := &internalDataHandler{commandHandler: &statusOnlyHandler{status: types.ControlOutOfRange}}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: &statusOnlyHandler{status: types.ControlOutOfRange}}
 	err := d.WriteAnalogOutput(1, int32(2300), 1)
 	if err == nil {
 		t.Fatal("expected a failure error for a status-only OUT_OF_RANGE refusal, got nil (false success)")
@@ -104,7 +104,7 @@ func TestBridgeAnalogOutOfRangeStatusOnlyNoError(t *testing.T) {
 // has no wire mapping (e.g. ControlSynchBlocked) still fails closed with a plain
 // error (no ControlStatusError) — the bridge never guesses a wire status.
 func TestBridgeAnalogUnmappedStatusFailsClosed(t *testing.T) {
-	d := &internalDataHandler{commandHandler: &statusOnlyHandler{status: types.ControlSynchBlocked}}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: &statusOnlyHandler{status: types.ControlSynchBlocked}}
 	err := d.WriteAnalogOutput(1, int32(2300), 1)
 	if err == nil {
 		t.Fatal("expected a failure error, got nil (false success)")
@@ -133,7 +133,7 @@ func TestBridgeToOutstationOutOfRangeEchoEndToEnd(t *testing.T) {
 			inst := outstation.NewOutstation(nil)
 			inst.Initialize()
 			inst.Start()
-			inst.SetDataHandler(&internalDataHandler{commandHandler: &bridgeOutOfRangeHandler{}})
+			inst.SetDataHandler(&internalDataHandler{analogControlEnabled: true, commandHandler: &bridgeOutOfRangeHandler{}})
 
 			data := []byte{0x29, tc.variation, 0x28, 0x01, 0x00, 0x01, 0x00}
 			data = append(data, tc.value...)

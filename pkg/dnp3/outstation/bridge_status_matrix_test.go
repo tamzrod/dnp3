@@ -43,7 +43,7 @@ func TestBridgeBinaryOutputNonSuccessStatusIsFailure(t *testing.T) {
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
-			h := &internalDataHandler{commandHandler: &statusOnlyHandler{status: row.status}}
+			h := &internalDataHandler{analogControlEnabled: true, commandHandler: &statusOnlyHandler{status: row.status}}
 			err := h.WriteBinaryOutput(0, &outstation.CROB{Code: 0x03, Count: 1, Status: 0})
 			if row.wantOK {
 				if err != nil {
@@ -59,9 +59,39 @@ func TestBridgeBinaryOutputNonSuccessStatusIsFailure(t *testing.T) {
 }
 
 func TestBridgeAnalogOutputNonSuccessStatusIsFailure(t *testing.T) {
-	h := &internalDataHandler{commandHandler: &statusOnlyHandler{status: types.ControlNotSupported}}
+	h := &internalDataHandler{analogControlEnabled: true, commandHandler: &statusOnlyHandler{status: types.ControlNotSupported}}
 	if err := h.WriteAnalogOutput(0, int16(7), 1); err == nil {
 		t.Fatal("expected a failure error from the analog bridge for non-success status, got nil (false success)")
+	}
+}
+
+// TestBridgeAnalogOutputRejectedByDefault asserts the published v0 supported
+// profile's "Reject" for Group 41 analog controls is enforced by the bridge when
+// the explicit, non-default WithExperimentalAnalogControl switch is off: the
+// host analog handler is never invoked, no state is mutated, and the call fails
+// closed with an error (never a SUCCESS acknowledgement). AO-005.
+func TestBridgeAnalogOutputRejectedByDefault(t *testing.T) {
+	h := &aoRecordingHandler{}
+	d := &internalDataHandler{commandHandler: h}
+	cases := []struct {
+		name      string
+		value     interface{}
+		variation uint8
+	}{
+		{"G41V1 int32", int32(7), 1},
+		{"G41V2 int16", int16(7), 2},
+		{"G41V3 float32", float32(7), 3},
+		{"G41V4 float64", float64(7), 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := d.WriteAnalogOutput(0, tc.value, tc.variation); err == nil {
+				t.Fatal("default bridge accepted a Group 41 analog control; want a fail-closed error")
+			}
+			if h.got != nil {
+				t.Fatalf("host analog handler was invoked for a default-rejected control: %+v", h.got)
+			}
+		})
 	}
 }
 
@@ -81,12 +111,36 @@ func (h *aoRecordingHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*typ
 	return &s, nil
 }
 
+// TestBridgeAnalogOutputNilHandlerFailsClosed asserts the opted-in analog path
+// fails closed when no command handler is registered: the bridge returns an
+// error and never panics or acknowledges success. AO-005.
+func TestBridgeAnalogOutputNilHandlerFailsClosed(t *testing.T) {
+	d := &internalDataHandler{analogControlEnabled: true}
+	cases := []struct {
+		name      string
+		value     interface{}
+		variation uint8
+	}{
+		{"G41V1 int32", int32(7), 1},
+		{"G41V2 int16", int16(7), 2},
+		{"G41V3 float32", float32(7), 3},
+		{"G41V4 float64", float64(7), 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := d.WriteAnalogOutput(0, tc.value, tc.variation); err == nil {
+				t.Fatal("analog bridge accepted a control with no command handler; want a fail-closed error")
+			}
+		})
+	}
+}
+
 // TestBridgeAnalogOutputG41V1Semantics locks the AO-002 bridge contract: a G41V1
 // analog output is carried as a typed AnalogInt32CommandValue with DirectOperate
 // semantics (not the previously hard-coded SelectThenOperate).
 func TestBridgeAnalogOutputG41V1Semantics(t *testing.T) {
 	h := &aoRecordingHandler{}
-	d := &internalDataHandler{commandHandler: h}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 	if err := d.WriteAnalogOutput(7, int32(2300), 1); err != nil {
 		t.Fatalf("WriteAnalogOutput G41V1: %v", err)
 	}
@@ -115,7 +169,7 @@ func TestBridgeAnalogOutputG41V1Semantics(t *testing.T) {
 // that is not an int32/int16 is rejected before reaching the handler.
 func TestBridgeAnalogOutputG41V1RejectsWrongType(t *testing.T) {
 	h := &aoRecordingHandler{}
-	d := &internalDataHandler{commandHandler: h}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 	if err := d.WriteAnalogOutput(0, float64(1.5), 1); err == nil {
 		t.Fatal("expected rejection for a non-integer G41V1 value")
 	}
@@ -129,7 +183,7 @@ func TestBridgeAnalogOutputG41V1RejectsWrongType(t *testing.T) {
 // semantics.
 func TestBridgeAnalogOutputG41V2Semantics(t *testing.T) {
 	h := &aoRecordingHandler{}
-	d := &internalDataHandler{commandHandler: h}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 	if err := d.WriteAnalogOutput(9, int16(-42), 2); err != nil {
 		t.Fatalf("WriteAnalogOutput G41V2: %v", err)
 	}
@@ -169,7 +223,7 @@ func TestBridgeAnalogOutputG41V2RejectsWrongTypeAndRange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &aoRecordingHandler{}
-			d := &internalDataHandler{commandHandler: h}
+			d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 			if err := d.WriteAnalogOutput(0, tc.value, 2); err == nil {
 				t.Fatalf("expected rejection for G41V2 value %v", tc.value)
 			}
@@ -185,7 +239,7 @@ func TestBridgeAnalogOutputG41V2RejectsWrongTypeAndRange(t *testing.T) {
 // semantics and its exact bits (including signed zero) preserved.
 func TestBridgeAnalogOutputG41V4Semantics(t *testing.T) {
 	h := &aoRecordingHandler{}
-	d := &internalDataHandler{commandHandler: h}
+	d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 	if err := d.WriteAnalogOutput(9, math.Copysign(0, -1), 4); err != nil {
 		t.Fatalf("WriteAnalogOutput G41V4: %v", err)
 	}
@@ -227,7 +281,7 @@ func TestBridgeAnalogOutputG41V4RejectsWrongTypeAndNonFinite(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &aoRecordingHandler{}
-			d := &internalDataHandler{commandHandler: h}
+			d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 			if err := d.WriteAnalogOutput(0, tc.value, 4); err == nil {
 				t.Fatalf("expected rejection for G41V4 value %v", tc.value)
 			}
@@ -282,7 +336,7 @@ func TestBridgeCROBOpTypeBooleanMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &crobRecordingHandler{}
-			d := &internalDataHandler{commandHandler: h}
+			d := &internalDataHandler{analogControlEnabled: true, commandHandler: h}
 			err := d.WriteBinaryOutput(0, &outstation.CROB{Code: tc.code, Count: 1})
 			if tc.wantErr {
 				if err == nil {

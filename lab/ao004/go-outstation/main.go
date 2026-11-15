@@ -262,6 +262,11 @@ func main() {
 		outstation.WithMasterAddress(linkMasterAddr),
 		outstation.WithTransport(dnp3.TCP, *host, *port),
 		outstation.WithMaxConnections(1),
+		// AO-005: the published v0 supported profile rejects Group 41 analog
+		// controls by default. This fixture is the isolated G41 analog-output
+		// target, so it explicitly opts into the experimental analog-control
+		// path; the default (non-opted-in) behavior is fail-closed rejection.
+		outstation.WithExperimentalAnalogControl(),
 	)
 	server, err := outstation.NewServer(cfg)
 	if err != nil {

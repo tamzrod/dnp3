@@ -1,0 +1,27 @@
+ms(1794647918882) INFO    ao004-g41 - Listening on: 10.77.0.2:20000
+channel state change: OPENING
+ao004-g41-peer: listening on 10.77.0.2:20000 (link 4 -> 3); memory-only G41 handler active
+ms(1794647920909) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=1
+ms(1794647921953) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1794647923469) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=2
+ms(1794647924513) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1794647926029) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=3
+ms(1794647930037) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1794647931553) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=4
+ms(1794647931554) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING

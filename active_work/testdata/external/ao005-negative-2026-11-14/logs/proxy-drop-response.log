@@ -1,0 +1,4 @@
+faultproxy: mode=drop-response listening on 10.77.0.1:20000 -> 10.77.0.2:20000
+faultproxy: client connected, peer dialed
+faultproxy: control request on the wire; arming fault
+faultproxy: withholding peer response
