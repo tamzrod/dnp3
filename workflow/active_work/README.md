@@ -3,9 +3,15 @@
 Repository: tamzrod/dnp3
 Package: AO-006
 Branch: work
-CURRENT: AO-006
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_IN_PROGRESS
+Status: WORK_PACKAGE_READY
+
+## AO-006 CLOSED AND ARCHIVED — 2026-11-19
+
+Owner-authorized scoped AO-006 closure following independent `READY_FOR_CLOSURE` audit at `c0b2cb9a7aded2e54e7be584ac4c743c9b6c1467`. Original CURRENT task and requirements preserved verbatim plus closure disposition in `archive/active-work/AO-006.md`. Fresh Go gate PASS, OpenDNP3 3.1.2 direction-A/B 8/8 each, malformed/CRC and after-send quarantine evidence preserved in `docs/verification/AO-006.md` and `active_work/testdata/external/ao006-fresh-2026-11-18/`. Independent acceptance audit verified all 15 raw/decoded/log SHA-256 records and located all 32 positive frames in original PCAPs. Audit did not independently rerun Go commands or float-edge wire generation; historical accepted evidence remains unchanged.
+
+**Limitations preserved:** peer `-0.0`/smallest-subnormal normalization **FAIL/DIVERGENCE** with Go fail-closed response; only one independent peer/version; reverse-direction negative fault injection `NOT_RUN`; legacy `NewAnalogControl(float64)` excluded; no SBO, no-response, WRITE, multi-point, field/NGCP/SCADA/production use or general certification claims. Published v0 profile `active_work/supported-profile.md` remains blob `3e592e77ad6e31d5492c609c5fdd62382505904b` — Group 41 **UNSUPPORTED**. Closure is not profile promotion or PR/merge/release/deployment authorization. CURRENT retired, QUEUED NONE, STOP.
 
 ## AO-006 execution checkpoint — 2026-11-18 — executable environment (supersedes GitHub-only blocker)
 
