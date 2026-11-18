@@ -1,11 +1,15 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: AO-005
+Package: AO-006
 Branch: work
-CURRENT: NONE
+CURRENT: AO-006
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_BLOCKED
+
+## AO-006 promoted — 2026-11-18 — G41 promotion-preparation mission
+
+Owner authorization establishes a new task at `workflow/active_work/AO-006.md` without reopening archived AO-005. Verified remote baseline: main `4279da2`, work `d9eeb303` before this documentation checkpoint; branches diverged (work +37 / -3), no reset, rebase, forced update or main write. G41 remains UNSUPPORTED in published profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. Executable Go/OpenDNP3 validation is unavailable in this GitHub-only session and is **NOT_RUN_THIS_INVOCATION**. `TASK_BLOCKED` denotes the executable verification prerequisite, not a known new protocol defect. No PR, merge, release, deployment or profile promotion.
 
 ## AO-005 CLOSED — 2026-11-14
 
