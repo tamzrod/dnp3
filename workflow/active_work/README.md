@@ -5,9 +5,14 @@ Package: AO-006
 Branch: work
 CURRENT: AO-006
 QUEUED: NONE
-Status: TASK_BLOCKED
+Status: TASK_IN_PROGRESS
 
-## AO-006 promoted — 2026-11-18 — G41 promotion-preparation mission
+## AO-006 execution checkpoint — 2026-11-18 — executable environment (supersedes GitHub-only blocker)
+
+Owner authorization at `workflow/active_work/AO-006.md`; CURRENT remains `AO-006`, `QUEUED: NONE`. A subsequent CWAL invocation ran in an executable OpenHands Cloud environment (Go 1.22.12 + Docker) and executed every acceptance gate 1–7 (none `NOT_RUN_THIS_INVOCATION`). Go gates all PASS: `cwal-check`, `git diff --check`, `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, `verify-external-mvp.sh` (exit 0). Independent pinned OpenDNP3 3.1.2 isolated (`--network none`) rerun: direction A (C++ master -> Go outstation) 8/8 PASS, direction B (Go master -> C++ peer) 8/8 PASS, exact-bit echo, status `0x00`/`0x0c`, 0 BAD CRCs; negative matrices A/B reproduced (malformed -> IIN `0x0100`, zero writes; after-send -> `control outcome unknown` + quarantine + refused second control, never blindly retried). Float `-0.0`/subnormal peer normalization reproduced as tracked FAIL/DIVERGENCE (Go master fails closed; peer normalizes to `+0.0`). No reproducible protocol defect found; legacy `NewAnalogControl(float64)` non-candidate fails closed pre-send. Evidence: `docs/verification/AO-006.md`; bundle `active_work/testdata/external/ao006-fresh-2026-11-18/`. Lab-only change: `lab/ao004/go-master/main.go` (optional `--value-hex`; defaults unchanged). Verified remote baseline: main `4279da2`; work head at run start `c06cda4` (work +40 / -3), no reset, rebase, forced update or main write. G41 remains UNSUPPORTED in published profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. Status: `TASK_IN_PROGRESS`; recommendation only (promotion-ready scoped candidate vs OpenDNP3 3.1.2 with signed-zero/subnormal exclusion). No PR, merge, release, deployment, promotion or task closure. Next: STOP for a separate independent read-only CHECK.
+
+## AO-006 promoted — 2026-11-18 — G41 promotion-preparation mission (superseded)
+
 
 Owner authorization establishes a new task at `workflow/active_work/AO-006.md` without reopening archived AO-005. Verified remote baseline: main `4279da2`, work `d9eeb303` before this documentation checkpoint; branches diverged (work +37 / -3), no reset, rebase, forced update or main write. G41 remains UNSUPPORTED in published profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. Executable Go/OpenDNP3 validation is unavailable in this GitHub-only session and is **NOT_RUN_THIS_INVOCATION**. `TASK_BLOCKED` denotes the executable verification prerequisite, not a known new protocol defect. No PR, merge, release, deployment or profile promotion.
 
