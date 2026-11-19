@@ -98,8 +98,9 @@ type Client interface {
 	State() dnp3.ConnectionState
 
 	// Read issues a read request to the outstation.
-	// Supported-profile: Target — Class-0 static Groups 1.1, 10.1, 20.1 and
-	// 30.1; other groups are rejected with ErrUnsupportedGroup (DNP3-029).
+	// Published v0 profile: Target — Class-0 static Groups 1.1, 20.1 and
+	// 30.1. Group 10.1 is an implemented interoperability extension, NOT a
+	// published v0 Target. Other groups are rejected with ErrUnsupportedGroup.
 	Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error)
 
 	// IntegrityPoll issues a Class-0 integrity poll — a single Read of all
@@ -109,7 +110,8 @@ type Client interface {
 	// the common "read everything" case (DNP3-037). Since MEXT-015 the primary
 	// path is one multi-header exchange, with a per-group fallback for peers
 	// that reject it.
-	// Supported-profile: Target (convenience over Target Read groups).
+	// Published v0 profile: Target for Class-0 G1/G20/G30. The G10 read
+	// extension is implemented but not promoted to the published v0 profile.
 	IntegrityPoll(ctx context.Context) (*ReadResponse, error)
 
 	// LastIIN returns the most recent Internal Indications received from the
@@ -1213,9 +1215,9 @@ func (c *client) readWithDeadline(ctx context.Context, request *types.ReadReques
 		return nil, fmt.Errorf("decode response failed: %w", err)
 	}
 
-	// Parse data into public supported static types. G10V1 is parsed so a
-	// commanded binary output state is observable over DNP3. G40 and frozen
-	// counters remain outside this profile and are left nil.
+	// Parse static types. G10V1 is decoded as a bounded interoperability
+	// extension, not a published v0 Target. G40 and frozen counters remain
+	// outside the published v0 profile and are left nil.
 	binaryInputs := parseBinaryInputs(resp.Data)
 	binaryOutputs := parseBinaryOutputs(resp.Data)
 	analogInputs := parseAnalogInputs(resp.Data)
@@ -1385,10 +1387,10 @@ func (c *client) LastIIN() [2]byte {
 	return outstation.GetIIN()
 }
 
-// isSupportedReadGroup reports whether a (group, variation) pair is in the
-// read profile. Supported groups are Binary Input (G1), Binary Output Status
-// (G10), Counter (G20), and Analog Input (G30). Variation 0 means "any" and
-// is accepted for these groups; variation 1 is the supported concrete form.
+// isSupportedReadGroup checks the implemented READ allow-list, which includes
+// the G10 interoperability extension. The published v0 Target subset remains
+// G1/G20/G30; G10 is not yet promoted. Variation 0 means "any" and variation
+// 1 is the concrete form accepted by this implementation.
 func isSupportedReadGroup(group, variation uint8) bool {
 	switch group {
 	case 1, 10, 20, 30:
