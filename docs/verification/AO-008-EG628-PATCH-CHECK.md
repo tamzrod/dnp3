@@ -268,6 +268,7 @@ Pulse Off acceptance additionally required the EG628-side pulse-width-only CROB 
 CURRENT: AO-008 (bounded corrective continuation; **not** an archive, promotion,
 merge or deployment). Base `work` HEAD at start: `50d4c8d` (`origin/work` `50d4c8d`,
 after the concurrent SBO-timeout and short-READ-authorization commits).
+Checkpoint commit: `e380991`.
 
 ## Scope actually worked
 
