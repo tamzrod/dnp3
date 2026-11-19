@@ -497,8 +497,8 @@ func classMask(data []byte) (c1, c2, c3, saw bool) {
 	off := 0
 	for off+3 <= len(data) {
 		g, v, q := data[off], data[off+1], data[off+2]
-		size := requestObjectHeaderSize(data, off)
-		if size == 0 || off+size > len(data) {
+		size, ok := requestObjectHeaderSize(data, off)
+		if !ok || off+size > len(data) {
 			break
 		}
 		if g == 60 && q == al.QualAllObjects {

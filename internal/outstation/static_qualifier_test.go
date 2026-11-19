@@ -128,10 +128,13 @@ func TestBuildAnalogOutputSequentialQualifier(t *testing.T) {
 // TestRequestStartStopHeaderConsumed verifies the request header size table
 // treats 0x00 as a 5-octet start/stop header (not a 4-octet count header).
 func TestRequestStartStopHeaderConsumed(t *testing.T) {
-	if got := requestObjectHeaderSize([]byte{1, 1, 0x00, 0x00, 0x04}, 0); got != 5 {
-		t.Fatalf("requestObjectHeaderSize(0x00) = %d, want 5", got)
+	if got, ok := requestObjectHeaderSize([]byte{1, 1, 0x00, 0x00, 0x04}, 0); !ok || got != 5 {
+		t.Fatalf("requestObjectHeaderSize(0x00) = %d, %v, want 5, true", got, ok)
 	}
-	if got := requestObjectHeaderSize([]byte{1, 1, 0x17, 0x02}, 0); got != 4 {
-		t.Fatalf("requestObjectHeaderSize(0x17) = %d, want 4", got)
+	if got, ok := requestObjectHeaderSize([]byte{1, 1, 0x17, 0x02}, 0); !ok || got != 4 {
+		t.Fatalf("requestObjectHeaderSize(0x17) = %d, %v, want 4, true", got, ok)
+	}
+	if _, ok := requestObjectHeaderSize([]byte{1, 1, 0x99, 0x02}, 0); ok {
+		t.Fatal("requestObjectHeaderSize accepted an unknown qualifier 0x99")
 	}
 }

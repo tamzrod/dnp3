@@ -526,8 +526,13 @@ func TestResponseFragmentsSplitAndPreserveAllObjects(t *testing.T) {
 // qualifier-0x07 block (implicit indexes) is never split, so point index
 // numbering cannot be corrupted, and that every object survives.
 func TestSplitObjectDataKeepsSequentialBlockWhole(t *testing.T) {
-	// Group 1 Variation 1 static block: header (g,v,qual,count) + bytes.
-	block := []byte{1, 1, 0x07, 3, 0x01, 0x02, 0x03}
+	// Group 20 Variation 1 static block: header (g,v,qual,count) + three
+	// 5-octet points (flags + uint32). G1V1 is packed, so a counter block is
+	// the clearer sequential fixture.
+	block := []byte{20, 1, 0x07, 3}
+	for i := 0; i < 3; i++ {
+		block = append(block, 0x01, byte(i), 0, 0, 0)
+	}
 	frags := splitObjectData(block, 8)
 	if len(frags) != 1 {
 		t.Fatalf("fragments=%d, want 1 (sequential block stays whole)", len(frags))
