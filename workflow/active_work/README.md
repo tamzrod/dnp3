@@ -3,9 +3,15 @@
 Repository: tamzrod/dnp3
 Package: AO-007
 Branch: work
-CURRENT: AO-007
+CURRENT: NONE
 QUEUED: NONE
-Status: TASK_IN_PROGRESS
+Status: WORK_PACKAGE_READY
+
+## AO-007 CLOSED AND ARCHIVED — 2026-11-19
+
+Owner-authorized closure of independently checked `PROMOTION_PREP_READY` on `work` checkpoint `ab30835`. Original complete CURRENT task and acceptance disposition preserved in `archive/active-work/AO-007.md`; approved *design direction* plus complete proposed migration/rollback stays in `docs/verification/AO-007-PROPOSED-PROFILE.md` (**UNAPPROVED DRAFT**, not the published profile). OpenHands reported fresh Go build/vet/unit/race/external-MVP and isolated OpenDNP3 3.1.2 direction A/B 8/8 PASS, negatives reproduced; independent CHECK inspected GitHub scope/markers/evidence, **did not independently rerun** executable tests.
+
+**Preserved limits:** V3/V4 `-0.0`/subnormal OpenDNP3 normalization **FAIL/DIVERGENCE** (Go fail closed); single peer/version only; reverse-direction fault injection NOT_RUN; fresh AO-007 PCAP/log/image artifacts generated under `/tmp` **not committed** (their hashes are recorded but fresh bytes cannot be independently validated from git); existing AO-006 committed evidence retained. KDE/human approval still required for stable explicit-opt-in API, compatibility/profile version and exclusion contract, followed by **separate owner authorization** to promote. Published G41 remains **UNSUPPORTED** in `active_work/supported-profile.md` blob `3e592e77ad6e31d5492c609c5fdd62382505904b`. AO-007 accepted as **preparation only**, not permission to implement/publish support, PR, merge, release, deploy or execute field commands. `CURRENT: NONE`, `QUEUED: NONE`, `Status: WORK_PACKAGE_READY`. STOP.
 
 ## AO-007 explicit opt-in design approved — 2026-11-19 (preparation checkpoint)
 
