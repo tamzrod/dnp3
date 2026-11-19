@@ -9,8 +9,7 @@ import (
 )
 
 // binaryWireStatusHandler returns a definite non-success status with or without
-// an accompanying error, as a host command handler does when MMA2 refuses a
-// CROB.
+// an accompanying error, as a host command handler does when it refuses a CROB.
 type binaryWireStatusHandler struct {
 	status types.ControlStatus
 	err    error
@@ -31,7 +30,7 @@ func (h *binaryWireStatusHandler) HandleAnalogCommand(cmd *types.ControlOutput) 
 // the public bridge so the internal outstation can echo it. Without the carrier
 // the master sees an error response with no command-status object.
 func TestBridgeBinaryOutputCarriesWireStatus(t *testing.T) {
-	base := errors.New("MMA2 refused command")
+	base := errors.New("host refused command")
 	for _, tc := range []struct {
 		name   string
 		err    error
