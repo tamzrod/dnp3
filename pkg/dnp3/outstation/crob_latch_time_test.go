@@ -61,13 +61,15 @@ func TestBridgeNormalisesLatchTimes(t *testing.T) {
 		wantValue   bool
 		wantOnTime  uint32
 		wantOffTime uint32
+		wantCalls   int
 	}{
-		{"latch_on_with_default_ontime", 0x03, 1, 1000, 0, true, 0, 0},
-		{"latch_off_with_default_ontime", 0x04, 1, 1000, 0, false, 0, 0},
-		{"latch_on_with_both_times", 0x03, 1, 1000, 500, true, 0, 0},
-		{"pulse_on_keeps_ontime", 0x01, 1, 1000, 0, true, 1000, 0},
-		{"pulse_off_keeps_offtime", 0x02, 1, 0, 1000, false, 0, 1000},
-		{"nul_keeps_times", 0x00, 1, 1000, 0, false, 1000, 0},
+		{"latch_on_with_default_ontime", 0x03, 1, 1000, 0, true, 0, 0, 1},
+		{"latch_off_with_default_ontime", 0x04, 1, 1000, 0, false, 0, 0, 1},
+		{"latch_on_with_both_times", 0x03, 1, 1000, 500, true, 0, 0, 1},
+		{"pulse_on_keeps_ontime", 0x01, 1, 1000, 0, true, 1000, 0, 1},
+		{"pulse_off_keeps_offtime", 0x02, 1, 0, 1000, false, 0, 1000, 1},
+		// NUL is now a true no-op: no handler call, so no false Latch Off.
+		{"nul_never_reaches_handler", 0x00, 1, 1000, 0, false, 1000, 0, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,6 +81,12 @@ func TestBridgeNormalisesLatchTimes(t *testing.T) {
 			}
 			if err := d.WriteBinaryOutput(1, crob); err != nil {
 				t.Fatalf("WriteBinaryOutput: %v", err)
+			}
+			if tc.wantCalls == 0 {
+				if h.seen != nil {
+					t.Fatal("NUL must not reach the command handler")
+				}
+				return
 			}
 			if h.seen == nil {
 				t.Fatal("command handler was not called")
@@ -110,15 +118,18 @@ func TestBridgeNormalisesLatchTimes(t *testing.T) {
 // genuine pulse or NUL command with the same timing must still be rejected.
 func TestBridgeLatchWithDefaultOnTimeNotRejectedByV0Handler(t *testing.T) {
 	cases := []struct {
-		name string
-		code uint8
-		want int
+		name      string
+		code      uint8
+		wantErr   bool
+		wantCalls int
 	}{
-		{"latch_on_index1", 0x03, 1},
-		{"latch_off_index1", 0x04, 1},
-		{"pulse_on_index1", 0x01, 0},
-		{"pulse_off_index1", 0x02, 0},
-		{"nul_index1", 0x00, 0},
+		{"latch_on_index1", 0x03, false, 1},
+		{"latch_off_index1", 0x04, false, 1},
+		{"pulse_on_index1", 0x01, true, 0},
+		{"pulse_off_index1", 0x02, true, 0},
+		// A NUL is acknowledged as a genuine no-op: no handler call and no
+		// physical write, so timing parameters cannot cause an actuation.
+		{"nul_index1_no_op", 0x00, false, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,14 +137,14 @@ func TestBridgeLatchWithDefaultOnTimeNotRejectedByV0Handler(t *testing.T) {
 			d := &internalDataHandler{commandHandler: h}
 			crob := &outstation.CROB{Code: tc.code, Count: 1, OnTime: 1000}
 			err := d.WriteBinaryOutput(1, crob)
-			if tc.want == 1 && err != nil {
-				t.Fatalf("latch command rejected: %v", err)
+			if tc.wantErr && err == nil {
+				t.Fatal("pulse command with non-zero OnTime was accepted by a v0 handler")
 			}
-			if tc.want == 0 && err == nil {
-				t.Fatal("pulse/NUL command with non-zero OnTime was accepted")
+			if !tc.wantErr && err != nil {
+				t.Fatalf("command rejected: %v", err)
 			}
-			if h.calls != tc.want {
-				t.Fatalf("accepted calls = %d, want %d", h.calls, tc.want)
+			if h.calls != tc.wantCalls {
+				t.Fatalf("accepted calls = %d, want %d", h.calls, tc.wantCalls)
 			}
 		})
 	}

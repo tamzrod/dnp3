@@ -2155,11 +2155,12 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				return nil, ErrInvalidRequest
 			}
 			crob := CROB{
-				Code:    req.Data[dataIdx],
-				Count:   req.Data[dataIdx+1],
-				OnTime:  uint32(req.Data[dataIdx+2]) | uint32(req.Data[dataIdx+3])<<8 | uint32(req.Data[dataIdx+4])<<16 | uint32(req.Data[dataIdx+5])<<24,
-				OffTime: uint32(req.Data[dataIdx+6]) | uint32(req.Data[dataIdx+7])<<8 | uint32(req.Data[dataIdx+8])<<16 | uint32(req.Data[dataIdx+9])<<24,
-				Status:  req.Data[dataIdx+10],
+				Code:      req.Data[dataIdx],
+				Count:     req.Data[dataIdx+1],
+				OnTime:    uint32(req.Data[dataIdx+2]) | uint32(req.Data[dataIdx+3])<<8 | uint32(req.Data[dataIdx+4])<<16 | uint32(req.Data[dataIdx+5])<<24,
+				OffTime:   uint32(req.Data[dataIdx+6]) | uint32(req.Data[dataIdx+7])<<8 | uint32(req.Data[dataIdx+8])<<16 | uint32(req.Data[dataIdx+9])<<24,
+				Status:    req.Data[dataIdx+10],
+				Qualifier: objectQualifier(req.Data),
 			}
 			// Call the data handler to process the CROB
 			if dh, ok := o.data.(DataWriter); ok {
@@ -2200,13 +2201,24 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 	return resp, nil
 }
 
+// objectQualifier returns the object-header qualifier octet, or 0 when the
+// request is too short. parseControlObjectHeader has already validated the
+// header before a CROB is built; this only avoids a secondary bounds panic.
+func objectQualifier(data []byte) uint8 {
+	if len(data) > 2 {
+		return data[2]
+	}
+	return 0
+}
+
 // CROB represents a Control Relay Output Block (Group 12, Variation 1).
 type CROB struct {
-	Code    uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
-	Count   uint8  // Number of operation cycles
-	OnTime  uint32 // Time in ms to energize
-	OffTime uint32 // Time in ms to de-energize
-	Status  uint8  // Qualifier code (0x00=STANDARD)
+	Code      uint8  // Control code (IEEE 1815 A.8.1 low-nibble enum; see types.CROBOp*)
+	Count     uint8  // Number of operation cycles
+	OnTime    uint32 // Time in ms to energise
+	OffTime   uint32 // Time in ms to de-energise
+	Status    uint8  // Request object status octet (normally 0x00)
+	Qualifier uint8  // Object-header qualifier code from the request
 }
 
 // DataWriter interface for handling write operations.
@@ -2322,7 +2334,7 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	// Call the DataWriter if the data handler implements it
 	if dh, ok := o.data.(DataWriter); ok {
 		debugLog("handleOperate: calling executeControl for index=%d", index)
-		err := o.executeControl(dh, group, variation, index, pending.Value)
+		err := o.executeControl(dh, group, variation, index, pending.Value, objectQualifier(req.Data))
 		if err != nil {
 			// A handler refusal that carries an IEEE 1815 command status is
 			// echoed in a G12V1 object so the master sees a definite
@@ -2408,7 +2420,7 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		return nil, ErrNotSupported
 	}
 	debugLog("handleDirectOperate: calling executeControl")
-	if err := o.executeControl(dh, group, variation, index, value); err != nil {
+	if err := o.executeControl(dh, group, variation, index, value, objectQualifier(req.Data)); err != nil {
 		// AO-004 Appendix T: when the handler refuses with a specific,
 		// wire-encodable command status (for example OUT_OF_RANGE), echo the
 		// object with that status so the master reads a definite per-point
@@ -2513,7 +2525,9 @@ func g41ValueWidth(variation uint8) int {
 }
 
 // executeControl executes a control operation by parsing the value and calling the DataWriter.
-func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte) error {
+// qualifier is the object-header qualifier octet and is carried through to the
+// public command handler so a CROB handler can preserve the request layout.
+func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte, qualifier uint8) error {
 	debugLog("executeControl: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
 	switch group {
@@ -2523,11 +2537,12 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			return ErrInvalidRequest
 		}
 		crob := CROB{
-			Code:    value[0],
-			Count:   value[1],
-			OnTime:  uint32(value[2]) | uint32(value[3])<<8 | uint32(value[4])<<16 | uint32(value[5])<<24,
-			OffTime: uint32(value[6]) | uint32(value[7])<<8 | uint32(value[8])<<16 | uint32(value[9])<<24,
-			Status:  value[10],
+			Code:      value[0],
+			Count:     value[1],
+			OnTime:    uint32(value[2]) | uint32(value[3])<<8 | uint32(value[4])<<16 | uint32(value[5])<<24,
+			OffTime:   uint32(value[6]) | uint32(value[7])<<8 | uint32(value[8])<<16 | uint32(value[9])<<24,
+			Status:    value[10],
+			Qualifier: qualifier,
 		}
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)

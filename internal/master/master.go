@@ -3524,22 +3524,38 @@ func (m *Master) buildControlRequest(funcCode uint8, group, variation uint8, ind
 			code = v
 		case uint16:
 			code = uint8(v)
+		case []byte:
+			// Complete G12V1 CROB payload (11 octets) from the public pulse
+			// constructor: code, count, onTime LSB, offTime LSB, status.
+			// Preserve all timing fields verbatim rather than collapsing a
+			// pulse into a latch boolean.
+			if len(v) != 11 {
+				return nil
+			}
+			if !isSupportedCROBOpType(v[0]) {
+				return nil
+			}
+			if (v[0] == CROBCodePulseOn || v[0] == CROBCodePulseOff) && v[1] == 0 {
+				return nil // a pulse needs at least one cycle
+			}
+			valueBytes = append([]byte(nil), v...)
 		default:
 			return nil // Unsupported type
 		}
 
-		// Reject raw operation types the v0 profile does not support rather
-		// than emitting a non-conformant code octet.
-		if !isSupportedCROBOpType(code) {
-			return nil
-		}
-
-		valueBytes = []byte{
-			code,                                                                    // Control code
-			count,                                                                   // Count
-			byte(onTime), byte(onTime >> 8), byte(onTime >> 16), byte(onTime >> 24), // On time
-			byte(offTime), byte(offTime >> 8), byte(offTime >> 16), byte(offTime >> 24), // Off time
-			status, // Status
+		if valueBytes == nil {
+			// Reject raw operation types the v0 profile does not support rather
+			// than emitting a non-conformant code octet.
+			if !isSupportedCROBOpType(code) {
+				return nil
+			}
+			valueBytes = []byte{
+				code,                                                                    // Control code
+				count,                                                                   // Count
+				byte(onTime), byte(onTime >> 8), byte(onTime >> 16), byte(onTime >> 24), // On time
+				byte(offTime), byte(offTime >> 8), byte(offTime >> 16), byte(offTime >> 24), // Off time
+				status, // Status
+			}
 		}
 
 		if len(valueBytes) != 11 {

@@ -2209,23 +2209,35 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 	// Translate command
 	selectThenOperate := false // DirectOperate only in v0
 
-	// Extract raw value from CommandValue interface
+	// Extract raw value from CommandValue interface. For a G12V1 CROB with a
+	// full CROB carrier, encode all operation fields so NewPulseControl and
+	// NewCROBControl transmit real pulse timing rather than a latch boolean.
 	var rawValue interface{}
-	switch v := command.Value.(type) {
-	case *types.BinaryCommandValue:
-		rawValue = v.Value // bool
-	case *types.AnalogInt32CommandValue:
-		rawValue = v.Value // int32 (G41V1)
-	case *types.AnalogInt16CommandValue:
-		rawValue = v.Value // int16 (G41V2)
-	case *types.AnalogFloat32CommandValue:
-		rawValue = v.Value // float32 (G41V3)
-	case *types.AnalogFloat64CommandValue:
-		rawValue = v.Value // float64 (G41V4)
-	case *types.AnalogCommandValue:
-		rawValue = v.Value // float64
-	default:
-		rawValue = command.Value
+	if command.CROB != nil && command.Group == 12 && command.Variation == 1 {
+		c := command.CROB
+		rawValue = []byte{
+			c.Code, c.Count,
+			byte(c.OnTime), byte(c.OnTime >> 8), byte(c.OnTime >> 16), byte(c.OnTime >> 24),
+			byte(c.OffTime), byte(c.OffTime >> 8), byte(c.OffTime >> 16), byte(c.OffTime >> 24),
+			c.Status,
+		}
+	} else {
+		switch v := command.Value.(type) {
+		case *types.BinaryCommandValue:
+			rawValue = v.Value // bool
+		case *types.AnalogInt32CommandValue:
+			rawValue = v.Value // int32 (G41V1)
+		case *types.AnalogInt16CommandValue:
+			rawValue = v.Value // int16 (G41V2)
+		case *types.AnalogFloat32CommandValue:
+			rawValue = v.Value // float32 (G41V3)
+		case *types.AnalogFloat64CommandValue:
+			rawValue = v.Value // float64 (G41V4)
+		case *types.AnalogCommandValue:
+			rawValue = v.Value // float64
+		default:
+			rawValue = command.Value
+		}
 	}
 
 	// VEC-01 B4 F1/F3: a non-idempotent control is dispatched single-shot. The

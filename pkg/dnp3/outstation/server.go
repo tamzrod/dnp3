@@ -592,31 +592,48 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert the CROB operation type (IEEE 1815 A.8.1 low-nibble enum) to a
-	// binary value for the public command handler. Unsupported operation
-	// types (including any trip/close or clear bits) are rejected explicitly
-	// rather than silently mapped.
-	var value bool
-	switch crob.Code {
-	case 0x01, 0x03: // Pulse On, Latch On
-		value = true
-	case 0x00, 0x02, 0x04: // NUL, Pulse Off, Latch Off
-		value = false
-	default:
-		return fmt.Errorf("unsupported CROB operation type: 0x%02X", crob.Code)
+	// Validate the operation type at the only layer that sees the raw code.
+	// Unsupported operation types (including trip/close or clear bits) are
+	// refused with a definite per-point status, never mapped to a latch.
+	if !types.IsSupportedCROBOp(crob.Code) {
+		return outstation.NewControlStatusError(uint8(types.ControlBadFormat),
+			fmt.Errorf("unsupported CROB operation type: 0x%02X", crob.Code))
+	}
+	// A pulse with zero cycles is malformed. Refuse it explicitly rather than
+	// letting a handler silently reinterpret it as a latch.
+	if (crob.Code == types.CROBOpPulseOn || crob.Code == types.CROBOpPulseOff) && crob.Count == 0 {
+		return outstation.NewControlStatusError(uint8(types.ControlBadFormat),
+			fmt.Errorf("malformed pulse CROB: count=0 index=%d", index))
 	}
 
-	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
+	// NUL is a true no-op: no handler invocation and no physical transition.
+	// It is acknowledged without side effects, so no handler can mistake the
+	// collapsed `false` boolean for a Latch Off command.
+	if crob.Code == types.CROBOpNUL {
+		debugLog("WriteBinaryOutput: NUL no-op index=%d", index)
+		return nil
+	}
+
+	// The collapsed boolean is retained for latch-only handlers. Pulse
+	// handlers must use cmd.CROB for the operation code and timing.
+	var value bool
+	switch crob.Code {
+	case types.CROBOpPulseOn, types.CROBOpLatchOn:
+		value = true
+	case types.CROBOpPulseOff, types.CROBOpLatchOff:
+		value = false
+	}
+
+	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d, count=%d, on=%d, off=%d, qual=%d",
+		index, value, crob.Code, crob.Count, crob.OnTime, crob.OffTime, crob.Qualifier)
 
 	// IEEE 1815 A.8.1: OnTime and OffTime are pulse parameters. For Latch On
 	// and Latch Off they are not used, but some masters send a non-zero
-	// default OnTime alongside a latch code. Normalise them here, at the only
-	// layer that knows the control code, so a handler which rejects timed or
-	// pulse parameters for its own v0 profile still accepts a latch command.
-	// NUL and pulse codes are deliberately left unchanged: an unsupported
-	// timed operation must not be silently converted into a latch.
+	// default OnTime alongside a latch code. Normalise the legacy top-level
+	// fields for handlers with a strict v0 profile. cmd.CROB always carries
+	// the untouched wire values for full fidelity.
 	onTime, offTime := crob.OnTime, crob.OffTime
-	if crob.Code == 0x03 || crob.Code == 0x04 { // Latch On, Latch Off
+	if crob.Code == types.CROBOpLatchOn || crob.Code == types.CROBOpLatchOff {
 		onTime, offTime = 0, 0
 	}
 
@@ -629,6 +646,14 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		Count:       crob.Count,
 		OnTime:      onTime,
 		OffTime:     offTime,
+		CROB: &types.CROBCommandValue{
+			Code:      crob.Code,
+			Count:     crob.Count,
+			OnTime:    crob.OnTime,
+			OffTime:   crob.OffTime,
+			Qualifier: crob.Qualifier,
+			Status:    crob.Status,
+		},
 	}
 
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)

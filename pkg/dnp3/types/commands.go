@@ -46,6 +46,14 @@ type ControlOutput struct {
 	OffTime uint32
 	// Status is the command status (set by outstation)
 	Status ControlStatus
+	// CROB carries the complete Group 12 Variation 1 Control Relay Output
+	// Block for a binary control. It is non-nil only for G12V1 commands.
+	//
+	// The legacy Value field collapses the operation code to a boolean so
+	// existing latch-only handlers keep working; CROB is the authoritative
+	// carrier for operation code, count, on/off times, qualifier and request
+	// status. A pulse-capable command handler must read CROB, not Value.
+	CROB *CROBCommandValue
 }
 
 // CommandValue represents the value to send with a control command
@@ -60,6 +68,44 @@ type BinaryCommandValue struct {
 }
 
 func (b *BinaryCommandValue) isCommandValue() {}
+
+// CROB operation-type octet values (IEEE 1815 A.8.1 low-nibble enum). These are
+// exported so a public CommandHandler can classify a G12V1 CROB without
+// duplicating numeric constants. The upper nibble (trip/close and clear bits)
+// is zero for the supported v0 profile.
+const (
+	CROBOpNUL      uint8 = 0x00 // no operation (true no-op)
+	CROBOpPulseOn  uint8 = 0x01 // energise for OnTime, then de-energise for OffTime
+	CROBOpPulseOff uint8 = 0x02 // de-energise for OffTime, then energise for OnTime
+	CROBOpLatchOn  uint8 = 0x03 // latch output ON
+	CROBOpLatchOff uint8 = 0x04 // latch output OFF
+)
+
+// IsSupportedCROBOp reports whether code is one of the five operation types
+// carried by the supported G12V1 profile.
+func IsSupportedCROBOp(code uint8) bool {
+	switch code {
+	case CROBOpNUL, CROBOpPulseOn, CROBOpPulseOff, CROBOpLatchOn, CROBOpLatchOff:
+		return true
+	default:
+		return false
+	}
+}
+
+// CROBCommandValue is the typed carrier for a complete G12V1 Control Relay
+// Output Block. It preserves the operation code, repetition count, on/off
+// times, object qualifier and request status so a command handler can
+// implement timed pulse operations instead of a collapsed boolean latch.
+type CROBCommandValue struct {
+	Code      uint8  // IEEE 1815 A.8.1 operation type (CROBOp* constants)
+	Count     uint8  // number of operation cycles
+	OnTime    uint32 // milliseconds energised
+	OffTime   uint32 // milliseconds de-energised
+	Qualifier uint8  // object-header qualifier code from the request
+	Status    uint8  // request object status octet (normally 0)
+}
+
+func (c *CROBCommandValue) isCommandValue() {}
 
 // AnalogCommandValue represents an analog command value
 type AnalogCommandValue struct {
@@ -321,18 +367,40 @@ func NewAnalogFloat64Control(index uint16, value float64, cmdType CommandType) *
 	}
 }
 
-// NewPulseControl creates a new pulse control command (Group 12 Variation 3).
-// Supported-profile: Reject — the pulse control profile is out of scope for v0.
-func NewPulseControl(index uint16, onTime, offTime uint32, cmdType CommandType) *ControlOutput {
+// NewCROBControl creates a complete Group 12 Variation 1 CROB command. It is
+// the typed constructor for pulse and latch operations: all operation fields
+// are carried in CROB, and the legacy Count/OnTime/OffTime fields are mirrored
+// for callers that read them directly.
+func NewCROBControl(index uint16, opCode, count uint8, onTime, offTime uint32, cmdType CommandType) *ControlOutput {
+	crob := &CROBCommandValue{
+		Code:    opCode,
+		Count:   count,
+		OnTime:  onTime,
+		OffTime: offTime,
+	}
+	// Keep the collapsed carrier for latch-only handlers that predate CROB.
+	// Pulse handlers must use cmd.CROB, never this boolean.
+	collapsed := opCode == CROBOpPulseOn || opCode == CROBOpLatchOn
 	return &ControlOutput{
-		Group:       12, // Group 12 = Binary Output
-		Variation:   3,  // Variation 3 = Latch On (pulse)
+		Group:       12,
+		Variation:   1, // Group 12 Variation 1 is the CROB (pulse timing lives in OnTime/OffTime)
 		Index:       index,
-		Value:       &BinaryCommandValue{Value: true},
+		Value:       &BinaryCommandValue{Value: collapsed},
 		CommandType: cmdType,
+		Count:       count,
 		OnTime:      onTime,
 		OffTime:     offTime,
+		CROB:        crob,
 	}
+}
+
+// NewPulseControl creates a single-cycle Pulse On CROB command.
+//
+// Corrected from the previous Group 12 Variation 3 assumption: a pulse is a
+// G12V1 CROB whose operation code is Pulse On and whose timing is carried by
+// OnTime/OffTime. Variation 3 is not a DNP3 binary-output CROB variation.
+func NewPulseControl(index uint16, onTime, offTime uint32, cmdType CommandType) *ControlOutput {
+	return NewCROBControl(index, CROBOpPulseOn, 1, onTime, offTime, cmdType)
 }
 
 // ReadRequest represents a request to read data from an outstation
