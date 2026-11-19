@@ -7,6 +7,12 @@ CURRENT: AO-007
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## AO-007 explicit opt-in design approved — 2026-11-19 (preparation checkpoint)
+
+Owner accepted **explicit-opt-in** (rather than default admission) for a *future* supported G41V1–V4 Direct Operate-with-response contract: default master and outstation both fail closed; enable only by deliberate configuration at each role; four typed constructors, legacy `NewAnalogControl(float64)` excluded; exact echo/status, quarantine and signed-zero/subnormal normalization FAIL/DIVERGENCE retained. Human/KDE approval is **still pending** for the stable opt-in API naming, migration, profile version, and any actual change of published support status. Detailed proposed contract, rollback and test matrix: `docs/verification/AO-007-PROPOSED-PROFILE.md`. Published G41 profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` remains **UNSUPPORTED**.
+
+GitHub remote authority confirmed; local Go/CWAL/isolated OpenDNP3 verification **NOT_RUN_THIS_INVOCATION** because this environment cannot resolve github.com and has no checked-out repository or Docker. Previous AO-006 gate PASS remains historical evidence only. `DESIGN_DIRECTION_ACCEPTED__KDE_AND_EXECUTION_PENDING`. CURRENT remains `AO-007`, QUEUED NONE, TASK_IN_PROGRESS. No code, profile, PR, merge, release or deployment; STOP after remote readback.
+
 ## AO-007 preparation verification checkpoint — 2026-11-19
 
 Current owner-approved task: `workflow/active_work/AO-007.md`; **not** authorized to promote G41. Public master/outstation G41 opt-in gates, typed G41V1–V4 and legacy excluded constructor, rejection tests and historical AO-006 wire contract reviewed. Detailed reviewed API locations/decision matrix in `docs/verification/AO-007-PROPOSED-PROFILE.md` (**UNAPPROVED DRAFT**). No newly reproducible protocol defect; no source changes. Explicit unresolved decision: supported G41 must define master/outstation default-vs-opt-in behavior, migration/profile version, KDE human sign-off and strict fail-closed `-0.0`/subnormal peer exclusion, one independent OpenDNP3 3.1.2 peer only.
