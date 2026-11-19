@@ -1,11 +1,19 @@
 # DNP3 — CURRENT CWAL Handoff
 
 Repository: tamzrod/dnp3
-Package: AO-007
+Package: AO-008
 Branch: work
-CURRENT: NONE
+CURRENT: AO-008
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_IN_PROGRESS
+
+## AO-008 PROMOTED — 2026-11-19 — explicit-opt-in G41 support design (KDE PENDING)
+
+Owner authorized establishing **CURRENT AO-008** after AO-007 accepted closure. Executable instructions: `workflow/active_work/AO-008.md`; bounded KDE decision request `docs/verification/AO-008-DESIGN-DECISION-DRAFT.md`. Owner approved only the **explicit opt-in direction** (master and outstation separately), **not** the final stable API name, version, code admission changes or published-profile promotion. Phase A is authorized to verify architecture, draft exact compatibility/migration/negative gates, and checkpoint; **Phase B implementation requires separate KDE sign-off AND owner implementation authorization**; published-profile edits require later separate owner authorization.
+
+Verified starting `work` `af50fd0ad3ed17cb81cfabf9a456745236f78751` with previous `CURRENT NONE / QUEUED NONE / WORK_PACKAGE_READY`; `main` `82414d672e9ab12aba6170ec7f3f0578f6e71958` unchanged; branches diverged and must not be force reconciled. AO-007 original accepted `PROMOTION_PREP_READY` preserved at `archive/active-work/AO-007.md`; AO-007 proposed profile remains UNAPPROVED draft. Supported-profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b` unchanged, G41 **UNSUPPORTED**. Preserve V3/V4 `-0.0`/subnormal peer **FAIL/DIVERGENCE**, only one OpenDNP3 3.1.2 peer/version, reverse-direction fault negatives NOT_RUN, uncommitted AO-007 fresh artifacts and legacy `NewAnalogControl(float64)` exclusion. No live hardware/NGCP/SCADA use.
+
+**Next OpenHands invocation:** `operation cwal` (only). CWAL script and Go checks were **NOT_RUN_THIS_INVOCATION** in the GitHub-only task-promotion session; execute Phase A gates in OpenHands and report actual results. No supported-profile edit, unapproved Go behavior change, PR, merge, release, or deployment. After non-force checkpoint and remote readback, STOP for independent CHECK / KDE decision.
 
 ## AO-007 CLOSED AND ARCHIVED — 2026-11-19
 
