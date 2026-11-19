@@ -115,3 +115,27 @@ Source blobs inspected on `work`: `pkg/dnp3/master/client.go` (`eb782335e721dd0a
 | Published profile promotion | **NOT_DONE** | Explicitly prohibited |
 
 **Result:** `DESIGN_DIRECTION_ACCEPTED__KDE_AND_EXECUTION_PENDING`. The opt-in decision resolves the *choice of direction*, but NOT the required KDE approval, migration implementation, fresh executable verification or authorization to promote. Keep AO-007 CURRENT and G41 UNSUPPORTED.
+
+
+## Fresh executable verification — 2026-11-19 (supersedes the NOT_RUN gate table above)
+
+A later CWAL invocation ran in an executable environment (Go 1.22.12 official checksum-verified toolchain; Docker daemon available) and executed the preparation gates freshly on `work` `8b9eb9eac01e2d733a863db508a03c3fa0ff90f4` (`main` `82414d6`). **No source, API, or protocol behavior was changed; this document remains an UNAPPROVED DRAFT.**
+
+| Gate | Fresh status | Basis |
+|---|---|---|
+| Marker / remote baseline readback | **PASS** | `git ls-remote`: work `8b9eb9e`, main `82414d6`; six markers identical |
+| `git diff --check`, `scripts/cwal-check.sh` | **PASS** | exit 0 |
+| `gofmt -l`, `go vet ./...`, `go build ./...` | **PASS** | gofmt empty; vet/build exit 0 |
+| `go test ./... -count=1`, `go test -race ./... -count=1` | **PASS** | exit 0 |
+| `scripts/verify-external-mvp.sh` | **PASS** | all tiers OK |
+| Source/API disposition audit | **PASS (read-only)** | cited blobs and line ranges re-verified on `work` HEAD |
+| AO-006 evidence review | **PASS** | 15/15 SHA-256 records verify; PCAPs re-decode 8/8 both directions, 0 BAD CRCs |
+| Isolated OpenDNP3 3.1.2 direction A / B | **PASS** | 8/8 each; exact bits; status `0x00`/`0x0c` |
+| Negative matrices A / B | **PASS** | malformed → IIN `0x0100`, zero writes; after-send → unknown + quarantine + refused second control |
+| Float `-0.0`/subnormal | **FAIL/DIVERGENCE (retained)** | peer bits `0x0`; Go master fails closed; `+1.5` control succeeds |
+| KDE/human profile-amendment approval | **PENDING** | not manufactured; separate governance gate |
+| Published profile promotion | **NOT_DONE** | explicitly prohibited |
+
+Fresh artifact SHA-256 (this invocation, not committed — allowlist permits only this draft doc): dirA `a1d54cfe…`, dirB `32758272…`, negA `7356132a…`, negB `81b1041c…`, float-edge log `39a18298…`; lab image `sha256:bc13c24e91c006242a46cd7be6ccd664c0fdd19e1f42b8baf067f01e386f10f9`.
+
+**Result: `PROMOTION_PREP_READY`** — the preparation, proposal, migration/rollback plan and fresh verification are complete. *Actual* promotion remains blocked pending separate KDE/owner approval of the profile amendment. Published `active_work/supported-profile.md` stays blob `3e592e77ad6e31d5492c609c5fdd62382505904b`; G41 remains **UNSUPPORTED**.
