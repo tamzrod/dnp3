@@ -1,15 +1,11 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: EG628-PR-001
-Branch: pr/eg628-interop-corrections
-CURRENT: EG628-PR-001
+Package: EVT-001
+Branch: work
+CURRENT: EVT-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
-
-## LATEST OWNER AUTHORIZATION — EG628-PR-001 focused PR preparation — 2026-11-19
-
-This is a **separate main-based PR-preparation branch CURRENT**, not the live `work` AO-008 mission. Execute **`operation cwal`**; exact scoped instructions: `workflow/active_work/EG628-PR-001.md`. Selectively port only accepted generic READ, static count/framing, scoped IIN, G12V1 CROB echo/status/SBO and the captured Pulse Off *wire* regression from `work` `6422c2d`. Keep G41 UNSUPPORTED, no EG628 adapter scheduling, no unrelated EVT/G41 features, no raw PCAP, no field commands. Run Go/negative/golden and independent peer gates; checkpoint non-force on this branch, STOP for independent CHECK. **No PR creation, merge, release, deployment or published-profile change.** Historical EVT-001/work references in inherited main narrative are NOT CURRENT on this dedicated branch. Final PR diff must exclude this temporary bootstrap task and marker changes before PR creation; do not destroy current execution authority until separately approved.
 
 ## CURRENT owner authorization — 2026-11-14 — PR #29 PPR-001-S1/S2 pre-merge correction
 
