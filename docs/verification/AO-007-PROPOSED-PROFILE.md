@@ -73,3 +73,45 @@ Source blobs inspected on `work`: `pkg/dnp3/master/client.go` (`eb782335e721dd0a
 **Evidence versus tests in this continuation:** Remote GitHub files and source references were inspected; source blobs and marker consistency were read back. The local runtime has Go 1.23.2 and git but no repository checkout or Docker and cannot resolve `github.com`; `git ls-remote` failed with `Could not resolve host`. Therefore `cwal-check.sh`, `git diff --check` in checkout, Go build/vet/tests/race, and isolated OpenDNP3 are **NOT_RUN_THIS_INVOCATION**. No code or profile behavior changed, so no behavior-changing gate is falsely reported as PASS.
 
 **Preparation finding:** No new reproducible protocol defect established. The reviewable promotion proposal is complete enough to bring to a KDE/owner design decision, but the decision and fresh executable gates have not passed. **`PROMOTION_PREP_BLOCKED_ON_APPROVAL_AND_EXECUTION`**, not a profile promotion or a closure recommendation.
+
+
+## Owner-approved design direction — 2026-11-19: EXPLICIT OPT-IN (not KDE approval)
+
+**Decision:** The owner selected the **explicit-opt-in** *design direction* for future official G41V1–V4 Direct Operate with response. This rejects the alternate “default-admitted without an opt-in” proposal. This is **not** approval to edit the supported profile or any production code, and does **not** substitute for KDE design/governance approval.
+
+### Proposed executable contract (future change only)
+
+1. **Default remains closed on both roles.** With only `master.NewConfig(...)` or `outstation.NewConfig(...)`, the published v0 TCP/Class-0/G12 path is unchanged; G41 Direct Operate is rejected before the master sends G41 wire traffic and before the outstation invokes `HandleAnalogCommand`. The opt-in must be explicit **on each endpoint**; enabling the master alone never enables an outstation. No implicit peer negotiation or auto-detection.
+2. **Supported and opt-in are distinct attributes.** When the supported-profile amendment is approved, say “**supported only with explicit local G41 opt-in on each participating role, within this exact subset**”, not “G41 enabled by default.” Use a **new stable, nonexperimental configuration name** for the supported opt-in subject to KDE/API review (candidate `WithAnalogControl()` in the master and outstation package). Preserve existing `WithExperimentalAnalogControl()` as a compatible experimental alias if maintained; document which names are considered public/stable. **No new API exists yet.**
+3. **Typed constructors only.** Accept `types.NewAnalogInt32Control` (V1), `NewAnalogInt16Control` (V2), `NewAnalogFloat32Control` (V3), and `NewAnalogFloat64Control` (V4), only with `types.DirectOperate`. The legacy ambiguous `NewAnalogControl(uint16,float64,...)` stays excluded/fail-closed, including if the new stable opt-in is set. Reject V0/V5/other groups, unsupported qualifiers and command modes.
+4. **One indexed control per request.** Evidence-supported DNP3 G41 with count `1`, qualifier `0x28`, explicit 16-bit point index, and response. Validate response function/sequence, group, variation, count, index, typed value bits and status. Successful transport does not imply successful operation. Preserve specific non-success outcomes (e.g. OUT_OF_RANGE `0x0c`) and no false SUCCESS. Accepted external cases use index 0 SUCCESS and index 1 OUT_OF_RANGE in each variation.
+5. **Fail-closed lifecycle.** Reject NaN/±Inf, malformed/truncated objects, CRC/address failures, unsupported variation, nil handler, unsafe retry and unknown-after-send. Master must quarantine controls after ambiguous outcome and refuse the next control until safely reconciled. Preserve status/error distinguishability; do not weaken exact-bit comparison or quarantine.
+6. **Float caveat remains explicit.** OpenDNP3 **3.1.2** may normalize `-0.0` and smallest subnormal echoes to `+0.0`. The typed Go master *fails closed* on such mismatch; this is a recorded **FAIL/DIVERGENCE**, **not** a supported-success interop case. A normalization-tolerant variant is **not** authorized or implied by this design approval.
+7. **Peer and scope limitation.** The sole independent stack/version is OpenDNP3 3.1.2 in isolated lab, both directions 8/8 positive, plus scoped negative captures. Reverse-direction fault injection is NOT_RUN. No general IEEE 1815 certification, hardware, NGCP, field/SCADA mapping, unrestricted output scaling or claimed utility acceptance.
+8. **No silent profile upgrade.** Published `active_work/supported-profile.md` remains blob `3e592e77ad6e31d5492c609c5fdd62382505904b`, G41 **UNSUPPORTED**; no consumer may rely on this DRAFT as supported capability.
+
+### Future migration/rollback sequence (requires separate permission)
+
+- **Stage 0 — current**: v0 unchanged; existing experimental opt-in only. Archive AO-006 and positive/negative PCAP/SHA provenance unchanged.
+- **Stage 1 — KDE design approval**: approve the opt-in name, exact master/outstation admission semantics, API compatibility and profile version. **Recommended:** a new explicitly versioned supported-profile amendment (v1 scoped opt-in), while leaving the legacy v0 reject statement historically intact. This is a proposal, not a version decision.
+- **Stage 2 — implementation authorization**: introduce the stable opt-in on both roles (if approved), preserve experimental alias, and ensure the typed-only gate excludes the ambiguous legacy constructor. New changes must not allow G41 by default, must not inadvertently enable unsupported variations or commands, and must preserve CROB and unrelated event gates.
+- **Stage 3 — tests**: default master no-G41-wire for V1–V4, default outstation handler untouched even when master opted in, master-only and outstation-only opt-in negatives, dual-opt-in each V1–V4 success/non-success, legacy constructor rejected *even with opt-in*, invalid/malformed/NaN/Inf and echo mismatch, timeout/disconnect/unknown/quarantine, signed-zero/subnormal fail-closed, existing CROB/Class-0/event/regression and race. Replicate isolated 3.1.2 interop when runtime behavior changes; retain raw PCAPs and hashes.
+- **Stage 4 — publication authorization**: only after fresh tests, independent audit and owner/KDE approvals, update the *authoritative* supported profile plus README/public comments with scoped opt-in language and observed limitations; separately authorize any PR/merge/release.
+- **Rollback**: retain legacy default G41 Reject and experimental switch throughout preparation; if any new opt-in/migration fails tests, revert only the new stable option/profile amendment (with owner-approved rollback) while leaving G12 and the existing experimental lab path unchanged. Never silently downgrade float checks.
+
+### Gate disposition for this session
+
+| Gate | Status | Basis |
+|---|---|---|
+| Owner opt-in design direction | **APPROVED** | Explicit 2026-11-19 user authorization, preparation only |
+| KDE architecture/governance approval | **PENDING** | No KDE approval artifact or approved design decision found or manufactured |
+| Current remote CWAL marker check | **PASS** | GitHub readback of `work` at start |
+| AO-006 evidence and PR #31 | **PREVIOUSLY_RECORDED** | Accepted prior campaign; not rerun |
+| Master/outstation source mapping | **PASS (read-only)** | Previous AO-007 GitHub source audit and proposal |
+| GitHub-connected local checkout | **UNAVAILABLE** | Container cannot resolve github.com; GitHub connector is document API, not shell |
+| `git diff --check`, `scripts/cwal-check.sh` | **NOT_RUN** | No repository checkout |
+| Go build/vet/test/race/external-MVP | **NOT_RUN** | No repository checkout |
+| Isolated OpenDNP3 3.1.2 | **NOT_RUN** | No Docker, no lab checkout |
+| Published profile promotion | **NOT_DONE** | Explicitly prohibited |
+
+**Result:** `DESIGN_DIRECTION_ACCEPTED__KDE_AND_EXECUTION_PENDING`. The opt-in decision resolves the *choice of direction*, but NOT the required KDE approval, migration implementation, fresh executable verification or authorization to promote. Keep AO-007 CURRENT and G41 UNSUPPORTED.
