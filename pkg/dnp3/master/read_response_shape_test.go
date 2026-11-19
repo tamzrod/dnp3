@@ -53,10 +53,11 @@ func buildMVPSingleGroupResponse(seq uint8, group uint8) []byte {
 	return raw
 }
 
-// buildUnsupportedOnlyResponse builds a valid DLL+TL+APDU response frame
-// carrying ONLY unsupported object headers (G10V1 binary output, G40V1 analog
-// output). It proves the public Read does NOT surface them (DNP3-035).
-func buildUnsupportedOnlyResponse(seq uint8) []byte {
+// buildMixedSupportedUnsupportedResponse builds a valid DLL+TL+APDU response
+// frame carrying one supported G10V1 binary output header and one unsupported
+// G40V1 analog output header. It proves the public Read surfaces G10 while
+// still leaving G40 unpopulated.
+func buildMixedSupportedUnsupportedResponse(seq uint8) []byte {
 	obj := []byte{
 		// G10V1 binary output, qualifier 0x17 (count8+index8), count=1
 		0x0A, 0x01, 0x17, 0x01,
@@ -101,21 +102,22 @@ func (t *singleGroupTransport) Receive() ([]byte, error) {
 	return buildMVPSingleGroupResponse(t.lastSeq, t.group), nil
 }
 
-// unsupportedOnlyTransport returns a canned response carrying only
-// unsupported object headers (echoing the request SEQ) (DNP3-035).
-type unsupportedOnlyTransport struct {
+// mixedSupportedUnsupportedTransport returns a canned response carrying one
+// supported G10V1 header and one unsupported G40V1 header (echoing the request
+// SEQ).
+type mixedSupportedUnsupportedTransport struct {
 	lastSeq uint8
 }
 
-func (t *unsupportedOnlyTransport) Send(data []byte) error {
+func (t *mixedSupportedUnsupportedTransport) Send(data []byte) error {
 	t.lastSeq = extractPubRequestSeq(data)
 	return nil
 }
 
-func (t *unsupportedOnlyTransport) SetTimeout(ms int) {}
+func (t *mixedSupportedUnsupportedTransport) SetTimeout(ms int) {}
 
-func (t *unsupportedOnlyTransport) Receive() ([]byte, error) {
-	return buildUnsupportedOnlyResponse(t.lastSeq), nil
+func (t *mixedSupportedUnsupportedTransport) Receive() ([]byte, error) {
+	return buildMixedSupportedUnsupportedResponse(t.lastSeq), nil
 }
 
 // TestReadResponsePopulatesMVPTypes asserts the public Read populates the
@@ -178,12 +180,11 @@ func groupName(g uint8) string {
 	}
 }
 
-// TestReadResponseDoesNotSurfaceUnsupportedTypes asserts the public Read leaves
-// BinaryOutputs, AnalogOutputs, and FrozenCounters nil even when the
-// outstation's response carries unsupported object headers (G10/G40), because
-// the v0 MVP Read path does not parse those groups (DNP3-035).
+// TestReadResponseDoesNotSurfaceUnsupportedTypes asserts the public Read
+// surfaces supported G10V1 binary output status while leaving unsupported G40
+// analog outputs and FrozenCounters nil.
 func TestReadResponseDoesNotSurfaceUnsupportedTypes(t *testing.T) {
-	cc := newConnectedClientWithTransport(t, &unsupportedOnlyTransport{})
+	cc := newConnectedClientWithTransport(t, &mixedSupportedUnsupportedTransport{})
 
 	resp, err := cc.Read(context.Background(), &types.ReadRequest{
 		Groups: []types.GroupRequest{{Group: 1, Variation: 0}},
@@ -195,8 +196,11 @@ func TestReadResponseDoesNotSurfaceUnsupportedTypes(t *testing.T) {
 		t.Fatal("Read returned nil response")
 	}
 
-	if resp.BinaryOutputs != nil {
-		t.Fatalf("BinaryOutputs = %v, want nil (not an MVP Read type)", resp.BinaryOutputs)
+	if len(resp.BinaryOutputs) != 1 {
+		t.Fatalf("BinaryOutputs = %v, want one G10V1 point", resp.BinaryOutputs)
+	}
+	if !resp.BinaryOutputs[0].Value {
+		t.Fatal("BinaryOutputs[0].Value = false, want true from G10V1 flags octet")
 	}
 	if resp.AnalogOutputs != nil {
 		t.Fatalf("AnalogOutputs = %v, want nil (not an MVP Read type)", resp.AnalogOutputs)

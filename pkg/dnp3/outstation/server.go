@@ -197,6 +197,9 @@ type Config struct {
 	UnsolicitedMode bool
 	// MaxEventBuffers is the maximum event buffer size
 	MaxEventBuffers int
+	// SBOTimeout is the select-before-operate acceptance window. Zero or a
+	// negative value selects the 10-second default.
+	SBOTimeout time.Duration
 	// ExperimentalEventDelivery opts into the EVT-001 event and unsolicited
 	// path (PublishBinaryEvent/PublishAnalogEvent/PublishCounterEvent,
 	// SetUnsolicitedHandler, WithUnsolicitedMode). The published v0 supported
@@ -235,6 +238,7 @@ func DefaultConfig() *Config {
 		MaxFragmentSize:   2048,
 		KeepAliveInterval: 30 * time.Second,
 		MaxEventBuffers:   1000,
+		SBOTimeout:        10 * time.Second,
 		MaxConnections:    1, // DNP3-084: MVP single-master profile
 	}
 }
@@ -282,6 +286,16 @@ func WithTLS(config *tls.Config) ConfigOption {
 func WithMaxFragmentSize(size int) ConfigOption {
 	return func(c *Config) {
 		c.MaxFragmentSize = size
+	}
+}
+
+// WithSBOTimeout sets the select-before-operate acceptance window. Zero or a
+// negative duration selects the 10-second default.
+// Published v0 profile: Reject — Select-Before-Operate is NOT a v0 Target.
+// This timeout is an interoperability/lab safeguard; it does not promote SBO.
+func WithSBOTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.SBOTimeout = d
 	}
 }
 
@@ -583,21 +597,42 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		return fmt.Errorf("no command handler registered")
 	}
 
-	// Convert the CROB operation type (IEEE 1815 A.8.1 low-nibble enum) to a
-	// binary value for the public command handler. Unsupported operation
-	// types (including any trip/close or clear bits) are rejected explicitly
-	// rather than silently mapped.
+	// Validate the operation type at the only layer that sees the raw code
+	// (IEEE 1815 A.8.1 low-nibble enum). Unsupported operation types, including
+	// trip/close and clear bits, are refused with a definite per-point status
+	// rather than a generic error response that carries no command status.
 	var value bool
 	switch crob.Code {
 	case 0x01, 0x03: // Pulse On, Latch On
 		value = true
-	case 0x00, 0x02, 0x04: // NUL, Pulse Off, Latch Off
+	case 0x02, 0x04: // Pulse Off, Latch Off
 		value = false
+	case 0x00: // NUL: no operation
+		// A no-op must not reach a handler: the collapsed boolean would be
+		// indistinguishable from Latch Off and could de-energise an output.
+		debugLog("WriteBinaryOutput: NUL no-op index=%d", index)
+		return nil
 	default:
-		return fmt.Errorf("unsupported CROB operation type: 0x%02X", crob.Code)
+		return outstation.NewControlStatusError(uint8(types.ControlBadFormat),
+			fmt.Errorf("unsupported CROB operation type: 0x%02X", crob.Code))
 	}
 
-	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
+	// A pulse with no cycles is malformed; refuse it instead of letting a
+	// handler reinterpret it as a latch.
+	if (crob.Code == 0x01 || crob.Code == 0x02) && crob.Count == 0 {
+		return outstation.NewControlStatusError(uint8(types.ControlBadFormat),
+			fmt.Errorf("malformed pulse CROB: count=0 index=%d", index))
+	}
+
+	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d, qual=%d", index, value, crob.Code, crob.Qualifier)
+
+	// IEEE 1815 A.8.1: OnTime/OffTime are pulse parameters. Some masters send a
+	// non-zero default OnTime alongside a latch code, so the legacy top-level
+	// fields are zeroed for latch commands; CROB keeps the untouched wire values.
+	onTime, offTime := crob.OnTime, crob.OffTime
+	if crob.Code == 0x03 || crob.Code == 0x04 { // Latch On, Latch Off
+		onTime, offTime = 0, 0
+	}
 
 	cmd := &types.ControlOutput{
 		Group:       12, // Binary Output
@@ -606,23 +641,34 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		Value:       &types.BinaryCommandValue{Value: value},
 		CommandType: types.SelectThenOperate,
 		Count:       crob.Count,
-		OnTime:      crob.OnTime,
-		OffTime:     crob.OffTime,
+		OnTime:      onTime,
+		OffTime:     offTime,
 	}
 
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)
 	if err != nil {
 		debugLog("WriteBinaryOutput ERROR: %v", err)
+		// Carry a definite non-success status to the outstation so a G12V1
+		// response can echo the real command status instead of losing it in a
+		// generic error response (which independent masters report as "no
+		// command statuses"). Unmapped statuses still fail closed unchanged.
+		if status != nil && *status != types.ControlSuccess {
+			if ws, ok := wireCommandStatus(*status); ok {
+				return outstation.NewControlStatusError(ws, err)
+			}
+		}
 		return err
 	}
 	if status != nil && *status != types.ControlSuccess {
 		// MEXT-024: a handler that signals a non-success status with no error
-		// must NOT surface as ControlSuccess. The bridge returns an error so the
-		// outstation emits an error response (a complete APDU, not a silent
-		// timeout) carrying a failure IIN, which the master resolves to a
-		// failure status (never success). Without this, a not-supported /
-		// blocked command reported via status-only would be a false success.
+		// must NOT surface as ControlSuccess. Carry the wire status so the
+		// outstation can echo a definite non-success; without this, a
+		// not-supported / blocked command reported via status-only would be a
+		// false success or an unparseable failure.
 		debugLog("WriteBinaryOutput: non-success status %d -> failure", *status)
+		if ws, ok := wireCommandStatus(*status); ok {
+			return outstation.NewControlStatusError(ws, fmt.Errorf("command rejected by handler: status %d", *status))
+		}
 		return fmt.Errorf("command rejected by handler: status %d", *status)
 	}
 	if status != nil {
@@ -1101,7 +1147,9 @@ func (s *server) handleConnection(conn net.Conn) {
 		MasterAddress:     s.config.MasterAddress,
 		Timeout:           5000,
 		MaxEventBuffers:   s.config.MaxEventBuffers,
+		MaxFragmentSize:   s.config.MaxFragmentSize,
 		Unsolicited:       s.config.UnsolicitedMode,
+		SBOTimeout:        int(s.config.SBOTimeout / time.Millisecond),
 	}
 	inst := outstation.NewOutstation(internalConfig)
 	inst.SetTransport(link)

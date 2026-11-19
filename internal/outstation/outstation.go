@@ -49,6 +49,13 @@ func debugLog(format string, v ...interface{}) {
 // DNP3Epoch is the DNP3 time epoch (2000-01-01 00:00:00 UTC)
 var DNP3Epoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// defaultSBOTimeoutMS is the select-before-operate acceptance window used
+// when a caller supplies a Config with a zero (or negative) SBOTimeout.
+// Without this fallback every OPERATE following a SELECT is treated as timed
+// out immediately, and the master receives an IIN-only error response with
+// no G12V1 command status.
+const defaultSBOTimeoutMS = 10000
+
 // State represents the outstation's operational state.
 type State int
 
@@ -172,7 +179,7 @@ func DefaultConfig() *Config {
 		Timeout:           5000,
 		MaxEventBuffers:   1000,
 		Unsolicited:       false,
-		SBOTimeout:        10000, // 10 seconds default for SBO timeout
+		SBOTimeout:        defaultSBOTimeoutMS, // 10 seconds default for SBO timeout
 		MaxFragmentSize:   defaultMaxAppFragment,
 	}
 }
@@ -611,6 +618,11 @@ type Outstation struct {
 	// reserved slots in place it must stay zero; a non-zero value is a
 	// correctness alarm that the lossless guarantee was violated.
 	restoreFailures uint64
+	// staticDropped records that a static block could not be encoded within the
+	// 16-bit count limit of a DNP3 object header during the current request.
+	// buildReadResponse turns it into an explicit IIN OBJECT_UNKNOWN instead of
+	// emitting a block whose count octets cannot describe every point.
+	staticDropped bool
 }
 
 // NewOutstation creates a new Outstation.
@@ -1355,26 +1367,99 @@ func indexedBlock(data []byte, off int) (span int, indexed bool, perObject, coun
 }
 
 // blockSpan returns the octet span of a non-indexed object block, which is kept
-// whole. A count-qualified sequential block (0x07) has no derivable length
-// without the group layout, so the remainder of the buffer is attributed to it.
+// whole. A count-qualified static block (0x07/0x27) has no per-point prefix, so
+// its span is the header plus count * valueSize; a block whose layout is not
+// known here is attributed the remainder of the buffer.
 func blockSpan(data []byte, off int) (span int, indexed bool, perObject, count int, ok bool) {
 	if off+3 > len(data) {
 		return 0, false, 0, 0, false
 	}
-	switch data[off+2] {
+	group, variation, qual := data[off], data[off+1], data[off+2]
+	switch qual {
 	case al.QualAllObjects:
 		return 3, false, 0, 0, true
-	case al.QualCount8:
-		return len(data) - off, false, 0, 0, true
 	case al.QualStartStop8:
-		return 5, false, 0, 0, true
-	case al.QualCount16:
 		return 5, false, 0, 0, true
 	case al.QualRange16:
 		return 7, false, 0, 0, true
+	case al.QualCount8, al.QualCount16:
+		headerSize := 4
+		if qual == al.QualCount16 {
+			headerSize = 5
+		}
+		if off+headerSize > len(data) {
+			return len(data) - off, false, 0, 0, true
+		}
+		if qual == al.QualCount8 {
+			count = int(data[off+3])
+		} else {
+			count = int(data[off+3]) | int(data[off+4])<<8
+		}
+		size, known := staticValueSize(group, variation)
+		if !known {
+			return len(data) - off, false, 0, 0, true
+		}
+		if (group == 1 || group == 10) && variation == 1 {
+			size = 0 // packed: sized per block, not per point
+			span = headerSize + (count+7)/8
+		} else {
+			span = headerSize + count*size
+		}
+		if off+span > len(data) {
+			return len(data) - off, false, 0, 0, true
+		}
+		return span, false, size, count, true
 	default:
 		return len(data) - off, false, 0, 0, true
 	}
+}
+
+// staticValueSize returns the per-point value octets of a static object
+// variation (excluding any index prefix). ok is false for variations this
+// outstation does not emit.
+func staticValueSize(group, variation uint8) (int, bool) {
+	switch group {
+	case 1: // Binary Input: V1 packed (handled by the caller), V2 flags
+		switch variation {
+		case 1:
+			return 0, true
+		case 2:
+			return 1, true
+		}
+	case 10: // Binary Output Status: V1 packed, V2 flags
+		switch variation {
+		case 1:
+			return 0, true
+		case 2:
+			return 1, true
+		}
+	case 20: // Counter: V1 flags+uint32, V5 flags+uint16, V6 uint32
+		switch variation {
+		case 1:
+			return 5, true
+		case 5:
+			return 3, true
+		case 6:
+			return 4, true
+		}
+	case 30: // Analog Input: V1 flags+int32, V2 flags+int16, V3 flags+int32, V5 float32
+		switch variation {
+		case 1, 3:
+			return 5, true
+		case 2:
+			return 3, true
+		case 5:
+			return 4, true
+		}
+	case 40: // Analog Output Status: V1 float32+flags, V2 int16+flags
+		switch variation {
+		case 1:
+			return 5, true
+		case 2:
+			return 3, true
+		}
+	}
+	return 0, false
 }
 
 // eventValueSize returns the octets of one event object's value (flags plus any
@@ -1429,6 +1514,18 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	// a direct ProcessRequest caller that did not use the run loop), then start
 	// this request clean.
 	o.discardSolicitedLocked()
+
+	// IIN error bits describe the outcome of the current exchange, not
+	// permanent station state. Clear the request-scoped bits so an earlier
+	// rejected request (for example a master's G80V1 Internal Indications
+	// WRITE) cannot leave IIN2.2 PARAMETER_ERROR set in every later READ
+	// response. Class/event and buffer-overflow bits are derived state and
+	// are refreshed by refreshEventIINLocked, so they are left alone.
+	o.iin.FuncUnknown = false
+	o.iin.ObjectUnknown = false
+	o.iin.ParameterError = false
+	o.iin.AlreadyExecuting = false
+	o.iin.BadConfig = false
 
 	// Confirm is not a solicited request. Accept or ignore it without
 	// consuming the solicited application sequence and without a response.
@@ -1543,50 +1640,90 @@ func normalizeStaticVariation(group, variation uint8) uint8 {
 }
 
 // requestObjectHeaderSize returns the wire size in octets of the request
-// object header beginning at offset, determined by its qualifier. Returns 0 if
-// the qualifier octet is not yet available.
-func requestObjectHeaderSize(data []byte, offset int) int {
+// object header beginning at offset, determined by its qualifier. ok is false
+// when the qualifier is outside the v0 allow-list, so the caller can reject the
+// request instead of guessing a length and silently serving unrelated data.
+func requestObjectHeaderSize(data []byte, offset int) (size int, ok bool) {
 	if offset+3 > len(data) {
-		return 0
+		return 0, false
 	}
 	switch data[offset+2] {
-	case 0x06: // all-objects: no range field
-		return 3
-	case 0x07, 0x17: // count8 / index8: 1-octet count
-		return 4
-	case 0x00: // start/stop: 1-octet start + 1-octet stop
-		return 5
-	case 0x27: // count16: 2-octet count
-		return 5
-	case 0x28: // range16: 2-octet start + 2-octet stop
-		return 7
+	case al.QualAllObjects: // all-objects: no range field
+		return 3, true
+	case al.QualCount8, al.QualIndex8: // count8 / index8: 1-octet count
+		return 4, true
+	case al.QualStartStop8: // start/stop: 1-octet start + 1-octet stop
+		return 5, true
+	case al.QualCount16: // count16: 2-octet count
+		return 5, true
+	case al.QualRange16: // range16: 2-octet start + 2-octet stop
+		return 7, true
 	default:
-		return 4
+		return 0, false
 	}
+}
+
+// errMalformedReadHeader reports a READ whose object headers cannot be walked.
+var errMalformedReadHeader = errors.New("malformed READ object header")
+
+// validateReadHeaders walks every object header in a READ request and reports a
+// request that cannot be parsed. Rejections include:
+//
+//   - a zero-length or sub-3-octet request, which names no object at all;
+//   - a header whose qualifier is not in the supported table;
+//   - a header that runs past the end of the request data;
+//   - trailing bytes left over after the last complete header (a partial header).
+//
+// Without this gate a short or truncated READ falls through to the "all static
+// data" fallback and is answered with a full integrity response, which reports
+// success for a request the outstation never understood.
+func validateReadHeaders(data []byte) error {
+	if len(data) < 3 {
+		return errMalformedReadHeader
+	}
+	offset := 0
+	for offset < len(data) {
+		if len(data)-offset < 3 {
+			return errMalformedReadHeader
+		}
+		size, ok := requestObjectHeaderSize(data, offset)
+		if !ok {
+			return errMalformedReadHeader
+		}
+		if offset+size > len(data) {
+			return errMalformedReadHeader
+		}
+		offset += size
+	}
+	return nil
 }
 
 // buildReadResponse builds data for a READ response.
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
 
-	// A Group 60 Variation 2/3/4 header is 3 octets (qualifier 0x06 has no
-	// range byte). Shorter than that is not a parsed object header.
-	if len(requestData) < 3 {
-		result = o.buildAllStaticData()
+	o.staticDropped = false
+
+	// Walk the object headers before building anything. A malformed request must
+	// be refused without side effects, and must never be answered with "all static
+	// data": that would report success for a request the outstation did not parse.
+	//
+	// Each header's size depends on its qualifier (IEEE 1815): all-objects (0x06)
+	// is 3 octets; start/stop (0x00) is 5 (start(1)+stop(1)); count8/index8
+	// (0x07/0x17) carry a 1-octet count (4); count16 (0x27) a 2-octet count (5);
+	// range16 (0x28) a 2-octet start/stop (7).
+	if err := validateReadHeaders(requestData); err != nil {
+		o.iin.ObjectUnknown = true
 		o.refreshEventIINLocked()
-		return result
+		return nil
 	}
 
 	// explicitEvent is true when the master asked for event data. An empty
 	// event response must not fall back to static points.
 	explicitEvent := false
 
-	// Parse object headers. Each header's size depends on its qualifier
-	// (IEEE 1815): all-objects (0x06) is 3 octets; start/stop (0x00) is 5 octets
-	// (start(1)+stop(1)); count8/index8 (0x07/0x17) carry a 1-octet count (4);
-	// count16 (0x27) a 2-octet count (5); range16 (0x28) a 2-octet start/stop (7).
 	offset := 0
-	for offset+3 <= len(requestData) {
+	for offset < len(requestData) {
 		group := requestData[offset]
 		variation := requestData[offset+1]
 
@@ -1631,18 +1768,21 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			}
 		}
 
-		size := requestObjectHeaderSize(requestData, offset)
-		if size == 0 || offset+size > len(requestData) {
-			break
-		}
+		size, _ := requestObjectHeaderSize(requestData, offset)
 		offset += size
 	}
 
 	// Only fall back to "all static data" when nothing was recognized AND the
 	// master did not explicitly request event data. An explicit event read
 	// with an empty buffer returns an empty (object-less) response.
-	if len(result) == 0 && !explicitEvent {
+	if len(result) == 0 && !explicitEvent && !o.staticDropped {
 		result = o.buildAllStaticData()
+	}
+	// A static block that cannot be described by any count qualifier is omitted
+	// rather than truncated, so the response must say so instead of looking like
+	// a complete (if small) integrity read.
+	if o.staticDropped {
+		o.iin.ObjectUnknown = true
 	}
 	o.refreshEventIINLocked()
 	return result
@@ -1659,6 +1799,42 @@ func (o *Outstation) buildAllStaticData() []byte {
 	return result
 }
 
+// maxStaticPoints is the largest point count a DNP3 object header can describe
+// with its widest count qualifier (0x27, 16-bit count). A block above this limit
+// cannot be announced on the wire at all, so it is refused rather than emitted
+// with a wrapped count that would desynchronise a peer's object parser.
+const maxStaticPoints = 0xFFFF
+
+// appendCountQualifier appends the count qualifier for a sequential static block
+// (no per-point index prefix). Qualifier 0x07 carries an 8-bit count, so a block
+// of more than 255 points uses the 16-bit count qualifier 0x27. ok is false when
+// the count exceeds maxStaticPoints; the caller must then omit the whole block
+// instead of truncating the count octets.
+func appendCountQualifier(dst []byte, count int) (out []byte, ok bool) {
+	if count > maxStaticPoints {
+		return dst, false
+	}
+	if count <= 0xFF {
+		return append(dst, al.QualCount8, byte(count)), true
+	}
+	return append(dst, al.QualCount16, byte(count), byte(count>>8)), true
+}
+
+// appendIndexedCountQualifier appends the count qualifier for a static block whose
+// points carry an 8-bit index prefix (0x17). That prefix cannot address index 256
+// or above, so a larger block falls back to a sequential 0x27 block and indexed
+// reports which form was written; the caller must then omit the index prefix.
+// ok is false when the count exceeds maxStaticPoints.
+func appendIndexedCountQualifier(dst []byte, count int) (out []byte, indexed, ok bool) {
+	if count > maxStaticPoints {
+		return dst, false, false
+	}
+	if count <= 0xFF {
+		return append(dst, al.QualIndex8, byte(count)), true, true
+	}
+	return append(dst, al.QualCount16, byte(count), byte(count>>8)), false, true
+}
+
 // buildBinaryInputData builds binary input data.
 func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 	var result []byte
@@ -1669,42 +1845,43 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 	}
 
 	// Object header: group, variation, qualifier, count - OUTSIDE loop
-	result = append(result, 1)         // Group 1
-	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is packed binary state; qualifier 0x07 is an 8-bit
-		// point count and the values follow as packed bits.
-		result = append(result, 0x07, byte(len(data)))
+		// Variation 1 is packed binary state; the count is the number of packed
+		// bits and the values follow as packed bits.
+		header, ok := appendCountQualifier([]byte{1, variation}, len(data))
+		if !ok {
+			o.staticDropped = true
+			return result
+		}
 		packed := make([]byte, (len(data)+7)/8)
 		for i, bi := range data {
 			if bi.Value {
 				packed[i/8] |= 1 << uint(i%8)
 			}
 		}
-		return append(result, packed...)
+		return append(header, packed...)
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+
+	// G1V2 is Binary Input with Flags: one octet per point, state in bit 7 and
+	// quality in the low seven bits. Above 255 points the 8-bit index prefix
+	// cannot address the points, so the block is emitted sequentially.
+	header, indexed, ok := appendIndexedCountQualifier([]byte{1, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
+		return result
+	}
+	result = header
 
 	for i, bi := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
-
-		// Value based on variation
-		switch variation {
-		case 1: // Binary Input with flags (no timestamp for static)
-			val := byte(0)
-			if bi.Value {
-				val = 0x80
-			}
-			result = append(result, val|bi.Quality)
-		case 2: // Binary Input without flags (no timestamp for static)
-			if bi.Value {
-				result = append(result, 0x01)
-			} else {
-				result = append(result, 0x00)
-			}
+		if indexed {
+			result = append(result, byte(i&0xFF))
 		}
+
+		val := bi.Quality & 0x7F
+		if bi.Value {
+			val |= 0x80
+		}
+		result = append(result, val)
 	}
 
 	return result
@@ -1763,26 +1940,34 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 30)        // Group 30
-	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is a signed 32-bit value with flags. Qualifier 0x07
-		// carries an 8-bit count and sequential points without indexes. The
-		// flags octet is first, then the little-endian value (IEEE 1815;
-		// opendnp3 3.1.2 Group30Var1 = (flags, value32)).
-		result = append(result, 0x07, byte(len(data)))
+		// Variation 1 is a signed 32-bit value with flags. The flags octet is
+		// first, then the little-endian value (IEEE 1815; opendnp3 3.1.2
+		// Group30Var1 = (flags, value32)).
+		header, ok := appendCountQualifier([]byte{30, variation}, len(data))
+		if !ok {
+			o.staticDropped = true
+			return result
+		}
 		for _, ai := range data {
 			value := int32(ai.Value)
-			result = append(result, ai.Quality, byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
+			header = append(header, ai.Quality, byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
 		}
+		return header
+	}
+
+	header, indexed, ok := appendIndexedCountQualifier([]byte{30, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
 		return result
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+	result = header
 
 	for i, ai := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
+		if indexed {
+			// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+			result = append(result, byte(i&0xFF))
+		}
 
 		// Value based on variation
 		switch variation {
@@ -1823,25 +2008,33 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 20)        // Group 20
-	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is an unsigned 32-bit counter with flags. Qualifier
-		// 0x07 carries an 8-bit count and sequential points without indexes.
-		// The flags octet is first, then the little-endian value (IEEE 1815;
-		// opendnp3 3.1.2 Group20Var1 = (flags, count32)).
-		result = append(result, 0x07, byte(len(data)))
-		for _, c := range data {
-			result = append(result, c.Quality, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
+		// Variation 1 is an unsigned 32-bit counter with flags. The flags octet is
+		// first, then the little-endian value (IEEE 1815; opendnp3 3.1.2
+		// Group20Var1 = (flags, count32)).
+		header, ok := appendCountQualifier([]byte{20, variation}, len(data))
+		if !ok {
+			o.staticDropped = true
+			return result
 		}
+		for _, c := range data {
+			header = append(header, c.Quality, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
+		}
+		return header
+	}
+
+	header, indexed, ok := appendIndexedCountQualifier([]byte{20, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
 		return result
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+	result = header
 
 	for i, c := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
+		if indexed {
+			// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+			result = append(result, byte(i&0xFF))
+		}
 
 		// Value based on variation
 		switch variation {
@@ -1957,30 +2150,38 @@ func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 10)              // Group 10
-	result = append(result, variation)       // Variation
-	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
-	result = append(result, byte(len(data))) // Count
-
-	for _, bo := range data {
-		// Value based on variation
-		switch variation {
-		case 1: // Binary Output with flags
-			val := byte(0)
-			if bo.Value {
-				val = 0x80
-			}
-			result = append(result, val|bo.Quality)
-		case 2: // Binary Output without flags
-			if bo.Value {
-				result = append(result, 0x01)
-			} else {
-				result = append(result, 0x00)
-			}
-		}
+	header, ok := appendCountQualifier([]byte{10, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
+		return result
 	}
 
-	return result
+	if variation == 1 {
+		// G10V1 is the PACKED binary output status variation: one bit per
+		// point, LSB-first, in ceil(count/8) octets with no index prefix and
+		// no per-point flags. The G10V2-style one-flags-octet-per-point
+		// layout overstates the payload and makes strict masters reject the
+		// following object header as truncated.
+		packed := make([]byte, (len(data)+7)/8)
+		for i, bo := range data {
+			if bo.Value {
+				packed[i/8] |= 1 << uint(i%8)
+			}
+		}
+		return append(header, packed...)
+	}
+
+	for _, bo := range data {
+		// G10V2 is Binary Output Status with flags: state in bit 7,
+		// point quality in the low bits.
+		val := byte(0)
+		if bo.Value {
+			val = 0x80
+		}
+		header = append(header, val|bo.Quality)
+	}
+
+	return header
 }
 
 // buildAnalogOutputData builds analog output status data (Group 40).
@@ -1993,28 +2194,29 @@ func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 40)              // Group 40
-	result = append(result, variation)       // Variation
-	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
-	result = append(result, byte(len(data))) // Count
+	header, ok := appendCountQualifier([]byte{40, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
+		return result
+	}
 
 	for _, ao := range data {
 		// Value based on variation
 		switch variation {
 		case 1: // 32-bit float with flags
 			bits := float64ToUint32Bits(ao.Value)
-			result = append(result,
+			header = append(header,
 				byte(bits>>24), byte(bits>>16),
 				byte(bits>>8), byte(bits))
-			result = append(result, ao.Quality)
+			header = append(header, ao.Quality)
 		case 2: // 16-bit integer with flags
 			val := int16(ao.Value)
-			result = append(result, byte(val>>8), byte(val))
-			result = append(result, ao.Quality)
+			header = append(header, byte(val>>8), byte(val))
+			header = append(header, ao.Quality)
 		}
 	}
 
-	return result
+	return header
 }
 
 // float64ToUint32Bits converts float64 to uint32 bits.
@@ -2055,14 +2257,62 @@ func parseControlObjectHeader(data []byte) (group, variation uint8, count int, i
 		count = int(data[3])
 		index = uint16(data[4]) | uint16(data[5])<<8
 		valueOffset = 6
+	case 0x17: // 8-bit count + 8-bit index (IEEE 1815 prefix=index8, range=count8)
+		// Windows DNP3 Tester and other masters use this qualifier for a
+		// single indexed G12V1 CROB. Without it the control is rejected as a
+		// parameter error before any status object can be produced.
+		if len(data) < 5 {
+			return 0, 0, 0, 0, 0, false
+		}
+		count = int(data[3])
+		index = uint16(data[4])
+		valueOffset = 5
 	default:
 		return 0, 0, 0, 0, 0, false
 	}
 	return group, variation, count, index, valueOffset, true
 }
 
+// buildG12V1EchoObject builds the response object for a G12V1 control: the
+// request's object header (group, variation, qualifier, count and index) is
+// preserved verbatim so the master can parse the echo with the same layout it
+// used for the request, followed by the CROB's control fields and the
+// per-point command-status octet. status is authoritative: SUCCESS is emitted
+// only for an executed command, never for a refused one.
+func buildG12V1EchoObject(requestData []byte, valueOffset int, crobData []byte, status uint8) []byte {
+	if valueOffset <= 0 || valueOffset > len(requestData) || len(crobData) < 11 {
+		return nil
+	}
+	out := make([]byte, 0, valueOffset+11)
+	out = append(out, requestData[:valueOffset]...)
+	out = append(out, crobData[:10]...)
+	return append(out, status)
+}
+
+// isSingleG12V1Control reports whether a parsed control header describes one
+// complete G12V1 CROB. Multi-point requests are rejected rather than partially
+// echoed, so a master never sees a status object for only the first point.
+func isSingleG12V1Control(group, variation uint8, count int, valueLen int) bool {
+	return group == 12 && variation == 1 && count == 1 && valueLen >= 11
+}
+
 // handleWrite handles WRITE requests.
 func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
+	// G80V1 is the packed Internal Indications object. A master may WRITE it
+	// as housekeeping to clear DEVICE_RESTART (index 7). It carries no point
+	// data and must not become a sticky PARAMETER_ERROR. Only DEVICE_RESTART
+	// is writable; all other indications remain read-only.
+	if len(req.Data) >= 6 && req.Data[0] == 80 && req.Data[1] == 1 && req.Data[2] == 0x00 {
+		start, stop, value := int(req.Data[3]), int(req.Data[4]), req.Data[5]
+		if value == 0 && start <= 7 && stop >= 7 {
+			o.iin.DeviceRestart = false
+		}
+		return &al.APDU{
+			Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+			FuncCode: al.FuncResponse,
+		}, nil
+	}
+
 	// Parse write request header (group, qualifier, count, index).
 	group, _, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
@@ -2095,11 +2345,12 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 				return nil, ErrInvalidRequest
 			}
 			crob := CROB{
-				Code:    req.Data[dataIdx],
-				Count:   req.Data[dataIdx+1],
-				OnTime:  uint32(req.Data[dataIdx+2]) | uint32(req.Data[dataIdx+3])<<8 | uint32(req.Data[dataIdx+4])<<16 | uint32(req.Data[dataIdx+5])<<24,
-				OffTime: uint32(req.Data[dataIdx+6]) | uint32(req.Data[dataIdx+7])<<8 | uint32(req.Data[dataIdx+8])<<16 | uint32(req.Data[dataIdx+9])<<24,
-				Status:  req.Data[dataIdx+10],
+				Code:      req.Data[dataIdx],
+				Count:     req.Data[dataIdx+1],
+				OnTime:    uint32(req.Data[dataIdx+2]) | uint32(req.Data[dataIdx+3])<<8 | uint32(req.Data[dataIdx+4])<<16 | uint32(req.Data[dataIdx+5])<<24,
+				OffTime:   uint32(req.Data[dataIdx+6]) | uint32(req.Data[dataIdx+7])<<8 | uint32(req.Data[dataIdx+8])<<16 | uint32(req.Data[dataIdx+9])<<24,
+				Status:    req.Data[dataIdx+10],
+				Qualifier: objectQualifier(req.Data),
 			}
 			// Call the data handler to process the CROB
 			if dh, ok := o.data.(DataWriter); ok {
@@ -2140,13 +2391,24 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 	return resp, nil
 }
 
+// objectQualifier returns the object-header qualifier octet, or 0 when the
+// request is too short. parseControlObjectHeader has already validated the
+// header before a CROB is built; this only avoids a secondary bounds panic.
+func objectQualifier(data []byte) uint8 {
+	if len(data) > 2 {
+		return data[2]
+	}
+	return 0
+}
+
 // CROB represents a Control Relay Output Block (Group 12, Variation 1).
 type CROB struct {
-	Code    uint8  // Control code (0=NOT_USED, 1=OPEN, 2=CLOSE, 3=PULSE_ON, etc.)
-	Count   uint8  // Number of operation cycles
-	OnTime  uint32 // Time in ms to energize
-	OffTime uint32 // Time in ms to de-energize
-	Status  uint8  // Qualifier code (0x00=STANDARD)
+	Code      uint8  // Control code (IEEE 1815 A.8.1 low-nibble enum; see types.CROBOp*)
+	Count     uint8  // Number of operation cycles
+	OnTime    uint32 // Time in ms to energise
+	OffTime   uint32 // Time in ms to de-energise
+	Status    uint8  // Request object status octet (normally 0x00)
+	Qualifier uint8  // Object-header qualifier code from the request
 }
 
 // DataWriter interface for handling write operations.
@@ -2160,12 +2422,21 @@ type DataWriter interface {
 func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	data := make([]byte, len(req.Data)-dataIdx)
 	copy(data, req.Data[dataIdx:])
+
+	// A multi-point SELECT cannot be answered with a single status object.
+	// Keep the legacy handling of a short single-point payload (some internal
+	// callers use it only to register/lock a point) unchanged; only complete
+	// CROBs get a status echo below.
+	if group == 12 && variation == 1 && count > 1 {
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 
 	debugLog("handleSelect: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(data))
 
@@ -2191,6 +2462,9 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil, // Success response with no data
 	}
+	if isSingleG12V1Control(group, variation, count, len(data)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, data, 0x00)
+	}
 	return resp, nil
 }
 
@@ -2201,12 +2475,17 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	value := make([]byte, len(req.Data)-dataIdx)
 	copy(value, req.Data[dataIdx:])
+
+	if group == 12 && variation == 1 && count > 1 {
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 
 	debugLog("handleOperate: group=%d, variation=%d, index=%d", group, variation, index)
 
@@ -2220,8 +2499,14 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		return nil, ErrNoSelectPending
 	}
 
-	// Check timeout
-	timeoutDuration := time.Duration(o.config.SBOTimeout) * time.Millisecond
+	// Check timeout. A zero SBOTimeout must not mean "expire immediately":
+	// several callers build a Config literal and leave this field unset. Use
+	// the documented 10-second default so a valid SELECT can be operated.
+	sboTimeout := o.config.SBOTimeout
+	if sboTimeout <= 0 {
+		sboTimeout = defaultSBOTimeoutMS
+	}
+	timeoutDuration := time.Duration(sboTimeout) * time.Millisecond
 	if time.Since(pending.Timestamp) > timeoutDuration {
 		delete(o.pendingSelects, index)
 		o.selectMu.Unlock()
@@ -2245,8 +2530,21 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	// Call the DataWriter if the data handler implements it
 	if dh, ok := o.data.(DataWriter); ok {
 		debugLog("handleOperate: calling executeControl for index=%d", index)
-		err := o.executeControl(dh, group, variation, index, pending.Value)
+		err := o.executeControl(dh, group, variation, index, pending.Value, objectQualifier(req.Data))
 		if err != nil {
+			// A handler refusal that carries an IEEE 1815 command status is
+			// echoed in a G12V1 object so the master sees a definite
+			// non-success instead of "no command statuses". An unclassifiable
+			// refusal still fails closed with an error response.
+			if isSingleG12V1Control(group, variation, count, len(pending.Value)) {
+				if cse, ok := AsControlStatusError(err); ok {
+					return &al.APDU{
+						Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+						FuncCode: al.FuncResponse,
+						Data:     buildG12V1EchoObject(req.Data, dataIdx, pending.Value, cse.Status),
+					}, nil
+				}
+			}
 			o.iin.ParameterError = true
 			debugLog("handleOperate: executeControl error: %v", err)
 			return nil, err
@@ -2265,6 +2563,9 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		},
 		FuncCode: al.FuncResponse,
 		Data:     nil,
+	}
+	if isSingleG12V1Control(group, variation, count, len(pending.Value)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, pending.Value, 0x00)
 	}
 	return resp, nil
 }
@@ -2286,8 +2587,13 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	// Operate. Validate the variation, count and record length before any side
 	// effect so a batch, empty, wrong-variation or malformed request is rejected
 	// without calling the output handler and without echoing SUCCESS.
-	// parseControlObjectHeader discards the count for G12V1, whose single-point
-	// behavior is unchanged and covered by the existing CROB suite.
+	// G12V1 is also single-point only. Validate before any side effect so a
+	// batch or malformed CROB cannot produce a status echo for just one point.
+	if group == 12 && !isSingleG12V1Control(group, variation, count, len(value)) {
+		debugLog("handleDirectOperate: rejecting G12 variation=%d count=%d valueLen=%d", variation, count, len(value))
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 	if group == 41 {
 		width := g41ValueWidth(variation)
 		if width == 0 || count != 1 || len(value) != width+1 {
@@ -2310,7 +2616,7 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 		return nil, ErrNotSupported
 	}
 	debugLog("handleDirectOperate: calling executeControl")
-	if err := o.executeControl(dh, group, variation, index, value); err != nil {
+	if err := o.executeControl(dh, group, variation, index, value, objectQualifier(req.Data)); err != nil {
 		// AO-004 Appendix T: when the handler refuses with a specific,
 		// wire-encodable command status (for example OUT_OF_RANGE), echo the
 		// object with that status so the master reads a definite per-point
@@ -2331,6 +2637,22 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 					},
 					FuncCode: al.FuncResponse,
 					Data:     buildG41EchoObject(variation, index, value, cse.Status),
+				}, nil
+			}
+		}
+		if isSingleG12V1Control(group, variation, count, len(value)) {
+			if cse, ok := AsControlStatusError(err); ok {
+				debugLog("handleDirectOperate: echoing G12V1 object with command status %d", cse.Status)
+				return &al.APDU{
+					Control: al.AppControl{
+						FIR: true,
+						FIN: true,
+						CON: false,
+						UNS: false,
+						Seq: o.appSeq,
+					},
+					FuncCode: al.FuncResponse,
+					Data:     buildG12V1EchoObject(req.Data, dataIdx, value, cse.Status),
 				}, nil
 			}
 		}
@@ -2357,6 +2679,9 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	// master classifies as a failure (never success), not an echo.
 	if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
 		resp.Data = buildG41EchoObject(variation, index, value, 0x00)
+	}
+	if isSingleG12V1Control(group, variation, count, len(value)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, value, 0x00)
 	}
 	return resp, nil
 }
@@ -2396,7 +2721,9 @@ func g41ValueWidth(variation uint8) int {
 }
 
 // executeControl executes a control operation by parsing the value and calling the DataWriter.
-func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte) error {
+// qualifier is the object-header qualifier octet and is carried through to the
+// public command handler so a CROB handler can preserve the request layout.
+func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8, index uint16, value []byte, qualifier uint8) error {
 	debugLog("executeControl: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(value))
 
 	switch group {
@@ -2406,11 +2733,12 @@ func (o *Outstation) executeControl(dh DataWriter, group uint8, variation uint8,
 			return ErrInvalidRequest
 		}
 		crob := CROB{
-			Code:    value[0],
-			Count:   value[1],
-			OnTime:  uint32(value[2]) | uint32(value[3])<<8 | uint32(value[4])<<16 | uint32(value[5])<<24,
-			OffTime: uint32(value[6]) | uint32(value[7])<<8 | uint32(value[8])<<16 | uint32(value[9])<<24,
-			Status:  value[10],
+			Code:      value[0],
+			Count:     value[1],
+			OnTime:    uint32(value[2]) | uint32(value[3])<<8 | uint32(value[4])<<16 | uint32(value[5])<<24,
+			OffTime:   uint32(value[6]) | uint32(value[7])<<8 | uint32(value[8])<<16 | uint32(value[9])<<24,
+			Status:    value[10],
+			Qualifier: qualifier,
 		}
 		debugLog("executeControl: calling WriteBinaryOutput index=%d crob=%+v", index, crob)
 		return dh.WriteBinaryOutput(index, &crob)
