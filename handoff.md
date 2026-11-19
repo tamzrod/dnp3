@@ -7,6 +7,12 @@ CURRENT: AO-008
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## AO-008 PHASE B OWNER AUTHORIZED — 2026-11-19 (LATEST AUTHORITY)
+
+The owner explicitly authorized **Phase B implementation** after the independently CHECKed KDE design record `.kde/governance/AO-008-G41-DESIGN-APPROVAL.md` was integrated into `work` at `419a0bfd82fd83fe4be9e78e0ea24ff36ca949bc`. The **latest binding Phase B contract** and strict write allowlist, regression/Go/isolated OpenDNP3 verification gates and STOP conditions are appended to `workflow/active_work/AO-008.md`. Earlier handoff/Phase A statements "Phase B not authorized" are **historical and superseded**. `CURRENT: AO-008`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`; invoke OpenHands with **`operation cwal` only**.
+
+Implement stable **`master.WithAnalogControl()`** and **`outstation.WithAnalogControl()`** as independent default-OFF opt-ins for typed G41V1–V4 Direct Operate **with response**, preserving both existing experimental aliases, strict legacy `NewAnalogControl(float64)` rejection even opted in, fail-closed float `-0.0`/subnormal **FAIL/DIVERGENCE**, single-peer evidence limits, safety negatives and v0 CROB/Class-0. Fresh Go/race/external-MVP and isolated OpenDNP3 3.1.2 gates are mandatory before Phase B acceptance. **Published G41 remains UNSUPPORTED** in `active_work/supported-profile.md` (blob `3e592e77ad6e31d5492c609c5fdd62382505904b`); **Phase C profile publication is not authorized**. No PR, merge, release, deployment or live field commands. On successful Phase B checkpoint non-force to `work`, report `PHASE_B_READY_FOR_INDEPENDENT_CHECK` and STOP without closing CURRENT.
+
 ## AO-008 PROMOTED — 2026-11-19 — explicit-opt-in G41 support design (KDE PENDING)
 
 Owner authorized establishing **CURRENT AO-008** after AO-007 accepted closure. Executable instructions: `workflow/active_work/AO-008.md`; bounded KDE decision request `docs/verification/AO-008-DESIGN-DECISION-DRAFT.md`. Owner approved only the **explicit opt-in direction** (master and outstation separately), **not** the final stable API name, version, code admission changes or published-profile promotion. Phase A is authorized to verify architecture, draft exact compatibility/migration/negative gates, and checkpoint; **Phase B implementation requires separate KDE sign-off AND owner implementation authorization**; published-profile edits require later separate owner authorization.
