@@ -1,0 +1,41 @@
+RESULT ISOLATION_BASELINE PASS (no default route before topology)
+RESULT REACH PASS (master reaches outstation over the internal veth)
+--- peer readiness (B) ---
+ms(1795016677320) INFO    ao004-g41 - Listening on: 10.77.0.2:20000
+channel state change: OPENING
+ao004-g41-peer: listening on 10.77.0.2:20000 (link 4 -> 3); memory-only G41 handler active
+CASE matrix=B case=presend-notconn :: neg-master: mode=presend-notconn target=10.77.0.1:20000 neg-master: operate_err="not connected" classify=disconnect ambiguous_or_quarantine=false 
+CASE matrix=B case=pass :: neg-master: mode=pass target=10.77.0.1:20000 neg-master: connected neg-master: operate_status=success 
+CASE matrix=B case=presend-cancel :: neg-master: mode=presend-cancel target=10.77.0.1:20000 neg-master: connected neg-master: operate1(cancelled)_err="context canceled: context canceled" classify=canceled ambiguous_or_quarantine=false neg-master: operate2(after-cancel)_status=success (not quarantined) 
+CASE matrix=B case=after-send-drop-response :: neg-master: mode=after-send target=10.77.0.1:20000 neg-master: connected neg-master: operate1(after-send)_err="operate failed: operation timeout: control outcome unknown: operation timeout: timeout" classify=timeout ambiguous_or_quarantine=true neg-master: operate2(quarantine-probe)_err="operate refused: control quarantined: prior control outcome unknown: 0x0004" classify=unknown ambiguous_or_quarantine=true 
+CASE matrix=B case=after-send-close-after-request :: neg-master: mode=after-send target=10.77.0.1:20000 neg-master: connected neg-master: operate1(after-send)_err="operate failed: operation timeout: control outcome unknown: operation timeout: transport closed" classify=timeout ambiguous_or_quarantine=true neg-master: operate2(quarantine-probe)_err="operate refused: control quarantined: prior control outcome unknown: 0x0004" classify=unknown ambiguous_or_quarantine=true 
+--- peer accepted-command log (B) ---
+ms(1795016677320) INFO    ao004-g41 - Listening on: 10.77.0.2:20000
+channel state change: OPENING
+ao004-g41-peer: listening on 10.77.0.2:20000 (link 4 -> 3); memory-only G41 handler active
+ms(1795016679339) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=1
+ms(1795016680383) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795016681906) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=2
+ms(1795016682951) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795016684466) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=3
+ms(1795016688474) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795016689991) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=1 index=0 value=2300 count=4
+ms(1795016689991) WARN    ao004-g41 - read error: Connection reset by peer
+channel state change: CLOSED
+channel state change: OPENING
+RESULT PCAP_PRESENT /out/ao005-neg-B.pcap (6807 bytes)
+RESULT MATRIX_B DONE

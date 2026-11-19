@@ -18,7 +18,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"dnp3/pkg/dnp3"
@@ -39,6 +42,7 @@ func main() {
 	host := flag.String("host", labOutstationAddr, "target address (must be the lab outstation)")
 	port := flag.Int("port", labOutstationPort, "target port (must be the lab port)")
 	timeout := flag.Duration("timeout", 6*time.Second, "operate timeout")
+	valueHex := flag.String("value-hex", "", "lab-only exact-bit override for V3/V4 (e.g. 80000000 for -0.0f32); empty uses the fixed default")
 	flag.Parse()
 
 	if *variation < 1 || *variation > 4 {
@@ -55,6 +59,28 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Lab-only exact-bit override: with no --value-hex the fixed typed defaults
+	// above are used unchanged. When set, V3/V4 take the exact IEEE-754 bits so a
+	// float edge case (for example -0.0) can be put on the wire verbatim.
+	f32 := float32(1.5)
+	f64 := float64(1.5)
+	if *valueHex != "" {
+		bits, err := strconv.ParseUint(strings.TrimPrefix(*valueHex, "0x"), 16, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go-master: invalid --value-hex %q: %v\n", *valueHex, err)
+			os.Exit(2)
+		}
+		switch *variation {
+		case 3:
+			f32 = math.Float32frombits(uint32(bits))
+		case 4:
+			f64 = math.Float64frombits(bits)
+		default:
+			fmt.Fprintln(os.Stderr, "go-master: --value-hex is only valid for --variation 3 or 4")
+			os.Exit(2)
+		}
+	}
+
 	var cmd *types.ControlOutput
 	switch *variation {
 	case 1:
@@ -62,9 +88,9 @@ func main() {
 	case 2:
 		cmd = types.NewAnalogInt16Control(uint16(*index), 12345, types.DirectOperate)
 	case 3:
-		cmd = types.NewAnalogFloat32Control(uint16(*index), 1.5, types.DirectOperate)
+		cmd = types.NewAnalogFloat32Control(uint16(*index), f32, types.DirectOperate)
 	case 4:
-		cmd = types.NewAnalogFloat64Control(uint16(*index), 1.5, types.DirectOperate)
+		cmd = types.NewAnalogFloat64Control(uint16(*index), f64, types.DirectOperate)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout+8*time.Second)
@@ -94,5 +120,12 @@ func main() {
 		fmt.Printf("ao005-go-master: variation=%d index=%d err=%v\n", *variation, *index, err)
 		os.Exit(1)
 	}
-	fmt.Printf("ao005-go-master: variation=%d index=%d status=%v\n", *variation, *index, resp.Status)
+	switch *variation {
+	case 3:
+		fmt.Printf("ao005-go-master: variation=%d index=%d req_bits=0x%08x status=%v\n", *variation, *index, math.Float32bits(f32), resp.Status)
+	case 4:
+		fmt.Printf("ao005-go-master: variation=%d index=%d req_bits=0x%016x status=%v\n", *variation, *index, math.Float64bits(f64), resp.Status)
+	default:
+		fmt.Printf("ao005-go-master: variation=%d index=%d status=%v\n", *variation, *index, resp.Status)
+	}
 }
