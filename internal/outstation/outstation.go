@@ -1430,6 +1430,18 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	// this request clean.
 	o.discardSolicitedLocked()
 
+	// IIN error bits describe the outcome of the current exchange, not
+	// permanent station state. Clear the request-scoped bits so an earlier
+	// rejected request (for example a master's G80V1 Internal Indications
+	// WRITE) cannot leave IIN2.2 PARAMETER_ERROR set in every later READ
+	// response. Class/event and buffer-overflow bits are derived state and
+	// are refreshed by refreshEventIINLocked, so they are left alone.
+	o.iin.FuncUnknown = false
+	o.iin.ObjectUnknown = false
+	o.iin.ParameterError = false
+	o.iin.AlreadyExecuting = false
+	o.iin.BadConfig = false
+
 	// Confirm is not a solicited request. Accept or ignore it without
 	// consuming the solicited application sequence and without a response.
 	if req.FuncCode == al.FuncConfirm {
@@ -1690,21 +1702,14 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
 		result = append(result, byte(i&0xFF))
 
-		// Value based on variation
-		switch variation {
-		case 1: // Binary Input with flags (no timestamp for static)
-			val := byte(0)
-			if bi.Value {
-				val = 0x80
-			}
-			result = append(result, val|bi.Quality)
-		case 2: // Binary Input without flags (no timestamp for static)
-			if bi.Value {
-				result = append(result, 0x01)
-			} else {
-				result = append(result, 0x00)
-			}
+		// G1V2 is Binary Input with Flags: one octet per point, state in
+		// bit 7 and quality in the low seven bits. It must not reuse the
+		// packed G1V1 layout or a bare 0x01/0x00 value octet.
+		val := bi.Quality & 0x7F
+		if bi.Value {
+			val |= 0x80
 		}
+		result = append(result, val)
 	}
 
 	return result
@@ -1962,22 +1967,29 @@ func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
 	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
 	result = append(result, byte(len(data))) // Count
 
-	for _, bo := range data {
-		// Value based on variation
-		switch variation {
-		case 1: // Binary Output with flags
-			val := byte(0)
+	if variation == 1 {
+		// G10V1 is the PACKED binary output status variation: one bit per
+		// point, LSB-first, in ceil(count/8) octets with no index prefix and
+		// no per-point flags. The G10V2-style one-flags-octet-per-point
+		// layout overstates the payload and makes strict masters reject the
+		// following object header as truncated.
+		packed := make([]byte, (len(data)+7)/8)
+		for i, bo := range data {
 			if bo.Value {
-				val = 0x80
-			}
-			result = append(result, val|bo.Quality)
-		case 2: // Binary Output without flags
-			if bo.Value {
-				result = append(result, 0x01)
-			} else {
-				result = append(result, 0x00)
+				packed[i/8] |= 1 << uint(i%8)
 			}
 		}
+		return append(result, packed...)
+	}
+
+	for _, bo := range data {
+		// G10V2 is Binary Output Status with flags: state in bit 7,
+		// point quality in the low bits.
+		val := byte(0)
+		if bo.Value {
+			val = 0x80
+		}
+		result = append(result, val|bo.Quality)
 	}
 
 	return result
@@ -2063,6 +2075,21 @@ func parseControlObjectHeader(data []byte) (group, variation uint8, count int, i
 
 // handleWrite handles WRITE requests.
 func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
+	// G80V1 is the packed Internal Indications object. A master may WRITE it
+	// as housekeeping to clear DEVICE_RESTART (index 7). It carries no point
+	// data and must not become a sticky PARAMETER_ERROR. Only DEVICE_RESTART
+	// is writable; all other indications remain read-only.
+	if len(req.Data) >= 6 && req.Data[0] == 80 && req.Data[1] == 1 && req.Data[2] == 0x00 {
+		start, stop, value := int(req.Data[3]), int(req.Data[4]), req.Data[5]
+		if value == 0 && start <= 7 && stop >= 7 {
+			o.iin.DeviceRestart = false
+		}
+		return &al.APDU{
+			Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+			FuncCode: al.FuncResponse,
+		}, nil
+	}
+
 	// Parse write request header (group, qualifier, count, index).
 	group, _, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {

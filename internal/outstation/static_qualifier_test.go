@@ -99,9 +99,11 @@ func TestBuildBinaryOutputSequentialQualifier(t *testing.T) {
 		t.Fatalf("header = % X, want 0A 01 07", got[:3])
 	}
 	count := int(got[3])
-	// Sequential: header(4) + count * 1 value octet, no index prefixes.
-	if len(got) != 4+count {
-		t.Fatalf("length = %d, want %d (sequential, no index prefix)", len(got), 4+count)
+	// G10V1 is packed: one bit per point, so count points occupy
+	// ceil(count/8) octets and there are no per-point index prefixes.
+	want := 4 + (count+7)/8
+	if len(got) != want {
+		t.Fatalf("length = %d, want %d (packed G10V1, no index prefix)", len(got), want)
 	}
 }
 

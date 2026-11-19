@@ -122,6 +122,10 @@ func TestServerState(t *testing.T) {
 
 func TestServerStart(t *testing.T) {
 	cfg := NewConfig()
+	// Use an ephemeral loopback port so the test never contends with a live
+	// outstation already listening on the default DNP3 TCP port 20000.
+	cfg.Address = "127.0.0.1"
+	cfg.Port = 0
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
@@ -136,6 +140,8 @@ func TestServerStart(t *testing.T) {
 
 func TestServerStop(t *testing.T) {
 	cfg := NewConfig()
+	cfg.Address = "127.0.0.1"
+	cfg.Port = 0
 	server, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)

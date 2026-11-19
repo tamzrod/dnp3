@@ -11,7 +11,7 @@ import (
 
 // TestReadRejectsUnsupportedGroups asserts the public Read rejects object
 // groups/variations outside the v0 profile with ErrUnsupportedGroup before any
-// wire traffic is generated (DNP3-029). The v0 read profile is G1, G20, G30
+// wire traffic is generated (DNP3-029). The read profile is G1, G10, G20, G30
 // (variation 0 "any" or 1).
 func TestReadRejectsUnsupportedGroups(t *testing.T) {
 	cc := newConnectedClientWithTransport(t, &pubReadEchoTransport{})
@@ -22,7 +22,7 @@ func TestReadRejectsUnsupportedGroups(t *testing.T) {
 		v    uint8
 	}{
 		{"group2_binary_event", 2, 1},
-		{"group10_binary_output", 10, 1},
+		{"group11_binary_output_event", 11, 1},
 		{"group13_binary_cmd_event", 13, 1},
 		{"group21_counter_event", 21, 1},
 		{"group32_analog_event", 32, 1},
@@ -48,7 +48,7 @@ func TestReadRejectsUnsupportedGroups(t *testing.T) {
 	}
 }
 
-// TestReadAcceptsSupportedGroups asserts the v0-supported groups are NOT
+// TestReadAcceptsSupportedGroups asserts the supported static groups are NOT
 // rejected at the gate (they proceed to the request path). Variation 0 ("any")
 // and 1 are both accepted.
 func TestReadAcceptsSupportedGroups(t *testing.T) {
@@ -61,6 +61,8 @@ func TestReadAcceptsSupportedGroups(t *testing.T) {
 	}{
 		{"g1v0", 1, 0},
 		{"g1v1", 1, 1},
+		{"g10v0", 10, 0},
+		{"g10v1", 10, 1},
 		{"g20v0", 20, 0},
 		{"g20v1", 20, 1},
 		{"g30v0", 30, 0},

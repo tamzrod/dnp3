@@ -15,7 +15,7 @@ var deviceRestartIIN = [2]byte{0x80, 0x00}
 
 // TestAutoIntegrityOnRestart verifies DNP3-053: when AutoIntegrityOnRestart is
 // enabled, a response carrying the DeviceRestart IIN bit automatically triggers
-// a Class-0 integrity poll (G1, G20, G30) after the triggering Read completes.
+// a Class-0 integrity poll (G1, G10, G20, G30) after the triggering Read completes.
 func TestAutoIntegrityOnRestart(t *testing.T) {
 	sim := testutils.NewMVPOutstationSimulator(1024, 0xFFFF)
 	sim.SetAnalogInputs([]*types.AnalogInput{
@@ -47,14 +47,14 @@ func TestAutoIntegrityOnRestart(t *testing.T) {
 	defer client.Close()
 
 	// A single Read of G1 — its response carries DeviceRestart, so the master
-	// must auto-poll integrity (G1, G20, G30) afterward.
+	// must auto-poll integrity (G1, G10, G20, G30) afterward.
 	if _, err := client.Read(ctx, types.NewReadRequest(types.GroupRequest{Group: 1, Variation: 1})); err != nil {
 		t.Fatalf("trigger Read: %v", err)
 	}
 
 	groups := sim.ReadGroups()
-	// Expected sequence: trigger Read G1, then auto integrity G1, G20, G30.
-	want := []uint8{1, 1, 20, 30}
+	// Expected sequence: trigger Read G1, then auto integrity G1, G10, G20, G30.
+	want := []uint8{1, 1, 10, 20, 30}
 	if len(groups) != len(want) {
 		t.Fatalf("ReadGroups = %v, want %v", groups, want)
 	}
@@ -112,7 +112,7 @@ func TestAutoIntegrityOnRestartDisabled(t *testing.T) {
 
 // TestAutoIntegrityOnRestartFromIntegrityPoll verifies the recursion guard
 // (DNP3-053): when an explicit IntegrityPoll's group reads see DeviceRestart,
-// it does NOT spawn a nested auto integrity poll. Only the three integrity
+// it does NOT spawn a nested auto integrity poll. Only the four integrity
 // group reads are observed.
 func TestAutoIntegrityOnRestartFromIntegrityPoll(t *testing.T) {
 	sim := testutils.NewMVPOutstationSimulator(1024, 0xFFFF)
@@ -141,9 +141,9 @@ func TestAutoIntegrityOnRestartFromIntegrityPoll(t *testing.T) {
 		t.Fatalf("IntegrityPoll: %v", err)
 	}
 
-	// Exactly the three integrity group reads — no nested auto-poll.
+	// Exactly the four integrity group reads — no nested auto-poll.
 	groups := sim.ReadGroups()
-	want := []uint8{1, 20, 30}
+	want := []uint8{1, 10, 20, 30}
 	if len(groups) != len(want) {
 		t.Fatalf("ReadGroups = %v, want %v (no nested auto-integrity)", groups, want)
 	}

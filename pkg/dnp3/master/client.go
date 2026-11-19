@@ -98,13 +98,13 @@ type Client interface {
 	State() dnp3.ConnectionState
 
 	// Read issues a read request to the outstation.
-	// Supported-profile: Target — Class-0 static Groups 1.1, 30.1, and 20.1
-	// only; other groups are rejected with ErrUnsupportedGroup (DNP3-029).
+	// Supported-profile: Target — Class-0 static Groups 1.1, 10.1, 20.1 and
+	// 30.1; other groups are rejected with ErrUnsupportedGroup (DNP3-029).
 	Read(ctx context.Context, request *types.ReadRequest) (*ReadResponse, error)
 
 	// IntegrityPoll issues a Class-0 integrity poll — a single Read of all
-	// MVP-supported static groups (Binary Input G1, Counter G20, Analog Input
-	// G30) in one multi-group request — and returns the same ReadResponse shape
+	// supported static groups (Binary Input G1, Binary Output Status G10,
+	// Counter G20, Analog Input G30) in one multi-group request — and returns the same ReadResponse shape
 	// as Read. It is a convenience around Read for the common "read everything"
 	// case (DNP3-037). Since MEXT-015 the primary path is one multi-header
 	// exchange, with a per-group fallback for peers that reject it.
@@ -497,11 +497,11 @@ type UnsolicitedHandler func(response *UnsolicitedResponse)
 
 // ReadResponse contains the response data from a read request.
 //
-// DNP3-035: the v0 MVP profile supports only the Class-0 static groups
-// Binary Input (G1), Analog Input (G30), and Counter (G20). Only those three
-// slices are populated by Read. The output-status and frozen-counter fields
-// are retained for forward compatibility with later profiles but are NOT
-// populated by the v0 Read path; callers must not rely on them being non-nil.
+// DNP3-035: the Class-0 static groups supported by this library are Binary
+// Input (G1), Binary Output Status (G10), Analog Input (G30), and Counter
+// (G20). Those four slices are populated by Read. Analog Output (G40) and
+// FrozenCounter are retained for forward compatibility but are NOT populated
+// by the Read path; callers must not rely on them being non-nil.
 type ReadResponse struct {
 	// IIN is the Internal Indication from the outstation
 	IIN [2]byte
@@ -511,9 +511,8 @@ type ReadResponse struct {
 	AnalogInputs []*types.AnalogInput
 	// Counters contains counter data (Group 20, MVP-supported).
 	Counters []*types.Counter
-	// BinaryOutputs contains binary output status data (Group 10). NOT
-	// populated by the v0 MVP Read path (DNP3-035); deferred to a later
-	// profile.
+	// BinaryOutputs contains binary output status data (Group 10) when the
+	// request includes Group 10.
 	BinaryOutputs []*types.BinaryOutput
 	// AnalogOutputs contains analog output status data (Group 40). NOT
 	// populated by the v0 MVP Read path (DNP3-035); deferred to a later
@@ -1141,10 +1140,10 @@ func (c *client) readWithDeadline(ctx context.Context, request *types.ReadReques
 		return nil, dnp3.ErrInvalidRequest
 	}
 
-	// v0 profile allow-list (DNP3-029): only Binary Input (G1), Counter (G20),
-	// and Analog Input (G30) may be read. Variation 0 ("any") is accepted for
-	// these groups; any other group/variation is rejected with a clear error
-	// before any wire traffic is generated.
+	// Read allow-list: Binary Input (G1), Binary Output Status (G10), Counter
+	// (G20), and Analog Input (G30) may be read. Variation 0 ("any") is
+	// accepted for these groups; any other group/variation is rejected with
+	// a clear error before any wire traffic is generated.
 	for _, g := range request.Groups {
 		if !isSupportedReadGroup(g.Group, g.Variation) {
 			return nil, fmt.Errorf("%w: %s", dnp3.ErrUnsupportedGroup, al.DescribeObject(g.Group, g.Variation))
@@ -1224,11 +1223,11 @@ func (c *client) readWithDeadline(ctx context.Context, request *types.ReadReques
 		return nil, fmt.Errorf("decode response failed: %w", err)
 	}
 
-	// Parse data into public types. DNP3-035: only the MVP-supported Class-0
-	// static groups are surfaced (Binary Input G1, Analog Input G30, Counter
-	// G20). Output-status (G10/G40) and frozen-counter parsing is intentionally
-	// omitted from the v0 Read path; those response fields stay nil.
+	// Parse data into public supported static types. G10V1 is parsed so a
+	// commanded binary output state is observable over DNP3. G40 and frozen
+	// counters remain outside this profile and are left nil.
 	binaryInputs := parseBinaryInputs(resp.Data)
+	binaryOutputs := parseBinaryOutputs(resp.Data)
 	analogInputs := parseAnalogInputs(resp.Data)
 	counters := parseCounters(resp.Data)
 
@@ -1243,17 +1242,18 @@ func (c *client) readWithDeadline(ctx context.Context, request *types.ReadReques
 	c.maybeAutoIntegrityOnRestart(ctx)
 
 	return &ReadResponse{
-		IIN:          resp.IIN.Bytes(),
-		Timestamp:    time.Now(),
-		BinaryInputs: binaryInputs,
-		AnalogInputs: analogInputs,
-		Counters:     counters,
+		IIN:           resp.IIN.Bytes(),
+		Timestamp:     time.Now(),
+		BinaryInputs:  binaryInputs,
+		BinaryOutputs: binaryOutputs,
+		AnalogInputs:  analogInputs,
+		Counters:      counters,
 	}, nil
 }
 
 // IntegrityPoll implements Client.IntegrityPoll. It issues a Class-0 integrity
-// poll — reading all MVP-supported static groups (Binary Input G1, Counter G20,
-// Analog Input G30) — and returns a single ReadResponse carrying the combined
+// poll — reading all supported static groups (Binary Input G1, Binary Output
+// Status G10, Counter G20, Analog Input G30) — and returns a single ReadResponse carrying the combined
 // points (DNP3-037).
 //
 // Since MEXT-015 the primary path is a single Class-0 multi-group Read: one
@@ -1272,8 +1272,9 @@ func (c *client) IntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 
 // runIntegrityPoll is the shared Class-0 integrity implementation used by both
 // IntegrityPoll and the DNP3-053 auto-integrity-on-restart path. It reads the
-// MVP static groups (Binary Input G1, Counter G20, Analog Input G30) and
-// returns a single ReadResponse carrying their combined points (DNP3-037).
+// supported static groups (Binary Input G1, Binary Output Status G10, Counter
+// G20, Analog Input G30) and returns a single ReadResponse carrying their
+// combined points (DNP3-037).
 //
 // Primary path (MEXT-015): one Class-0 multi-group Read carrying G1/G20/G30
 // all-objects headers. A conformant outstation answers with a single
@@ -1306,6 +1307,7 @@ func (c *client) runIntegrityPoll(ctx context.Context) (*ReadResponse, error) {
 	// Primary: single Class-0 multi-group read (MEXT-015).
 	resp, err := c.readWithDeadline(ctx, types.NewReadRequest(
 		types.GroupRequest{Group: 1, Variation: 0},
+		types.GroupRequest{Group: 10, Variation: 0},
 		types.GroupRequest{Group: 20, Variation: 0},
 		types.GroupRequest{Group: 30, Variation: 0},
 	), deadline)
@@ -1327,6 +1329,7 @@ func (c *client) integrityPollPerGroup(ctx context.Context, deadline time.Time) 
 	}
 	reads := []groupRead{
 		{1, func(dst, src *ReadResponse) { dst.BinaryInputs = src.BinaryInputs }},
+		{10, func(dst, src *ReadResponse) { dst.BinaryOutputs = src.BinaryOutputs }},
 		{20, func(dst, src *ReadResponse) { dst.Counters = src.Counters }},
 		{30, func(dst, src *ReadResponse) { dst.AnalogInputs = src.AnalogInputs }},
 	}
@@ -1392,13 +1395,13 @@ func (c *client) LastIIN() [2]byte {
 	return outstation.GetIIN()
 }
 
-// isSupportedReadGroup reports whether a (group, variation) pair is in the v0
-// read profile (DNP3-029). The supported groups are Binary Input (G1), Counter
-// (G20), and Analog Input (G30). Variation 0 means "any" and is accepted for
-// these groups; the concrete v0 variation (1) is also accepted.
+// isSupportedReadGroup reports whether a (group, variation) pair is in the
+// read profile. Supported groups are Binary Input (G1), Binary Output Status
+// (G10), Counter (G20), and Analog Input (G30). Variation 0 means "any" and
+// is accepted for these groups; variation 1 is the supported concrete form.
 func isSupportedReadGroup(group, variation uint8) bool {
 	switch group {
-	case 1, 20, 30:
+	case 1, 10, 20, 30:
 		return variation == 0 || variation == 1
 	default:
 		return false
@@ -1537,12 +1540,13 @@ func parseBinaryInputs(data []byte) []*types.BinaryInput {
 				value = (val & 0x80) != 0
 				quality = types.QualityFlags(val & 0x7F)
 				offset++
-			case 2: // Without flags
+			case 2: // G1V2/G2V2 with flags: state in bit 7, quality in low bits.
 				if offset >= len(data) {
 					break
 				}
-				value = data[offset] != 0
-				quality = types.QualityOnline
+				val := data[offset]
+				value = (val & 0x80) != 0
+				quality = types.QualityFlags(val & 0x7F)
 				offset++
 			default:
 				if offset < len(data) {
@@ -1848,6 +1852,28 @@ func parseBinaryOutputs(data []byte) []*types.BinaryOutput {
 		if !ok {
 			break
 		}
+
+		// G10V1 is the PACKED binary output status variation: one bit per
+		// point in ceil(n/8) octets. A count qualifier is sequential and has
+		// no per-point index; indexed/ranged peers keep the legacy flags
+		// path below.
+		if variation == 1 && idxPrefix == 0 &&
+			(h.Qualifier == al.QualCount8 || h.Qualifier == al.QualCount16) {
+			packedBytes := (n + 7) / 8
+			if offset+packedBytes > len(data) {
+				break
+			}
+			for i := 0; i < n; i++ {
+				result = append(result, &types.BinaryOutput{
+					Index:   uint16(base + i),
+					Value:   data[offset+i/8]&(1<<uint(i%8)) != 0,
+					Quality: types.QualityOnline,
+				})
+			}
+			offset += packedBytes
+			continue
+		}
+
 		for i := 0; i < n; i++ {
 			var index uint16
 			if idxPrefix > 0 {
@@ -1970,8 +1996,12 @@ func skipGroupData(offset int, data []byte, h al.ObjectHeader) int {
 	if n == 0 {
 		return offset
 	}
-	// G1V1 packed format: bits packed 8 per byte, no index/flags.
-	if h.Group == 1 && h.Variation == 1 && isSequentialQualifier(h.Qualifier) {
+	// G1V1 and G10V1 are packed formats: bits packed 8 per byte, no
+	// per-point index or flags. Sequential qualifiers (including the
+	// count8 form emitted by the outstation) must skip ceil(n/8) octets;
+	// otherwise a later header is read from the wrong offset.
+	if (h.Group == 1 || h.Group == 10) && h.Variation == 1 &&
+		isSequentialQualifier(h.Qualifier) {
 		packedBytes := (n + 7) / 8
 		newOffset := offset + packedBytes
 		if newOffset > len(data) {

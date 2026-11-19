@@ -985,7 +985,7 @@ func parseBinaryInputResponse(data []byte) []bool {
 				result = append(result, (data[offset]&0x80) != 0)
 				offset++
 			} else if variation == 2 {
-				result = append(result, data[offset] != 0)
+				result = append(result, (data[offset]&0x80) != 0)
 				offset++
 			} else {
 				offset++
@@ -1072,6 +1072,20 @@ func parseBinaryOutputResponse(data []byte) []bool {
 		qualifier := data[offset+2]
 		count := int(data[offset+3])
 		offset += 4
+		// G10V1 is the packed variation: one bit per point across
+		// ceil(count/8) octets. The old one-flags-octet-per-point decoding
+		// only described the non-conformant encoder.
+		if variation == 1 && qualifier == 0x07 {
+			packedBytes := (count + 7) / 8
+			if offset+packedBytes > len(data) {
+				break
+			}
+			for i := 0; i < count; i++ {
+				result = append(result, data[offset+i/8]&(1<<uint(i%8)) != 0)
+			}
+			break
+		}
+
 		// Qualifier 0x07 (count8) is sequential with no per-point index;
 		// qualifier 0x17 (UINT8_CNT_UINT8_INDEX) prefixes an 8-bit index.
 		idxPrefix := 0
