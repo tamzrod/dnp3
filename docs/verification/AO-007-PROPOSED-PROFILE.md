@@ -49,3 +49,27 @@
 - Independent pre-PR audit and separate authorization to modify the published profile, create PR, merge, release or deploy.
 
 **Recommendation for AO-007 preparation:** define the configuration/public-default decision first. Until that is resolved, report `PROMOTION_PREP_BLOCKED_ON_APPROVAL`, not “G41 SUPPORTED.” The current published profile must remain blob `3e592e77ad6e31d5492c609c5fdd62382505904b`.
+
+## AO-007 source/API disposition audit — 2026-11-19 (read-only inspection)
+
+Source blobs inspected on `work`: `pkg/dnp3/master/client.go` (`eb782335e721dd0ac0a0aee84039255986e747ac`), `pkg/dnp3/outstation/server.go` (`51af68aa4f0a4bfe6493055222fa661dd0e4f20c`), and `pkg/dnp3/types/commands.go` (`6a626ee9f8d734dda1954175863cb0fb840eb127`). No source changes were authorized or made during this audit.
+
+| Existing public surface/location | Verified current contract | Approved future migration touchpoint |
+|---|---|---|
+| Master `Config.ExperimentalAnalogControl` (`client.go` ~248–256), `WithExperimentalAnalogControl()` (~403–413) | Opt-in off by default; documented lab-only | Decide compatible supported opt-in naming vs default admission; do not silently make old switch mean something else |
+| Master `Client.Operate` comment (~119–127), implementation gate (~2115–2153) | Reject G41V1–V4 absent opt-in, preserve CROB G12V1, reject SBO/no-response/others before send | Both implementation gate and advertised API contract must match the approved support policy; preserve negative cases |
+| Outstation `Config.ExperimentalAnalogControl`, `WithExperimentalAnalogControl()` (~209–218, ~311–323) | Off by default; explicit lab switch | Approval must specify a symmetric outstation admission policy; master-only promotion would misrepresent end-to-end support |
+| Outstation `CommandHandler.HandleAnalogCommand` (~425–443) and `WriteAnalogOutput` (~673–805) | Host analog handler not invoked without opt-in; typed V1–V4 dispatch; nil handler returns error; explicit non-success status retained | Update contract/docs only together with approved code and tests; preserve no-side-effect-on-reject |
+| `types.NewAnalogControl(float64)` (`commands.go` ~231–243) | Legacy G41V1 label with float64 carrier, not the typed int32 wire contract; excluded/fail-closed | **Never auto-promote**; keep explicit Reject and add compatibility regression on any profile change |
+| `NewAnalogInt32Control` (~245–260), `NewAnalogInt16Control` (~262–277), `NewAnalogFloat32Control` (~279–297), `NewAnalogFloat64Control` (~299–317) | Typed G41V1–V4; comments still say Reject until AO-004 peer check/AO-005 profile change even though AO-006 has now completed | Amend these four constructor descriptions only after a real promotion; do not present them as default-supported before gate decision |
+| Outstation bridge comments (~676–681) | `DirectOperate` is described as “supported mode” in the experimental path | Distinguish implementation-supported command mode from *published-profile* supported capability |
+| `active_work/supported-profile.md` public disposition table | `Master Operate`=G12 only, `SetCommandHandler`=G12 only, analog handler=Reject, `NewAnalogControl`=Reject, G41 excluded | Split typed constructor rows from legacy constructor; update only after human/KDE approval and behavior checks |
+| `README.md` / exported package comment in `client.go` ~1–48 | Existing v0/G12-only external claim | Update with peer-scoped limits and upgrade notes only after profile admission is verified |
+
+**Existing regression sources inspected:** `pkg/dnp3/master/g41v1_public_test.go` ~86–118 tests rejection with zero wire transmissions by default; `test/integration/g41_default_reject_test.go` ~39–96 checks default outstation does not invoke host analog handler, even against an opted-in master. These are **valuable compatibility baselines**: any default-admitted promotion requires an explicitly approved change of expected semantics, not simply deleting failing tests. Typed status, malformed, echo, after-send and race tests in AO-006 remain the promotion prerequisites.
+
+**Wire acceptance detail:** The recorded AO-006 case files show a single indexed object using G41V1–V4 with qualifier `0x28`, count `1`, and indexes `0` (SUCCESS) / `1` (OUT_OF_RANGE); status `0x00` / `0x0c`. Do not generalize tested qualifier/cardinality or claim any other independent peer. No second stack or reverse-direction negative captured.
+
+**Evidence versus tests in this continuation:** Remote GitHub files and source references were inspected; source blobs and marker consistency were read back. The local runtime has Go 1.23.2 and git but no repository checkout or Docker and cannot resolve `github.com`; `git ls-remote` failed with `Could not resolve host`. Therefore `cwal-check.sh`, `git diff --check` in checkout, Go build/vet/tests/race, and isolated OpenDNP3 are **NOT_RUN_THIS_INVOCATION**. No code or profile behavior changed, so no behavior-changing gate is falsely reported as PASS.
+
+**Preparation finding:** No new reproducible protocol defect established. The reviewable promotion proposal is complete enough to bring to a KDE/owner design decision, but the decision and fresh executable gates have not passed. **`PROMOTION_PREP_BLOCKED_ON_APPROVAL_AND_EXECUTION`**, not a profile promotion or a closure recommendation.
