@@ -1,11 +1,15 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: AO-008
-Branch: work
-CURRENT: AO-008
+Package: EG628-IM-001
+Branch: investigate/eg628-independent-master-read
+CURRENT: EG628-IM-001
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
+
+## ISOLATED INVESTIGATION CWAL — EG628-IM-001 — 2026-11-19
+
+The owner promoted **a separate investigation CURRENT on this branch only**. Executable contract: `workflow/active_work/EG628-IM-001.md`; incident/capture plan: `docs/verification/EG628-INDEPENDENT-MASTER-READ-INCIDENT.md`. **OpenHands invocation: `operation cwal`.** Autonomously capture existing evidence, reproduce generic Class 0+1+2+3 READ in-memory with independent decode, attribute bug, fix/test only if genuinely reproducible, non-force checkpoint and STOP for independent CHECK. Missing original raw tester request/response and access must be reported, not fabricated; the original independent-master retest is mandatory before declaring FIXED. **Do not modify AO-008 CURRENT on `work`, publish G41, merge or deploy.**
 
 ## AO-008 PHASE B OWNER AUTHORIZED — 2026-11-19 (LATEST AUTHORITY)
 
