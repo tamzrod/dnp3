@@ -5,6 +5,8 @@ Branch: `work`
 CURRENT: AO-008 (bounded corrective continuation; **not** an archive, promotion,
 merge or deployment)
 Base `work` HEAD at start: `0bbbc4e` (`origin/work` `0bbbc4e`)
+Checkpoint commit: `181e2d5` (rebased onto `53c7b86`, the concurrent G12V1 CROB
+pulse-semantics commit that landed on `origin/work` during this session)
 
 ## Scope actually worked
 
