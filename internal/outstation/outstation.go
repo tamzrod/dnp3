@@ -49,6 +49,13 @@ func debugLog(format string, v ...interface{}) {
 // DNP3Epoch is the DNP3 time epoch (2000-01-01 00:00:00 UTC)
 var DNP3Epoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// defaultSBOTimeoutMS is the select-before-operate acceptance window used
+// when a caller supplies a Config with a zero (or negative) SBOTimeout.
+// Without this fallback every OPERATE following a SELECT is treated as timed
+// out immediately, and the master receives an IIN-only error response with
+// no G12V1 command status.
+const defaultSBOTimeoutMS = 10000
+
 // State represents the outstation's operational state.
 type State int
 
@@ -172,7 +179,7 @@ func DefaultConfig() *Config {
 		Timeout:           5000,
 		MaxEventBuffers:   1000,
 		Unsolicited:       false,
-		SBOTimeout:        10000, // 10 seconds default for SBO timeout
+		SBOTimeout:        defaultSBOTimeoutMS, // 10 seconds default for SBO timeout
 		MaxFragmentSize:   defaultMaxAppFragment,
 	}
 }
@@ -2478,8 +2485,14 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		return nil, ErrNoSelectPending
 	}
 
-	// Check timeout
-	timeoutDuration := time.Duration(o.config.SBOTimeout) * time.Millisecond
+	// Check timeout. A zero SBOTimeout must not mean "expire immediately":
+	// several callers build a Config literal and leave this field unset. Use
+	// the documented 10-second default so a valid SELECT can be operated.
+	sboTimeout := o.config.SBOTimeout
+	if sboTimeout <= 0 {
+		sboTimeout = defaultSBOTimeoutMS
+	}
+	timeoutDuration := time.Duration(sboTimeout) * time.Millisecond
 	if time.Since(pending.Timestamp) > timeoutDuration {
 		delete(o.pendingSelects, index)
 		o.selectMu.Unlock()

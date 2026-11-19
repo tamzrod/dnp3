@@ -148,3 +148,115 @@ golden vectors. It is recorded here so it is not lost.
 CURRENT: AO-008, QUEUED: NONE, Status: TASK_IN_PROGRESS.
 STOP for independent read-only CHECK. No archive, close, PR, merge, release or
 deployment.
+
+---
+
+# SBO command-status timeout fix — supplementary verification note
+
+# AO-008 EG628 interoperability patch check — 2026-11-19
+
+Scope: bounded corrective continuation under CURRENT `AO-008` on branch `work`,
+authorized by the latest `EG628 interoperability PATCH CWAL` addendum in
+`workflow/active_work/AO-008.md`. No published profile, KDE, deployment, PR,
+merge or upstream push was performed.
+
+## Defect and root cause
+
+Owner-reported symptom: Windows DNP3 Tester LatchOn/LatchOff at CROB index 1
+failed with `the outstation returned no command statuses` in both Select-Before-Operate
+and OperateOnly (Direct Operate). Live pcap decode showed:
+
+- SELECT request APP `CC CD 03 0C 01 17 01 01 03 01 E8 03 00 00 00 00 00 00 00`
+  returned a valid G12V1 echo with `IIN=0000`.
+- OPERATE request APP `CD CE 04 0C 01 17 01 01 03 01 E8 03 00 00 00 00 00 00 00`
+  returned only `C0 CE 81 00 01` — `IIN=0001` and **no G12V1 command-status object**.
+- Direct Operate at the same index echoed status `0x00` correctly.
+
+`DNP3_DEBUG=1` on the failing regression test produced:
+
+```text
+handleSelect: group=12, variation=1, index=1, valueLen=11
+handleOperate: received
+handleOperate: group=12, variation=1, index=1
+handleOperate: select timeout for index=1
+```
+
+Root cause: `pkg/dnp3/outstation/server.go` built the internal
+`outstation.Config` literal without setting `SBOTimeout`; it remained `0`.
+`internal/outstation/outstation.go:handleOperate` then evaluated
+`time.Since(pending.Timestamp) > 0`, so every OPERATE after an otherwise valid
+SELECT was rejected as expired before the command handler could run. The IIN-only
+response is what the tester reported as “no command statuses”.
+
+## Fix
+
+- `internal/outstation/outstation.go`: added `defaultSBOTimeoutMS = 10000`, used
+  it in `DefaultConfig`, and made `handleOperate` treat a non-positive configured
+  timeout as the 10-second default. This fails safe for every caller that builds
+  a `Config` literal without the field.
+- `pkg/dnp3/outstation/server.go`: added `Config.SBOTimeout time.Duration`,
+  default `10 * time.Second`, `WithSBOTimeout`, and propagation of the public
+  timeout plus `MaxFragmentSize` into the internal outstation config. This is an
+  additive configuration API; no published profile claim changed.
+
+No tester-specific branching, no false SUCCESS, no handler-by-pass change, and no
+change to G12V1 echo/qualifier/status encoding was made.
+
+## RED → GREEN regression evidence
+
+EG628 adapter end-to-end raw TCP test (captured bytes against the real adapter
+handler with a fake MMA2 backend, no physical I/O):
+
+- Before fix: `evidence/protocols/dnp3-crob-interop/sbo-regression-failing-before-fix-20261119T091708Z.txt`
+- After fix: `evidence/protocols/dnp3-crob-interop/sbo-regression-passing-after-fix-20261119T092211Z.txt`
+- Failing pcap frame extract: `evidence/protocols/dnp3-crob-interop/sbo-failing-frames-from-live-pcap-20261119T092223Z.txt`
+
+Library-level tests added:
+
+- `internal/outstation/sbo_timeout_test.go` — zero `SBOTimeout` still permits
+  SELECT→OPERATE, echoes status `0x00`, invokes the handler once, and does not
+  write on SELECT.
+- `pkg/dnp3/outstation/server_test.go` — default timeout is 10 s and
+  `WithSBOTimeout` is applied.
+
+EG628 adapter tests (`src/eg628/dnp3adapter/sbo_regression_test.go`) cover all
+four CROB operations (LatchOn, LatchOff, PulseOn, PulseOff) through Direct
+Operate, Select-Before-Operate (SELECT only and OPERATE after successful SELECT),
+byte-exact G12V1 status echoes, IIN `0000`, and zero physical writes on SELECT.
+
+## Gates actually run
+
+All commands ran on branch `work` with `GOWORK=off` where applicable.
+
+| Gate | Result |
+| --- | --- |
+| `gofmt -w <changed files>` | PASS |
+| `git diff --check` | PASS (clean) |
+| `gofmt -l .` | PASS (empty) |
+| `go vet ./...` | PASS |
+| `go build ./...` | PASS |
+| `go test ./... -count=1` | PASS (all packages) |
+| `bash scripts/verify-external-mvp.sh` | PASS (Tiers 1–3 OK) |
+| `go test -race ./... -count=1` | **FAIL — environment limitation**: `FATAL: ThreadSanitizer: unsupported VMA range / Found 39 - Supported 48`. Not a code result. |
+| `bash scripts/cwal-check.sh` | **FAIL at checkpoint**: working tree intentionally dirty with unpushed fix; owner directed no upstream push yet. No force-push or branch reconciliation performed. |
+
+Published supported-profile blob `3e592e77ad6e31d5492c609c5fdd62382505904b`
+was not modified. G41 remains published UNSUPPORTED. No PR, merge, release,
+KDE or governance change was performed.
+
+**Separate EG628-side action (outside this repository's CWAL scope):** the owner's EG628 mission
+authorization subsequently covered installing the built binary on the EG628 DEV unit with backup
+and rollback, and a DO2→DI2 loopback retest passed. That action and its evidence are recorded only
+in the EG628 workspace (`docs/DISCOVERY_LOG.md` entries 077–078,
+`evidence/software/sbo-fix-deploy-verify-20261119T092757Z.txt`); no deployment was performed by, or
+checkpointed into, this DNP3 repository.
+
+## Final external tester outcome — 2026-11-19T09:42Z (supersedes earlier NOT_VERIFIED boundary)
+
+Owner confirmed the Windows DNP3 Tester retry was OK. This is independently VERIFIED from the retained passive pcap, with the exact object bytes preserved in the EG628 workspace at
+`evidence/protocols/dnp3-crob-interop/tester-pulseoff-ontime-success-after-fix-20261119T094232Z.txt`:
+
+- `1795081262` (09:40:22Z): Latch On SELECT and OPERATE both echoed G12V1 trailing status `0x00`, `IIN=0000`.
+- `1795081271` (09:41:11Z): the previously failing Pulse Off SBO request (`0C 01 17 01 01 02 01 E8 03 00 00 00 00 00 00 00`) now returned `C0 CF 81 00 00 0C 01 17 01 01 02 01 E8 03 00 00 00 00 00 00 00` — `IIN=0000`, status `0x00`.
+
+Pulse Off acceptance additionally required the EG628-side pulse-width-only CROB fix (`OnTime=1000`, `OffTime=0`), which is outside this repository. This repository's scoped SBO-timeout patch is unchanged by that later EG628 fix. The original Windows tester PASS boundary is therefore CLOSED for the captured Latch On / Pulse Off retry; no IEEE 1815 conformance or general interoperability claim is made. The repository checkpoint is being pushed to `work` without force, PR, merge or profile change.

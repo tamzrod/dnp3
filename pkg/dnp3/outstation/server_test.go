@@ -3,6 +3,7 @@ package outstation
 import (
 	"context"
 	"testing"
+	"time"
 
 	"dnp3/pkg/dnp3"
 	"dnp3/pkg/dnp3/types"
@@ -19,6 +20,16 @@ func TestNewConfig(t *testing.T) {
 	}
 	if cfg.MaxEventBuffers != 1000 {
 		t.Errorf("Default MaxEventBuffers = %v, want 1000", cfg.MaxEventBuffers)
+	}
+	if cfg.SBOTimeout != 10*time.Second {
+		t.Errorf("Default SBOTimeout = %v, want 10s", cfg.SBOTimeout)
+	}
+}
+
+func TestWithSBOTimeout(t *testing.T) {
+	cfg := NewConfig(WithSBOTimeout(3 * time.Second))
+	if cfg.SBOTimeout != 3*time.Second {
+		t.Errorf("SBOTimeout = %v, want 3s", cfg.SBOTimeout)
 	}
 }
 

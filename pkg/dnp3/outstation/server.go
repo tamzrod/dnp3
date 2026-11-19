@@ -197,6 +197,9 @@ type Config struct {
 	UnsolicitedMode bool
 	// MaxEventBuffers is the maximum event buffer size
 	MaxEventBuffers int
+	// SBOTimeout is the select-before-operate acceptance window. Zero uses
+	// the 10-second default; a negative value is treated the same way.
+	SBOTimeout time.Duration
 	// ExperimentalEventDelivery opts into the EVT-001 event and unsolicited
 	// path (PublishBinaryEvent/PublishAnalogEvent/PublishCounterEvent,
 	// SetUnsolicitedHandler, WithUnsolicitedMode). The published v0 supported
@@ -235,6 +238,7 @@ func DefaultConfig() *Config {
 		MaxFragmentSize:   2048,
 		KeepAliveInterval: 30 * time.Second,
 		MaxEventBuffers:   1000,
+		SBOTimeout:        10 * time.Second,
 		MaxConnections:    1, // DNP3-084: MVP single-master profile
 	}
 }
@@ -282,6 +286,15 @@ func WithTLS(config *tls.Config) ConfigOption {
 func WithMaxFragmentSize(size int) ConfigOption {
 	return func(c *Config) {
 		c.MaxFragmentSize = size
+	}
+}
+
+// WithSBOTimeout sets the select-before-operate acceptance window. Zero or a
+// negative duration selects the 10-second default.
+// Supported-profile: Target — SBO is part of the supported G12V1 CROB path.
+func WithSBOTimeout(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.SBOTimeout = d
 	}
 }
 
@@ -1158,7 +1171,9 @@ func (s *server) handleConnection(conn net.Conn) {
 		MasterAddress:     s.config.MasterAddress,
 		Timeout:           5000,
 		MaxEventBuffers:   s.config.MaxEventBuffers,
+		MaxFragmentSize:   s.config.MaxFragmentSize,
 		Unsolicited:       s.config.UnsolicitedMode,
+		SBOTimeout:        int(s.config.SBOTimeout / time.Millisecond),
 	}
 	inst := outstation.NewOutstation(internalConfig)
 	inst.SetTransport(link)
