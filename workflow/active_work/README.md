@@ -1,11 +1,15 @@
 # DNP3 — CURRENT Active Work
 
 Repository: tamzrod/dnp3
-Package: AO-006
+Package: AO-007
 Branch: work
-CURRENT: NONE
+CURRENT: AO-007
 QUEUED: NONE
-Status: WORK_PACKAGE_READY
+Status: TASK_IN_PROGRESS
+
+## AO-007 promoted — 2026-11-19 — G41 support-profile preparation only
+
+Owner authorized bounded **AO-007** on `work`, documented at `workflow/active_work/AO-007.md`. Read-only baseline: AO-006 closed/archived; focused evidence PR #31 merged on `main` at `82414d672e9ab12aba6170ec7f3f0578f6e71958`; `work` baseline `cef0152f7751a88cea9c60753e309147aab7906a` (work +45/main +5 relative to their merge base; divergence preserved without force/reset/rebase). Preparation proposal in `docs/verification/AO-007-PROPOSED-PROFILE.md` is **UNAPPROVED DRAFT ONLY**. SCV 2026-11-11 roadmap snapshot explicitly superseded by a dated note; other historical records preserved. Published `active_work/supported-profile.md` blob `3e592e77ad6e31d5492c609c5fdd62382505904b` remains G41 **UNSUPPORTED**. **Open design gate:** supported-profile/default-vs-opt-in API semantics and required KDE human approval, plus exact exclusion language for signed-zero/subnormal OpenDNP3 peer FAIL/DIVERGENCE. No changed code, no promotion, PR, merge, release, or deployment. GitHub-only environment could not clone (DNS failure), so Go/race/CWAL script/external peer tests **NOT_RUN_THIS_INVOCATION**; prior AO-006 test evidence retained, not misrepresented as fresh AO-007 execution. Next: executable scoped check and human-approved architecture decision before promotion.
 
 ## AO-006 CLOSED AND ARCHIVED — 2026-11-19
 
