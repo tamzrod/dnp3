@@ -14,17 +14,15 @@ import (
 
 // MEXT-013 — Operate real-TCP vs in-repo outstation.
 //
-// The in-repo outstation's DirectOperate handler (internal/outstation
-// handleDirectOperate) returns an IIN-only response: it carries the outstation's
-// IIN bytes and NO Group 12 Variation 1 control-status echo. Before MEXT-012
-// this left the master unable to find a parseable G12V1 status byte, so Operate
-// reported ControlTimeout against a real outstation (the DNP3-091 discovery
-// recorded in outstation_side_gate_test.go). MEXT-012 taught resolveOperateStatus
-// to treat an IIN-only response with clear IIN as CommandStatusSuccess.
+// Historically the in-repo outstation's DirectOperate handler returned an
+// IIN-only response with no Group 12 Variation 1 control-status echo. MEXT-012
+// taught resolveOperateStatus to treat an IIN-only response with clear IIN as
+// CommandStatusSuccess, and the CROB interoperability fix now makes the
+// outstation echo G12V1 with an explicit status octet as well.
 //
-// This test proves that fix on a REAL TCP master↔outstation loopback (not the
-// in-memory simulator): Connect → DirectOperate CROB → assert ControlSuccess
-// without ControlTimeout, and document the observed response shape.
+// This test proves the end-to-end behaviour on a REAL TCP master↔outstation
+// loopback (not the in-memory simulator): Connect → DirectOperate CROB →
+// assert ControlSuccess without ControlTimeout.
 
 // operateSuccessHandler is a CommandHandler that accepts every binary command
 // with ControlSuccess so the outstation's DirectOperate path returns a clear
@@ -44,10 +42,9 @@ func (h *operateSuccessHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*
 	return &s, nil
 }
 
-// TestOperateRealTCPSuccess asserts the MEXT-012 R1 fix on real TCP: a
-// DirectOperate against the in-repo outstation succeeds (ControlSuccess) even
-// though the outstation omits the G12V1 control-status echo. The observed
-// response shape is IIN-only (no object data); see the MEXT-013 handoff note.
+// TestOperateRealTCPSuccess asserts a DirectOperate against the in-repo
+// outstation succeeds (ControlSuccess) over real TCP. The exact wire response
+// shape is pinned by TestCapturedWindowsCROBFrameReturnsStatusEcho.
 func TestOperateRealTCPSuccess(t *testing.T) {
 	port := getFreePort(t)
 
@@ -103,8 +100,8 @@ func TestOperateRealTCPSuccess(t *testing.T) {
 	}
 
 	// DirectOperate a CROB (Latch On, index 0). The outstation accepts it and
-	// answers with an IIN-only response (no G12V1 echo). MEXT-012 makes this
-	// ControlSuccess; before the fix it was ControlTimeout.
+	// returns ControlSuccess. The G12V1 status echo is asserted on the wire by
+	// TestCapturedWindowsCROBFrameReturnsStatusEcho.
 	opResp, err := client.Operate(ctx, &types.ControlOutput{
 		Group:       12,
 		Variation:   1,

@@ -2067,10 +2067,43 @@ func parseControlObjectHeader(data []byte) (group, variation uint8, count int, i
 		count = int(data[3])
 		index = uint16(data[4]) | uint16(data[5])<<8
 		valueOffset = 6
+	case 0x17: // 8-bit count + 8-bit index (IEEE 1815 prefix=index8, range=count8)
+		// Windows DNP3 Tester and other masters use this qualifier for a
+		// single indexed G12V1 CROB. Without it the control is rejected as a
+		// parameter error before any status object can be produced.
+		if len(data) < 5 {
+			return 0, 0, 0, 0, 0, false
+		}
+		count = int(data[3])
+		index = uint16(data[4])
+		valueOffset = 5
 	default:
 		return 0, 0, 0, 0, 0, false
 	}
 	return group, variation, count, index, valueOffset, true
+}
+
+// buildG12V1EchoObject builds the response object for a G12V1 control: the
+// request's object header (group, variation, qualifier, count and index) is
+// preserved verbatim so the master can parse the echo with the same layout it
+// used for the request, followed by the CROB's control fields and the
+// per-point command-status octet. status is authoritative: SUCCESS is emitted
+// only for an executed command, never for a refused one.
+func buildG12V1EchoObject(requestData []byte, valueOffset int, crobData []byte, status uint8) []byte {
+	if valueOffset <= 0 || valueOffset > len(requestData) || len(crobData) < 11 {
+		return nil
+	}
+	out := make([]byte, 0, valueOffset+11)
+	out = append(out, requestData[:valueOffset]...)
+	out = append(out, crobData[:10]...)
+	return append(out, status)
+}
+
+// isSingleG12V1Control reports whether a parsed control header describes one
+// complete G12V1 CROB. Multi-point requests are rejected rather than partially
+// echoed, so a master never sees a status object for only the first point.
+func isSingleG12V1Control(group, variation uint8, count int, valueLen int) bool {
+	return group == 12 && variation == 1 && count == 1 && valueLen >= 11
 }
 
 // handleWrite handles WRITE requests.
@@ -2187,12 +2220,21 @@ type DataWriter interface {
 func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	data := make([]byte, len(req.Data)-dataIdx)
 	copy(data, req.Data[dataIdx:])
+
+	// A multi-point SELECT cannot be answered with a single status object.
+	// Keep the legacy handling of a short single-point payload (some internal
+	// callers use it only to register/lock a point) unchanged; only complete
+	// CROBs get a status echo below.
+	if group == 12 && variation == 1 && count > 1 {
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 
 	debugLog("handleSelect: group=%d, variation=%d, index=%d, valueLen=%d", group, variation, index, len(data))
 
@@ -2218,6 +2260,9 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 		FuncCode: al.FuncResponse,
 		Data:     nil, // Success response with no data
 	}
+	if isSingleG12V1Control(group, variation, count, len(data)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, data, 0x00)
+	}
 	return resp, nil
 }
 
@@ -2228,12 +2273,17 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 
 	// Parse the object header from request data
 	// Format: Group(1) + Variation(1) + Qualifier(1) + Count(1) + [Index(2) + Value(n)]...
-	group, variation, _, index, dataIdx, ok := parseControlObjectHeader(req.Data)
+	group, variation, count, index, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
 		return nil, ErrInvalidRequest
 	}
 	value := make([]byte, len(req.Data)-dataIdx)
 	copy(value, req.Data[dataIdx:])
+
+	if group == 12 && variation == 1 && count > 1 {
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 
 	debugLog("handleOperate: group=%d, variation=%d, index=%d", group, variation, index)
 
@@ -2274,6 +2324,19 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		debugLog("handleOperate: calling executeControl for index=%d", index)
 		err := o.executeControl(dh, group, variation, index, pending.Value)
 		if err != nil {
+			// A handler refusal that carries an IEEE 1815 command status is
+			// echoed in a G12V1 object so the master sees a definite
+			// non-success instead of "no command statuses". An unclassifiable
+			// refusal still fails closed with an error response.
+			if isSingleG12V1Control(group, variation, count, len(pending.Value)) {
+				if cse, ok := AsControlStatusError(err); ok {
+					return &al.APDU{
+						Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+						FuncCode: al.FuncResponse,
+						Data:     buildG12V1EchoObject(req.Data, dataIdx, pending.Value, cse.Status),
+					}, nil
+				}
+			}
 			o.iin.ParameterError = true
 			debugLog("handleOperate: executeControl error: %v", err)
 			return nil, err
@@ -2292,6 +2355,9 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 		},
 		FuncCode: al.FuncResponse,
 		Data:     nil,
+	}
+	if isSingleG12V1Control(group, variation, count, len(pending.Value)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, pending.Value, 0x00)
 	}
 	return resp, nil
 }
@@ -2313,8 +2379,13 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	// Operate. Validate the variation, count and record length before any side
 	// effect so a batch, empty, wrong-variation or malformed request is rejected
 	// without calling the output handler and without echoing SUCCESS.
-	// parseControlObjectHeader discards the count for G12V1, whose single-point
-	// behavior is unchanged and covered by the existing CROB suite.
+	// G12V1 is also single-point only. Validate before any side effect so a
+	// batch or malformed CROB cannot produce a status echo for just one point.
+	if group == 12 && !isSingleG12V1Control(group, variation, count, len(value)) {
+		debugLog("handleDirectOperate: rejecting G12 variation=%d count=%d valueLen=%d", variation, count, len(value))
+		o.iin.ParameterError = true
+		return nil, ErrInvalidRequest
+	}
 	if group == 41 {
 		width := g41ValueWidth(variation)
 		if width == 0 || count != 1 || len(value) != width+1 {
@@ -2361,6 +2432,22 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 				}, nil
 			}
 		}
+		if isSingleG12V1Control(group, variation, count, len(value)) {
+			if cse, ok := AsControlStatusError(err); ok {
+				debugLog("handleDirectOperate: echoing G12V1 object with command status %d", cse.Status)
+				return &al.APDU{
+					Control: al.AppControl{
+						FIR: true,
+						FIN: true,
+						CON: false,
+						UNS: false,
+						Seq: o.appSeq,
+					},
+					FuncCode: al.FuncResponse,
+					Data:     buildG12V1EchoObject(req.Data, dataIdx, value, cse.Status),
+				}, nil
+			}
+		}
 		o.iin.ParameterError = true
 		debugLog("handleDirectOperate: executeControl error: %v", err)
 		return nil, err
@@ -2384,6 +2471,9 @@ func (o *Outstation) handleDirectOperate(req *al.APDU) (*al.APDU, error) {
 	// master classifies as a failure (never success), not an echo.
 	if group == 41 && g41ValueWidth(variation) != 0 && len(value) == g41ValueWidth(variation)+1 {
 		resp.Data = buildG41EchoObject(variation, index, value, 0x00)
+	}
+	if isSingleG12V1Control(group, variation, count, len(value)) {
+		resp.Data = buildG12V1EchoObject(req.Data, dataIdx, value, 0x00)
 	}
 	return resp, nil
 }

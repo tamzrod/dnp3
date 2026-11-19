@@ -608,6 +608,18 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 
 	debugLog("WriteBinaryOutput: index=%d, value=%v, code=%d", index, value, crob.Code)
 
+	// IEEE 1815 A.8.1: OnTime and OffTime are pulse parameters. For Latch On
+	// and Latch Off they are not used, but some masters send a non-zero
+	// default OnTime alongside a latch code. Normalise them here, at the only
+	// layer that knows the control code, so a handler which rejects timed or
+	// pulse parameters for its own v0 profile still accepts a latch command.
+	// NUL and pulse codes are deliberately left unchanged: an unsupported
+	// timed operation must not be silently converted into a latch.
+	onTime, offTime := crob.OnTime, crob.OffTime
+	if crob.Code == 0x03 || crob.Code == 0x04 { // Latch On, Latch Off
+		onTime, offTime = 0, 0
+	}
+
 	cmd := &types.ControlOutput{
 		Group:       12, // Binary Output
 		Variation:   1,  // CROB
@@ -615,23 +627,34 @@ func (h *internalDataHandler) WriteBinaryOutput(index uint16, crob *outstation.C
 		Value:       &types.BinaryCommandValue{Value: value},
 		CommandType: types.SelectThenOperate,
 		Count:       crob.Count,
-		OnTime:      crob.OnTime,
-		OffTime:     crob.OffTime,
+		OnTime:      onTime,
+		OffTime:     offTime,
 	}
 
 	status, err := h.commandHandler.HandleBinaryCommand(cmd)
 	if err != nil {
 		debugLog("WriteBinaryOutput ERROR: %v", err)
+		// Carry a definite non-success status to the outstation so a G12V1
+		// response can echo the real command status instead of losing it in a
+		// generic error response (which independent masters report as "no
+		// command statuses"). Unmapped statuses still fail closed unchanged.
+		if status != nil && *status != types.ControlSuccess {
+			if ws, ok := wireCommandStatus(*status); ok {
+				return outstation.NewControlStatusError(ws, err)
+			}
+		}
 		return err
 	}
 	if status != nil && *status != types.ControlSuccess {
 		// MEXT-024: a handler that signals a non-success status with no error
-		// must NOT surface as ControlSuccess. The bridge returns an error so the
-		// outstation emits an error response (a complete APDU, not a silent
-		// timeout) carrying a failure IIN, which the master resolves to a
-		// failure status (never success). Without this, a not-supported /
-		// blocked command reported via status-only would be a false success.
+		// must NOT surface as ControlSuccess. Carry the wire status so the
+		// outstation can echo a definite non-success; without this, a
+		// not-supported / blocked command reported via status-only would be a
+		// false success or an unparseable failure.
 		debugLog("WriteBinaryOutput: non-success status %d -> failure", *status)
+		if ws, ok := wireCommandStatus(*status); ok {
+			return outstation.NewControlStatusError(ws, fmt.Errorf("command rejected by handler: status %d", *status))
+		}
 		return fmt.Errorf("command rejected by handler: status %d", *status)
 	}
 	if status != nil {
