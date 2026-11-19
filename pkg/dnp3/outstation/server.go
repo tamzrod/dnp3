@@ -291,7 +291,8 @@ func WithMaxFragmentSize(size int) ConfigOption {
 
 // WithSBOTimeout sets the select-before-operate acceptance window. Zero or a
 // negative duration selects the 10-second default.
-// Supported-profile: Target — SBO is part of the supported G12V1 CROB path.
+// Published v0 profile: Reject — Select-Before-Operate is NOT a v0 Target.
+// This timeout is an interoperability/lab safeguard; it does not promote SBO.
 func WithSBOTimeout(d time.Duration) ConfigOption {
 	return func(c *Config) {
 		c.SBOTimeout = d
