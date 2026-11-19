@@ -1440,6 +1440,15 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	// Increment sequence number
 	o.appSeq = (o.appSeq + 1) % 16
 
+	// Request-scoped error bits describe the request being answered. IEEE 1815
+	// IIN reports the status of the current response, so a rejected request must
+	// not leave ParameterError/ObjectUnknown set on every later reply. Station
+	// conditions (event availability, buffer overflow, device trouble, time sync)
+	// are owned by refreshEventIINLocked and the device, not cleared here.
+	o.iin.FuncUnknown = false
+	o.iin.ObjectUnknown = false
+	o.iin.ParameterError = false
+
 	// Check for custom request handler
 	if o.onRequest != nil {
 		return o.onRequest(req)
@@ -1659,6 +1668,29 @@ func (o *Outstation) buildAllStaticData() []byte {
 	return result
 }
 
+// appendSequentialCount appends the count qualifier for a sequential static
+// block (no per-point index prefix). Qualifier 0x07 carries an 8-bit count and
+// therefore cannot express more than 255 points; a larger block uses the 16-bit
+// count qualifier 0x27 rather than truncating the count octet into a header
+// that desynchronises a peer's object parser.
+func appendSequentialCount(dst []byte, count int) []byte {
+	if count <= 255 {
+		return append(dst, 0x07, byte(count))
+	}
+	return append(dst, 0x27, byte(count), byte(count>>8))
+}
+
+// appendIndexedCount appends the count qualifier for a static block whose points
+// carry an 8-bit index prefix (0x17). That prefix cannot address index 256 or
+// above, so a larger block falls back to a sequential 0x27 block and the caller
+// must omit the per-point index prefix. indexed reports which form was written.
+func appendIndexedCount(dst []byte, count int) ([]byte, bool) {
+	if count <= 255 {
+		return append(dst, 0x17, byte(count)), true
+	}
+	return append(dst, 0x27, byte(count), byte(count>>8)), false
+}
+
 // buildBinaryInputData builds binary input data.
 func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 	var result []byte
@@ -1672,9 +1704,9 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 	result = append(result, 1)         // Group 1
 	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is packed binary state; qualifier 0x07 is an 8-bit
-		// point count and the values follow as packed bits.
-		result = append(result, 0x07, byte(len(data)))
+		// Variation 1 is packed binary state: the count is the number of packed
+		// bits and the values follow as packed bits.
+		result = appendSequentialCount(result, len(data))
 		packed := make([]byte, (len(data)+7)/8)
 		for i, bi := range data {
 			if bi.Value {
@@ -1683,12 +1715,14 @@ func (o *Outstation) buildBinaryInputData(variation uint8) []byte {
 		}
 		return append(result, packed...)
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+	indexed := true
+	result, indexed = appendIndexedCount(result, len(data))
 
 	for i, bi := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
+		if indexed {
+			// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+			result = append(result, byte(i&0xFF))
+		}
 
 		// Value based on variation
 		switch variation {
@@ -1766,23 +1800,24 @@ func (o *Outstation) buildAnalogInputData(variation uint8) []byte {
 	result = append(result, 30)        // Group 30
 	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is a signed 32-bit value with flags. Qualifier 0x07
-		// carries an 8-bit count and sequential points without indexes. The
-		// flags octet is first, then the little-endian value (IEEE 1815;
-		// opendnp3 3.1.2 Group30Var1 = (flags, value32)).
-		result = append(result, 0x07, byte(len(data)))
+		// Variation 1 is a signed 32-bit value with flags. The flags octet is
+		// first, then the little-endian value (IEEE 1815; opendnp3 3.1.2
+		// Group30Var1 = (flags, value32)).
+		result = appendSequentialCount(result, len(data))
 		for _, ai := range data {
 			value := int32(ai.Value)
 			result = append(result, ai.Quality, byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
 		}
 		return result
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+	indexed := true
+	result, indexed = appendIndexedCount(result, len(data))
 
 	for i, ai := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
+		if indexed {
+			// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+			result = append(result, byte(i&0xFF))
+		}
 
 		// Value based on variation
 		switch variation {
@@ -1826,22 +1861,23 @@ func (o *Outstation) buildCounterData(variation uint8) []byte {
 	result = append(result, 20)        // Group 20
 	result = append(result, variation) // Variation
 	if variation == 1 {
-		// Variation 1 is an unsigned 32-bit counter with flags. Qualifier
-		// 0x07 carries an 8-bit count and sequential points without indexes.
-		// The flags octet is first, then the little-endian value (IEEE 1815;
-		// opendnp3 3.1.2 Group20Var1 = (flags, count32)).
-		result = append(result, 0x07, byte(len(data)))
+		// Variation 1 is an unsigned 32-bit counter with flags. The flags octet is
+		// first, then the little-endian value (IEEE 1815; opendnp3 3.1.2
+		// Group20Var1 = (flags, count32)).
+		result = appendSequentialCount(result, len(data))
 		for _, c := range data {
 			result = append(result, c.Quality, byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
 		}
 		return result
 	}
-	result = append(result, 0x17)            // Indexed qualifier (UINT8_CNT_UINT8_INDEX)
-	result = append(result, byte(len(data))) // Count
+	indexed := true
+	result, indexed = appendIndexedCount(result, len(data))
 
 	for i, c := range data {
-		// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
-		result = append(result, byte(i&0xFF))
+		if indexed {
+			// Index (1 byte, UINT8_CNT_UINT8_INDEX prefix)
+			result = append(result, byte(i&0xFF))
+		}
 
 		// Value based on variation
 		switch variation {
@@ -1957,10 +1993,9 @@ func (o *Outstation) buildBinaryOutputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 10)              // Group 10
-	result = append(result, variation)       // Variation
-	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
-	result = append(result, byte(len(data))) // Count
+	result = append(result, 10)        // Group 10
+	result = append(result, variation) // Variation
+	result = appendSequentialCount(result, len(data))
 
 	for _, bo := range data {
 		// Value based on variation
@@ -1993,10 +2028,9 @@ func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
 	}
 
 	// Object header - OUTSIDE loop
-	result = append(result, 40)              // Group 40
-	result = append(result, variation)       // Variation
-	result = append(result, 0x07)            // Qualifier: UINT8_CNT (sequential)
-	result = append(result, byte(len(data))) // Count
+	result = append(result, 40)        // Group 40
+	result = append(result, variation) // Variation
+	result = appendSequentialCount(result, len(data))
 
 	for _, ao := range data {
 		// Value based on variation

@@ -11,6 +11,26 @@ Status: TASK_IN_PROGRESS
 
 The owner promoted **a separate investigation CURRENT on this branch only**. Executable contract: `workflow/active_work/EG628-IM-001.md`; incident/capture plan: `docs/verification/EG628-INDEPENDENT-MASTER-READ-INCIDENT.md`. **OpenHands invocation: `operation cwal`.** Autonomously capture existing evidence, reproduce generic Class 0+1+2+3 READ in-memory with independent decode, attribute bug, fix/test only if genuinely reproducible, non-force checkpoint and STOP for independent CHECK. Missing original raw tester request/response and access must be reported, not fabricated; the original independent-master retest is mandatory before declaring FIXED. **Do not modify AO-008 CURRENT on `work`, publish G41, merge or deploy.**
 
+### CWAL run — 2026-11-19 — `LIBRARY_FIX_VERIFIED_ONLY` + `UNRESOLVED_MISSING_CAPTURE`
+
+Full report: `docs/verification/EG628-IM-001.md`; evidence matrix updated in the incident document.
+
+**Evidence:** no EG628/Windows Tester capture, log, screenshot, tester build or adapter source exists in the repository or authorized workspace — genuinely **MISSING**, nothing fabricated. The reported `object header at offset 38` string exists in neither this repository nor its decoder, so its framing and offset base remain unknown and the offset is **NOT attributed**.
+
+**Two generic `internal/outstation` defects reproduced without hardware** (fake in-memory outstation, independent minimal Python decoder written from IEEE 1815 object-header/layout rules, no EG628 code or tester branching):
+
+- **Defect A — request-scoped IIN bits persisted.** `ParameterError`/`ObjectUnknown` set by a rejected request leaked into later replies (rejected G41 WRITE then Class-0 READ → `iin=0004`). Fixed by clearing `FuncUnknown`/`ObjectUnknown`/`ParameterError` at the top of `ProcessRequest` before dispatch; station conditions (event availability, buffer overflow, device trouble, need-time) are still reported.
+- **Defect B — 8-bit count qualifier truncated above 255 points.** Static builders wrote `byte(len(data))`, so 300 points emitted count `0x2C` and left the payload unannounced; the `0x17` indexed branch also cannot address index 256+. Fixed with `appendSequentialCount` (`0x27` 16-bit count above 255) and `appendIndexedCount` (falls back to a sequential `0x27` block, index prefix dropped). Bytes at ≤ 255 points are unchanged, so existing pinned goldens hold.
+
+Negative control: a 2 665-configuration sweep (BI 0–40, AI 0–12, CTR 0–4) decoded clean, ruling out a small-configuration encoding bug. Reverting both fixes makes all 7 new tests fail, proving they are load-bearing.
+
+**Files changed:** `internal/outstation/outstation.go` (IIN scoping + count helpers in five static builders); new `internal/outstation/eg628_count_bound_test.go` and `internal/outstation/eg628_iin_scope_test.go`; `docs/verification/EG628-IM-001.md`; incident evidence matrix; this handoff and the task file. No public API change, no wire change at ≤ 255 points, no EG628/tester-specific branch, no `active_work/supported-profile.md`, G41, `.kde/`, `work` or `main` change.
+
+**Gates (this branch, all PASS):** `git diff --check`, `gofmt -l` (empty), `go build ./...`, `go vet ./...`, `go test ./... -count=1` (25 packages, 0 failures), `go test -race ./internal/outstation ./internal/master ./pkg/... ./test/...`, `bash scripts/verify-external-mvp.sh` (Tiers 1–3), `bash scripts/cwal-check.sh`.
+
+**Residual blockers:** original capture MISSING (offset 38 unattributable); original Windows Tester retest NOT_RUN (no device access, hard requirement for closure); EG628 point count unknown (decides whether Defect B is reachable there); tester/adapter conformance unknown. Incident is **NOT resolved**; `ORIGINAL_TESTER_PASS` is **NOT** claimed. Next: independent CHECK; owner-supplied original capture needed to attribute offset 38.
+
+
 ## AO-008 PHASE B OWNER AUTHORIZED — 2026-11-19 (LATEST AUTHORITY)
 
 The owner explicitly authorized **Phase B implementation** after the independently CHECKed KDE design record `.kde/governance/AO-008-G41-DESIGN-APPROVAL.md` was integrated into `work` at `419a0bfd82fd83fe4be9e78e0ea24ff36ca949bc`. The **latest binding Phase B contract** and strict write allowlist, regression/Go/isolated OpenDNP3 verification gates and STOP conditions are appended to `workflow/active_work/AO-008.md`. Earlier handoff/Phase A statements "Phase B not authorized" are **historical and superseded**. `CURRENT: AO-008`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`; invoke OpenHands with **`operation cwal` only**.

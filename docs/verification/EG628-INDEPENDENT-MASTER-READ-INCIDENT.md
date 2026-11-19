@@ -57,12 +57,42 @@ Keep the raw PCAP private until reviewed for endpoint/device metadata and sensit
 | Raw independent request/response frames | MISSING |
 | Original pcap and SHA-256 | MISSING |
 | Tester build, EG628 module pin | MISSING |
-| Reproduction without hardware | NOT_RUN |
-| Root cause attribution | UNDETERMINED |
-| Golden wire regression / negatives | NOT_RUN |
-| Go + external interop gates | NOT_RUN |
+| Reproduction without hardware | **PARTIAL PASS** — 2 generic defects reproduced; small-config sweep clean |
+| Root cause attribution | **PARTIAL** — 2 library defects proven generic; offset 38 UNDETERMINED |
+| Golden wire regression / negatives | **PASS** — 7 tests, negative control verified |
+| Go + external interop gates | **PASS** (this branch) |
 | EG628 module pin update | NOT_DONE |
 | Actual Windows Tester retest | NOT_RUN |
 | Defect resolved | **NOT CLAIMED** |
+
+### Investigation checkpoint — 2026-11-19 (`LIBRARY_FIX_VERIFIED_ONLY`)
+
+Operation CWAL on `investigate/eg628-independent-master-read`. Full report:
+`docs/verification/EG628-IM-001.md`.
+
+Two generic `internal/outstation` defects were reproduced with a fake in-memory
+outstation and decoded by an independent minimal Python decoder, with no EG628
+code or hardware:
+
+- **Defect A — IIN error bits persisted across requests.** `ParameterError` /
+  `ObjectUnknown` set by a rejected request leaked into every later response
+  (rejected G41 WRITE then Class-0 READ → `iin=0004`). Fixed by clearing
+  request-scoped IIN bits at the top of `ProcessRequest`; station conditions
+  (events, overflow, device trouble, need-time) are still reported.
+- **Defect B — 8-bit count qualifier truncated above 255 points.** Static
+  builders wrote `byte(len(data))`, so 300 points emitted count `0x2C` and left
+  the payload unannounced, desynchronising a strict parser; the `0x17` indexed
+  branch also cannot address index 256+. Fixed by using the 16-bit count
+  qualifier `0x27` above 255 and dropping the index prefix; bytes at ≤ 255
+  points are unchanged.
+
+A 2 665-configuration sweep (BI 0–40, AI 0–12, CTR 0–4) decoded clean, so a
+small-configuration encoding bug is ruled out.
+
+**Not attributed:** the reported `object header at offset 38` message. The
+original capture is MISSING, the string exists in neither this repository nor
+its decoder, and neither defect is proven to produce offset 38 in the EG628
+configuration. No Windows Tester retest was performed. The incident is
+**NOT** resolved and `ORIGINAL_TESTER_PASS` is not claimed.
 
 **Stop rule:** No statement of FIXED, interoperability PASS, production READY, or upstream PR until the original independent-master scan succeeds with captured, reproducible evidence. Work within an explicitly authorized implementation task/branch; this incident record alone does not override AO-008's CURRENT/GOV gates or authorize merging to `main`.
