@@ -36,12 +36,12 @@ func TestReadStaticVariationZeroServedAsDefault(t *testing.T) {
 			reqV0 := &al.APDU{
 				Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 				FuncCode: al.FuncRead,
-				Data:     []byte{tc.group, 0, 0x06, 0x00}, // V0 (default), all-objects
+				Data:     []byte{tc.group, 0, 0x06}, // V0 (default), all-objects
 			}
 			reqV1 := &al.APDU{
 				Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 				FuncCode: al.FuncRead,
-				Data:     []byte{tc.group, 1, 0x06, 0x00}, // V1, all-objects
+				Data:     []byte{tc.group, 1, 0x06}, // V1, all-objects
 			}
 			respV0, err := ost.ProcessRequest(reqV0)
 			if err != nil {

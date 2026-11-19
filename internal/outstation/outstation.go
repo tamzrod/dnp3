@@ -1663,36 +1663,67 @@ func requestObjectHeaderSize(data []byte, offset int) (size int, ok bool) {
 	}
 }
 
+// errMalformedReadHeader reports a READ whose object headers cannot be walked.
+var errMalformedReadHeader = errors.New("malformed READ object header")
+
+// validateReadHeaders walks every object header in a READ request and reports a
+// request that cannot be parsed. Rejections include:
+//
+//   - a zero-length or sub-3-octet request, which names no object at all;
+//   - a header whose qualifier is not in the supported table;
+//   - a header that runs past the end of the request data;
+//   - trailing bytes left over after the last complete header (a partial header).
+//
+// Without this gate a short or truncated READ falls through to the "all static
+// data" fallback and is answered with a full integrity response, which reports
+// success for a request the outstation never understood.
+func validateReadHeaders(data []byte) error {
+	if len(data) < 3 {
+		return errMalformedReadHeader
+	}
+	offset := 0
+	for offset < len(data) {
+		if len(data)-offset < 3 {
+			return errMalformedReadHeader
+		}
+		size, ok := requestObjectHeaderSize(data, offset)
+		if !ok {
+			return errMalformedReadHeader
+		}
+		if offset+size > len(data) {
+			return errMalformedReadHeader
+		}
+		offset += size
+	}
+	return nil
+}
+
 // buildReadResponse builds data for a READ response.
 func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 	var result []byte
 
 	o.staticDropped = false
 
-	// A Group 60 Variation 2/3/4 header is 3 octets (qualifier 0x06 has no
-	// range byte). Shorter than that is not a parsed object header.
-	if len(requestData) < 3 {
-		result = o.buildAllStaticData()
+	// Walk the object headers before building anything. A malformed request must
+	// be refused without side effects, and must never be answered with "all static
+	// data": that would report success for a request the outstation did not parse.
+	//
+	// Each header's size depends on its qualifier (IEEE 1815): all-objects (0x06)
+	// is 3 octets; start/stop (0x00) is 5 (start(1)+stop(1)); count8/index8
+	// (0x07/0x17) carry a 1-octet count (4); count16 (0x27) a 2-octet count (5);
+	// range16 (0x28) a 2-octet start/stop (7).
+	if err := validateReadHeaders(requestData); err != nil {
+		o.iin.ObjectUnknown = true
 		o.refreshEventIINLocked()
-		return result
+		return nil
 	}
 
 	// explicitEvent is true when the master asked for event data. An empty
 	// event response must not fall back to static points.
 	explicitEvent := false
 
-	// Parse object headers. Each header's size depends on its qualifier
-	// (IEEE 1815): all-objects (0x06) is 3 octets; start/stop (0x00) is 5 octets
-	// (start(1)+stop(1)); count8/index8 (0x07/0x17) carry a 1-octet count (4);
-	// count16 (0x27) a 2-octet count (5); range16 (0x28) a 2-octet start/stop (7).
-	// malformed is set when a request header cannot be walked. Such a request
-	// must not fall back to "all static data": answering a bogus qualifier with a
-	// complete integrity response would report success for a request the
-	// outstation did not understand.
-	malformed := false
-
 	offset := 0
-	for offset+3 <= len(requestData) {
+	for offset < len(requestData) {
 		group := requestData[offset]
 		variation := requestData[offset+1]
 
@@ -1737,25 +1768,8 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			}
 		}
 
-		size, ok := requestObjectHeaderSize(requestData, offset)
-		if !ok {
-			malformed = true
-			break
-		}
-		if offset+size > len(requestData) {
-			// A truncated header is as unusable as an unknown qualifier.
-			malformed = true
-			break
-		}
+		size, _ := requestObjectHeaderSize(requestData, offset)
 		offset += size
-	}
-
-	if malformed {
-		// ObjectUnknown reports "the outstation cannot serve this object"; the
-		// request is refused rather than answered with unrelated static data.
-		o.iin.ObjectUnknown = true
-		o.refreshEventIINLocked()
-		return nil
 	}
 
 	// Only fall back to "all static data" when nothing was recognized AND the

@@ -260,3 +260,114 @@ Owner confirmed the Windows DNP3 Tester retry was OK. This is independently VERI
 - `1795081271` (09:41:11Z): the previously failing Pulse Off SBO request (`0C 01 17 01 01 02 01 E8 03 00 00 00 00 00 00 00`) now returned `C0 CF 81 00 00 0C 01 17 01 01 02 01 E8 03 00 00 00 00 00 00 00` — `IIN=0000`, status `0x00`.
 
 Pulse Off acceptance additionally required the EG628-side pulse-width-only CROB fix (`OnTime=1000`, `OffTime=0`), which is outside this repository. This repository's scoped SBO-timeout patch is unchanged by that later EG628 fix. The original Windows tester PASS boundary is therefore CLOSED for the captured Latch On / Pulse Off retry; no IEEE 1815 conformance or general interoperability claim is made. The repository checkpoint is being pushed to `work` without force, PR, merge or profile change.
+
+---
+
+# Second corrective continuation — short READ + EG628 Pulse Off wire — 2026-11-19
+
+CURRENT: AO-008 (bounded corrective continuation; **not** an archive, promotion,
+merge or deployment). Base `work` HEAD at start: `50d4c8d` (`origin/work` `50d4c8d`,
+after the concurrent SBO-timeout and short-READ-authorization commits).
+
+## Scope actually worked
+
+1. **Short READ independent-CHECK pushback.** `buildReadResponse` answered any
+   request shorter than 3 octets with a full integrity response, and ignored
+   surplus bytes after the last complete object header. Both are false successes:
+   the request named no parseable object, yet the master saw IIN `00 00` plus
+   complete static data.
+2. **EG628 Pulse Off wire regression.** Added the captured G12V1 Pulse Off CROB
+   as an exact-byte regression for Direct Operate and SBO SELECT→OPERATE.
+
+## Defect 1 — short/truncated READ answered as success (RED→GREEN)
+
+**Defect.** A READ of 0, 1 or 2 octets fell through the `len(requestData) < 3`
+branch and returned `buildAllStaticData()`. Separately, the header walk stopped
+when fewer than 3 octets remained, so a valid header plus 1–2 stray trailing
+octets was answered as a complete read. A strict master cannot distinguish either
+response from a genuine integrity scan.
+
+**Fix.** New `validateReadHeaders` pre-pass walks every object header before
+anything is built and rejects: a request shorter than 3 octets; a qualifier
+outside the supported table; a header that runs past the end of the data; and
+surplus trailing octets after the last complete header. A rejected READ sets IIN
+OBJECT_UNKNOWN, returns no object data, and has no side effect because nothing is
+built or staged.
+
+**RED proven** against the pre-fix source with the new tests in place: all four
+short forms (zero-length, nil, 1 octet, 2 octets) and all three trailing-partial
+forms returned `IIN = 00 00` with full static data instead of OBJECT_UNKNOWN.
+**GREEN proven** with the fix: all pass, and the valid-request positive control
+still serves every allow-listed qualifier.
+
+**Three pre-existing tests corrected, not weakened.** `event_class_stub_test.go`
+and `static_variation_test.go` sent `60 01 06 00` — a valid 3-octet all-objects
+header plus a spurious trailing `0x00`. They passed only because the old code
+silently ignored surplus bytes. The repository's own vector
+`active_work/testdata/class0-integrity-request.hex` states the all-objects header
+"is exactly three octets" (`3C 01 06`), and `buildPollRequest`/`classEnableHeader`
+emit exactly three octets. The tests were updated to the canonical three-octet
+form; their assertions are unchanged.
+
+New coverage: `TestReadRejectsShortRequest` (4 subcases),
+`TestReadRejectsTrailingPartialHeader` (3 subcases),
+`TestRefusedReadDoesNotLeakIINIntoNextRequest` (refusal then valid READ).
+
+## Defect 2 — EG628 Pulse Off: library needs no fix, only a pinned regression
+
+The observed `BAD_FORMAT` (0x03) on the tester's Pulse Off CROB
+(`op=0x02, count=1, OnTime=1000ms, OffTime=0ms`, qualifier `0x17`, index 1) was
+an **EG628 adapter** `validatePulse` decision, resolved in `tamzrod/eg628` at
+`a56234f` by `effectivePulseTimings()`. It was not a `tamzrod/dnp3` framing or
+duration bug, and no library pulse-timing logic was added: `executeControl`
+decodes the CROB fields LSB-first and passes them to the handler unchanged, and
+`buildG12V1EchoObject` re-emits the request header and control fields verbatim
+with the handler's real status.
+
+`internal/outstation/g12v1_pulse_wire_test.go` pins that contract using the
+captured application-layer bytes
+`0C 01 17 01 01 02 01 E8 03 00 00 00 00 00 00 00`:
+
+- Direct Operate with an accepting handler: handler sees
+  `Code=0x02, Count=1, OnTime=1000, OffTime=0, Qualifier=0x17`; echo is
+  byte-identical with trailing status `0x00`.
+- SBO SELECT→OPERATE: SELECT echoes `0x00` and does not call the handler;
+  OPERATE executes once and echoes identically.
+- Refusing handler (`0x03 BAD_FORMAT`): the master reads `0x03`, never a
+  manufactured SUCCESS, on both Direct Operate and SELECT→OPERATE.
+- Unclassifiable handler error: fails closed with no response object.
+
+**Mutation-checked.** Swapping the OnTime/OffTime decode offsets makes
+`TestG12V1CapturedPulseOffDirectOperateEchoesUnchanged` fail with
+`OnTime:0 OffTime:1000`, so the regression has teeth against the exact defect
+class the incident was originally mis-attributed to. Source restored afterwards.
+
+## Gates actually run — all PASS
+
+`git diff --check`; `gofmt -l` (empty); `go vet ./...`; `go build ./...`;
+`go test ./... -count=1`; `go test -race ./... -count=1`; `bash
+scripts/verify-external-mvp.sh` (tiers 1–3 OK). `cwal-check.sh` run at the clean
+checkpoint.
+
+**NOT_RUN:** pinned OpenDNP3 3.1.2 `--network none` peer — Docker daemon
+unavailable on this host (`DAEMON_UNAVAILABLE`). No claim is made from the
+in-repo loopback gate about third-party interoperability.
+
+**Note on toolchain:** the container had no Go toolchain, so Go 1.22.12 was
+installed from the official `go.dev` distribution to run the required gates.
+No repository file depends on that install.
+
+## Evidence boundaries unchanged
+
+EG628 Windows Tester pcap/log, offset-38 attribution, full class 0+1+2+3 success,
+adapter revision and build pin remain **NOT_VERIFIED/MISSING**. The original
+Class 0+1+2+3 READ offset-38 incident remains **OPEN** — only the captured CROB
+retry passed. G41 stays **UNSUPPORTED**; `active_work/supported-profile.md` blob
+`3e592e77ad6e31d5492c609c5fdd62382505904b` unchanged. `main` `82414d6`
+untouched.
+
+## Disposition
+
+`AO008_SHORT_READ_AND_PULSE_WIRE_READY_FOR_INDEPENDENT_CHECK`. `CURRENT: AO-008`,
+`QUEUED: NONE`, `Status: TASK_IN_PROGRESS`. Non-force checkpoint to `work`;
+**STOP for independent read-only CHECK**. No PR, merge, release or deployment.
