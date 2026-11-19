@@ -400,12 +400,23 @@ func WithExperimentalEventDelivery() ConfigOption {
 	}
 }
 
-// WithExperimentalAnalogControl opts into the Group 41 analog-output control
-// path (G41V1-V4 Direct Operate with response). It is an explicit, non-default
-// experimental switch: the published v0 supported profile rejects Group 41 and
-// related analog-output variations, so without it Operate refuses a Group 41
-// control with ErrUnsupportedOption and sends no wire traffic. It is not a
-// profile promotion; it only opens the isolated G41 lab path.
+// WithAnalogControl opts into the Group 41 analog-output control path (G41V1-V4
+// Direct Operate with response) using the stable, supported-profile opt-in name.
+// Like WithExperimentalAnalogControl it is an explicit, non-default switch: the
+// published v0 supported profile still rejects Group 41, so without an opt-in
+// Operate refuses a Group 41 control with ErrUnsupportedOption and sends no wire
+// traffic. Both this option and WithExperimentalAnalogControl enable the same
+// explicit path; enabling one role never enables the other.
+// Supported-profile: implemented but not yet in the published supported profile.
+func WithAnalogControl() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalAnalogControl = true
+	}
+}
+
+// WithExperimentalAnalogControl is the original experimental name for
+// WithAnalogControl. It is retained as a backward-compatible alias so existing
+// lab callers keep working, and it enables exactly the same explicit G41 path.
 // Supported-profile: Reject by default (experimental, off by default).
 func WithExperimentalAnalogControl() ConfigOption {
 	return func(c *Config) {
@@ -2147,6 +2158,19 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 			return nil, fmt.Errorf("%w: analog control (Group 41 Variation %d); the v0 supported profile rejects Group 41 analog controls", dnp3.ErrUnsupportedOption, command.Variation)
 		}
 		// G41V1 int32 / G41V2 int16 / G41V3 float32 / G41V4 float64 analog output (experimental)
+		// The legacy ambiguous NewAnalogControl(float64) builds a Group 41
+		// Variation 1 command carrying an AnalogCommandValue{float64}. Reject that
+		// carrier explicitly for V1 even when the opt-in is on, so the exclusion does
+		// not depend solely on controlInt32Value refusing the float64 type (which a
+		// future float→int32 coercion could silently relax). V4 still admits
+		// AnalogCommandValue by design.
+		if command.Variation == 1 {
+			if _, legacy := command.Value.(*types.AnalogCommandValue); legacy {
+				release()
+				return nil, fmt.Errorf("%w: legacy ambiguous analog control (Group 41 Variation 1 with a float64 carrier); use NewAnalogInt32Control", dnp3.ErrUnsupportedOption)
+			}
+		}
+
 	default:
 		release()
 		return nil, fmt.Errorf("%w: unsupported control object group %d variation %d", dnp3.ErrUnsupportedOption, command.Group, command.Variation)

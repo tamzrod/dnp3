@@ -7,6 +7,14 @@ CURRENT: AO-008
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## AO-008 PHASE B EXECUTED — 2026-11-19 — `PHASE_B_READY_FOR_INDEPENDENT_CHECK`
+
+Phase B implementation ran in an executable OpenHands environment on `work` from `1a1ac02` (== `origin/work`), `main` `82414d6` untouched. Stable **`master.WithAnalogControl()`** / **`outstation.WithAnalogControl()`** added as independent default-OFF opt-ins; `WithExperimentalAnalogControl()` retained on both roles as backward-compatible aliases enabling the identical path. Added an **explicit** legacy-carrier rejection so `types.NewAnalogControl(float64)` stays refused at G41V1 even when opted in (previously only implicit via coercion strictness); V4 still admits the generic float64 carrier by design. G12V1/CROB, Class-0, events, SBO/no-response/WRITE/multi-point and the after-send quarantine policy are unchanged.
+
+Fresh gates all PASS: `git diff --check` clean, `cwal-check.sh` OK, `gofmt -l` empty, `go vet ./...`, `go build ./...`, `go test ./... -count=1`, `go test -race ./... -count=1`, `scripts/verify-external-mvp.sh` OK. Isolated **OpenDNP3 3.1.2** (`--network none`) rerun: direction A **8/8**, direction B **8/8** (exact bits, `status=0x00`/`0x0c`, 0 BAD CRCs), malformed/CRC matrix reproduced (IIN `0x0100`, zero writes, CRC-corrupt frame discarded), after-send fault matrix reproduced (`control outcome unknown` + quarantine, no blind retry), float `-0.0`/subnormal peer normalization reproduced as **FAIL/DIVERGENCE** with Go failing closed. Evidence bundle committed under `active_work/testdata/external/ao008-fresh-2026-11-19/` with per-directory `SHA256SUMS`. Details: `docs/verification/AO-008.md`.
+
+**Published G41 remains UNSUPPORTED**; `active_work/supported-profile.md` blob `3e592e77ad6e31d5492c609c5fdd62382505904b` unchanged. Reverse-direction fault negative **NOT_RUN**; single OpenDNP3 3.1.2 peer/version only; no conformance or production claim. `CURRENT: AO-008`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`. Non-force checkpoint to `work`; **STOP for independent read-only CHECK** — no archive/close, no Phase C, no PR, merge, release or deployment.
+
 ## AO-008 PHASE B OWNER AUTHORIZED — 2026-11-19 (LATEST AUTHORITY)
 
 The owner explicitly authorized **Phase B implementation** after the independently CHECKed KDE design record `.kde/governance/AO-008-G41-DESIGN-APPROVAL.md` was integrated into `work` at `419a0bfd82fd83fe4be9e78e0ea24ff36ca949bc`. The **latest binding Phase B contract** and strict write allowlist, regression/Go/isolated OpenDNP3 verification gates and STOP conditions are appended to `workflow/active_work/AO-008.md`. Earlier handoff/Phase A statements "Phase B not authorized" are **historical and superseded**. `CURRENT: AO-008`, `QUEUED: NONE`, `Status: TASK_IN_PROGRESS`; invoke OpenHands with **`operation cwal` only**.

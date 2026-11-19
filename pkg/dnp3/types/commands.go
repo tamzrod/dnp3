@@ -232,6 +232,11 @@ func NewBinaryControl(index uint16, value bool, cmdType CommandType) *ControlOut
 // Supported-profile: Reject — Group 41 and related analog-output variations are
 // out of scope for v0. Its Variation 1 label is legacy/incorrect; use
 // NewAnalogInt32Control for the verified Group 41 Variation 1 path.
+//
+// This ambiguous float64 carrier stays rejected even when the explicit G41
+// opt-in (master.WithAnalogControl / outstation.WithAnalogControl) is enabled:
+// the master refuses it before any wire traffic so a legacy value is never
+// silently narrowed to int32. Use the typed constructors instead.
 func NewAnalogControl(index uint16, value float64, cmdType CommandType) *ControlOutput {
 	return &ControlOutput{
 		Group:       41, // Group 41 = Analog Output

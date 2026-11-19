@@ -308,14 +308,23 @@ func WithExperimentalEventDelivery() ConfigOption {
 	}
 }
 
-// WithExperimentalAnalogControl opts into the Group 41 analog-output command
-// path on the outstation bridge (the host CommandHandler.HandleAnalogCommand
-// call for a G41 Direct Operate). It is an explicit, non-default experimental
-// switch: the published v0 supported profile rejects "Command handler analog
-// controls" (Group 41 and related variations), so without it a G41 Direct
-// Operate fails closed before any host analog handler is invoked and is never
-// acknowledged as SUCCESS. It is not a profile promotion; it only opens the
-// isolated G41 lab path.
+// WithAnalogControl opts into the Group 41 analog-output command path on the
+// outstation bridge (the host CommandHandler.HandleAnalogCommand call for a G41
+// Direct Operate) using the stable, supported-profile opt-in name. Like
+// WithExperimentalAnalogControl it is an explicit, non-default switch: without
+// it a G41 Direct Operate fails closed before any host analog handler is invoked
+// and is never acknowledged as SUCCESS. Each role opts in independently; the
+// master and outstation options do not enable one another.
+// Supported-profile: implemented but not yet in the published supported profile.
+func WithAnalogControl() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalAnalogControl = true
+	}
+}
+
+// WithExperimentalAnalogControl is the original experimental name for
+// WithAnalogControl. It is retained as a backward-compatible alias so existing
+// lab callers keep working, and it enables exactly the same explicit G41 path.
 // Supported-profile: Reject by default (experimental, off by default).
 func WithExperimentalAnalogControl() ConfigOption {
 	return func(c *Config) {
@@ -686,7 +695,7 @@ func (h *internalDataHandler) WriteAnalogOutput(index uint16, value interface{},
 		// acknowledge the command as SUCCESS. The G41 path is reachable only via
 		// the explicit, non-default WithExperimentalAnalogControl switch.
 		debugLog("WriteAnalogOutput: refusing Group 41 analog control (variation=%d); v0 profile rejects analog controls", variation)
-		return fmt.Errorf("analog output (Group 41) is rejected by the v0 supported profile; enable WithExperimentalAnalogControl for the isolated lab path")
+		return fmt.Errorf("analog output (Group 41) is rejected by the v0 supported profile; enable WithAnalogControl (or the legacy WithExperimentalAnalogControl alias) for the isolated lab path")
 	}
 	if h.commandHandler == nil {
 		debugLog("ERROR: WriteAnalogOutput called but commandHandler is nil (index=%d)", index)

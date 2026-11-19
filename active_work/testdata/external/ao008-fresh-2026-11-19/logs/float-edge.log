@@ -1,0 +1,40 @@
+--- float edge cases (Go master -> C++ peer) ---
+CASE V3_-0.0 :: ao005-go-master: variation=3 index=0 err=operate failed: control outcome unknown: no parseable command status
+CASE V4_-0.0 :: ao005-go-master: variation=4 index=0 err=operate failed: control outcome unknown: no parseable command status
+CASE V3_smallest_subnormal :: ao005-go-master: variation=3 index=0 err=operate failed: control outcome unknown: no parseable command status
+CASE V4_smallest_subnormal :: ao005-go-master: variation=4 index=0 err=operate failed: control outcome unknown: no parseable command status
+CASE V3_+1.5_control :: ao005-go-master: variation=3 index=0 req_bits=0x3fc00000 status=success
+--- peer log ---
+ms(1795062159303) INFO    ao004-g41 - Listening on: 10.77.0.2:20000
+channel state change: OPENING
+ao004-g41-peer: listening on 10.77.0.2:20000 (link 4 -> 3); memory-only G41 handler active
+ms(1795062159808) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=3 index=0 value=0 bits=0x0 count=1
+ms(1795062159850) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795062160366) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=4 index=0 value=0 bits=0x0 count=2
+ms(1795062160407) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795062160924) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=3 index=0 value=0 bits=0x0 count=3
+ms(1795062160966) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795062161480) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=4 index=0 value=0 bits=0x0 count=4
+ms(1795062161521) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
+ms(1795062162037) INFO    ao004-g41 - Accepted connection from: 10.77.0.1
+channel state change: OPEN
+ao005-g41-peer: accepted group=41 variation=3 index=0 value=1.5 bits=0x3fc00000 count=5
+ms(1795062162078) WARN    ao004-g41 - read error: End of file
+channel state change: CLOSED
+channel state change: OPENING
