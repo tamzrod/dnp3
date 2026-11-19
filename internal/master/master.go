@@ -3633,12 +3633,13 @@ func float32ToUint32Bits(f float32) uint32 {
 	return math.Float32bits(f)
 }
 
-// encodeDNP3Time encodes time.Time to DNP3 time format.
+// encodeDNP3Time encodes time.Time to the master's time-sync carrier.
+// The absolute-time count is milliseconds since the IEEE 1815 epoch
+// (1970-01-01 00:00:00 UTC). The existing 8-byte carrier layout and reserved
+// octets are unchanged; time sync remains outside the published v0 profile.
 func encodeDNP3Time(t time.Time) []byte {
-	// DNP3 time is milliseconds since 1970-01-01 00:00:00 UTC
-	// But offset by 2000-01-01 for the "DNP3 epoch"
-	epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	ms := t.Sub(epoch).Milliseconds()
+	epoch := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+	ms := t.UnixMilli() - epoch.UnixMilli()
 
 	// DNP3 time is 2 x 4-byte integers (for different time bases)
 	// We use the primary time base

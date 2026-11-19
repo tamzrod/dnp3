@@ -496,7 +496,7 @@ func (h *internalDataHandler) GetBinaryInputs() []outstation.BinaryInput {
 		var timeValue uint64
 		if bi.Time != nil && !bi.Time.IsNull() {
 			// Convert types.Timestamp to uint64 DNP3 time
-			// DNP3 time is milliseconds since 2000-01-01
+			// IEEE 1815 absolute time is milliseconds since 1970-01-01 UTC
 			timeValue = bi.Time.Value
 		}
 		internal[i] = outstation.BinaryInput{

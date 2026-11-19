@@ -12,7 +12,8 @@ func TestDNPTimeRoundTripAndRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [6]byte{0xE8, 0x03, 0x00, 0x00, 0x00, 0x00}
+	// 2000-01-01T00:00:01Z is 946,684,801,000 ms after the 1970 IEEE 1815 epoch.
+	want := [6]byte{0xE8, 0xAF, 0xCF, 0x6A, 0xDC, 0x00}
 	if enc != want {
 		t.Fatalf("encode = % X, want % X", enc, want)
 	}
@@ -26,8 +27,8 @@ func TestDNPTimeRoundTripAndRejects(t *testing.T) {
 	if _, err := EncodeDNPTime(time.Time{}); err == nil {
 		t.Fatal("zero time must be rejected")
 	}
-	if _, err := EncodeDNPTime(time.Date(1999, 12, 31, 0, 0, 0, 0, time.UTC)); err == nil {
-		t.Fatal("pre-epoch time must be rejected")
+	if _, err := EncodeDNPTime(time.Date(1969, 12, 31, 23, 59, 59, 999000000, time.UTC)); err == nil {
+		t.Fatal("pre-1970 time must be rejected")
 	}
 	if _, err := EncodeDNPTime(time.Date(30000, 1, 1, 0, 0, 0, 0, time.UTC)); err == nil {
 		t.Fatal("48-bit overflow must be rejected")
@@ -103,7 +104,7 @@ func TestEventObjectGoldens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want2 := []byte{0x02, 0x02, 0x17, 0x01, 0x07, 0x81, 0xE8, 0x03, 0x00, 0x00, 0x00, 0x00}
+	want2 := []byte{0x02, 0x02, 0x17, 0x01, 0x07, 0x81, 0xE8, 0xAF, 0xCF, 0x6A, 0xDC, 0x00}
 	if !bytes.Equal(g2v2, want2) {
 		t.Fatalf("G2V2 = % X, want % X", g2v2, want2)
 	}

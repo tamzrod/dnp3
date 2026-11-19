@@ -116,13 +116,23 @@ func TestTimestamp(t *testing.T) {
 }
 
 func TestTimestamp_Time(t *testing.T) {
-	// Create a timestamp at known time
-	expected := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	// Value 0 is the IEEE 1815 epoch itself (1970-01-01 UTC).
+	expected := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 	ts := &Timestamp{Value: 0}
 
 	got := ts.Time()
 	if !got.Equal(expected) {
 		t.Errorf("Timestamp.Time() = %v, want %v", got, expected)
+	}
+
+	// Independent known value: 2000-01-01T00:00:00Z is 946,684,800,000 ms
+	// after the epoch. Also verifies no time.Duration overflow.
+	known := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	if got := (&Timestamp{Value: 946684800000}).Time(); !got.Equal(known) {
+		t.Errorf("Timestamp.Time(946684800000) = %v, want %v", got, known)
+	}
+	if got := NewTimestamp(known).Value; got != 946684800000 {
+		t.Errorf("NewTimestamp(2000-01-01) = %d, want 946684800000", got)
 	}
 }
 

@@ -5,8 +5,10 @@ import (
 	"time"
 )
 
-// DNPEpoch is the DNP3 absolute-time origin: 2000-01-01 00:00:00 UTC.
-var DNPEpoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+// DNPEpoch is the IEEE 1815 DNP3 absolute-time origin: 1970-01-01 00:00:00 UTC.
+// Group 2 Variation 2, Group 32 Variation 3 and Group 22 Variation 5 carry an
+// unsigned 48-bit count of milliseconds from this origin, LSB octet first.
+var DNPEpoch = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // DNPTimeMax is the largest millisecond count that fits in a 48-bit DNP time.
 const DNPTimeMax = uint64(0xFFFFFFFFFFFF)

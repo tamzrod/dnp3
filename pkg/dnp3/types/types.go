@@ -228,24 +228,26 @@ type AnalogOutputEvent struct {
 }
 
 // Timestamp represents a DNP3 timestamp.
-// DNP3 uses milliseconds since 2000-01-01 00:00:00 UTC as its time base.
+// IEEE 1815 DNP3 absolute time is milliseconds since 1970-01-01 00:00:00 UTC.
 type Timestamp struct {
-	// Value is the timestamp in milliseconds since the DNP3 epoch (2000-01-01)
+	// Value is milliseconds since the IEEE 1815 epoch (1970-01-01 UTC).
 	Value uint64
 }
 
-// DNP3Epoch is the DNP3 time epoch (2000-01-01 00:00:00 UTC)
-var DNP3Epoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+// DNP3Epoch is the IEEE 1815 DNP3 absolute-time epoch (1970-01-01 00:00:00 UTC).
+var DNP3Epoch = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// Time returns the timestamp as a time.Time
+// Time returns the timestamp as a time.Time. UnixMilli is used instead of a
+// time.Duration addition because a full 48-bit millisecond count overflows
+// time.Duration (nanoseconds) beyond roughly the year 2255.
 func (t *Timestamp) Time() time.Time {
-	return DNP3Epoch.Add(time.Duration(t.Value) * time.Millisecond)
+	return time.UnixMilli(int64(t.Value)).UTC()
 }
 
 // Now creates a timestamp from the current time
 func (t *Timestamp) Now() *Timestamp {
 	return &Timestamp{
-		Value: uint64(time.Now().Sub(DNP3Epoch).Milliseconds()),
+		Value: uint64(time.Now().UnixMilli()),
 	}
 }
 
@@ -273,7 +275,7 @@ func NewTimestampFromDNP3(timeBytes [8]byte) *Timestamp {
 // NewTimestamp creates a Timestamp from a time.Time
 func NewTimestamp(t time.Time) *Timestamp {
 	return &Timestamp{
-		Value: uint64(t.Sub(DNP3Epoch).Milliseconds()),
+		Value: uint64(t.UnixMilli()),
 	}
 }
 

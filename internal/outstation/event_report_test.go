@@ -119,9 +119,9 @@ func TestPublishRejectsBadTimeAndIndex(t *testing.T) {
 	if err := ost.PublishEvent(testEvent(Class1, 256, true, time.Time{})); err != ErrEventIndex {
 		t.Fatalf("index error = %v", err)
 	}
-	ev := testEvent(Class2, 1, false, time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC))
+	ev := testEvent(Class2, 1, false, time.Date(1969, 12, 31, 23, 59, 59, 999000000, time.UTC))
 	if err := ost.PublishEvent(ev); err == nil {
-		t.Fatal("pre-epoch time accepted")
+		t.Fatal("pre-1970 time accepted")
 	}
 }
 

@@ -46,8 +46,8 @@ func debugLog(format string, v ...interface{}) {
 	}
 }
 
-// DNP3Epoch is the DNP3 time epoch (2000-01-01 00:00:00 UTC)
-var DNP3Epoch = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+// DNP3Epoch is the IEEE 1815 DNP3 absolute-time epoch (1970-01-01 00:00:00 UTC).
+var DNP3Epoch = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // defaultSBOTimeoutMS is the select-before-operate acceptance window used
 // when a caller supplies a Config with a zero (or negative) SBOTimeout.
@@ -197,7 +197,7 @@ type PendingSelect struct {
 type BinaryInput struct {
 	Value   bool   // Current value (true=on, false=off)
 	Quality uint8  // Quality flags
-	Time    uint64 // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
+	Time    uint64 // Timestamp in IEEE 1815 DNP3 absolute-time format (milliseconds since 1970-01-01 UTC)
 }
 
 // Quality flags for binary inputs
@@ -212,7 +212,7 @@ const (
 type AnalogInput struct {
 	Value   float64 // Current value
 	Quality uint8   // Quality flags
-	Time    uint64  // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
+	Time    uint64  // Timestamp in IEEE 1815 DNP3 absolute-time format (milliseconds since 1970-01-01 UTC)
 }
 
 // AnalogQuality flags
@@ -228,7 +228,7 @@ const (
 type Counter struct {
 	Value   uint32 // Current count
 	Quality uint8  // Quality flags
-	Time    uint64 // Timestamp in DNP3 time format (milliseconds since 2000-01-01)
+	Time    uint64 // Timestamp in IEEE 1815 DNP3 absolute-time format (milliseconds since 1970-01-01 UTC)
 }
 
 // CounterQuality flags
