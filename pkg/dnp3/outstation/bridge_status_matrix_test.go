@@ -318,20 +318,24 @@ func (h *crobRecordingHandler) HandleAnalogCommand(cmd *types.ControlOutput) (*t
 // map to a boolean, and unsupported codes must be rejected explicitly (no
 // `crob.Code & 0x1F` fallback that maps 0x03 to false).
 func TestBridgeCROBOpTypeBooleanMapping(t *testing.T) {
+	// DNP3-PULSE-001 supersedes the earlier latch-bridge contract: NUL is a
+	// true no-op and must never reach a command handler, so no collapsed
+	// boolean can be mistaken for Latch Off.
 	cases := []struct {
 		name      string
 		code      uint8
 		wantErr   bool
 		wantValue bool
+		wantCalls int
 	}{
-		{"NUL 0x00 -> false", 0x00, false, false},
-		{"PulseOn 0x01 -> true", 0x01, false, true},
-		{"PulseOff 0x02 -> false", 0x02, false, false},
-		{"LatchOn 0x03 -> true", 0x03, false, true},
-		{"LatchOff 0x04 -> false", 0x04, false, false},
-		{"retired 0x08 rejected", 0x08, true, false},
-		{"retired 0x10 rejected", 0x10, true, false},
-		{"trip-close 0x43 rejected", 0x43, true, false},
+		{"NUL 0x00 is a no-op", 0x00, false, false, 0},
+		{"PulseOn 0x01 -> true", 0x01, false, true, 1},
+		{"PulseOff 0x02 -> false", 0x02, false, false, 1},
+		{"LatchOn 0x03 -> true", 0x03, false, true, 1},
+		{"LatchOff 0x04 -> false", 0x04, false, false, 1},
+		{"retired 0x08 rejected", 0x08, true, false, 0},
+		{"retired 0x10 rejected", 0x10, true, false, 0},
+		{"trip-close 0x43 rejected", 0x43, true, false, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -350,10 +354,10 @@ func TestBridgeCROBOpTypeBooleanMapping(t *testing.T) {
 			if err != nil {
 				t.Fatalf("code 0x%02X: unexpected error %v", tc.code, err)
 			}
-			if h.calls != 1 {
-				t.Fatalf("code 0x%02X: handler calls = %d, want 1", tc.code, h.calls)
+			if h.calls != tc.wantCalls {
+				t.Fatalf("code 0x%02X: handler calls = %d, want %d", tc.code, h.calls, tc.wantCalls)
 			}
-			if h.gotValue != tc.wantValue {
+			if tc.wantCalls == 1 && h.gotValue != tc.wantValue {
 				t.Errorf("code 0x%02X: bridge value = %v, want %v", tc.code, h.gotValue, tc.wantValue)
 			}
 		})

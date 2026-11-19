@@ -27,7 +27,7 @@ func TestReadEventClassReturnsEmpty(t *testing.T) {
 			req := &al.APDU{
 				Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 				FuncCode: al.FuncRead,
-				Data:     []byte{60, tc.v, 0x06, 0x00}, // G60, V<n>, all-objects
+				Data:     []byte{60, tc.v, 0x06}, // G60, V<n>, all-objects (no range field)
 			}
 			resp, err := ost.ProcessRequest(req)
 			if err != nil {
@@ -62,7 +62,7 @@ func TestReadClass0IntegrityReturnsStaticData(t *testing.T) {
 	req := &al.APDU{
 		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncRead,
-		Data:     []byte{60, 1, 0x06, 0x00}, // G60 V1 all-objects (Class 0)
+		Data:     []byte{60, 1, 0x06}, // G60 V1 all-objects (Class 0)
 	}
 	resp, err := ost.ProcessRequest(req)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestReadEventClassDoesNotPolluteIIN(t *testing.T) {
 	req := &al.APDU{
 		Control:  al.AppControl{FIR: true, FIN: true, Seq: 1},
 		FuncCode: al.FuncRead,
-		Data:     []byte{60, 2, 0x06, 0x00}, // Class 1 events
+		Data:     []byte{60, 2, 0x06}, // Class 1 events
 	}
 	resp, err := ost.ProcessRequest(req)
 	if err != nil {

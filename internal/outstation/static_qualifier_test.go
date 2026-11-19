@@ -99,9 +99,11 @@ func TestBuildBinaryOutputSequentialQualifier(t *testing.T) {
 		t.Fatalf("header = % X, want 0A 01 07", got[:3])
 	}
 	count := int(got[3])
-	// Sequential: header(4) + count * 1 value octet, no index prefixes.
-	if len(got) != 4+count {
-		t.Fatalf("length = %d, want %d (sequential, no index prefix)", len(got), 4+count)
+	// G10V1 is packed: one bit per point, so count points occupy
+	// ceil(count/8) octets and there are no per-point index prefixes.
+	want := 4 + (count+7)/8
+	if len(got) != want {
+		t.Fatalf("length = %d, want %d (packed G10V1, no index prefix)", len(got), want)
 	}
 }
 
@@ -126,10 +128,13 @@ func TestBuildAnalogOutputSequentialQualifier(t *testing.T) {
 // TestRequestStartStopHeaderConsumed verifies the request header size table
 // treats 0x00 as a 5-octet start/stop header (not a 4-octet count header).
 func TestRequestStartStopHeaderConsumed(t *testing.T) {
-	if got := requestObjectHeaderSize([]byte{1, 1, 0x00, 0x00, 0x04}, 0); got != 5 {
-		t.Fatalf("requestObjectHeaderSize(0x00) = %d, want 5", got)
+	if got, ok := requestObjectHeaderSize([]byte{1, 1, 0x00, 0x00, 0x04}, 0); !ok || got != 5 {
+		t.Fatalf("requestObjectHeaderSize(0x00) = %d, %v, want 5, true", got, ok)
 	}
-	if got := requestObjectHeaderSize([]byte{1, 1, 0x17, 0x02}, 0); got != 4 {
-		t.Fatalf("requestObjectHeaderSize(0x17) = %d, want 4", got)
+	if got, ok := requestObjectHeaderSize([]byte{1, 1, 0x17, 0x02}, 0); !ok || got != 4 {
+		t.Fatalf("requestObjectHeaderSize(0x17) = %d, %v, want 4, true", got, ok)
+	}
+	if _, ok := requestObjectHeaderSize([]byte{1, 1, 0x99, 0x02}, 0); ok {
+		t.Fatal("requestObjectHeaderSize accepted an unknown qualifier 0x99")
 	}
 }

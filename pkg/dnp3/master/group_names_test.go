@@ -23,7 +23,7 @@ func TestUnsupportedGroupErrorMessageNamesGroupVariation(t *testing.T) {
 		wantGroup string // expected group name fragment
 	}{
 		{"group2_binary_event", 2, 1, "binary input event", "binary input event"},
-		{"group10_binary_output", 10, 1, "binary output", "binary output"},
+		{"group11_binary_output_event", 11, 1, "binary output event", "binary output event"},
 		{"group13_control_relay", 13, 1, "control relay output block", "control relay output block"},
 		{"group21_counter_event", 21, 1, "counter event", "counter event"},
 		{"group40_analog_output_status", 40, 1, "analog output status", "analog output status"},
