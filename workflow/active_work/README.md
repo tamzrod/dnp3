@@ -7,6 +7,10 @@ CURRENT: AO-008
 QUEUED: NONE
 Status: TASK_IN_PROGRESS
 
+## LATEST OWNER AUTHORIZATION — EG628 DONOR PATCH CWAL — 2026-11-19
+
+**`operation cwal` on `work` is authorized to execute the focused donor interoperability corrective patch under CURRENT AO-008.** Full executable scope and STOP conditions: latest addendum in `workflow/active_work/AO-008.md`. Donor pushed `a038637` and `5842395` (packed-binary READ, G12V1 CROB echo/status, qualifier `0x17`, latch commands); independently review exact code and evidence, not screenshot claims alone. Compare EG628 investigation `f72bf05` for generic request-scoped IIN and >255 static count fixes; address confirmed remaining >65535 wrap/malformed READ negative gates. Keep EG628 live packet capture untouched and EG628 device/repo read-only. No unsupported time synchronization, field controls, tester-specific branching, profile promotion, PR, merge or deployment. Record tests honestly; original Windows Tester PASS is still NOT_VERIFIED. After scoped non-force patch checkpoint, STOP for independent CHECK; AO-008 remains `TASK_IN_PROGRESS`, G41 remains published UNSUPPORTED.
+
 ## AO-008 PHASE B EXECUTED — 2026-11-19 — `PHASE_B_READY_FOR_INDEPENDENT_CHECK`
 
 Phase B implementation ran in an executable OpenHands environment on `work` from `1a1ac02` (== `origin/work`), `main` `82414d6` untouched. Stable **`master.WithAnalogControl()`** / **`outstation.WithAnalogControl()`** added as independent default-OFF opt-ins; `WithExperimentalAnalogControl()` retained on both roles as backward-compatible aliases enabling the identical path. Added an **explicit** legacy-carrier rejection so `types.NewAnalogControl(float64)` stays refused at G41V1 even when opted in (previously only implicit via coercion strictness); V4 still admits the generic float64 carrier by design. G12V1/CROB, Class-0, events, SBO/no-response/WRITE/multi-point and the after-send quarantine policy are unchanged.
