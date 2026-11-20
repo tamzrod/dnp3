@@ -57,6 +57,40 @@ func TestOutstationUnsolicitedModeRejectedByDefault(t *testing.T) {
 	}
 }
 
+// TestOutstationEventQueueStatusIsReadOnlyAndCountsKinds pins the optional
+// occupancy capability used by EG628 for independent counter-event admission.
+func TestOutstationEventQueueStatusIsReadOnlyAndCountsKinds(t *testing.T) {
+	srv, err := NewServer(NewConfig(
+		WithAddress(1024),
+		WithMasterAddress(1),
+		WithTransport(dnp3.TCP, "127.0.0.1", 0),
+		WithExperimentalEventDelivery(),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, ok := srv.(interface{ EventQueueStatus() EventQueueStatus })
+	if !ok {
+		t.Fatal("server does not expose optional EventQueueStatus capability")
+	}
+	stamp := time.Date(2026, 11, 20, 1, 2, 3, 0, time.UTC)
+	if err := srv.PublishBinaryEvent(0, true, al.BinEventOnline, EventClass1, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.PublishCounterEvent(1, 10, al.CounterEventOnline, EventClass1, stamp); err != nil {
+		t.Fatal(err)
+	}
+	before := observer.EventQueueStatus()
+	if before.Class1 != 2 || before.CounterClass1 != 1 {
+		t.Fatalf("status = %+v, want class1=2 counter1=1", before)
+	}
+	// Reading status must not consume or reorder queued events.
+	after := observer.EventQueueStatus()
+	if after != before {
+		t.Fatalf("status changed across reads: %+v then %+v", before, after)
+	}
+}
+
 // TestOutstationExperimentalPathEnablesEvents confirms the explicit,
 // non-default experimental switch opens the EVT-001 outstation path: publishing
 // succeeds, unsolicited mode validates, and a handler is registered.

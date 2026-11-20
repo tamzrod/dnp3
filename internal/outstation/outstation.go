@@ -384,6 +384,48 @@ func (q *EventQueue) Count() int {
 	return count
 }
 
+// EventQueueStatus is a read-only occupancy snapshot of one shared event
+// queue. Used counts include slots reserved for solicited responses that are
+// still in flight, because a new publisher cannot take those slots. Counter
+// counts describe only Group 22 events already stored in each class; they let
+// a host enforce an independent counter-event quota without changing queue
+// ordering or wire behaviour.
+type EventQueueStatus struct {
+	Class1        int
+	Class2        int
+	Class3        int
+	Capacity      int
+	CounterClass1 int
+	CounterClass2 int
+	CounterClass3 int
+}
+
+// Status returns a consistent occupancy snapshot. It never mutates the queue.
+func (q *EventQueue) Status() EventQueueStatus {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	status := EventQueueStatus{Capacity: q.classCap()}
+	for class, events := range q.buffers {
+		used := len(events) + q.reserved[class]
+		counters := 0
+		for _, ev := range events {
+			if ev.Kind == EventKindCounter {
+				counters++
+			}
+		}
+		switch class {
+		case Class1:
+			status.Class1, status.CounterClass1 = used, counters
+		case Class2:
+			status.Class2, status.CounterClass2 = used, counters
+		case Class3:
+			status.Class3, status.CounterClass3 = used, counters
+		}
+	}
+	return status
+}
+
 // IsFull returns true if any event class buffer is full. In-flight reserved
 // slots count as used, because a publisher cannot take them.
 func (q *EventQueue) IsFull() bool {

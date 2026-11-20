@@ -211,6 +211,36 @@ func TestEventQueueOverflow(t *testing.T) {
 	}
 }
 
+// TestEventQueueStatusCountsByClassAndKind pins the read-only occupancy
+// snapshot used by hosts that enforce an independent G22 counter-event quota.
+func TestEventQueueStatusCountsByClassAndKind(t *testing.T) {
+	queue := NewEventQueue(9) // 3 slots per class
+	stamp := time.Now()
+	for _, ev := range []Event{
+		{Class: Class1, Group: 2, Kind: EventKindBinary, Index: 0, Time: stamp},
+		{Class: Class1, Group: 22, Kind: EventKindCounter, Index: 1, Time: stamp},
+		{Class: Class2, Group: 22, Kind: EventKindCounter, Index: 2, Time: stamp},
+	} {
+		if !queue.Add(ev) {
+			t.Fatalf("Add(%+v) failed", ev)
+		}
+	}
+
+	status := queue.Status()
+	if status.Capacity != 3 {
+		t.Fatalf("Capacity = %d, want 3", status.Capacity)
+	}
+	if status.Class1 != 2 || status.CounterClass1 != 1 {
+		t.Fatalf("class 1 = %d/%d counter, want 2/1", status.Class1, status.CounterClass1)
+	}
+	if status.Class2 != 1 || status.CounterClass2 != 1 {
+		t.Fatalf("class 2 = %d/%d counter, want 1/1", status.Class2, status.CounterClass2)
+	}
+	if status.Class3 != 0 || status.CounterClass3 != 0 {
+		t.Fatalf("class 3 = %d/%d counter, want 0/0", status.Class3, status.CounterClass3)
+	}
+}
+
 // TestEventQueueClear tests clearing events.
 func TestEventQueueClear(t *testing.T) {
 	queue := NewEventQueue(100)

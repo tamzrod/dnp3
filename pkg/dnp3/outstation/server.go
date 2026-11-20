@@ -127,6 +127,23 @@ type Server interface {
 	Close() error
 }
 
+// EventQueueStatus is a read-only occupancy snapshot of the outstation's
+// shared event queue. Used counts include in-flight reserved slots, and the
+// Counter* counts isolate Group 22 events from binary (Group 2) and analog
+// (Group 32) sequence-of-events traffic in the same class. It is available as
+// an optional capability on servers that support event delivery; hosts can
+// use it to apply independent counter-event limits before calling
+// PublishCounterEvent. It does not change queue selection or wire encoding.
+type EventQueueStatus struct {
+	Class1        int
+	Class2        int
+	Class3        int
+	Capacity      int
+	CounterClass1 int
+	CounterClass2 int
+	CounterClass3 int
+}
+
 // ClockSource identifies where the logical DNP3 clock last got its time.
 type ClockSource uint8
 
@@ -1342,6 +1359,22 @@ func (s *server) State() ServerState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.state
+}
+
+// EventQueueStatus implements the optional read-only queue-occupancy
+// capability. It is intentionally not part of the Server interface so existing
+// implementations and test doubles remain source-compatible.
+func (s *server) EventQueueStatus() EventQueueStatus {
+	st := s.eventQueue.Status()
+	return EventQueueStatus{
+		Class1:        st.Class1,
+		Class2:        st.Class2,
+		Class3:        st.Class3,
+		Capacity:      st.Capacity,
+		CounterClass1: st.CounterClass1,
+		CounterClass2: st.CounterClass2,
+		CounterClass3: st.CounterClass3,
+	}
 }
 
 // TimeSyncEnabled reports whether the explicit logical-clock opt-in is set.
