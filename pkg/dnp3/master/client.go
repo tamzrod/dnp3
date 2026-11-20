@@ -2258,8 +2258,16 @@ func (c *client) Operate(ctx context.Context, command *types.ControlOutput) (*Op
 		// The worker owns the gate for its whole lifetime: release runs only when
 		// the worker terminates, so a still-blocked worker keeps the outstation
 		// gated (no second control can be admitted behind it).
-		defer release()
+		//
+		// Release BEFORE publishing the result. done is buffered, so a caller
+		// woken by the send can immediately start another Operate and re-acquire
+		// the gate. If release ran from a defer after the send, that next control
+		// could observe g.active == true and be refused with ErrControlInProgress
+		// even though this control had already completed. Releasing first makes
+		// "result observed" imply "gate released" without weakening the
+		// single-worker safety invariant.
 		status, err := internal.OperateWithStatusGated(ctx, gen, outstationID, selectThenOperate, command.Group, command.Variation, command.Index, rawValue, deadline)
+		release()
 		done <- operateResult{status: status, err: err}
 	}()
 
