@@ -2415,6 +2415,15 @@ func (o *Outstation) handleSelect(req *al.APDU) (*al.APDU, error) {
 	data := make([]byte, len(req.Data)-dataIdx)
 	copy(data, req.Data[dataIdx:])
 
+	// G41 analog output SBO (Select/Operate) is not part of the supported or
+	// experimentally verified command profile in this stack. Fail closed so a
+	// G41 SELECT cannot arm a later OPERATE or be mistaken for a successful
+	// control step.
+	if group == 41 {
+		o.iin.ParameterError = true
+		return nil, fmt.Errorf("G41 analog output SELECT is not supported; use DirectOperate with response")
+	}
+
 	// A multi-point SELECT cannot be answered with a single status object.
 	// Keep the legacy handling of a short single-point payload (some internal
 	// callers use it only to register/lock a point) unchanged; only complete
@@ -2467,6 +2476,13 @@ func (o *Outstation) handleOperate(req *al.APDU) (*al.APDU, error) {
 	}
 	value := make([]byte, len(req.Data)-dataIdx)
 	copy(value, req.Data[dataIdx:])
+
+	// G41 analog output SBO is not supported; fail closed rather than executing
+	// a G41 value that was never legitimately selected in this profile.
+	if group == 41 {
+		o.iin.ParameterError = true
+		return nil, fmt.Errorf("G41 analog output OPERATE is not supported; use DirectOperate with response")
+	}
 
 	if group == 12 && variation == 1 && count > 1 {
 		o.iin.ParameterError = true
