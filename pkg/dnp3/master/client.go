@@ -1734,7 +1734,10 @@ func parseCounters(data []byte) []*types.Counter {
 		// pointLayout fixes the index base and, for the indexed qualifier
 		// (0x17), a per-point 1-octet index prefix. A declared count that does
 		// not fit the remaining bytes is rejected without partial points.
-		if group == 20 && variation == 1 {
+		// Group 20 (Counter) and Group 21 (Frozen Counter) Variation 1 share
+		// the same IEEE 1815 object shape: flags octet first, then a
+		// little-endian 32-bit count. No timestamp is carried by V1.
+		if (group == 20 || group == 21) && variation == 1 {
 			if n, base, idxPrefix, ok := pointLayout(h); ok {
 				size := 5 + idxPrefix
 				if offset+n*size > len(data) {
@@ -1779,22 +1782,37 @@ func parseCounters(data []byte) []*types.Counter {
 			var timestamp *types.Timestamp
 
 			switch variation {
-			case 1: // 32-bit with flags
+			case 1: // 32-bit with flags (flags first, little-endian value)
 				if offset+5 > len(data) {
 					break
 				}
-				value = binary.LittleEndian.Uint32(data[offset : offset+4])
-				offset += 4
 				quality = types.QualityFlags(data[offset])
-				offset++
-			case 5: // 16-bit with flags
-				if offset+3 > len(data) {
-					break
+				value = binary.LittleEndian.Uint32(data[offset+1 : offset+5])
+				offset += 5
+			case 5:
+				if group == 21 {
+					// Frozen counter V5: flags + uint32 value + 48-bit DNP time.
+					if offset+11 > len(data) {
+						break
+					}
+					quality = types.QualityFlags(data[offset])
+					value = binary.LittleEndian.Uint32(data[offset+1 : offset+5])
+					offset += 5
+					t, terr := al.DecodeDNPTime(data[offset : offset+6])
+					offset += 6
+					if terr == nil {
+						timestamp = &types.Timestamp{Value: uint64(t.UnixMilli() - types.DNP3Epoch.UnixMilli())}
+					}
+				} else {
+					// Group 20 V5: 16-bit with flags.
+					if offset+3 > len(data) {
+						break
+					}
+					value = uint32(binary.LittleEndian.Uint16(data[offset : offset+2]))
+					offset += 2
+					quality = types.QualityFlags(data[offset])
+					offset++
 				}
-				value = uint32(binary.LittleEndian.Uint16(data[offset : offset+2]))
-				offset += 2
-				quality = types.QualityFlags(data[offset])
-				offset++
 			case 6: // 32-bit without flags
 				if offset+4 > len(data) {
 					break
@@ -1806,14 +1824,6 @@ func parseCounters(data []byte) []*types.Counter {
 				if offset < len(data) {
 					offset++
 				}
-			}
-
-			// Group 21 (Counter Event) has 8-byte timestamp after flags
-			if group == 21 && offset+8 <= len(data) {
-				var timeBytes [8]byte
-				copy(timeBytes[:], data[offset:offset+8])
-				offset += 8
-				timestamp = types.NewTimestampFromDNP3(timeBytes)
 			}
 
 			result = append(result, &types.Counter{
@@ -2089,6 +2099,15 @@ func objectValueBytes(group, variation uint8) int {
 		switch variation {
 		case 5: // uint16 + flags
 			return 3
+		case 6: // uint32 only
+			return 4
+		default: // uint32 + flags
+			return 5
+		}
+	case 21: // Frozen Counter (static snapshot)
+		switch variation {
+		case 5: // uint32 + flags + 48-bit time
+			return 11
 		case 6: // uint32 only
 			return 4
 		default: // uint32 + flags

@@ -1433,11 +1433,15 @@ func staticValueSize(group, variation uint8) (int, bool) {
 		case 2:
 			return 1, true
 		}
-	case 20: // Counter: V1 flags+uint32, V5 flags+uint16, V6 uint32
+	case 20, 21: // Counter / frozen counter: V1 flags+uint32, V5 flags+uint32+time, V6 uint32
 		switch variation {
 		case 1:
 			return 5, true
 		case 5:
+			// Group 21 V5 carries a 48-bit time; Group 20 V5 is flags+uint16.
+			if group == 21 {
+				return 11, true
+			}
 			return 3, true
 		case 6:
 			return 4, true
@@ -1625,14 +1629,16 @@ func (o *Outstation) handleRead(req *al.APDU) (*al.APDU, error) {
 // variation" for the static (non-event) data groups. The v0 outstation's
 // default static variation is Variation 1 for every supported group, so a
 // request for G1V0 / G10V0 / G20V0 / G30V0 / G40V0 is served as V1. Event
-// groups (2/21/31) are not normalized here; their empty-buffer stub behavior is
-// unchanged. This lets the master's MEXT-015 multi-group integrity read (which
-// requests the default variation per group) succeed against the real
-// outstation, not just the simulator.
+// Event-only groups (2/31) are not normalized here; their empty-buffer stub
+// behavior is unchanged. Group 21 (frozen counter) is a static snapshot group
+// and its variation 0 defaults to V1 like the other static groups. This lets
+// the master's MEXT-015 multi-group integrity read (which requests the default
+// variation per group) succeed against the real outstation, not just the
+// simulator.
 func normalizeStaticVariation(group, variation uint8) uint8 {
 	if variation == 0 {
 		switch group {
-		case 1, 10, 20, 30, 40:
+		case 1, 10, 20, 21, 30, 40:
 			return 1
 		}
 	}
@@ -1712,8 +1718,12 @@ func (o *Outstation) buildReadResponse(requestData []byte) []byte {
 			result = append(result, o.buildBinaryOutputData(normalizeStaticVariation(group, variation))...)
 		case 20: // Counter (static - no timestamp)
 			result = append(result, o.buildCounterData(normalizeStaticVariation(group, variation))...)
-		case 21: // Frozen counter. Not a Group 22 event read.
-			result = append(result, o.buildCounterEventData(variation)...)
+		case 21: // Frozen counter (static snapshot). Not a Group 22 event read.
+			// Group 21 is "Frozen Counter", not a counter event. Serve the
+			// frozen snapshot taken by FREEZE/FREEZE_CLEAR, never the live
+			// counters, and encode it with the same IEEE 1815 flags-first,
+			// little-endian layout used by Group 20 Variation 1.
+			result = append(result, o.buildFrozenCounterData(normalizeStaticVariation(group, variation))...)
 		case 30: // Analog Input (static - no timestamp)
 			result = append(result, o.buildAnalogInputData(normalizeStaticVariation(group, variation))...)
 		case 31: // Frozen analog. Not a Group 32 event read.
@@ -2085,45 +2095,66 @@ func (o *Outstation) buildAnalogInputEventData(variation uint8) []byte {
 	return result
 }
 
-// buildCounterEventData builds counter event data with timestamps.
-func (o *Outstation) buildCounterEventData(variation uint8) []byte {
+// buildFrozenCounterData builds Group 21 (Frozen Counter) static data from the
+// frozen snapshot captured by FREEZE / FREEZE_CLEAR. It deliberately does not
+// read the live counters: a frozen-counter read must never change when the
+// live point changes between freezes.
+//
+// Layout (IEEE 1815, LSB-first, flags octet first — the same object shape as
+// Group 20 with a different group number):
+//
+//	V1: flags(1) + uint32 value(4)              -> 5 octets/point
+//	V5: flags(1) + uint32 value(4) + DNP time(6) -> 11 octets/point
+//	V6: uint32 value(4)                          -> 4 octets/point
+//
+// Only 32-bit frozen counter variations are emitted; a request for any other
+// variation returns no objects (the master sees an object-less response) rather
+// than a misdeclared block.
+func (o *Outstation) buildFrozenCounterData(variation uint8) []byte {
 	var result []byte
-	data := o.data.GetCounters()
+	data := o.data.GetFrozenCounters()
 
 	if len(data) == 0 {
 		return result
 	}
 
-	// Object header for event data
-	result = append(result, 21)              // Group 21 (Counter Event)
-	result = append(result, variation)       // Variation
-	result = append(result, 0x00)            // Qualifier: index
-	result = append(result, byte(len(data))) // Count
+	header, ok := appendCountQualifier([]byte{21, variation}, len(data))
+	if !ok {
+		o.staticDropped = true
+		return result
+	}
 
-	for i, c := range data {
-		// Index (2 bytes, big-endian)
-		result = append(result, byte(i>>8), byte(i&0xFF))
-
+	for _, c := range data {
 		switch variation {
-		case 1: // Counter Event with time - 32-bit counter
-			result = append(result,
-				byte(c.Value>>24), byte(c.Value>>16),
-				byte(c.Value>>8), byte(c.Value))
-			result = append(result, c.Quality)
-			// Time - 8 bytes (big-endian uint64)
-			timeValue := c.Time
-			if timeValue == 0 {
-				timeValue = uint64(time.Now().Sub(DNP3Epoch).Milliseconds())
-			}
-			result = append(result,
-				byte(timeValue>>56), byte(timeValue>>48),
-				byte(timeValue>>40), byte(timeValue>>32),
-				byte(timeValue>>24), byte(timeValue>>16),
-				byte(timeValue>>8), byte(timeValue))
+		case 1: // Frozen counter, 32-bit with flags
+			header = append(header, c.Quality,
+				byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
+		case 5: // Frozen counter, 32-bit with flags and time
+			header = append(header, c.Quality,
+				byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
+			header = appendDNPTimeMilliseconds(header, c.Time)
+		case 6: // Frozen counter, 32-bit without flags
+			header = append(header,
+				byte(c.Value), byte(c.Value>>8), byte(c.Value>>16), byte(c.Value>>24))
+		default:
+			// Unsupported frozen-counter variation: emit nothing rather than a
+			// block whose object shape the master cannot parse.
+			return nil
 		}
 	}
 
-	return result
+	return header
+}
+
+// appendDNPTimeMilliseconds appends a 48-bit IEEE 1815 absolute time (ms since
+// 1970-01-01 UTC), least-significant octet first. Values are truncated to 48
+// bits, which is the widest DNP3 time field.
+func appendDNPTimeMilliseconds(dst []byte, ms uint64) []byte {
+	for i := 0; i < 6; i++ {
+		dst = append(dst, byte(ms))
+		ms >>= 8
+	}
+	return dst
 }
 
 // buildBinaryOutputData builds binary output status data (Group 10).

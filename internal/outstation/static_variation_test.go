@@ -71,9 +71,11 @@ func TestNormalizeStaticVariation(t *testing.T) {
 	cases := []struct {
 		group, in, want uint8
 	}{
-		{1, 0, 1}, {10, 0, 1}, {20, 0, 1}, {30, 0, 1}, {40, 0, 1},
+		{1, 0, 1}, {10, 0, 1}, {20, 0, 1}, {21, 0, 1}, {30, 0, 1}, {40, 0, 1},
 		{1, 1, 1}, {1, 2, 2}, {30, 5, 5},
-		{2, 0, 0}, {21, 0, 0}, {31, 0, 0}, // events not normalized
+		// Group 21 is the static Frozen Counter group (not a counter event;
+		// Group 22 is the event group), so V0 defaults to V1 like other statics.
+		{2, 0, 0}, {31, 0, 0}, // events not normalized
 		{60, 0, 0},
 	}
 	for _, tc := range cases {
