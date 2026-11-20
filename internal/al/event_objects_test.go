@@ -155,6 +155,16 @@ func TestEventObjectGoldens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// G22V5: header, index 4, flags 0x21 (ONLINE|ROLLOVER, not static G20
+	// 0x08), uint32 value 0x01020304 little-endian, 6-byte DNP time.
+	want22T := []byte{
+		0x16, 0x05, 0x17, 0x01, 0x04, 0x21,
+		0x04, 0x03, 0x02, 0x01,
+		0xE8, 0xAF, 0xCF, 0x6A, 0xDC, 0x00,
+	}
+	if !bytes.Equal(g22t, want22T) {
+		t.Fatalf("G22V5 = % X, want % X", g22t, want22T)
+	}
 	decoded, err := DecodeEventObjects(append(append(append([]byte{}, g2v2...), g32t...), g22t...))
 	if err != nil {
 		t.Fatal(err)
@@ -170,6 +180,9 @@ func TestEventObjectGoldens(t *testing.T) {
 	}
 	if decoded[2].Counter != 0x01020304 || !decoded[2].Time.Equal(stamp) {
 		t.Fatalf("counter %+v", decoded[2])
+	}
+	if decoded[2].Flags != 0x21 {
+		t.Fatalf("counter flags = 0x%02X, want 0x21", decoded[2].Flags)
 	}
 }
 
