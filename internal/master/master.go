@@ -2381,18 +2381,42 @@ func commandStatusFromIIN(iin al.IIN) CommandStatus {
 	}
 }
 
-// TimeSync performs time synchronization with an outstation.
+// TimeSync performs time synchronization with an outstation using a proper
+// Group 50 Variation 1 absolute-time object. The previous 8-byte MSB-first
+// carrier was not a DNP3 object and could not be parsed by a conformant peer;
+// time sync remains outside the published v0 profile.
 func (m *Master) TimeSync(outstationID uint16) error {
 	if !m.isOperational() {
 		return ErrNotConnected
 	}
 
-	// Build time sync request with current time
-	now := time.Now()
-	data := encodeDNP3Time(now)
+	data, err := al.BuildG50V1Object(time.Now())
+	if err != nil {
+		return fmt.Errorf("build G50V1 time sync object: %w", err)
+	}
 	req := buildRequest(0, al.FuncTimeSync, data)
 
 	return m.sendWithRetry(req, outstationID)
+}
+
+// DelayMeasurement performs a Group 52 Variation 1 delay measurement against
+// an outstation and returns the outstation-reported processing delay in
+// milliseconds. The caller can combine it with its own round-trip timing to
+// estimate propagation delay.
+func (m *Master) DelayMeasurement(outstationID uint16) (uint16, error) {
+	if !m.isOperational() {
+		return 0, ErrNotConnected
+	}
+
+	req := buildRequest(0, al.FuncDelayMeasurement, al.BuildG52V1Object(0))
+	data, err := m.sendWithRetryAndGetResponse(req, outstationID)
+	if err != nil {
+		return 0, err
+	}
+	if len(data) < 2 {
+		return 0, fmt.Errorf("delay measurement response too short")
+	}
+	return al.ParseG52V1Object(data[2:])
 }
 
 // sendWithRetry sends a request with retry logic.

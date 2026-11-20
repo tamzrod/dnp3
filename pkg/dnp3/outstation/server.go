@@ -127,6 +127,46 @@ type Server interface {
 	Close() error
 }
 
+// ClockSource identifies where the logical DNP3 clock last got its time.
+type ClockSource uint8
+
+const (
+	ClockSourceUnset  ClockSource = 0
+	ClockSourceSystem ClockSource = 1
+	ClockSourceMaster ClockSource = 2
+)
+
+// ClockStatus is a read-only snapshot of the outstation's logical DNP3 clock.
+// It is exposed for engineering-console diagnostics and must never be treated
+// as an assertion about the Linux host clock.
+type ClockStatus struct {
+	Source       ClockSource
+	SourceName   string
+	HasTime      bool
+	NeedTime     bool
+	Expired      bool
+	Validity     time.Duration
+	Offset       time.Duration
+	LastSync     time.Time
+	LastValue    time.Time
+	LastRecorded time.Time
+	LastDelayMS  uint16
+	LogicalNow   time.Time
+	SystemNow    time.Time
+	SyncCount    uint64
+}
+
+// TimeSyncServer is an optional interface implemented by the concrete
+// outstation server when time sync is available. It is intentionally not part
+// of Server so existing Server implementations and the v0 profile are
+// unchanged. Callers type-assert to this interface.
+type TimeSyncServer interface {
+	TimeSyncEnabled() bool
+	ClockStatus() ClockStatus
+	SetNeedTime(bool)
+	ApplySystemTime(time.Time)
+}
+
 // EventClass is the DNP3 event class assigned to a published event.
 type EventClass int
 
@@ -219,6 +259,20 @@ type Config struct {
 	// it only for the isolated G41 lab path.
 	// Supported-profile: Reject by default (experimental, off by default).
 	ExperimentalAnalogControl bool
+	// ExperimentalTimeSync opts into the logical-clock time-sync path
+	// (Group 50 Variation 1 absolute time, Group 52 delay measurement, IIN
+	// NEED_TIME). The published v0 supported profile lists time
+	// synchronization as out of scope, so the default is false: time requests
+	// are refused with FUNC_UNKNOWN and no logical clock is advertised. This
+	// is an explicit, non-default experimental switch, not a profile
+	// promotion. Nothing in this path changes the Linux host clock or NTP.
+	ExperimentalTimeSync bool
+	// NeedTime seeds IIN1 NEED_TIME when time sync is enabled. Defaults to
+	// true (a device without an authoritative clock should ask for time).
+	NeedTime bool
+	// TimeValidity bounds how long a master-synced logical time remains
+	// valid. Zero (the default) disables expiry.
+	TimeValidity time.Duration
 	// MaxConnections is the maximum number of simultaneous master
 	// connections the outstation will serve. The v0 MVP profile is
 	// single-master: a connection that arrives while MaxConnections are
@@ -240,6 +294,7 @@ func DefaultConfig() *Config {
 		MaxEventBuffers:   1000,
 		SBOTimeout:        10 * time.Second,
 		MaxConnections:    1, // DNP3-084: MVP single-master profile
+		NeedTime:          true,
 	}
 }
 
@@ -342,6 +397,42 @@ func WithAnalogControl() ConfigOption {
 func WithExperimentalAnalogControl() ConfigOption {
 	return func(c *Config) {
 		c.ExperimentalAnalogControl = true
+	}
+}
+
+// WithExperimentalTimeSync opts into the logical-clock time-sync path. It is
+// an explicit, non-default experimental switch: without it, FUNCTION_CODE_TIME_SYNC,
+// RECORD_CURRENT_TIME, DELAY_MEASUREMENT and WRITE-to-Group-50 are refused with
+// FUNC_UNKNOWN and the published v0 profile is unchanged.
+// Supported-profile: Reject by default (experimental, off by default).
+func WithExperimentalTimeSync() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalTimeSync = true
+	}
+}
+
+// WithTimeSync is the stable alias for WithExperimentalTimeSync. Both set the
+// same opt-in flag; neither promotes time sync into the published profile.
+func WithTimeSync() ConfigOption {
+	return func(c *Config) {
+		c.ExperimentalTimeSync = true
+	}
+}
+
+// WithNeedTime sets the initial IIN NEED_TIME condition when time sync is
+// enabled. Explicitly passing false suppresses the startup time request.
+func WithNeedTime(need bool) ConfigOption {
+	return func(c *Config) {
+		c.NeedTime = need
+	}
+}
+
+// WithTimeValidity bounds how long a master-synced logical time is considered
+// valid. A non-zero duration re-asserts IIN NEED_TIME after expiry until the
+// master syncs again. Zero disables expiry.
+func WithTimeValidity(d time.Duration) ConfigOption {
+	return func(c *Config) {
+		c.TimeValidity = d
 	}
 }
 
@@ -971,6 +1062,9 @@ type server struct {
 	connCounter   uint64
 	connectionsMu sync.RWMutex
 	eventQueue    *outstation.EventQueue
+	// clock is the shared logical DNP3 clock. It is created once per server so
+	// a master reconnect does not lose a previously applied time sync.
+	clock *outstation.LogicalClock
 
 	// Context for graceful shutdown. DNP3-085: derived from the caller's
 	// Start(ctx) context so cancelling that ctx produces a clean stop.
@@ -1000,6 +1094,9 @@ func NewServer(config *Config) (Server, error) {
 	if maxEvents < 3 {
 		maxEvents = 1000
 	}
+	// Only advertise NEED_TIME when the time-sync path is actually enabled.
+	// Otherwise the published v0 IIN behaviour must be unchanged.
+	needTime := config.ExperimentalTimeSync && config.NeedTime
 	return &server{
 		config:             config,
 		state:              ServerStateDown,
@@ -1008,6 +1105,7 @@ func NewServer(config *Config) (Server, error) {
 		unsolicitedHandler: nil,
 		connections:        make(map[uint64]*outstationInstance),
 		eventQueue:         outstation.NewEventQueue(maxEvents),
+		clock:              outstation.NewLogicalClock(config.TimeValidity, needTime),
 	}, nil
 }
 
@@ -1174,9 +1272,13 @@ func (s *server) handleConnection(conn net.Conn) {
 		MaxFragmentSize:   s.config.MaxFragmentSize,
 		Unsolicited:       s.config.UnsolicitedMode,
 		SBOTimeout:        int(s.config.SBOTimeout / time.Millisecond),
+		EnableTimeSync:    s.config.ExperimentalTimeSync,
+		NeedTime:          s.config.ExperimentalTimeSync && s.config.NeedTime,
+		TimeValidity:      s.config.TimeValidity,
 	}
 	inst := outstation.NewOutstation(internalConfig)
 	inst.SetTransport(link)
+	inst.SetLogicalClock(s.clock)
 	inst.UseEventQueue(s.eventQueue)
 	inst.Initialize()
 	inst.SetDataHandler(&internalDataHandler{
@@ -1240,6 +1342,48 @@ func (s *server) State() ServerState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.state
+}
+
+// TimeSyncEnabled reports whether the explicit logical-clock opt-in is set.
+func (s *server) TimeSyncEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config.ExperimentalTimeSync
+}
+
+// ClockStatus returns a snapshot of the shared logical clock.
+func (s *server) ClockStatus() ClockStatus {
+	st := s.clock.Status()
+	return ClockStatus{
+		Source:       ClockSource(st.Source),
+		SourceName:   st.SourceName,
+		HasTime:      st.HasTime,
+		NeedTime:     st.NeedTime,
+		Expired:      st.Expired,
+		Validity:     st.Validity,
+		Offset:       st.Offset,
+		LastSync:     st.LastSync,
+		LastValue:    st.LastValue,
+		LastRecorded: st.LastRecorded,
+		LastDelayMS:  st.LastDelayMS,
+		LogicalNow:   st.LogicalNow,
+		SystemNow:    st.SystemNow,
+		SyncCount:    st.SyncCount,
+	}
+}
+
+// SetNeedTime explicitly sets or clears the logical clock's NEED_TIME
+// condition. It is provided for diagnostics and host integration; a successful
+// G50 sync still clears it and expiry can re-assert it.
+func (s *server) SetNeedTime(need bool) {
+	s.clock.MarkNeedTime(need)
+}
+
+// ApplySystemTime seeds the logical clock from a caller-supplied host time as
+// an explicit fallback. It never changes the host clock and does not clear
+// NEED_TIME.
+func (s *server) ApplySystemTime(t time.Time) {
+	s.clock.Set(t, outstation.ClockSystem)
 }
 
 // SetDataHandler implements Server.SetDataHandler.

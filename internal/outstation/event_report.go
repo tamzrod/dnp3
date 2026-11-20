@@ -73,6 +73,11 @@ func (o *Outstation) refreshEventIINLocked() {
 	o.iin.Class2Events = o.eventQueue.CountClass(Class2) > 0
 	o.iin.Class3Events = o.eventQueue.CountClass(Class3) > 0
 	o.iin.BufferOverflow = o.eventQueue.IsFull()
+	// NEED_TIME is logical-clock state and must also be reflected on
+	// unsolicited fragments, which do not pass through ProcessRequest.
+	if o.clock != nil {
+		o.iin.NeedTime = o.clock.NeedsTime()
+	}
 }
 
 // CountClass returns the number of queued events in one class.

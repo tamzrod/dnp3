@@ -165,6 +165,16 @@ type Config struct {
 	MaxEventBuffers   int    // Maximum event buffer size
 	Unsolicited       bool   // Enable unsolicited responses
 	SBOTimeout        int    // Select-before-operate timeout in milliseconds (default 10000)
+	// EnableTimeSync opts into the logical-clock time-sync path (G50V1 / G52).
+	// Time synchronization is outside the published v0 supported profile, so
+	// the default is false: time requests are refused with FUNC_UNKNOWN.
+	EnableTimeSync bool
+	// NeedTime seeds IIN1 NEED_TIME at startup. Normal for a device without
+	// a battery-backed authoritative clock.
+	NeedTime bool
+	// TimeValidity bounds how long a master-synced time remains valid; zero
+	// disables expiry.
+	TimeValidity time.Duration
 	// MaxFragmentSize bounds one application-layer response fragment. A peer
 	// discards an application fragment larger than its receive buffer (OpenDNP3
 	// 3.1.2 default 2048), so a larger response is split across fragments.
@@ -181,6 +191,8 @@ func DefaultConfig() *Config {
 		Unsolicited:       false,
 		SBOTimeout:        defaultSBOTimeoutMS, // 10 seconds default for SBO timeout
 		MaxFragmentSize:   defaultMaxAppFragment,
+		EnableTimeSync:    false,
+		NeedTime:          false,
 	}
 }
 
@@ -606,6 +618,10 @@ type Outstation struct {
 	// SBO state tracking
 	pendingSelects map[uint16]*PendingSelect // Index -> PendingSelect
 	selectMu       sync.Mutex                // Separate mutex for SBO operations
+	// Logical DNP3 clock and time-sync opt-in. The clock is shared across all
+	// connection instances of a server so time sync survives reconnects.
+	clock          *LogicalClock
+	enableTimeSync bool
 	// Event queue
 	eventQueue *EventQueue
 	// solicitedRemoved holds events removed from the queue while a solicited
@@ -640,7 +656,28 @@ func NewOutstation(config *Config) *Outstation {
 		maxAppFragment: maxAppFragmentSize(config),
 		pendingSelects: make(map[uint16]*PendingSelect),
 		eventQueue:     NewEventQueue(config.MaxEventBuffers),
+		clock:          NewLogicalClock(config.TimeValidity, config.NeedTime),
+		enableTimeSync: config.EnableTimeSync,
 	}
+}
+
+// SetLogicalClock installs a shared logical clock. It must be called before
+// Start; a nil clock is ignored so a caller cannot disable timekeeping by
+// accident.
+func (o *Outstation) SetLogicalClock(c *LogicalClock) {
+	if c == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.clock = c
+}
+
+// Clock returns the logical clock in use by this outstation.
+func (o *Outstation) Clock() *LogicalClock {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.clock
 }
 
 // SetDataHandler sets the data handler.
@@ -1531,6 +1568,13 @@ func (o *Outstation) ProcessRequest(req *al.APDU) (*al.APDU, error) {
 	o.iin.AlreadyExecuting = false
 	o.iin.BadConfig = false
 
+	// NEED_TIME is derived state from the logical clock, not a sticky error.
+	// Refresh it for every request so an expired validity window re-asserts it
+	// and a successful G50 sync clears it in the same response cycle.
+	if o.clock != nil {
+		o.iin.NeedTime = o.clock.NeedsTime()
+	}
+
 	// Confirm is not a solicited request. Accept or ignore it without
 	// consuming the solicited application sequence and without a response.
 	if req.FuncCode == al.FuncConfirm {
@@ -2330,6 +2374,14 @@ func (o *Outstation) handleWrite(req *al.APDU) (*al.APDU, error) {
 		}, nil
 	}
 
+	// Group 50 (absolute time and date) WRITE is an accepted time-sync carrier
+	// for masters that do not use FUNCTION_CODE_TIME_SYNC. It must be handled
+	// before the generic control-object header parser, which assumes a CROB or
+	// G41 command record shape.
+	if len(req.Data) >= 2 && req.Data[0] == 50 {
+		return o.handleWriteG50(req)
+	}
+
 	// Parse write request header (group, qualifier, count, index).
 	group, _, count, firstIndex, dataIdx, ok := parseControlObjectHeader(req.Data)
 	if !ok {
@@ -2909,32 +2961,108 @@ func (o *Outstation) handleFreezeClear(req *al.APDU) (*al.APDU, error) {
 	return resp, nil
 }
 
-// handleTimeSync handles TIME SYNCHRONIZATION requests.
-func (o *Outstation) handleTimeSync(req *al.APDU) (*al.APDU, error) {
-	// Time sync is typically done via broadcast; no response expected
-	return nil, nil
-}
-
-// handleDelayMeasurement handles DELAY MEASUREMENT requests.
-func (o *Outstation) handleDelayMeasurement(req *al.APDU) (*al.APDU, error) {
-	resp := &al.APDU{
-		Control: al.AppControl{
-			FIR: true,
-			FIN: true,
-			CON: false,
-			UNS: false,
-			Seq: o.appSeq,
-		},
-		FuncCode: al.FuncResponse,
-		Data:     []byte{0, 0}, // Delay in milliseconds
+// requireTimeSync enforces the explicit opt-in. Time synchronization is
+// outside the published v0 supported profile, so a request received without
+// WithExperimentalTimeSync is refused with FUNC_UNKNOWN via the run loop's
+// sendErrorResponse path.
+func (o *Outstation) requireTimeSync() error {
+	if !o.enableTimeSync || o.clock == nil {
+		return fmt.Errorf("time synchronization is not enabled on this outstation")
 	}
-	return resp, nil
+	return nil
 }
 
-// handleRecordCurrentTime handles RECORD CURRENT TIME requests.
+// handleTimeSync handles FUNCTION_CODE_TIME_SYNC (32) requests carrying a
+// Group 50 Variation 1 absolute-time object. A valid object applies the time
+// to the logical clock (never the host clock) and clears IIN NEED_TIME. A
+// response is returned so a unicast master (for example the Windows DNP3
+// Tester) receives a definite confirmation instead of a timeout.
+func (o *Outstation) handleTimeSync(req *al.APDU) (*al.APDU, error) {
+	if err := o.requireTimeSync(); err != nil {
+		return nil, err
+	}
+	t, err := al.ParseG50V1Object(req.Data)
+	if err != nil {
+		o.iin.ParameterError = true
+		return nil, fmt.Errorf("invalid G50V1 time sync object: %w", err)
+	}
+	o.clock.Set(t, ClockMaster)
+	o.iin.NeedTime = o.clock.NeedsTime()
+	return &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+		FuncCode: al.FuncResponse,
+	}, nil
+}
+
+// handleDelayMeasurement implements FUNCTION_CODE_DELAY_MEASUREMENT (51) with
+// IEEE 1815 semantics. The outstation records the request receipt time, then
+// reports the elapsed processing time in a Group 52 Variation 1 object. A
+// conformant master combines that value with its own round-trip timing to
+// compute propagation delay. This is an honest local measurement: no fixed
+// or fabricated zero is returned.
+func (o *Outstation) handleDelayMeasurement(req *al.APDU) (*al.APDU, error) {
+	if err := o.requireTimeSync(); err != nil {
+		return nil, err
+	}
+	receivedAt := time.Now()
+	// Validate the master's probe object when present. Some masters send a
+	// bare request with no object; that is accepted.
+	if len(req.Data) > 0 {
+		if _, err := al.ParseG52V1Object(req.Data); err != nil {
+			o.iin.ParameterError = true
+			return nil, fmt.Errorf("invalid G52V1 delay measurement object: %w", err)
+		}
+	}
+	delayMS := uint16(time.Since(receivedAt).Milliseconds())
+	o.clock.SetLastDelayMS(delayMS)
+	return &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+		FuncCode: al.FuncResponse,
+		Data:     al.BuildG52V1Object(delayMS),
+	}, nil
+}
+
+// handleRecordCurrentTime handles FUNCTION_CODE_RECORD_CURRENT_TIME (33). A
+// valid G50V1 value is stored as a diagnostic only. It does not change the
+// logical clock and does not rewrite any buffered SOE timestamp: an existing
+// detection-time value must remain the physical-edge observation. Full event
+// retimestamping is intentionally not claimed.
 func (o *Outstation) handleRecordCurrentTime(req *al.APDU) (*al.APDU, error) {
-	// Record time and don't respond
-	return nil, nil
+	if err := o.requireTimeSync(); err != nil {
+		return nil, err
+	}
+	t, err := al.ParseG50V1Object(req.Data)
+	if err != nil {
+		o.iin.ParameterError = true
+		return nil, fmt.Errorf("invalid G50V1 record-current-time object: %w", err)
+	}
+	o.clock.RecordTime(t)
+	return &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+		FuncCode: al.FuncResponse,
+	}, nil
+}
+
+// handleWriteG50 applies a G50V1 absolute time delivered via FUNCTION_CODE_WRITE
+// (2). Several DNP3 masters and the Windows DNP3 Tester use WRITE-to-Group-50
+// instead of FUNCTION_CODE_TIME_SYNC; accepting it here is what removes the
+// spurious IIN2.1 FUNC_UNKNOWN ("NO_FUNC_CODE_SUPPORT") response. The same
+// logical clock and NEED_TIME rules apply as for TIME_SYNC.
+func (o *Outstation) handleWriteG50(req *al.APDU) (*al.APDU, error) {
+	if err := o.requireTimeSync(); err != nil {
+		return nil, err
+	}
+	t, err := al.ParseG50V1Object(req.Data)
+	if err != nil {
+		o.iin.ParameterError = true
+		return nil, fmt.Errorf("invalid G50V1 WRITE time object: %w", err)
+	}
+	o.clock.Set(t, ClockMaster)
+	o.iin.NeedTime = o.clock.NeedsTime()
+	return &al.APDU{
+		Control:  al.AppControl{FIR: true, FIN: true, Seq: o.appSeq},
+		FuncCode: al.FuncResponse,
+	}, nil
 }
 
 // sendLinkAck sends a link-layer ACK response.
