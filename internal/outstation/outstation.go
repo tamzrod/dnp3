@@ -2262,18 +2262,19 @@ func (o *Outstation) buildAnalogOutputData(variation uint8) []byte {
 	}
 
 	for _, ao := range data {
-		// Value based on variation
+		// IEEE 1815: the flags octet is first, followed by the value in
+		// least-significant-octet-first order. This is the same object shape as
+		// Group 30 (Analog Input), and is what the pinned peer's serializer
+		// emits. The old MSB-first value followed by flags could not be read
+		// back by a conformant master and corrupted EG628 setpoint readback.
 		switch variation {
 		case 1: // 32-bit float with flags
 			bits := float64ToUint32Bits(ao.Value)
-			header = append(header,
-				byte(bits>>24), byte(bits>>16),
-				byte(bits>>8), byte(bits))
-			header = append(header, ao.Quality)
+			header = append(header, ao.Quality,
+				byte(bits), byte(bits>>8), byte(bits>>16), byte(bits>>24))
 		case 2: // 16-bit integer with flags
 			val := int16(ao.Value)
-			header = append(header, byte(val>>8), byte(val))
-			header = append(header, ao.Quality)
+			header = append(header, ao.Quality, byte(val), byte(val>>8))
 		}
 	}
 

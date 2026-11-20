@@ -1948,6 +1948,37 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 			continue
 		}
 
+		// IEEE 1815: Group 40 Variation 1 is a 32-bit floating-point value
+		// with a 1-octet flags byte (5 octets per point). The flags octet is
+		// first, then the little-endian value, matching Group 30 Variation 1
+		// and the pinned peer's serializer.
+		if group == 40 && variation == 1 {
+			if n, base, idxPrefix, ok := pointLayout(h); ok {
+				size := 5 + idxPrefix
+				if offset+n*size > len(data) {
+					break
+				}
+				for i := 0; i < n; i++ {
+					var index uint16
+					if idxPrefix > 0 {
+						index = uint16(data[offset])
+						offset++
+					} else {
+						index = uint16(base + i)
+					}
+					quality := types.QualityFlags(data[offset])
+					bits := binary.LittleEndian.Uint32(data[offset+1 : offset+5])
+					offset += 5
+					result = append(result, &types.AnalogOutput{
+						Index:   index,
+						Value:   float64(math.Float32frombits(bits)),
+						Quality: quality,
+					})
+				}
+				continue
+			}
+		}
+
 		n, base, idxPrefix, ok := pointLayout(h)
 		if !ok {
 			break
@@ -1964,28 +1995,22 @@ func parseAnalogOutputs(data []byte) []*types.AnalogOutput {
 				index = uint16(base + i)
 			}
 
-			if offset+5 > len(data) {
-				break
-			}
-
 			var value float64
 			var quality types.QualityFlags
 
 			switch variation {
-			case 1: // 32-bit float with flags
-				bits := binary.LittleEndian.Uint32(data[offset : offset+4])
-				value = float64(math.Float32frombits(bits))
-				offset += 4
+			case 2: // 16-bit int with flags (flags octet first, LSB value)
+				if offset+3 > len(data) {
+					break
+				}
 				quality = types.QualityFlags(data[offset])
-				offset++
-			case 2: // 16-bit int with flags
-				val := int16(binary.LittleEndian.Uint16(data[offset : offset+2]))
+				val := int16(binary.LittleEndian.Uint16(data[offset+1 : offset+3]))
 				value = float64(val)
-				offset += 2
-				quality = types.QualityFlags(data[offset])
-				offset++
+				offset += 3
 			default:
-				offset += 5
+				if offset < len(data) {
+					offset += objectValueBytes(group, variation)
+				}
 			}
 
 			result = append(result, &types.AnalogOutput{
